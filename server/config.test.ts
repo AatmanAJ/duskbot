@@ -889,6 +889,17 @@ describe("default fleet", () => {
     expect(instanceConfigs({ instances: { standalone: { driver: "fake" } } })).not.toHaveProperty("meta");
   });
 
+  it("sends the xAI engine to the saved xAI address, the one its key is checked against", () => {
+    const cfg: AppConfig = { xai: { key: "xai-workspace", url: "http://127.0.0.1:9/v1" }, instances: {
+      xaiApi: { driver: "grok", access: "api" },
+      xaiProxy: { driver: "grok", config: { url: "https://another.example.test/v1" } },
+    } };
+    const map = instanceConfigs(cfg);
+    expect(map.xaiApi).toMatchObject({ config: { url: cfg.xai!.url }, environment: { XAI_API_KEY: "xai-workspace" } });
+    expect(map.xaiProxy).toMatchObject({ config: { url: "https://another.example.test/v1" }, environment: {} });
+    expect(instanceConfigs({ xai: { key: "xai-workspace" }, instances: { xaiApi: { driver: "grok" } } }).xaiApi.config ?? {}).not.toHaveProperty("url");
+  });
+
   it("adds DeepSeek Harness to product fleets and hands its key only to that engine", () => {
     const cfg: AppConfig = { deepseek: { key: "ds-workspace" }, instances: {
       codex: { driver: "codex" },

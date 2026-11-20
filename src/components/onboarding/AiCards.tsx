@@ -1,11 +1,14 @@
 // The AIs people already use, as a grid of cards with their own logos. A press starts that AI's connect under the grid
 // (connect-flow: getting it ready, its own sign-in in the browser, the code to enter), or shows its setup where it has
 // no sign-in (EngineSetup: an API key, a local endpoint). One connect runs at a time: pressing another card cancels the
-// running one. A connected AI turns green with a check and can't be pressed again; the window comes back to the front
-// when a sign-in finishes. The first run, the Connect an AI dialog and Settings > Models all show this one grid.
-import { useEffect, useRef, useState } from "react";
+// running one. A connected AI turns green with a check; only one connected with an API key can be pressed again, to
+// change that key. A key counts as connected once the provider has passed its check, not when it is saved. The window
+// comes back to the front when a sign-in finishes. The first run, the Connect an AI dialog and Settings > Models all show this one grid.
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Server } from "../../icons";
-import { EngineSetup } from "@/components/EngineSetup";
+import { ApiKeyEngineCard, EngineSetup, inlineKeyCard } from "@/components/EngineSetup";
+import { keyForInstance, type KeyId } from "@/components/keys/key-catalog";
+import { KeyCheckReport, type KeyCheckState } from "@/components/keys/key-check-report";
 import { engineReady } from "@/components/EngineLibrary";
 import { CursorMark, PresetProviderMark, ProviderMark } from "@/components/ProviderIcons";
 import { cn } from "@/lib/cn";
@@ -48,27 +51,29 @@ export function setupFor(instance: InstanceInfo) {
 export const inAppConnect = (instance: InstanceInfo) => connectsInApp(instance as unknown as ConnectInstance);
 const inApp = inAppConnect;
 
-/** The pressed AI's way in: its connect, stage by stage, or the setup for an AI without a sign-in. "Try another way"
- * after a failure shows that setup too. */
+/** The pressed AI's way in: the card for its API key when that is how it connects, else its connect, stage by stage,
+ * or the setup for an AI without a sign-in. "Try another way" after a failure shows that setup too. */
 export function AiConnect({ tile, flow }: { tile: AiTile<InstanceInfo>; flow: ConnectFlowHandle }) {
   const [trouble, setTrouble] = useState(false);
   const instance = tile.instance;
-  const inAppConnect = !trouble && tile.candidates.some(inApp);
+  const keyCard = Boolean(inlineKeyCard(instance));
+  const inAppConnect = !keyCard && !trouble && tile.candidates.some(inApp);
+  const cardClass = "w-full rounded-2xl border-0 bg-ink/[0.035] p-4 text-start";
   return (
     <StageSwap stage={inAppConnect ? "connect" : "setup"} className="w-full">
-      {inAppConnect
-        ? <ConnectPanel flow={flow} name={aiName(instance)} driverKind={instance.driverKind} onTrouble={() => setTrouble(true)} />
-        : <EngineSetup instance={instance} {...setupFor(instance)} className="w-full rounded-2xl border-0 bg-ink/[0.035] p-4 text-start" />}
+      {keyCard
+        ? <ApiKeyEngineCard instance={instance} className={cardClass} />
+        : inAppConnect
+          ? <ConnectPanel flow={flow} name={aiName(instance)} driverKind={instance.driverKind} onTrouble={() => setTrouble(true)} />
+          : <EngineSetup instance={instance} {...setupFor(instance)} className={cardClass} />}
     </StageSwap>
   );
 }
 
-function AiCard({ tile, connected, arrived, picked, suggested, staysHere, onPick }: { tile: AiTile<InstanceInfo>; connected: boolean; arrived: boolean; picked: boolean; suggested: boolean; staysHere: boolean; onPick: () => void }) {
+function AiCard({ tile, connected, keyed, arrived, picked, suggested, staysHere, onPick }: { tile: AiTile<InstanceInfo>; connected: boolean; keyed: boolean; arrived: boolean; picked: boolean; suggested: boolean; staysHere: boolean; onPick: () => void }) {
   if (connected) {
-    return (
-      <div data-funnel-ai={tile.id} data-connected="" data-stays-here={staysHere ? "" : undefined} role="listitem"
-        aria-label={t(staysHere ? "funnel.ai.connectedHereOnly" : "funnel.ai.connectedName", { name: label(tile) })}
-        className={cn("ai-connected relative flex h-[96px] flex-col items-center justify-center gap-1.5 rounded-2xl bg-ink/[0.035] px-2", arrived && "place-reveal")}>
+    const face = (
+      <>
         <span className="grid size-7 place-items-center"><TileMark tile={tile} size={26} /></span>
         <span className="flex max-w-full flex-col items-center">
           <span className="max-w-full truncate text-[13px] leading-[18px] text-ink">{label(tile)}</span>
@@ -78,7 +83,22 @@ function AiCard({ tile, connected, arrived, picked, suggested, staysHere, onPick
                 <Check size={12} strokeWidth={2.5} aria-hidden="true" className="shrink-0" />{t("funnel.ai.ready")}
               </span>}
         </span>
-      </div>
+      </>
+    );
+    const look = cn("ai-connected relative flex h-[96px] flex-col items-center justify-center gap-1.5 rounded-2xl bg-ink/[0.035] px-2", arrived && "place-reveal");
+    if (keyed) {
+      return (
+        <div role="listitem" className="flex">
+          <button type="button" data-funnel-ai={tile.id} data-connected="" aria-pressed={picked} onClick={onPick}
+            aria-label={t("funnel.ai.connectedChangeKey", { name: label(tile) })}
+            className={cn(TILE, look, "w-full", picked && "bg-ink/[0.08] hover:bg-ink/[0.08]")}>{face}</button>
+        </div>
+      );
+    }
+    return (
+      <div data-funnel-ai={tile.id} data-connected="" data-stays-here={staysHere ? "" : undefined} role="listitem"
+        aria-label={t(staysHere ? "funnel.ai.connectedHereOnly" : "funnel.ai.connectedName", { name: label(tile) })}
+        className={look}>{face}</div>
     );
   }
   return (
@@ -123,10 +143,24 @@ export function AiCards({ onMore, className, onConnected, suggested = [], staysH
   staysHere?: readonly AiTileId[] }) {
   const { state, refreshInstances } = useStore();
   const [picked, setPicked] = useState<AiTileId | null>(null);
+  const [keyChecks, setKeyChecks] = useState<Partial<Record<KeyId, KeyCheckState>>>({});
+  const reportKeyCheck = useCallback((id: KeyId, check: KeyCheckState | null) => {
+    setKeyChecks((now) => {
+      if ((now[id] ?? null) === check) return now;
+      const next = { ...now };
+      if (check) next[id] = check;
+      else delete next[id];
+      return next;
+    });
+  }, []);
   const flow = useConnectFlow();
   const tiles = aiTiles(state.instances, ready, inApp);
+  const connectedNow = (tile: AiTile<InstanceInfo>) => {
+    const key = keyForInstance(tile.instance.instanceId);
+    return ready(tile.instance) && !(key && keyChecks[key]);
+  };
   const [cached] = useState(readConnectedCache);
-  const { shown, next } = connectedCards(tiles, (tile) => ready(tile.instance), cached);
+  const { shown, next } = connectedCards(tiles, connectedNow, cached);
   const nextKey = [...next].sort().join(",");
   useEffect(() => { writeConnectedCache(new Set(nextKey ? nextKey.split(",") as AiTileId[] : [])); }, [nextKey]);
   useEffect(() => { void Promise.resolve(refreshInstances?.({ cached: true })).catch(() => {}); }, [refreshInstances]);
@@ -136,12 +170,12 @@ export function AiCards({ onMore, className, onConnected, suggested = [], staysH
     flow.cancel();
     if (picked === tile.id) return setPicked(null);
     setPicked(tile.id);
-    if (tile.candidates.some(inApp)) flow.start({ tile: tile.id, candidates: tile.candidates.map((candidate) => candidate.instanceId) });
+    if (!inlineKeyCard(tile.instance) && tile.candidates.some(inApp)) flow.start({ tile: tile.id, candidates: tile.candidates.map((candidate) => candidate.instanceId) });
   };
-  const chosen = tiles.find((tile) => tile.id === picked && !shown.has(tile.id));
-  useFocusOnConnect(tiles.filter((tile) => ready(tile.instance)).map((tile) => tile.id));
+  const chosen = tiles.find((tile) => tile.id === picked && (!shown.has(tile.id) || Boolean(inlineKeyCard(tile.instance))));
+  useFocusOnConnect(tiles.filter(connectedNow).map((tile) => tile.id));
   const told = useRef(false);
-  const pickedReady = Boolean(picked && tiles.some((tile) => tile.id === picked && ready(tile.instance)));
+  const pickedReady = Boolean(picked && tiles.some((tile) => tile.id === picked && connectedNow(tile)));
   // a sign-in still confirming has not finished: telling now would close the dialog and cancel it mid-way
   const settled = flow.state.stage === "connected" || flow.state.stage === "idle" || flow.state.stage === "failed";
   useEffect(() => {
@@ -151,10 +185,11 @@ export function AiCards({ onMore, className, onConnected, suggested = [], staysH
   }, [picked, pickedReady, settled, flow.state.stage]);
 
   return (
+    <KeyCheckReport.Provider value={reportKeyCheck}>
     <div data-ai-cards="" className={cn("@container flex w-full flex-col items-center", className)}>
       <div role="list" aria-label={t("funnel.ai.title")} className="grid w-full grid-cols-2 gap-2.5 @min-[400px]:grid-cols-4">
         {tiles.map((tile) => (
-          <AiCard key={tile.id} tile={tile} connected={shown.has(tile.id)} arrived={!firstShown.has(tile.id)} picked={picked === tile.id}
+          <AiCard key={tile.id} tile={tile} connected={shown.has(tile.id)} keyed={Boolean(inlineKeyCard(tile.instance))} arrived={!firstShown.has(tile.id)} picked={picked === tile.id}
             suggested={suggested.includes(tile.id)} staysHere={staysHere.includes(tile.id)} onPick={() => pick(tile)} />
         ))}
       </div>
@@ -175,5 +210,6 @@ export function AiCards({ onMore, className, onConnected, suggested = [], staysH
         </button>
       )}
     </div>
+    </KeyCheckReport.Provider>
   );
 }

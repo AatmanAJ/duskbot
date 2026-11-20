@@ -5783,7 +5783,6 @@
   "keys.search.aria": "API 키 검색",
   "keys.search.none": "“{query}”와(과) 일치하는 키가 없어요.",
   "keys.openPage": "API 키 열기",
-  "engineSetup.apiKey.inline": "여기에 붙여 넣으세요. 알아서 저장하고 확인한 뒤 모델이 여기에 나타나요.",
   "secretCard.ref": "비공개예요. 봇은 절대 볼 수 없어요.",
   "secretCard.file": "비공개예요. 봇의 명령에서 24시간 동안 사용할 수 있어요.",
   "botPanel.backups.title": "백업 AI",

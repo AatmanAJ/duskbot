@@ -31,7 +31,7 @@ vi.mock("@/state/store", async (original) => {
 });
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("@/components/CloudTrialNotice", () => ({ useCloudPlanSnapshot: () => null }));
-vi.mock("@/components/EngineSetup", () => ({ EngineSetup: () => null }));
+vi.mock("@/components/EngineSetup", () => ({ EngineSetup: () => null, ApiKeyEngineCard: () => null, inlineKeyCard: () => undefined }));
 vi.mock("@/components/TeamLibraryPanel", () => ({ TeamLibraryPanel: () => null }));
 import { CloudWelcome } from "./CloudWelcome";
 import { WelcomeKeeper } from "./WelcomeKeeper";

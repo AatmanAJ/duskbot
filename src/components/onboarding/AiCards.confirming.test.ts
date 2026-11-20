@@ -8,7 +8,7 @@ import type { ConnectState } from "./connect-flow";
 
 const f = vi.hoisted(() => ({ instances: [] as InstanceInfo[], state: { stage: "idle" } as ConnectState, cancel: vi.fn() }));
 vi.mock("@/state/store", () => ({ api: async () => ({ instances: f.instances }), useStore: () => ({ state: { instances: f.instances }, dispatch: vi.fn() }) }));
-vi.mock("@/components/EngineSetup", () => ({ EngineSetup: () => null }));
+vi.mock("@/components/EngineSetup", () => ({ EngineSetup: () => null, ApiKeyEngineCard: () => null, inlineKeyCard: () => undefined }));
 vi.mock("./SignInPill", () => ({
   ConnectPanel: () => null,
   useConnectFlow: () => ({ state: f.state, target: null, start: vi.fn(), cancel: f.cancel, retry: vi.fn(), openAgain: vi.fn(), submit: vi.fn() }),

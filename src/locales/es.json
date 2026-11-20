@@ -7182,7 +7182,6 @@
   "keys.search.aria": "Buscar claves de API",
   "keys.search.none": "Ninguna clave coincide con «{query}».",
   "keys.openPage": "Abrir claves de API",
-  "engineSetup.apiKey.inline": "Pégala aquí. Se guarda y se comprueba sola, y los modelos aparecen aquí.",
   "engineSetup.apiKey.inlineCompat": "Pega su dirección y su clave, si tiene una. Se guardan y se comprueban solas, y los modelos aparecen aquí.",
   "engineSetup.apiKey.compatTitle": "Conectar {name}",
   "secretCard.ref": "Privado. Tu bot nunca lo ve.",

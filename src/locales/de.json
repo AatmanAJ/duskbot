@@ -7182,7 +7182,6 @@
   "keys.search.aria": "API-Schlüssel suchen",
   "keys.search.none": "Keine Schlüssel passen zu „{query}“.",
   "keys.openPage": "API-Schlüssel öffnen",
-  "engineSetup.apiKey.inline": "Hier einfügen. Er wird automatisch gespeichert und geprüft, und die Modelle erscheinen hier.",
   "engineSetup.apiKey.inlineCompat": "Füge seine Adresse ein und seinen Schlüssel, falls er einen hat. Beides wird automatisch gespeichert und geprüft, und die Modelle erscheinen hier.",
   "engineSetup.apiKey.compatTitle": "{name} verbinden",
   "secretCard.ref": "Privat. Dein Bot sieht es nie.",

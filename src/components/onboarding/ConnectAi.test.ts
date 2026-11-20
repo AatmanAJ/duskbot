@@ -21,7 +21,7 @@ vi.mock("@/state/store", () => ({
 }));
 vi.mock("@/components/EngineSetup", async () => {
   const { createElement: h } = await import("react");
-  return { EngineSetup: ({ instance, intent, description }: { instance: InstanceInfo; intent: string; description?: string }) =>
+  return { ApiKeyEngineCard: () => null, inlineKeyCard: () => undefined, EngineSetup: ({ instance, intent, description }: { instance: InstanceInfo; intent: string; description?: string }) =>
     h("div", { "data-engine-setup": instance.instanceId, "data-intent": intent, "data-description": description }) };
 });
 vi.mock("@/components/models/ModelDirectory", async () => {

@@ -1211,6 +1211,9 @@ export function instanceConfigs(cfg: AppConfig): InstanceConfigMap {
     if (entry.driver === "meta" && cfg.meta?.url && !ownsRouting) {
       entry.config = { ...entry.config as object, url: cfg.meta.url };
     }
+    if (entry.driver === "grok" && cfg.xai?.url && !ownsRouting) {
+      entry.config = { ...entry.config as object, url: cfg.xai.url };
+    }
     if (entry.driver === "openai-compat" && cfg.openaiCompat && id !== OPENAI_API_INSTANCE && id !== OPENROUTER_API_INSTANCE) {
       const defaults: Record<string, string> = {};
       if (cfg.openaiCompat.url) defaults.url = cfg.openaiCompat.url;

@@ -538,6 +538,17 @@ function ApiKeyEngineSetup({ instance, className, unframed, configured = false }
   );
 }
 
+/** The key this API engine takes right in its card, when it has one here: then the card stays the same card from the
+ * empty field through saving and checking the key to managing it, never swapped for another while its check runs. */
+export function inlineKeyCard(instance: InstanceInfo): KeyId | undefined {
+  if (window.duskDesktop?.remoteClient?.active === true || !isApiKeyEngine(instance)) return undefined;
+  return apiKeySetup(instance) || hasSavedApiKey(instance) ? inlineKey(instance) : undefined;
+}
+
+export function ApiKeyEngineCard({ instance, className }: { instance: InstanceInfo; className?: string }) {
+  return <ApiKeyEngineSetup instance={instance} className={className} unframed={false} configured={hasSavedApiKey(instance)} />;
+}
+
 export function ApiKeyEngineManage({ instance, className }: { instance: InstanceInfo; className?: string }) {
   if (!hasSavedApiKey(instance)) return null;
   return <ApiKeyEngineSetup instance={instance} className={className} unframed={false} configured />;

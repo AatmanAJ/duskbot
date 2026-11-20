@@ -5954,7 +5954,6 @@
   "keys.search.aria": "搜索 API 密钥",
   "keys.search.none": "没有与「{query}」匹配的密钥。",
   "keys.openPage": "打开 API 密钥",
-  "engineSetup.apiKey.inline": "粘贴到这里。它会自动保存并检查，模型随后会显示在这里。",
   "secretCard.ref": "私密内容，你的机器人始终无法看到。",
   "secretCard.file": "私密内容，你的机器人执行的命令可在 24 小时内使用。",
   "botAccess.share": "共享",

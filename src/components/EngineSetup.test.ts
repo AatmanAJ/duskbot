@@ -356,7 +356,7 @@ describe("API-key engine setup", () => {
     const html = render(keyEngine("grok", { state: "unavailable", reason: "No xAI API key: open Settings → API keys." }));
     expect(html).toContain("data-engine-setup-api-key");
     expect(html).toContain("Grok (API) needs an API key");
-    expect(html).toContain("Paste it here. It saves and checks itself");
+    expect(html).toContain("Paste it and save it. It counts as connected once the provider accepts it.");
     expect(html).toContain('data-key-row="xai"');
     expect(html).not.toContain("Open API keys");
     expect(html).not.toContain("config.json");

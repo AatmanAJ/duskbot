@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence } from "motion/react";
 import { Check, CircleAlert, ExternalLink, Eye, EyeOff, Loader2, TriangleAlert } from "../../icons";
 import { api, useStore } from "@/state/store";
@@ -10,6 +10,7 @@ import { keyRemoved, keySaved, keySaveFailure, savedKeyResult } from "@/lib/prod
 import { InstanceProviderMark } from "../ProviderIcons";
 import { keyEntry, keyForInstance, looksLikeOtherKey, savedState, shownKeyEntry, type KeyEntry, type KeyId, type SavedState } from "./key-catalog";
 import { checkKey, cleanKey, looksLikeKey, saveKey } from "./key-save";
+import { KeyCheckReport } from "./key-check-report";
 import { FormDialog } from "../ListRows";
 import { fieldLabelCls, smallButtonCls } from "../ui/GrokDialog";
 import { friendlyError } from "@/lib/plain-error";
@@ -144,6 +145,7 @@ export function KeyRow({
   children?: ReactNode;
 }) {
   const { state, dispatch, refreshInstances } = useStore();
+  const report = useContext(KeyCheckReport);
   const titleId = useId();
   const [draft, setDraft] = useState("");
   const [shown, setShown] = useState(false);
@@ -212,10 +214,14 @@ export function KeyRow({
         setWorks(check.ok);
         setVerdict(check.ok ? check.text : null);
         setProblem(check.ok ? null : check.text);
+        report?.(id, check.ok ? null : "failed");
       }
       return check.result;
     } catch (cause) {
-      if (mine === generation.current) setProblem(errorText(cause));
+      if (mine === generation.current) {
+        setProblem(errorText(cause));
+        report?.(id, "failed");
+      }
       return "unverified";
     }
   };
@@ -235,6 +241,7 @@ export function KeyRow({
     setNotice(null);
     setVerdict(null);
     setWorks(false);
+    report?.(id, "checking");
     try {
       const status = await saveKey(target, value, !saved.configured);
       dispatch({ type: "configStatus", config: status });
@@ -246,10 +253,13 @@ export function KeyRow({
       if (compact && now.configured) setDialog(false);
       if (hadFocus) focusAfter.current = now.configured ? "replace" : "input";
       if (!now.configured) setProblem(t("keys.row.notKept"));
+      if (!now.configured) report?.(id, "failed");
+      else if (!target.test) report?.(id, null);
       onSaved?.(now.configured);
       keySaved(target.analytics, via, now.configured && target.test ? await runCheck() : savedKeyResult(target.analytics));
     } catch (cause) {
       setProblem(errorText(cause));
+      report?.(id, "failed");
       keySaved(target.analytics, via, keySaveFailure(cause));
     } finally {
       busyRef.current = false;
@@ -298,6 +308,7 @@ export function KeyRow({
       dispatch({ type: "configStatus", config: status });
       setReplacing(false);
       setDraft("");
+      report?.(id, null);
       onSaved?.(target.saved(status).configured);
       keyRemoved(target.analytics, via);
     } catch (cause) {
