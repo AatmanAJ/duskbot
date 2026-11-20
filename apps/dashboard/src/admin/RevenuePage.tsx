@@ -17,6 +17,7 @@ import { AdminHeader, Failed, Loading, n, SearchBox } from "./ui";
 import { STATUS } from "./PersonBilling";
 import { InfraMargin } from "./InfraMargin";
 import { Fold } from "./Fold";
+import { TrialsSummary } from "./Subscribers";
 import { CustomerLink, ModeChip } from "./CustomerSheet";
 import type { BreakdownRow, CustomerRow, FeedItem, FeedKind, Health, MoneyMode, RevenueFunnelStep, RiskRow, SubscriptionReport } from "./revenue-types";
 
@@ -271,12 +272,12 @@ function Cash({ report }: { report: SubscriptionReport }) {
   );
 }
 
-const STAGE: Record<string, string> = { visit: "bg-wash-sky", signup: "bg-wash-lilac", checkout: "bg-wash-lemon", paid: "bg-wash-lime", retained: "bg-wash-lime" };
-/** visitor to paying customer to still paying a month later, for people first seen in the window */
+const STAGE: Record<string, string> = { visit: "bg-wash-sky", signup: "bg-wash-lilac", trial: "bg-wash-lemon", converted: "bg-wash-lime" };
+/** visitor to trial to a trial that went on to pay, for people first seen in the window */
 export function RevenueFunnel({ steps, compact }: { steps: RevenueFunnelStep[]; compact?: boolean }) {
   const first = Math.max(1, steps[0]?.count ?? 1);
   return (
-    <ol className="flex flex-col gap-1" aria-label="revenue funnel">
+    <ol className="flex flex-col gap-1" aria-label="trial funnel">
       {steps.map((step, i) => {
         const prev = steps[i - 1], share = step.count / first;
         const base = step.of ?? prev?.count ?? 0, kept = prev ? (base ? step.count / base : null) : null;
@@ -288,11 +289,11 @@ export function RevenueFunnel({ steps, compact }: { steps: RevenueFunnelStep[]; 
                 animate={{ clipPath: `inset(0% ${(100 - Math.max(1.5, share * 100)).toFixed(2)}% 0% 0% round 10px)` }} transition={{ type: "spring", visualDuration: 0.45, bounce: 0, delay: Math.min(0.3, i * 0.04) }} aria-hidden />
               <span className="relative flex items-baseline gap-2">
                 <Figure value={n(step.count)} className="!font-mono !text-15 !leading-6 !tracking-[-0.02em]" />
-                {step.of !== undefined && <span className="font-mono text-12 text-ink-3">of {n(step.of)} due</span>}
+                {step.of !== undefined && <span className="font-mono text-12 text-ink-3">of {n(step.of)} trials over</span>}
               </span>
             </span>
             <span className="flex justify-end">
-              {prev && <span className="inline-flex h-6 items-center whitespace-nowrap rounded-full bg-card px-2 font-mono text-12 text-ink-3 num" title={step.of !== undefined ? `${n(step.count)} of the ${n(step.of)} who paid at least a month ago` : `${n(step.count)} of ${n(prev.count)}`}>{kept === null ? "-" : percent(kept)}</span>}
+              {prev && <span className="inline-flex h-6 items-center whitespace-nowrap rounded-full bg-card px-2 font-mono text-12 text-ink-3 num" title={step.of !== undefined ? `${n(step.count)} of the ${n(step.of)} trials that are over went on to pay` : `${n(step.count)} of ${n(prev.count)}`}>{kept === null ? "-" : percent(kept)}</span>}
             </span>
           </li>
         );
@@ -596,6 +597,7 @@ export function RevenuePage() {
   return (
     <>
       <AdminHeader title="revenue" sub="mrr, churn and every customer, straight from the billing records." action={<div className="flex flex-wrap items-center gap-3"><MoneySwitch />{owner && data && <SyncButton sync={data.sync} onDone={reload} />}</div>} />
+      <TrialsSummary />
       {error && <Failed error={error} retry={reload} />}
       {!data && loading && <Loading rows={8} />}
       {data && (
@@ -617,9 +619,9 @@ export function RevenuePage() {
               {!empty && <OtherNumbers report={data} />}
               {!empty && <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1"><Churn report={data} /><Dunning report={data} /><Breakdown breakdown={data.breakdown} /><Cash report={data} /></div>}
               <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
-                <Card title="revenue funnel" action={<Segmented label="people first seen in" value={days} onChange={setDays} options={DAYS.map(([value, label]) => ({ value, label }))} />}>
+                <Card title="trial funnel" action={<Segmented label="people first seen in" value={days} onChange={setDays} options={DAYS.map(([value, label]) => ({ value, label }))} />}>
                   <RevenueFunnel steps={data.funnel.steps} />
-                  <p className="mt-3 text-12 text-ink-4">people first seen in the last {days === "365" ? "year" : `${days} days`}; month 2 counts those who paid at least a month ago.</p>
+                  <p className="mt-3 text-12 text-ink-4">people first seen in the last {days === "365" ? "year" : `${days} days`}; converted counts trials that are over and went on to pay.</p>
                 </Card>
                 <Checkout checkout={data.checkout} />
               </div>
@@ -718,7 +720,7 @@ export function RevenueStrip({ days }: { days: number }) {
           <div className="mt-auto pt-4"><Sparkline values={data.months.map((row) => row.mrr)} color="var(--ink-4)" height={40} label="mrr over the last 12 months" /></div>
         </div>
         <div className="rounded-[18px] bg-pop p-3">
-          <div className="mb-2 flex items-center justify-between gap-2"><h3 className="text-13 font-medium text-ink">visitor to paying</h3><span className="t-meta">first seen in the last {data.funnel.days} days</span></div>
+          <div className="mb-2 flex items-center justify-between gap-2"><h3 className="text-13 font-medium text-ink">visitor to trial</h3><span className="t-meta">first seen in the last {data.funnel.days} days</span></div>
           <RevenueFunnel steps={data.funnel.steps} compact />
         </div>
       </div>

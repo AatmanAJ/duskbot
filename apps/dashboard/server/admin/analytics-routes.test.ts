@@ -152,7 +152,8 @@ describe("admin analytics routes", () => {
     expect(revenue.customers[0]).toMatchObject({ accountId, email: OTHER, mode: "test", status: "active", channel: "ai", source: "ChatGPT", country: "DE" });
     expect((await read<Revenue>("/v1/admin/revenue?mode=all", admin)).headline.mrr).toBe(total);
     expect(revenue.feed[0]).toMatchObject({ kind: "new", accountId, amountCents: total });
-    expect(revenue.funnel.steps.map(step => step.count)).toEqual([1, 1, 1, 1, 0]);
+    // a paid checkout with no free trial: visited and signed up, never a trial
+    expect(revenue.funnel.steps.map(step => [step.id, step.count])).toEqual([["visit", 1], ["signup", 1], ["trial", 0], ["converted", 0]]);
     expect(revenue.sync).toEqual({ available: false, last: null });
     expect(app.billing.store.state.customers.find(row => row.accountId === accountId)!.attribution).toMatchObject({ source: "ChatGPT", channel: "ai" });
     await expect.poll(() => sink.all.filter(event => event.name === "billing").map(event => event.props.type)).toEqual(["checkout.started", "payment.succeeded", "subscription.active"]);
@@ -425,6 +426,18 @@ describe("admin analytics routes", () => {
     expect(data.here.map(item => item.seed)).toEqual([ANON, "signin_only_visitor", VID]);
     expect(data.here.find(item => item.seed === VID)).toMatchObject({ name: "site_goal", email: OTHER, goal: "cta_click", country: "DE" });
     expect(data.here.some(item => item.seed === "expired")).toBe(false);
+  });
+  it("puts a free trial that began in the window into the live feed, in its place by time", async () => {
+    const admin = await login(ADMIN); await login(OTHER);
+    const id = app.auth.accountByEmail(OTHER)!.id;
+    await identify(id);
+    await view(VID, "recent", time - 3 * 60_000, "/pricing");
+    const sub = { id: "sub_trial_live", accountId: id, status: "active", trialEndsAt: time + 3 * 86_400_000, createdAt: time - 60_000, updatedAt: time - 60_000, cancelAtPeriodEnd: false, totalCents: 2000,
+      cart: { interval: "month" }, currentPeriodStart: time - 60_000, currentPeriodEnd: time + 3 * 86_400_000, checkoutId: "chk_trial_live", mode: "live" };
+    app.billing.store.state.subscriptions.push(sub as never);
+    const data = await read<Realtime>("/v1/admin/realtime?minutes=60", admin);
+    expect(data.feed.find(item => item.name === "trial_started")).toMatchObject({ at: time - 60_000, email: OTHER, customer: true });
+    expect(data.feed.map(item => item.at)).toEqual(data.feed.map(item => item.at).sort((a, b) => b - a));
   });
 
   it("returns signup cohorts and ranks power users by active days with usage totals", async () => {
