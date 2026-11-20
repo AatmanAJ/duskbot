@@ -38,7 +38,8 @@ export interface WarmSummaryPlan {
   soon: boolean;
 }
 
-export type WarmSummaryOutcome = { ok: true } | { ok: false; reason: string; retry?: boolean };
+/** `skip`: nothing went wrong, there was simply nothing to do; noted in state but not logged. */
+export type WarmSummaryOutcome = { ok: true } | { ok: false; reason: string; retry?: boolean; skip?: boolean };
 
 export interface WarmSummaryDeps {
   now(): number;
@@ -85,18 +86,18 @@ export function createWarmSummary(deps: WarmSummaryDeps) {
   const last = new Map<string, { at: number; outcome: string }>();
   let disposed = false;
 
-  const note = (threadId: string, outcome: string) => {
+  const note = (threadId: string, outcome: string, quiet = false) => {
     last.set(threadId, { at: deps.now(), outcome });
     if (last.size > 500) last.delete(last.keys().next().value!);
-    deps.log?.(`warm summary ${threadId}: ${outcome}`);
+    if (!quiet) deps.log?.(`warm summary ${threadId}: ${outcome}`);
   };
 
-  const drop = (p: Pending, outcome?: string) => {
+  const drop = (p: Pending, outcome?: string, quiet = false) => {
     p.timer?.cancel();
     p.timer = null;
     p.dueAt = null;
     if (pending.get(p.target.threadId) === p) pending.delete(p.target.threadId);
-    if (outcome) note(p.target.threadId, outcome);
+    if (outcome) note(p.target.threadId, outcome, quiet);
   };
 
   const schedule = (p: Pending, ms: number) => {
@@ -131,6 +132,7 @@ export function createWarmSummary(deps: WarmSummaryDeps) {
       if (p.run === run) p.run = null;
       if (pending.get(p.target.threadId) !== p) return;
       if (outcome.ok) return drop(p, "summarized");
+      if (outcome.skip && !controller.signal.aborted) return drop(p, `skipped: ${outcome.reason}`, true);
       if (outcome.retry && !controller.signal.aborted && deps.now() + retryMs - p.turnEndedAt < giveUpMs) {
         note(p.target.threadId, `waiting: ${outcome.reason}`);
         return schedule(p, retryMs);

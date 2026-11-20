@@ -29,6 +29,13 @@ function publish(next: ConnectAppsState) {
   for (const watch of Array.from(watchers)) watch();
 }
 
+const APP_LINK = /^duskbot:\/\/apps\/([a-z0-9][a-z0-9_.-]{0,79})\/?$/i;
+
+/** The app a duskbot://apps/<id> link (the account website's connect) names, lowercased; null for any other link. */
+export function connectAppLinkId(link: string): string | null {
+  return APP_LINK.exec(link.trim())?.[1]?.toLowerCase() ?? null;
+}
+
 /** Opens the Connect Apps window, on its home or on `page`. */
 export function openConnectApps(page: ConnectAppsPage = HOME): void {
   publish({ open: true, page, nonce: current.nonce + 1 });

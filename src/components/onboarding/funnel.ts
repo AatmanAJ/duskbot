@@ -21,13 +21,17 @@ export interface FunnelFacts {
   hello?: boolean;
   /** the phone app is offered (phoneAppEnabled) */
   phone?: boolean;
+  /** a cloud the desktop app set up, with that computer's bots or chats to move here */
+  cloudBring?: boolean;
   /** this Mac still lacks a permission a bot needs to use it (Accessibility, Screen Recording, Notifications) */
   permissions?: boolean;
+  /** a cloud the desktop app set up: that computer's first run already had the one AI step, and its sign-ins came along */
+  aiAsked?: boolean;
 }
 
-/** The screens this person gets, in order: the hello, then the account (when there is none yet), then on the desktop app
- * where the bots live. This Mac goes on to an AI, what to bring and, last, the Mac's permissions; dusk cloud goes to the browser for its plan and
- * checkout, then an AI while the cloud is made, then the cloud. */
+/** The screens this person gets, in order: the hello, an AI, then the account (when there is none yet), then on the
+ * desktop app where the bots live. This Mac goes on to what to bring and, last, the Mac's permissions; dusk cloud goes to
+ * the browser for its plan and checkout, the AI, what to bring (the cloud's move carries it there), then the cloud being made. */
 export function funnelSteps(facts: FunnelFacts): FunnelStep[] {
   const cloud = facts.desktop && facts.path === "cloud";
   return FUNNEL_STEPS.filter((step) => {
@@ -35,10 +39,11 @@ export function funnelSteps(facts: FunnelFacts): FunnelStep[] {
     if (step === "place") return facts.desktop;
     if (step === "account") return facts.account;
     if (step === "checkout") return cloud;
-    if (step === "bring") return facts.desktop && Boolean(facts.bring) && !cloud;
+    if (step === "bring") return (facts.desktop && Boolean(facts.bring)) || Boolean(facts.cloudBring);
     if (step === "phone") return Boolean(facts.phone) && facts.desktop && !cloud;
     if (step === "making") return cloud;
     if (step === "permissions") return facts.desktop && Boolean(facts.permissions) && !cloud;
+    if (step === "ai") return !facts.aiAsked;
     return true;
   });
 }
@@ -64,10 +69,21 @@ export function cloudBought(account: { purchase?: unknown; machine?: { status: s
   return account.machine?.status === "provisioning" || account.machine?.status === "ready";
 }
 
+/** The signed-in account already has dusk cloud (bought, or a plan running or on trial that it pays for itself), so the
+ * first run skips where the bots live and its checkout. */
+export function cloudOwned(account: Parameters<typeof cloudBought>[0] & {
+  status?: string; entitlement?: { plan: string; status: string }; renewal?: unknown; trial?: unknown;
+} | null): boolean {
+  if (account?.status !== "connected") return false;
+  // only a purchase or a cloud being made or ready: a plan with no cloud behind it still gets the place step
+  return cloudBought(account);
+}
+
 interface AiTileInstance {
   instanceId: string;
   driverKind: string;
   access?: string;
+  unknownDriver?: true;
   snapshot: { state: string; authenticated?: boolean; freeFallback?: boolean; authenticationUnavailableReason?: string };
 }
 
@@ -93,14 +109,15 @@ export interface AiTile<Instance> {
   candidates: Instance[];
 }
 
-/** The grid, in its fixed order, with only the AIs this app can connect here. `usable`: whether one can be connected
+/** The grid, in its fixed order, with only the AIs this app can connect here (never one whose driver this build lacks). `usable`: whether one can be connected
  * here (a ChatGPT plan sign-in a hosted cloud can't take is passed over for the Codex one). */
 export function aiTiles<Instance extends AiTileInstance>(instances: readonly Instance[], ready: (instance: Instance) => boolean,
   usable: (instance: Instance) => boolean = (instance) => !instance.snapshot.authenticationUnavailableReason): AiTile<Instance>[] {
   const tiles: AiTile<Instance>[] = [];
+  const known = instances.filter((instance) => !instance.unknownDriver);
   for (const tile of TILES) {
-    const byId = tile.ids.map((id) => instances.find((instance) => instance.instanceId === id)).filter(Boolean) as Instance[];
-    const byDriver = instances.filter((instance) => tile.drivers.includes(instance.driverKind) && !byId.includes(instance));
+    const byId = tile.ids.map((id) => known.find((instance) => instance.instanceId === id)).filter(Boolean) as Instance[];
+    const byDriver = known.filter((instance) => tile.drivers.includes(instance.driverKind) && !byId.includes(instance));
     const candidates = [...byId, ...byDriver];
     // a signed-in one stands for the tile, else the first that can connect here, else the first of its kind
     const instance = candidates.find(ready) ?? candidates.find(usable) ?? candidates[0];

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ModelCatalog, StandaloneRelease } from "../contracts.ts";
+import type { ModelCatalog, ProviderSnapshot, StandaloneRelease } from "../contracts.ts";
 import { standalonePlatformKey } from "../engine-standalone.ts";
 import { findCliCandidates, registerFallbackPathDir, registerPathDir, resetPathCache, resetPathCacheForTests } from "../env-path.ts";
 import { removeTempDir } from "../testing/cleanup.ts";
@@ -83,8 +83,17 @@ describe("ProviderRegistry", () => {
     expect(described.snapshot.state).toBe("unavailable");
     expect(described.snapshot.reason).toContain("from-the-future");
     expect(described.displayName).toBe("Tomorrow");
+    expect(described).toMatchObject({ unknownDriver: true });
     expect(described.models.options).toHaveLength(0);
     expect(registry.cliTarget("mystery")).toEqual({ driverKind: "from-the-future", cli: null });
+  });
+
+  it("names an unknown driver's engine after the built-in engine for its id, never after the driver", async () => {
+    const registry = new ProviderRegistry([makeFakeDriver({ kind: "cursorAgent" }).driver]);
+    await registry.load({ cursor: { driver: "not-a-real-driver" }, chatgpt: { driver: "not-a-real-driver" }, mine: { driver: "not-a-real-driver" } });
+
+    const names = Object.fromEntries((await registry.describe()).map((d) => [d.instanceId, d.displayName]));
+    expect(names).toEqual({ cursor: "Fake cursorAgent", chatgpt: "ChatGPT plan", mine: "mine" });
   });
 
   it("downgrades a config-decode failure to a shadow with the error as reason", async () => {
@@ -95,6 +104,7 @@ describe("ProviderRegistry", () => {
     expect(registry.get("broken")).toBeNull();
     const [described] = await registry.describe();
     expect(described.snapshot).toMatchObject({ state: "unavailable", reason: "fake: bad config" });
+    expect(described).not.toHaveProperty("unknownDriver");
   });
 
   it("downgrades a create() rejection to a shadow without touching siblings", async () => {
@@ -415,6 +425,33 @@ describe("ProviderRegistry", () => {
     await Promise.all([before, after]);
     await registry.describe();
     expect(fake.probes).toHaveLength(4);
+  });
+
+  it("keeps a status read after a sign-in when a read begun before it finishes later", async () => {
+    const fake = makeFakeDriver();
+    const create = fake.driver.create.bind(fake.driver);
+    let release!: () => void;
+    const answers: Array<Promise<ProviderSnapshot>> = [
+      new Promise((resolve) => { release = () => resolve({ state: "available", authenticated: false }); }),
+      Promise.resolve({ state: "available", authenticated: true }),
+    ];
+    fake.driver.create = async (input) => {
+      const instance = await create(input);
+      let read = 0;
+      instance.snapshot = () => answers[read++]!;
+      return instance;
+    };
+    const registry = new ProviderRegistry([fake.driver]);
+    await registry.load({ a: { driver: "fake" } });
+    const heard: Array<boolean | undefined> = [];
+    registry.onSnapshot((_id, snapshot) => heard.push(snapshot.authenticated));
+    const before = registry.readEngine("a", true);
+    registry.forgetSnapshots();
+    expect((await registry.readEngine("a", true))?.authenticated).toBe(true);
+    release();
+    expect((await before)?.authenticated).toBe(false);
+    expect(registry.knownSnapshot("a")?.authenticated).toBe(true);
+    expect(heard).toEqual([true]);
   });
 
   it("answers the engine list from earlier reads, reads again in the background once they are old, and never after forgetSnapshots() or a reload", async () => {

@@ -115,6 +115,26 @@ test("not using it shows what the bots did; a plan with a work license ends only
   expect(spies.retentionStep).toHaveBeenLastCalledWith({ reason: "unused", step: "confirm", outcome: "cancelled" });
 });
 
+test("pro on a free trial cancels the whole plan at the trial's end, never a plan change that bills at once", async () => {
+  const until = Date.now() + 3 * 86_400_000;
+  const billing = billingFor(pro, false);
+  billing.subscription = { ...billing.subscription!, currentPeriodEnd: until, trialEndsAt: until };
+  state.cloud = { billing, ...spies };
+  const { CancelFlow } = await import("./cancel-flow");
+  const root = createRoot(document.body.appendChild(document.createElement("div")));
+  roots.push(root);
+  await act(async () => root.render(createElement(CancelFlow, { open: true, onClose: () => spies.onClose(), catalog: fixtureCatalog })));
+  await pick("i'm switching to something else");
+  await click("continue");
+  expect(button("switch to plus")).toBeNull();
+  expect(title()).toBe("cancel your plan?");
+  expect(document.body.textContent).toContain("you won't be charged.");
+  expect(document.body.textContent).not.toContain("work license stays");
+  await click("cancel my plan");
+  expect(spies.cancel).toHaveBeenCalledWith("switching");
+  expect(spies.changePlan).not.toHaveBeenCalled();
+});
+
 test("switching on pro is offered plus first; keeping the plan is the main button", async () => {
   await open(pro, false);
   await pick("i'm switching to something else");
