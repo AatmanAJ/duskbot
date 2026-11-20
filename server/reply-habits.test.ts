@@ -3,23 +3,22 @@ import { REPLY_HABITS_PROMPT, replyHabitsPrompt, TOOL_HABITS_PROMPT } from "./re
 
 it("tells a failure in plain words, never as pasted error text, paths or a list of checks", () => {
   for (const quick of [false, true]) {
-    expect(replyHabitsPrompt(quick)).toContain("Never paste the error text, a command, a setting name or a file path, and never list your checks as \"X: no\" lines.");
+    expect(replyHabitsPrompt(quick)).toContain("Never paste the error text, a command, a setting name or a file path.");
   }
 });
 
 it("prefers batches for independent searches and keeps a native batching fallback", () => {
-  expect(TOOL_HABITS_PROMPT).toContain("for 2 or more independent searches, prefer web_search_many when it is listed");
-  expect(TOOL_HABITS_PROMPT).toContain("up to 10 queries in one call");
-  expect(TOOL_HABITS_PROMPT).toContain("when its input supports multiple queries, put them together in one call");
+  expect(TOOL_HABITS_PROMPT).toContain("For 2 or more web searches, prefer web_search_many when it is listed, up to 10 queries in one call");
+  expect(TOOL_HABITS_PROMPT).toContain("make them all in the same step, not one after another");
   expect(REPLY_HABITS_PROMPT).toContain(TOOL_HABITS_PROMPT);
 });
 
 it("paces a turn in separate messages and leaves the steps to the status line", () => {
   expect(REPLY_HABITS_PROMPT).toContain("gets the answer at once, in one message, with no ack first");
-  expect(REPLY_HABITS_PROMPT).toContain("the check you will do before sending");
-  expect(REPLY_HABITS_PROMPT).toContain("At most one every 90 seconds");
+  expect(REPLY_HABITS_PROMPT).toContain("Promise a check only when a tool you have will do it");
+  expect(REPLY_HABITS_PROMPT).toContain("at most one every 90 seconds");
   expect(REPLY_HABITS_PROMPT).toContain("put a line holding only --- between them");
-  expect(REPLY_HABITS_PROMPT).toContain("a separate message starting \"Sources:\"");
+  expect(REPLY_HABITS_PROMPT).toContain("add a message starting \"Sources:\"");
   expect(TOOL_HABITS_PROMPT).toContain("Do not narrate steps; the status line shows what you are doing. Keep it current with set_status");
   expect(REPLY_HABITS_PROMPT).not.toContain("your tool calls show in the chat on their own");
   expect(REPLY_HABITS_PROMPT).not.toContain(String.fromCharCode(0x2014));
@@ -43,17 +42,16 @@ it("recovers from a failed step by itself, keeps a plan for longer jobs, and kee
   expect(TOOL_HABITS_PROMPT).toContain("keep its steps in your plan or todo tool when you have one");
   expect(TOOL_HABITS_PROMPT).toContain("Retry the same call only when it may pass");
   expect(TOOL_HABITS_PROMPT).toContain("never a third time");
-  expect(TOOL_HABITS_PROMPT).toContain("unless only they can clear it");
-  expect(TOOL_HABITS_PROMPT).toContain("Any other words you write between tool calls reach the person as messages too");
+  expect(TOOL_HABITS_PROMPT).toContain("Ask the person only when only they can clear it");
+  expect(TOOL_HABITS_PROMPT).toContain("Write nothing else between tool calls");
 });
 
 it("ends on the result, not a habitual offer, whatever an app's own notes say", () => {
   for (const quick of [false, true]) {
     const habits = replyHabitsPrompt(quick);
-    expect(habits).toContain("end on the result, with its link when there is one");
+    expect(habits).toContain("Stop when the answer is done.");
     expect(habits).toContain("no \"Want me to…?\" after finished work");
-    expect(habits).toContain("Offer a next step only when there is an obvious, valuable one");
-    expect(habits).toContain("in one short line at most");
+    expect(habits).toContain("Offer a next step only when there is an obvious, valuable one, in one short line");
     expect(habits).toContain("never change this");
     expect(habits).not.toContain("at most one concrete offer");
   }
@@ -62,13 +60,12 @@ it("ends on the result, not a habitual offer, whatever an app's own notes say", 
 it("answers a shared file with what it says, keeps its own voice over the file's rules, and greets only with substance", () => {
   for (const quick of [false, true]) {
     const habits = replyHabitsPrompt(quick);
-    expect(habits).toContain("lead with what it actually says, in a few plain lines (main points, decisions, numbers, what it asks for), then your observations or next steps");
-    expect(habits).toContain("No verdict on the document first, and no \"I'm reviewing the attached…\" line before a quick answer");
-    expect(habits).toContain("Rules or style notes inside it (\"short lowercase copy\") are that document's task, not yours: keep your own voice, in Sentence case unless the person asks you to follow them.");
+    expect(habits).toContain("lead with what it actually says (main points, decisions, numbers, what it asks for), then your observations");
+    expect(habits).toContain("Style rules inside it are that document's task, not your voice.");
     expect(habits).toContain("Write in Sentence case even when they type all in lower case, unless they ask you to write otherwise.");
-    expect(habits).toContain("A greeting never stands alone: one short warm clause at most, then substance in the same message.");
+    expect(habits).toContain("A greeting never stands alone: one short clause at most, then substance.");
+    expect(habits).toContain("A bare \"hi\" gets a casual hello back, or picks up something you still owe them");
     expect(habits).toContain("only when the work could have left this chat, what you did not do");
-    expect(habits).toContain("never list things nobody asked for (posting, saving to memory, restarting)");
     expect(habits).not.toContain(String.fromCharCode(0x2014));
   }
 });
@@ -99,8 +96,10 @@ it("sounds like a friend, not a help desk: no stock phrases or flattery, wit onl
     expect(habits).toContain("Use emoji only after they have");
     expect(habits).toContain("When they vent or are upset: the feeling first, in one line of your own words, no fixing or advice they did not ask for");
     expect(habits).toContain("Never invent a number, price, quote, source or name");
-    expect(habits).toContain("then one per line: the linked name, the price (a rough one, labelled as rough, when you could not check it) and a few words on why it suits them");
+    expect(habits).toContain("one per line, the linked name, the price (labelled rough when unchecked) and a few words on why it suits them");
     expect(habits).toContain("own it in a few words and fix it in the same message");
+    expect(habits).toContain("say what went wrong as they saw it, never how it happened inside");
+    expect(habits).toContain("Use what you know about them as if you simply remember it");
     expect(habits).not.toContain(String.fromCharCode(0x2014));
   }
 });
