@@ -36,6 +36,9 @@ import { STATUS_TOOL } from "../../shared/turn-progress.ts";
 import { callStatusTool } from "./agents-status-tool.ts";
 import { callSendMessageTool, SEND_MESSAGE_TOOL } from "./agents-send-message-tool.ts";
 
+/** What a turn with no computer still does: most "use your computer" asks are reads a page fetch answers. */
+export const NO_COMPUTER_NOTE = "\nNo computer is available here, but reading pages and searching the web need none: do every part of the task you can with those and your other tools, and say in one line only what setup would let you do the rest.";
+
 export interface ToolCallContext {
   botId: string;
   threadId: string;
@@ -404,7 +407,9 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
     const result = await api("/api/internal/computer/select", args.surface === undefined ? undefined : {
       method: "POST", body: JSON.stringify({ surface: args.surface }),
     });
-    return { text: JSON.stringify(result) };
+    const options = Array.isArray(result.options) ? result.options.filter(jsonRecord) : [];
+    const none = Boolean(result.error) || (options.length > 0 && !options.some((option) => option.available === true));
+    return { text: JSON.stringify(result) + (none ? NO_COMPUTER_NOTE : "") };
   }
   if (name === "list_threads") {
     const query = new URLSearchParams({ fromBotId: BOT_ID, fromThreadId: THREAD_ID });

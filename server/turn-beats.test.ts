@@ -293,6 +293,9 @@ describe("what a beat may promise", () => {
     }
     expect(beatPrompt("ack", input)).toContain("Connected apps Forge can use: none.");
   });
+  it("never apologises in a beat, and names the fix instead", () => {
+    for (const kind of ["ack", "plan", "milestone"] as const) expect(beatPrompt(kind, input)).toContain("no apology: when they are upset, name the fix being made");
+  });
   it("keeps product names as the person wrote them in the ack", () => {
     expect(beatPrompt("ack", input)).toContain("Write names and products exactly as the person did");
   });
