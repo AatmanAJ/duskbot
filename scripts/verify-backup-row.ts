@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { launchVerificationServer, runControlDusk } from "./control-dusk.ts";
-import { mountPreview, type MountedPreview } from "./testing/preview-fixture.ts";
+import { fixtureApi, mountPreview, type MountedPreview } from "./testing/preview-fixture.ts";
 
 const shots = resolve(process.argv[2] ?? "backup-row-shots");
 const CHROME = process.env.DUSK_CDP_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -76,6 +76,11 @@ const fixture = await launchVerificationServer();
 let ui: MountedPreview | undefined;
 try {
   await runControlDusk(["new-bot", "--name", "Research", "--url", fixture.info.url]);
+  // a bot panel paints its switches in the bot's colour; blue, as most bots are, so the shot is not read as a warning
+  const api = fixtureApi(fixture.info.url, { headers: { origin: fixture.info.url } });
+  const { bots } = await api("GET", "/api/bots?messages=0") as { bots: Array<{ id: string; color?: string }> };
+  console.log(`fixture bot colour was ${bots[0]!.color ?? "unset"}`);
+  await api("PATCH", `/api/bots/${bots[0]!.id}`, { color: "blue" });
   ui = await mountPreview(fixture, { entry: "/scripts/testing/backup-row-preview.tsx", route: "/__backup-row.html", title: "Backup model row", logLevel: "warn" });
   mkdirSync(shots, { recursive: true });
   const profile = mkdtempSync(join(tmpdir(), "dusk-backup-row-chrome-"));
