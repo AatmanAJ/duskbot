@@ -39,6 +39,8 @@ const brief = (m) => ({ id: m.id, threadId: m.threadId ?? m.id, from: m.from, to
 
 const APPS = {
   gmail: {
+    gmail_get_profile: { d: "The connected account: its address and the addresses it can send as.", a: read, s: {},
+      run: () => ({ email: "maya@loomware.co", send_as: ["maya@loomware.co", "support@loomware.co", "deals@loomware.co", "hello@loomware.co", "ar@loomware.co", "jobs@loomware.co"] }) },
     gmail_search: { d: "Search the connected Gmail inbox (support@, deals@ and the owner's mail land here). Gmail query syntax: from:, to:, subject:, label:, is:unread, has:attachment, after:YYYY/MM/DD, newer_than:2d, plain words. Newest first.", a: read,
       s: { query: str, max_results: { type: "integer" } },
       run: (s, x) => s.mail.filter((m) => matchMail(m, x.query)).sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, x.max_results ?? 25).map(brief) },
@@ -73,6 +75,10 @@ const APPS = {
       run: (s, x) => (s.events ?? []).filter((e) => e.start >= x.time_min && e.start < x.time_max) },
     calendar_free_slots: { d: "Free slots of at least duration_minutes between two ISO times, inside working hours (9-17 in the owner's time zone).", a: read, s: { time_min: str, time_max: str, duration_minutes: { type: "integer" } }, req: ["time_min", "time_max"],
       run: (s, x) => { const out = []; const dur = (x.duration_minutes ?? 30) * 60_000; for (let t = Date.parse(x.time_min); t < Date.parse(x.time_max) && out.length < 20; t += 30 * 60_000) { const d = new Date(t); const h = d.getHours(); if (h < 9 || h >= 17 || d.getDay() === 0 || d.getDay() === 6) continue; const end = t + dur; if ((s.events ?? []).some((e) => Date.parse(e.start) < end && Date.parse(e.end) > t)) continue; out.push({ start: new Date(t).toISOString(), end: new Date(end).toISOString() }); } return out; } },
+    calendar_update_event: { d: "Move or change an event (attendees get the update).", a: { readOnlyHint: false, openWorldHint: true }, s: { event_id: str, title: str, start: str, end: str, attendees: { type: "array", items: str }, description: str }, req: ["event_id"],
+      run: (s, x) => { const e = (s.events ?? []).find((e) => e.id === x.event_id); if (!e) throw new Error("no such event"); Object.assign(e, Object.fromEntries(Object.entries(x).filter(([k, v]) => k !== "event_id" && v !== undefined))); log(s, "event_update", { title: e.title }); return { ok: true }; } },
+    calendar_delete_event: { d: "Cancel an event (attendees are told).", a: { readOnlyHint: false, destructiveHint: true }, s: { event_id: str }, req: ["event_id"],
+      run: (s, x) => { const i = (s.events ?? []).findIndex((e) => e.id === x.event_id); if (i < 0) throw new Error("no such event"); const [e] = s.events.splice(i, 1); log(s, "event_delete", { title: e.title }); return { ok: true }; } },
     calendar_create_event: { d: "Create an event and invite attendees (they get an email invite).", a: { readOnlyHint: false, openWorldHint: true }, s: { title: str, start: str, end: str, attendees: { type: "array", items: str }, description: str }, req: ["title", "start", "end"],
       run: (s, x) => { const e = { id: id("evt"), ...x }; (s.events ??= []).push(e); log(s, "event_create", { title: x.title, attendees: x.attendees }); return { event_id: e.id, status: "created, invites sent" }; } },
   },
