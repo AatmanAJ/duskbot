@@ -681,8 +681,7 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
       return <AppPage model={model} />;
     }
     if (page.kind === "yours") {
-      const servers = (mcpServers ?? []).filter((server) => !byId.has(`mcp:${server.name}`) && !remote.ownsServer(server.name) && !HOSTED_MCP_APPS.some((app) => server.name === app.id || server.name.startsWith(`${app.id}-`)));
-      const serverEntry = (name: string): AppEntry => ({ id: `mcp:${name}`, kind: "native", label: name, description: t("connectApps.mcpServer"), categories: [], icon: { glyph: "server" } });
+      const servers = entries.filter((entry) => entry.kind === "custom" && !isConnected.has(entry.id));
       return (
         <div className="ca-yours @container">
           <h1 className="ca-title ps-2" data-detail-hero-title="">{t("connectApps.manage")}</h1>
@@ -692,10 +691,10 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
                   {connected.map((entry) => (
                     <AppRow key={entry.id} entry={entry} subtitle={entry.description} action={{ kind: "status", label: t("apps.connected"), tone: "connected" }} onOpen={() => go({ kind: "detail", id: entry.id })} />
                   ))}
-                  {servers.map((server) => (
-                    <AppRow key={server.name} entry={serverEntry(server.name)} subtitle={t("connectApps.mcpServer")}
-                      action={server.enabled ? { kind: "status", label: t("apps.connected"), tone: "connected" } : { kind: "status", label: t("connectApps.off"), tone: "quiet" }}
-                      onOpen={() => go({ kind: "detail", id: MCP_PAGE })} />
+                  {servers.map((entry) => (
+                    <AppRow key={entry.id} entry={entry} subtitle={entry.description}
+                      action={{ kind: "status", label: t("connectApps.off"), tone: "quiet" }}
+                      onOpen={() => go({ kind: "detail", id: CUSTOM_MCP })} />
                   ))}
                 </div>
                 : <p className="ca-note">{t("connectApps.nothingInstalled")}</p>}
