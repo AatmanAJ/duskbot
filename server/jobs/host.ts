@@ -4,6 +4,7 @@
 import { serverLine } from "../server-lines.ts";
 import { randomUUID } from "node:crypto";
 import { execFile, execFileSync } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
@@ -280,6 +281,8 @@ export function createJobsHost(deps: JobsHostDeps) {
     const folders = await ctx.folders();
     const cwd = body.cwd ? resolve(body.cwd) : folders[0];
     if (!cwd || !folders.some((root) => inside(cwd, root))) return fail(`cwd must be inside a folder you work in: ${folders.join(", ")}.`);
+    // a new bot's own folder is made on its first write; its first job may come before any
+    if (folders.includes(cwd)) mkdirSync(cwd, { recursive: true, mode: 0o700 });
     const spec: JobSpec = { botId: ctx.botId, threadId: ctx.threadId, label: body.label, command, cwd, env, secrets, onNotify: body.on_notify || DEFAULT_ON_NOTIFY };
     const telegram = body.template === "telegram_watch" || /telegram/i.test(`${command} ${Object.keys(secrets).join(" ")} ${Object.keys(env).join(" ")}`);
     if (!startsNow) {

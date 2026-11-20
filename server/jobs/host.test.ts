@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -29,6 +29,16 @@ describe("background jobs host", () => {
     expect(String((await fixture.call({ action: "list" })).body.text)).toContain("Deal watch");
     expect((await fixture.call({ action: "stop", id: started.body.id })).status).toBe(200);
     expect(fixture.host.busy()).toBe(false);
+  }, 30_000);
+
+  it("starts in a new bot's own folder before anything was written there", async () => {
+    const fixture = await jobsFixture();
+    fixtures.push(fixture);
+    rmSync(fixture.workspace, { recursive: true, force: true });
+    const started = await fixture.call({ action: "start", label: "Fresh", command: "sleep 30" });
+    expect(started.status, JSON.stringify(started.body)).toBe(201);
+    expect(existsSync(fixture.workspace)).toBe(true);
+    expect((await fixture.call({ action: "stop", id: started.body.id })).status).toBe(200);
   }, 30_000);
 
   it("refuses what a turn may not do, a secret not in the Vault, a folder outside the bot's, and dusk bot's own names", async () => {
