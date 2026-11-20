@@ -194,10 +194,9 @@ function start() {
     const key = S.bot, d = data.bots[key];
     const row = el(d.composer);
     if (chat[key].busy) $('[data-composer-actions]', row).replaceWith(el(d.composerBusy));
-    // the message box only shows what to ask: this demo is spoken to through its question cards
     const ta = $('textarea', row);
     if (ta) {
-      ta.readOnly = true; ta.tabIndex = -1; ta.setAttribute('aria-hidden', 'true');
+      ta.dataset.dwAsk = '';
       // the app asks for an answer only while a question card waits
       if (!chat[key].card) { ta.placeholder = `Message ${ids[key].name}`; ta.setAttribute('aria-label', `Message ${ids[key].name}`); }
     }
@@ -323,6 +322,44 @@ function start() {
     card?.remove();
     paintRow(key);
     play(key, ex.rows[0], ex.rows.slice(1), b.answers[text].steps);
+  }
+
+  let typed = 0;
+  function typedAsk(key, text, fromCard) {
+    const c = chat[key];
+    if (c.busy) return;
+    const plainBot = (k) => data.bots[k].log.map(unpack).find((r) => r.includes('chat-bubble-bot') && r.includes('chat-md') && !r.includes('data-reply-blocks'));
+    const own = data.bots[key].log.map(unpack).find((r) => r.includes('data-own-row'));
+    const bot = plainBot(key) ?? plainBot(BOTS[0].key);
+    if (!own || !bot) return;
+    typed++;
+    const u = el(own);
+    u.dataset.mid = `t${typed}-1`;
+    for (const x of Array.from(u.children)) if (!x.matches('[data-message-row]')) x.remove();
+    const texts = [];
+    const walk = document.createTreeWalker($('[data-chat-bubble]', u), NodeFilter.SHOW_TEXT);
+    while (walk.nextNode()) if (walk.currentNode.textContent.trim()) texts.push(walk.currentNode);
+    texts.forEach((n, i) => { n.textContent = i ? '' : text; });
+    const r = el(bot);
+    r.dataset.mid = `t${typed}-2`;
+    const md = $('.chat-md', r);
+    md.textContent = '';
+    const p = document.createElement('p');
+    p.textContent = `in the app i'd actually do this: ${ids[key].can}. download it to try it.`;
+    const a = document.createElement('a');
+    a.href = '/download';
+    a.dataset.dwGet = '';
+    a.className = 'inline-flex min-h-9 items-center rounded-full bg-ink px-3.5 text-[14px] font-medium text-app hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus';
+    a.textContent = 'download dusk bot';
+    md.append(p, a);
+    if (fromCard) {
+      c.card = false;
+      c.waiting = false;
+      c.rows = c.rows.filter((x) => !/data-ask-card/.test(unpack(x)));
+      $('[data-ask-card]', log())?.closest('[data-mid]')?.remove();
+      paintRow(key);
+    }
+    play(key, u.outerHTML, [r.outerHTML], ['Working on it']);
   }
 
   // ---------- switching bots ----------
@@ -692,6 +729,16 @@ function start() {
   });
   root.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && menu) { closeMenu(); return; }
+    const box = e.target instanceof HTMLTextAreaElement ? e.target : null;
+    if (box && e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      const text = box.value.trim();
+      if (!text || chat[S.bot].busy) return;
+      const fromCard = Boolean(box.closest('[data-ask-card]'));
+      box.value = '';
+      typedAsk(S.bot, text.slice(0, 500), fromCard);
+      return;
+    }
     // the app's rows are buttons: enter and space open them
     if ((e.key === 'Enter' || e.key === ' ') && e.target instanceof Element && e.target.matches('[data-sidebar-bot-row]')) {
       e.preventDefault();

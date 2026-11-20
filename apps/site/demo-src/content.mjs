@@ -6,6 +6,7 @@
 //   before it, { card } a question card, { tool } a step it took (the app keeps those out of the chat)
 //   answers: a question card's choices; each is sent as the person's message and answered with `reply`
 //   steps: what the working line says while the bot works, before "Typing…"
+//   can: what the bot would do in the app with anything typed here, which the demo can't really do
 export const MODELS = {
   sonnet: { instanceId: 'claude', model: 'claude-sonnet-5' },
   opus: { instanceId: 'claude', model: 'claude-opus-5-5' },
@@ -16,7 +17,7 @@ export const MODELS = {
 
 export const BOTS = [
   {
-    key: 'dusk', name: 'dusk bot', main: true, color: 'chrome', body: 'kit', model: 'sonnet',
+    key: 'dusk', can: "hand it to the right bot on your team and tell you when it's done", name: 'dusk bot', main: true, color: 'chrome', body: 'kit', model: 'sonnet',
     routines: [{ name: 'Morning brief', time: '08:00', weekdays: [1, 2, 3, 4, 5], enabled: true }, { name: 'Friday wrap-up', time: '17:00', weekdays: [5], enabled: false }],
     history: [
       { u: 'Morning. What did everyone do overnight?' },
@@ -31,7 +32,7 @@ export const BOTS = [
     },
   },
   {
-    key: 'researcher', name: 'Researcher', color: 'purple', body: 'hoot', model: 'gpt',
+    key: 'researcher', can: "search the web, compare what i find and send you a short table", name: 'Researcher', color: 'purple', body: 'hoot', model: 'gpt',
     routines: [{ name: 'Competitor watch', time: '09:00', weekdays: [1], enabled: true }],
     history: [
       { u: 'Find me a CRM for a team of 5. Under $30 a seat, and it has to work with Gmail.' },
@@ -40,7 +41,7 @@ export const BOTS = [
     ],
   },
   {
-    key: 'writer', name: 'Content Writer', color: 'pink', body: 'mochi', model: 'opus',
+    key: 'writer', can: "draft it in your voice and hold it until you say send", name: 'Content Writer', color: 'pink', body: 'mochi', model: 'opus',
     routines: [{ name: 'Newsletter draft', time: '10:00', weekdays: [4], enabled: true }],
     history: [
       { u: 'Write a LinkedIn post about our new same-day delivery. Short, no hype.' },
@@ -50,7 +51,7 @@ export const BOTS = [
     ],
   },
   {
-    key: 'inbox', name: 'Inbox', color: 'blue', body: 'pip', model: 'gemini', unread: true,
+    key: 'inbox', can: "go through your real inbox and do it there", name: 'Inbox', color: 'blue', body: 'pip', model: 'gemini', unread: true,
     routines: [{ name: 'Morning sort', time: '07:00', weekdays: [0, 1, 2, 3, 4, 5, 6], enabled: true }, { name: 'Unsubscribe sweep', time: '09:00', weekdays: [1], enabled: false }],
     history: [
       { u: 'What came in overnight?' },
@@ -60,7 +61,7 @@ export const BOTS = [
     ],
   },
   {
-    key: 'maya', name: 'Maya', color: 'green', body: 'sprout', model: 'sonnet',
+    key: 'maya', can: "plan it around your week and add what you need to your list", name: 'Maya', color: 'green', body: 'sprout', model: 'sonnet',
     routines: [{ name: 'Sunday meal plan', time: '17:00', weekdays: [0], enabled: true }],
     history: [
       { u: 'Plan dinners for this week. 4 people, Emma is vegetarian, nothing over 40 minutes.' },
@@ -69,7 +70,7 @@ export const BOTS = [
     ],
   },
   {
-    key: 'books', name: 'Bookkeeper', color: 'orange', body: 'loaf', model: 'gpt',
+    key: 'books', can: "check it against your real accounts and receipts", name: 'Bookkeeper', color: 'orange', body: 'loaf', model: 'gpt',
     routines: [{ name: 'Monthly close', time: '09:00', weekdays: [1], enabled: true }, { name: 'Receipt check', time: '16:00', weekdays: [5], enabled: true }],
     history: [
       { u: 'How did October go?' },
@@ -84,7 +85,7 @@ export const BOTS = [
     },
   },
   {
-    key: 'coder', name: 'Coder', color: 'cyan', body: 'boxo', model: 'opus',
+    key: 'coder', can: "open your project, make the change and run the tests", name: 'Coder', color: 'cyan', body: 'boxo', model: 'opus',
     routines: [{ name: 'Nightly tests', time: '02:00', weekdays: [0, 1, 2, 3, 4, 5, 6], enabled: true }],
     history: [
       { u: 'The checkout button does nothing on Safari. Can you fix it?' },
@@ -100,7 +101,7 @@ export const BOTS = [
     },
   },
   {
-    key: 'leo', name: 'Leo', color: 'yellow', body: 'cheep', model: 'grok',
+    key: 'leo', can: "search real prices and keep watching them for you", name: 'Leo', color: 'yellow', body: 'cheep', model: 'grok',
     routines: [{ name: 'Flight price watch', time: '12:00', weekdays: [0, 1, 2, 3, 4, 5, 6], enabled: true }],
     history: [
       { u: 'Flights to Lisbon, Dec 12 to 16. Window seat, no red-eyes.' },
