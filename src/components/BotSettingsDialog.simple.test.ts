@@ -610,7 +610,7 @@ describe("the Bot settings page", () => {
     expect(order.every((index) => index > -1)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     const pages = [...rendered.html.matchAll(/data-panel-page="(\w+)"/g)].map((match) => match[1]);
-    expect(pages).toEqual(["identity", "instructions", "memory", "skills", "tools", "permissions", "folder", "backups"]);
+    expect(pages).toEqual(["identity", "instructions", "memory", "skills", "tools", "permissions", "folder"]);
     expect(rendered.html).not.toContain('data-panel-advanced="settings"');
     for (const page of pages) {
       click(find(rendered, "data-panel-page", page));
@@ -624,11 +624,19 @@ describe("the Bot settings page", () => {
     const row = (page: string) => find(rendered, "data-panel-page", page).props;
     expect(row("memory").value).toBe("Off");
     expect(row("skills").value).toBe("None");
-    expect(row("backups").value).toBe("None");
-    for (const page of ["instructions", "memory", "skills", "folder", "backups"]) expect(row(page).hint, page).toBeUndefined();
+    for (const page of ["instructions", "memory", "skills", "folder"]) expect(row(page).hint, page).toBeUndefined();
     // instructions already written need no value; an empty one says None
     expect(row("instructions").value).toBeUndefined();
     expect(find(settingsPage(makeBot({ soul: "" })), "data-panel-page", "instructions").props.value).toBe("None");
+  });
+
+  it("has one Backup AI switch, on (automatic) unless the bot was set to none, and no backup model list", () => {
+    const backup = (fallback?: Array<{ instanceId: string; model: string }>) => find(settingsPage(makeBot(fallback ? { fallback } : {})), "data-panel-row", "backup-ai").props;
+    expect(backup().checked).toBe(true);
+    expect(backup([]).checked).toBe(false);
+    expect(backup([{ instanceId: "codex", model: "gpt-6" }]).checked).toBe(true);
+    expect(backup().hint).toBeUndefined();
+    expect(settingsPage(makeBot()).html).not.toContain('data-panel-page="backups"');
   });
 
   it("has no rows for apps, signed-in sites, the API, conversations, Work until done, Hide, Call mode or the label", () => {

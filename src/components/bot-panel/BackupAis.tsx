@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, LifeBuoy, Plus } from "../../icons";
+import { ChevronDown, LifeBuoy, Plus } from "../../icons";
 
 import { cn } from "@/lib/cn";
 import { configuredModelInstances } from "@/lib/engine-rail";
@@ -30,7 +30,7 @@ const NO_SELECTION = { instanceId: "", model: "" };
 export const modelKey = (instanceId: string, model: string) => `${instanceId}\u0000${model}`;
 const NOTHING_PROBED: ReadonlySet<string> = new Set();
 
-export function BackupChooser({ bot, current, exclude, onPick, label, title, buttonRef, className, children, modes, ...rest }: {
+export function BackupChooser({ bot, current, exclude, onPick, label, title, buttonRef, className, children, ...rest }: {
   bot: Bot;
   current: Backup | null;
   exclude: ReadonlySet<string>;
@@ -40,8 +40,6 @@ export function BackupChooser({ bot, current, exclude, onPick, label, title, but
   buttonRef?: RefObject<HTMLButtonElement | null>;
   className: string;
   children: ReactNode;
-  /** Automatic and No backup above the models, with the one in effect checked */
-  modes?: { current: "automatic" | "none" | null; onPick: (mode: "automatic" | "none") => void };
   "data-panel-action"?: string;
 }) {
   const { state, dispatch, refreshInstances, refreshModels } = useStore();
@@ -215,21 +213,6 @@ export function BackupChooser({ bot, current, exclude, onPick, label, title, but
           }}
           className={cn("menu-surface z-[80] flex flex-col overflow-hidden", motion.className)}
         >
-          {modes && (
-            <div className="flex flex-col p-1 pb-0" data-backup-modes="">
-              {(["automatic", "none"] as const).map((mode) => (
-                <button key={mode} type="button" data-menu-row="" data-backup-mode={mode} aria-pressed={modes.current === mode}
-                  onClick={() => { modes.onPick(mode); close(true); }}
-                  className="flex min-h-8 items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] text-ink hover:bg-ink/[0.06] focus-visible:bg-ink/[0.06] focus-visible:outline-none">
-                  <span className="min-w-0 flex-1">
-                    <span className="block">{t(mode === "automatic" ? "botPanel.backupModel.automatic" : "botPanel.backupModel.none")}</span>
-                    {mode === "automatic" && <span className="block text-[12px] text-ink-secondary">{t("botPanel.backupModel.automaticHint")}</span>}
-                  </span>
-                  {modes.current === mode && <Check size={14} aria-hidden="true" className="shrink-0" />}
-                </button>
-              ))}
-            </div>
-          )}
           <SimpleModelMenu
             menu={menuFor()}
             query={query}
@@ -337,38 +320,5 @@ export function BackupAis({ bot, onChange }: { bot: Bot; onChange: (fallback: Ba
         )}
       </ColRow>
     </Card>
-  );
-}
-
-/** The Model row's pill (ModelPicker's trigger under MODEL_PILL), so Backup model reads as its twin. */
-const MODEL_PILL_TRIGGER = "group -my-[3px] -me-[5px] flex h-6 min-w-0 max-w-[180px] items-center gap-1 rounded-lg border border-transparent py-0.5 ps-1.5 pe-1 text-[13px] leading-[18px] tracking-[-0.08px] text-ink inset-ring inset-ring-ink/[0.07] duration-100 focus-visible:outline-none";
-
-/** The bot's backup, picked beside its model: Automatic (absent: another AI the person has working takes over), No backup
- * (empty), or one model first in its list. The rest of the list stays on the Backup AIs page. */
-export function BackupModelRow({ bot, onChange }: { bot: Bot; onChange: (fallback: Backup[] | null) => void }) {
-  const { state } = useStore();
-  const chain = bot.fallback;
-  const first = chain?.[0] ?? null;
-  const instance = first ? state.instances.find((candidate) => candidate.instanceId === first.instanceId) : undefined;
-  const name = first ? modelName(instance, first.model) : t(chain ? "botPanel.backupModel.none" : "botPanel.backupModel.automatic");
-  return (
-    <div data-panel-row="backup-model" className="flex min-h-[30px] items-center gap-2 rounded-lg px-2 py-1.5">
-      <span className="min-w-0 flex-1 truncate text-[13px] leading-[18px] tracking-[0.015em] text-ink">{t("botPanel.backupModel")}</span>
-      <BackupChooser
-        bot={bot}
-        current={first}
-        exclude={new Set([modelKey(bot.modelSelection.instanceId, bot.modelSelection.model)])}
-        onPick={(picked) => onChange([picked, ...(chain ?? []).slice(1).filter((entry) => modelKey(entry.instanceId, entry.model) !== modelKey(picked.instanceId, picked.model))])}
-        modes={{ current: first ? null : chain ? "none" : "automatic", onPick: (mode) => onChange(mode === "none" ? [] : null) }}
-        label={t("botPanel.backupModel")}
-        data-panel-action="backup-model"
-        data-model-pill=""
-        className={MODEL_PILL_TRIGGER}
-      >
-        {instance && <span className="relative mr-1.5 flex shrink-0"><InstanceProviderMark instance={instance} size={14} /></span>}
-        <span className="min-w-0 max-w-[160px] truncate">{name}</span>
-        <ChevronDown size={12} strokeWidth={2} aria-hidden="true" className="ms-0 size-2.5 shrink-0 text-ink/[0.66]" />
-      </BackupChooser>
-    </div>
   );
 }
