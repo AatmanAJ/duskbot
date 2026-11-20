@@ -162,6 +162,7 @@ describe("the business workflows skill", () => {
     }
     const skill = bundled.find((one) => one.manifest.id === "business-workflows")!;
     expect(skill.instructions).toContain("design it before you build it");
-    expect(skill.instructions).toContain("do not create anything until they say yes");
+    expect(skill.instructions).toContain("that is the go-ahead: build it all now, test it, and report the plan with what you built");
+    expect(skill.instructions).toContain("Then build nothing until they answer");
   });
 });

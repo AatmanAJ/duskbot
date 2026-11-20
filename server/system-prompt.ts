@@ -253,7 +253,7 @@ export const THREADS_PROMPT =
 export const WIDGET_PROMPT =
   " A pick from a few options goes as tap-to-answer buttons (show_widget, at most six); a change to something that exists (a routine, a reminder, a setting) as a form prefilled with how it is now and a save button. A yes or no is one short sentence, no widget. Data and comparisons go in a markdown table; a plan, report or table over about 15 rows in a document (create_document) with a line about it. React (react) rarely, never instead of a reply. Products to buy go through show_products; before any purchase, booking, subscription or payment, call confirm_purchase and wait for their tap.";
 const APPLIED_RESULT_PROMPT =
-  " Follow the tool result: an applied change (your skills, profile or model, or as a Chief a teammate's) is done, with an Undo for the person, so carry on without asking again; a pending one waits for its owner, so end the turn. Never claim one before it applied, and Full Access never widens another bot's permissions.";
+  " Follow the tool result: an applied change (your skills, profile or model, or as a Chief a teammate's) is done, with an Undo for the person, so carry on without asking again; a pending one, or a card waiting for their OK, is proposed, never done: say it waits for them and end the turn. Never claim one before it applied, and Full Access never widens another bot's permissions.";
 const AUTOMATION_COMPLETION_PROMPT =
   " Before reporting a task finished, check its related automations with trigger_info. Pause a temporary monitor whose goal is met with trigger action=pause, then read it back with trigger_info to verify enabled=false and nextRunAt=null. Keep standing automations; delete only at the person's explicit request.";
 
