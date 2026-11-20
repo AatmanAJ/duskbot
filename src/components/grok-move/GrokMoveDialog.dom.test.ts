@@ -21,7 +21,7 @@ const { GrokMoveDialog } = await import("./GrokMoveDialog");
 
 const bot = (rosterId: string, name: string, over: Partial<GrokFoundBot> = {}): GrokFoundBot => ({
   rosterId, name, label: name, description: `${name} does invented things.`, hasDescription: true, look: { color: "purple" }, removed: false,
-  chat: { messages: 24, earlier: false, readable: true }, routines: 0, ...over,
+  chat: { messages: 24, earlier: false, readable: true }, routines: 0, appsUsed: 0, ...over,
 });
 const NOVA = bot("r1", "Nova", { chat: { messages: 200, earlier: true, readable: true }, routines: 2, look: { color: "purple", photoUrl: "/api/setup-import/grok/move/photo?id=r1" } });
 const QUILL = bot("r2", "Quill");
@@ -36,7 +36,7 @@ const FOUND: GrokDetection = {
 
 const doneRow = (rosterId: string, name: string, over: Partial<GrokMoveProgress["bots"][number]> = {}) => ({
   rosterId, name, state: "done" as const, update: false, botId: `bot-${rosterId}`,
-  moved: { messages: 24, earlier: false, picture: false, instructions: true, routineNames: 0 }, ...over,
+  moved: { messages: 24, earlier: false, picture: false, instructions: true, routineNames: 0, appsUsed: 0 }, ...over,
 });
 const MOVE_ID = "11111111-1111-4111-8111-111111111111";
 const finished = (bots: GrokMoveProgress["bots"], state: GrokMoveProgress["state"] = "done"): GrokMoveProgress => ({
@@ -205,7 +205,7 @@ describe("screen 2: the move on its way", () => {
 describe("screen 3: what came, and the rest", () => {
   const result = (waiting: GrokWaitingBot[] = []) => {
     const made = fakeClient();
-    made.state.progress = finished([doneRow("r1", "Nova", { moved: { messages: 200, earlier: true, picture: true, instructions: true, routineNames: 2 } }), doneRow("r2", "Quill"),
+    made.state.progress = finished([doneRow("r1", "Nova", { moved: { messages: 200, earlier: true, picture: true, instructions: true, routineNames: 2, appsUsed: 0 } }), doneRow("r2", "Quill"),
       { rosterId: "r3", name: "Rivet", state: "failed", update: false, error: "botLimit", message: "Your plan has no room for another bot." }]);
     made.state.waiting = { bots: waiting, waiting: waiting.filter((one) => one.state === "waiting").length };
     return made;
@@ -244,6 +244,33 @@ describe("screen 3: what came, and the rest", () => {
     await press(button("Copy the request instead"));
     expect(writeText).toHaveBeenCalledWith("Hi r1");
     expect($("[data-grok-ask-row=r1]")?.textContent).toContain("Copied");
+  });
+
+  it("walks every bot on one consent: opens each in turn and advances as each file arrives", async () => {
+    const { client, state } = result();
+    await open(client, "result");
+    const change = async () => { await act(async () => { window.dispatchEvent(new Event("dusk:grok-move-changed")); }); await settle(); };
+    // one consent before anything opens
+    expect($("[data-grok-walk]")?.getAttribute("data-grok-walk")).toBe("idle");
+    await press($("[data-grok-walk-start]"));
+    expect($("[data-grok-walk]")?.getAttribute("data-grok-walk")).toBe("consent");
+    expect($("[data-grok-walk-consent]")?.textContent).toContain("nothing sends on its own");
+    expect(client.request, "nothing opens before the person agrees").not.toHaveBeenCalled();
+    // agreeing opens the first bot and shows which one it is asking
+    await press($("[data-grok-walk-go]"));
+    expect(opened).toEqual(["grokbot://app/v1/prompt?id=r1&text=Hi"]);
+    expect($("[data-grok-walk]")?.getAttribute("data-grok-walk")).toBe("asking");
+    expect($("[data-grok-walk-progress]")?.textContent).toBe("Asking Nova… 1 of 2. Press Enter in Grok Bot.");
+    // the first bot's file arrives, so the walk opens the next on its own
+    state.waiting = { bots: [{ rosterId: "r1", botId: "bot-r1", name: "Nova", state: "arrived", askedAt: 1, file: "x" }, { rosterId: "r2", botId: "bot-r2", name: "Quill", state: "waiting", askedAt: 1, file: "y" }], waiting: 1 };
+    await change();
+    expect(opened).toEqual(["grokbot://app/v1/prompt?id=r1&text=Hi", "grokbot://app/v1/prompt?id=r2&text=Hi"]);
+    expect($("[data-grok-walk-progress]")?.textContent).toBe("Asking Quill… 2 of 2. Press Enter in Grok Bot.");
+    // the last file arrives and the walk ends
+    state.waiting = { bots: [{ rosterId: "r1", botId: "bot-r1", name: "Nova", state: "arrived", askedAt: 1, file: "x" }, { rosterId: "r2", botId: "bot-r2", name: "Quill", state: "arrived", askedAt: 1, file: "y" }], waiting: 0 };
+    await change();
+    expect($("[data-grok-walk]"), "with every bot got, the walk is gone").toBeFalsy();
+    expect(opened.length).toBe(2);
   });
 
   it("when Grok Bot cannot be opened, says so and offers the copy", async () => {

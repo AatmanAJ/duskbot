@@ -54,7 +54,7 @@ describe("stage A: the move", () => {
     expect(nova).toMatchObject({ name: "Nova", color: "purple", mascotBody: "goo", section: GROK_SECTION, avatarUrl: "/api/attachments/avatar-1.png", composio: false, connectorTools: {} });
     expect(nova.installedPackage?.origin).toEqual({ app: "grok-bot", id: NOVA });
     expect(nova.soul).toContain("Plans the week");
-    expect(finished.bots[0]!.moved).toEqual({ messages: 201, earlier: true, picture: true, instructions: true, routineNames: 2 });
+    expect(finished.bots[0]!.moved).toEqual({ messages: 201, earlier: true, picture: true, instructions: true, routineNames: 2, appsUsed: 1 });
     const messages = app.store.messagesFor(nova.threadId);
     expect(messages[0]).toMatchObject({ kind: "activity", tool: { name: "notice: The last 201 messages from Grok Bot. Earlier messages stayed there." } });
     expect(messages.slice(1).map((message) => message.role)).toContain("user");
@@ -63,6 +63,7 @@ describe("stage A: the move", () => {
     expect(nova.tasks!.every((task) => !task.unread)).toBe(true);
     expect(nova.tasks![0]!.title).toBe("From Grok Bot");
     expect(app.workspace.readMemoryTopic(nova.id, "grok-bot-routines.md")).toContain("- Friday wrap (off there)");
+    expect(app.workspace.readMemoryTopic(nova.id, "grok-bot-apps.md"), "apps the bot used in its recent chat, noted from the local cache").toContain("- Calendar");
     const quill = app.store.bot(finished.bots[1]!.botId!)!;
     expect(app.store.messagesFor(quill.threadId)).toEqual([]);
     const secondNova = app.store.bot(finished.bots[3]!.botId!)!;
@@ -224,7 +225,7 @@ describe("the lines a moved chat holds", () => {
   it("are written in the person's language: the opening note and each placeholder", async () => {
     await import("./server-line-packs.ts");
     const { chatMessages } = await import("./grok-bot-move.ts");
-    const window = { earlier: true, routines: [], lines: [
+    const window = { earlier: true, routines: [], appsUsed: [], lines: [
       { role: "user" as const, text: "Invented question", at: 1 },
       { role: "bot" as const, text: "", at: 2, placeholder: { kind: "file" as const, detail: "receipt-1.png" } },
       { role: "bot" as const, text: "", at: 3, placeholder: { kind: "voice" as const } },

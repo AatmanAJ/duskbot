@@ -32,6 +32,7 @@ function chips(bot: GrokFoundBot, problems: GrokDetection["problems"]) {
   if (bot.hasDescription) out.push({ key: "instructions", text: t("grokBotMove.chip.instructions") });
   if (canChat(bot)) out.push({ key: "chat", text: bot.chat.messages === 1 ? t("grokBotMove.chip.messageOne") : t("grokBotMove.chip.messages", { count: bot.chat.messages }) });
   if (bot.routines) out.push({ key: "routines", text: bot.routines === 1 ? t("grokBotMove.chip.routineOne") : t("grokBotMove.chip.routines", { count: bot.routines }) });
+  if (bot.appsUsed) out.push({ key: "appsUsed", text: bot.appsUsed === 1 ? t("grokBotMove.chip.appOne") : t("grokBotMove.chip.apps", { count: bot.appsUsed }) });
   for (const problem of problems.filter((one) => one.rosterId === bot.rosterId && one.slice === "chat")) {
     out.push({ key: `problem-${problem.code}`, text: sliceProblemText(problem), tone: "warn" });
   }
