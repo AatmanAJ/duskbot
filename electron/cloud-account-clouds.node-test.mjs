@@ -20,7 +20,7 @@ async function admin(t) {
   const f = { requests: [], browsers: [], timer: null, delay: null,
     session: { cloud: { state: "ready", origin: HOME, pairingAvailable: true } },
     pairing: () => [200, grant(HOME)], add: () => [404, { error: "not_found" }], patch: () => [404, { error: "not_found" }], organization: () => [404, { error: "not_found" }],
-    hide: () => [404, { error: "Not found." }], movedTo: () => [404, { error: "not_found" }] };
+    hide: () => [404, { error: "Not found." }], movedTo: () => [404, { error: "not_found" }], signIns: () => [200, { ok: true }] };
   const server = createServer(async (req, res) => {
     res.setHeader("date", new Date(NOW).toUTCString());
     let body = ""; for await (const chunk of req) body += chunk;
@@ -36,6 +36,7 @@ async function admin(t) {
     if (req.url.startsWith("/api/cloud/desktop/clouds/") && req.method === "PATCH") return send(f.patch(decodeURIComponent(req.url.slice("/api/cloud/desktop/clouds/".length)), parsed));
     if (req.url.startsWith("/api/cloud/desktop/clouds/") && req.url.endsWith("/hide") && req.method === "POST") return send(f.hide(decodeURIComponent(req.url.slice("/api/cloud/desktop/clouds/".length, -"/hide".length)), parsed));
     if (req.url === "/api/cloud/desktop/moved-to" && req.method === "POST") return send(f.movedTo(parsed));
+    if (req.url.endsWith("/ai-signins") && req.method === "POST") return send(f.signIns(parsed));
     if (req.url === "/api/public/config") return send([200, { plans: [{ tier: "pro", price: { currency: "USD", interval: "month", amount: 4900 } }], trial: { days: 7 } }]);
     send([404, { error: "not_found" }]);
   });
@@ -320,4 +321,20 @@ test("starting a sign-in over a good one is refused, and goes once that one has 
   await f.client.signOut();
   await f.client.begin();
   assert.equal(f.requests.some(row => row.route === "/api/cloud/desktop/authorize"), true);
+});
+
+test("an older Admin that refuses the new sign-in kinds still holds the ChatGPT login alone", async t => {
+  const f = await admin(t);
+  f.session = { ...f.session, clouds: [PRIMARY] };
+  f.signIns = body => body.items.length > 1 ? [400, { error: "invalid_body" }] : [200, { ok: true }];
+  await f.client.start();
+  const codex = { kind: "codex-auth", auth: "{}" }, grok = { kind: "grok-auth", auth: "{}" };
+  assert.deepEqual(await f.client.holdSignIns([codex, grok]), { outcome: "held" });
+  assert.deepEqual(f.requests.filter(row => row.route.endsWith("/ai-signins")).map(row => row.body.items.map(item => item.kind)), [["codex-auth", "grok-auth"], ["codex-auth"]]);
+  f.signIns = () => [400, { error: "invalid_body" }];
+  assert.deepEqual(await f.client.holdSignIns([grok]), { outcome: "failed" }, "nothing an older Admin takes");
+  f.signIns = () => [503, { error: "unavailable" }];
+  const before = f.requests.length;
+  assert.deepEqual(await f.client.holdSignIns([codex, grok]), { outcome: "failed" }, "a refusal that isn't about the kinds is not retried");
+  assert.equal(f.requests.length - before, 1);
 });

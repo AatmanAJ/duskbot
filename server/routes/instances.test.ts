@@ -244,5 +244,33 @@ describe("hiding a provider", () => {
     expect(persisted.at(-1)!.hermes).not.toHaveProperty("hidden");
     expect((await call("GET", "/api/instances/hidden")).instances).toEqual([]);
   });
+
+  it("disconnects a provider in use by moving what uses it off first, and Use it marks one chosen", async () => {
+    const persisted: Array<Record<string, { driver: string; hidden?: boolean; chosen?: boolean }>> = [];
+    const cfg = { instances: { a: { driver: "fake" }, grok: { driver: "fake", displayName: "Grok" } } };
+    const bots = [{ id: "pen", modelSelection: { instanceId: "grok", model: "m" } }];
+    const released: string[] = [];
+    const { call } = await serve({
+      cfg: cfg as unknown as AppConfig,
+      store: { bots, tasks: () => [] } as never,
+      persistProviderInstance: async (_id: string, instances: typeof persisted[number]) => {
+        persisted.push(structuredClone(instances));
+        (cfg as { instances: unknown }).instances = instances;
+      },
+      releaseProvider: async (instanceId: string) => {
+        released.push(instanceId);
+        bots[0]!.modelSelection = { instanceId: "a", model: "m" };
+      },
+    });
+    await call("PATCH", "/api/instances/grok", { chosen: true });
+    expect(persisted.at(-1)!.grok).toMatchObject({ chosen: true });
+    await call("PATCH", "/api/instances/grok", { hidden: true });
+    expect(released).toEqual(["grok"]);
+    expect(persisted.at(-1)!.grok).toMatchObject({ hidden: true });
+    expect(persisted.at(-1)!.grok).not.toHaveProperty("chosen");
+    await call("PATCH", "/api/instances/grok", { hidden: false });
+    expect(persisted.at(-1)!.grok).toMatchObject({ chosen: true });
+    expect(persisted.at(-1)!.grok).not.toHaveProperty("hidden");
+  });
 });
 
