@@ -9,9 +9,10 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { client } from "../memory-eval/client.ts";
-import { gatewayFromEnv, launchSandbox, type Gateway } from "../memory-eval/sandbox.ts";
+import { gatewayFromEnv, launchSandbox } from "../memory-eval/sandbox.ts";
 import { startProxy, type Recorded } from "../memory-eval/proxy.ts";
 import { CAPABLE_CASES, CASES, type Case } from "./cases.ts";
+import { judge, rowText, type Message } from "./judge.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const { values } = parseArgs({ options: {
@@ -30,18 +31,6 @@ const only = values.only ? new Set(values.only.split(",")) : null;
 const suite = values.suite === "capable" ? CAPABLE_CASES : values.suite === "all" ? [...CASES, ...CAPABLE_CASES] : CASES;
 const cases = suite.filter((item) => !only || only.has(item.id));
 
-type Message = { id: string; role: string; kind?: string; text?: string; tool?: { name?: string }; attachments?: Array<{ name?: string; mime?: string }>; document?: unknown };
-
-/** what the person saw in one bot row: its words, plus the files and cards it carried, named for the judge */
-function rowText(m: Message): string {
-  if (m.kind === "activity" || m.kind === "digest") return "";
-  const parts = [m.text?.trim() ?? ""];
-  for (const file of m.attachments ?? []) parts.push(`[file card: ${file.name ?? "file"}]`);
-  if (m.document) parts.push("[document card]");
-  if (m.kind && m.kind !== "text") parts.push(`[${m.kind} card]`);
-  return parts.filter(Boolean).join(" ");
-}
-
 interface Result {
   model: string;
   run: number;
@@ -54,29 +43,6 @@ interface Result {
   state: string;
   ms: number;
   output: string;
-}
-
-const SETUP = {
-  off: "The bot runs in a test workspace: it has no connected email, social, calendar or file access, only its own memory, automations and bot-setup tools.",
-  auto: "The bot runs in a test workspace with no connected apps and no computer or browser set up yet (asking for one with select_computer says what is missing). It has: automations (trigger: schedules, app events, webhooks), waits that tell the person when a page or file changes (wait_until), reading web pages (read_pages), a data tool that makes csv and xlsx files (data_*), documents (create_document), interactive pages in the chat or published (show_html, publish_page), memory, credentials (request_credential), teammates and bot setup.",
-};
-
-async function judge(gateway: Gateway, item: Case, output: string, tools: string[]): Promise<{ pass: boolean; why: string }> {
-  const prompt = `You grade one reply of a personal assistant bot. The person asked:\n<ask>\n${item.say}\n</ask>\nEverything the bot showed the person, in order:\n<output>\n${output || "(nothing)"}\n</output>\nThe tools it called in this turn, in order (use_tool:<name> runs <name>; trigger creates or changes automations, trigger_info reads them, memory_update saves notes, create_bot makes a bot): ${tools.join(", ") || "none"}.\n${SETUP[item.place ?? "off"]}\nPass condition: ${item.pass}\nAlso fail it if the output only announces or describes what the bot will do next without the result, or ends mid-task.\nAnswer with JSON only: {"pass": true|false, "why": "<one short sentence>"}`;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch(`${gateway.url}/chat/completions`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${gateway.key}` },
-      body: JSON.stringify({ model: values.judge, messages: [{ role: "user", content: prompt }], temperature: 0 }),
-      signal: AbortSignal.timeout(120_000),
-    }).catch(() => null);
-    const json = await res?.json().catch(() => null) as { choices?: Array<{ message?: { content?: string } }> } | null;
-    const text = json?.choices?.[0]?.message?.content ?? "";
-    const match = /\{[\s\S]*\}/.exec(text);
-    if (match) { try { const parsed = JSON.parse(match[0]); return { pass: parsed.pass === true, why: String(parsed.why ?? "") }; } catch { await sleep(1_000); } }
-    await sleep(2_000);
-  }
-  return { pass: false, why: "judge unavailable" };
 }
 
 async function runModel(model: string): Promise<Result[]> {
@@ -120,7 +86,7 @@ async function runModel(model: string): Promise<Result[]> {
           why = `ended ${Math.round(ms / 1000)} s after the stop; ${longAfter.length} long message(s) and ${callsAfter} model call(s) after it`;
         } else {
           const acted = !item.tool || tools.some((name) => item.tool!.test(name));
-          const verdict = await judge(gatewayFromEnv(values.judge!), item, output, tools);
+          const verdict = await judge(values.judge!, item, output, tools);
           pass = acted && verdict.pass;
           why = `${acted ? "" : `no matching tool call (called: ${tools.join(", ") || "none"}); `}${verdict.why}`;
         }
