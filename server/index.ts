@@ -13292,7 +13292,7 @@ ROUTES.push(createStopLineRoutes()); ROUTES.push(createUpdateRoutes(() => update
 const orgInstallStatuses = () => orgLibrary?.installStatuses() ?? new Map();
 ROUTES.push(createBotPresetRoutes({ presets: presetStore, orgStatuses: orgInstallStatuses })); ROUTES.push(createWorkspaceBannerRoutes({ changed: () => broadcast({ kind: "config", ...configStatus() }) }));
 // `routines` is assigned at boot, so it is read per request.
-ROUTES.push(createBotMessageRoutes({ typedOverHeldCards: (threadId) => { outboundRequests.replied(threadId); },
+ROUTES.push(createBotMessageRoutes({ typedOverHeldCards: (threadId) => { outboundRequests.replied(threadId); routines?.personWrote(threadId); },
   store, registry, introduceBot, handoffs, liveTurn: (threadId) => liveTurns.running(threadId), phoneSecretSubmissions, directTurnDispatchClaims, groupSpeakers,
   routines: () => routines,
   fromPhone: phones.fromPhone, notePhoneSend: phones.noteSend,

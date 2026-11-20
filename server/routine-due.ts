@@ -3,7 +3,7 @@
 import type { Routine, RoutineRun } from "./routines.ts";
 import { flexOf } from "./routine-quiet.ts";
 import { nextOccurrence } from "./routine-schedules.ts";
-import { activeMs } from "./routine-waits.ts";
+import { activeMs, QUESTION_WAIT_MS } from "./routine-waits.ts";
 
 type Due = Pick<Routine, "enabled" | "nextRunAt" | "checks" | "wakeAt" | "checkedAt"> & Partial<Pick<Routine, "timing" | "schedule">>;
 /** The latest a run may start: its time, or the end of its window when it may move. */
@@ -79,6 +79,7 @@ export function schedulerDueOf<R extends Due>(routines: readonly R[], runs: read
     else if ((run.status === "running" || run.status === "waiting") && run.startedAt != null && run.timeoutMinutes != null) {
       at = Math.min(at, now + Math.max(0, run.timeoutMinutes * 60_000 - activeMs(run, now)));
     }
+    if (run.status === "waiting" && run.asked && !run.asked.approval) at = Math.min(at, run.asked.since + QUESTION_WAIT_MS);
   }
   return at === Infinity ? null : at;
 }
