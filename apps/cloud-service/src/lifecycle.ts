@@ -132,6 +132,8 @@ export interface LifecycleDeps {
   clouds(): StoredCloud[];
   /** a fresh signed entitlement for the cloud's home, or null when none is signed */
   entitle(cloud: StoredCloud): string | null;
+  /** a link grant for the cloud's account, sent beside its entitlement for the home's phone relay */
+  linkGrant?(cloud: StoredCloud): string | null;
   /** the release keys a package must be signed with */
   releaseKeys: readonly ReleaseKey[];
   /** keys the opaque public labels (never on a machine) */
@@ -287,7 +289,7 @@ export function createLifecycle(deps: LifecycleDeps) {
     if (!deps.home.entitle || (!force && c.entitledAt !== undefined && now() - c.entitledAt < HOUR)) return;
     const token = deps.entitle(c);
     if (!token) return;
-    try { await deps.home.entitle(homeOrigin(c), secret(c), token); }
+    try { await deps.home.entitle(homeOrigin(c), secret(c), token, deps.linkGrant?.(c) ?? null); }
     catch { throw new RetryableCloudError("Cloud home refused its entitlement."); }
     c.entitledAt = now(); deps.save(c);
   }

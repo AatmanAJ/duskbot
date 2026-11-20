@@ -55,6 +55,8 @@ export interface CloudsServiceOptions {
   managedHome?: HomeClient;
   /** signs a cloud's entitlement for its home and the app (shared/entitlement.ts); absent: none are signed */
   entitlements?: { sign(cloud: StoredCloud): string } | null;
+  /** a link grant for the cloud's account, sent beside each entitlement so its home can make its phone relay's tunnel */
+  linkGrant?: ((cloud: StoredCloud) => string | null) | null;
   /** told once per cloud: its first time running, and its deletion by the generic lifecycle (a managed backend sends its own) */
   onEvent?: (kind: CloudEventKind, cloud: StoredCloud) => void;
   /** every status change, after it is stored */
@@ -208,14 +210,14 @@ export function createCloudsService(options: CloudsServiceOptions): CloudsServic
   try {
     managed = options.managed ? options.managed.create({ dataDir: options.dataDir, home: options.managedHome ?? home, now, save, stored, clouds: () => store.state.clouds, commit: () => store.commit(),
       unseal: value => sealer.unseal(value), seal: value => sealer.seal(value), dashboardUrl: config.dashboardUrl, adminOrigin: config.adminOrigin,
-      removeWorkspace: id => workspaces.remove(id), entitlement: signEntitlement, kick: cloudId => cloudId ? hurry(cloudId) : kick() }) : null;
+      removeWorkspace: id => workspaces.remove(id), entitlement: signEntitlement, linkGrant: cloud => options.linkGrant?.(cloud) ?? null, kick: cloudId => cloudId ? hurry(cloudId) : kick() }) : null;
   } catch (error) { store.close(); unlock(); throw error; }
   /** a hosted home refuses clients without a fresh entitlement: pushed when it comes up, refreshed hourly */
   async function entitle(c: StoredCloud, force = false): Promise<void> {
     if (!c.origin || !home.entitle || (!force && c.entitledAt !== undefined && now() - c.entitledAt < 3_600_000)) return;
     const token = signEntitlement(c);
     if (!token) return;
-    try { await home.entitle(c.origin, sealer.unseal(c.bootstrapSecret), token); c.entitledAt = now(); save(c); }
+    try { await home.entitle(c.origin, sealer.unseal(c.bootstrapSecret), token, options.linkGrant?.(c) ?? null); c.entitledAt = now(); save(c); }
     catch { console.warn(`clouds: the entitlement push to ${c.id} failed; it is tried again`); }
   }
   function succeeded(c: StoredCloud) { c.attempts = 0; c.nextAttemptAt = 0; c.poolFullSince = undefined; c.error = null; save(c); }

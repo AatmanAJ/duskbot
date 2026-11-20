@@ -106,7 +106,7 @@ export function createManagedCloud(deps: ManagedCloudDeps): ManagedCloudFactory 
       const updates = createHomeUpdates({ provider, image: HOME_IMAGE, home: ctx.home, audit: deps.audit, releaseKeys, requireSigned: settings.requireSigned, now: ctx.now, save: ctx.save,
         releases: () => [deps.release?.() ?? null, settings.package], policy: () => deps.updatePolicy?.policy() ?? null });
       const lifecycle: Lifecycle = createLifecycle({ ...deps, provider, settings, updates, image: HOME_IMAGE, starts, spend, sleepPolicy, costProfile: profile, rails: params.rails, home: ctx.home, now: ctx.now, save: ctx.save, stored: ctx.stored, unseal: ctx.unseal, seal: ctx.seal,
-        dashboardUrl: ctx.dashboardUrl, adminOrigin: ctx.adminOrigin, removeWorkspace: ctx.removeWorkspace, clouds: ctx.clouds, entitle: ctx.entitlement, releaseKeys, labelKey });
+        dashboardUrl: ctx.dashboardUrl, adminOrigin: ctx.adminOrigin, removeWorkspace: ctx.removeWorkspace, clouds: ctx.clouds, entitle: ctx.entitlement, ...(ctx.linkGrant ? { linkGrant: ctx.linkGrant } : {}), releaseKeys, labelKey });
       const sweep = createSweep({ dataDir: ctx.dataDir, file: "machine-sweep.json", provider, audit: deps.audit, retentionDays: settings.retentionDays, now: ctx.now });
       const claimLimits = new Map<string, { count: number; until: number }>();
       /** failed redemptions per address: 60 per 15 minutes; a machine's own successful boot never counts */
