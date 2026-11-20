@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Bot, Task } from "@/state/store";
+import type { Bot, InstanceInfo, Task } from "@/state/store";
 import type { SidebarMenuItem } from "./SidebarPopoverMenu";
 
 const fixture = vi.hoisted(() => {
@@ -10,11 +10,12 @@ const fixture = vi.hoisted(() => {
     menus: [] as { ariaLabel: string; items: SidebarMenuItem[]; placement?: string; openOnHover?: boolean; trigger: string }[],
     dispatch: vi.fn(),
     find: vi.fn(),
+    instances: [] as InstanceInfo[],
   };
 });
 vi.mock("@/state/store", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
-  return { ...original, useStore: () => ({ state: original.initialState, dispatch: fixture.dispatch }) };
+  return { ...original, useStore: () => ({ state: { ...original.initialState, instances: fixture.instances }, dispatch: fixture.dispatch }) };
 });
 vi.mock("@/lib/chat-find", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/chat-find")>(),
@@ -98,6 +99,34 @@ describe("ChatMoreMenu, the round ⋯ for the bot panel", () => {
     const usage = menu.items.find((item) => item.key === "usage");
     expect(usage?.disabled).toBeFalsy();
     expect(usage?.heading).toBeUndefined();
+  });
+});
+
+describe("the phone header's Model row", () => {
+  const free: InstanceInfo = {
+    instanceId: "opencode", driverKind: "opencodeGo", displayName: "OpenCode", access: "subscription",
+    snapshot: { state: "available", authenticated: true, freeFallback: true },
+    models: { default: "opencode/beam-free", options: [{ id: "opencode/beam-free", label: "Zen · Beam Free" }] },
+  };
+  const codex: InstanceInfo = {
+    instanceId: "codex", driverKind: "codex", displayName: "Codex", access: "subscription",
+    snapshot: { state: "available", authenticated: false },
+    models: { default: "gpt-5.6-sol", options: [{ id: "gpt-5.6-sol", label: "GPT-5.6 Sol" }] },
+  };
+  const modelRow = (selection: Bot["modelSelection"]) => menuOf(createElement(ChatMoreMenu, { bot: { ...bot, modelSelection: selection }, phoneHeader: true }))
+    .items.find((item) => item.key === "model")?.value;
+  afterAll(() => { fixture.instances = []; });
+
+  it("says Free model when the free backup answers", () => {
+    fixture.instances = [free, codex];
+    expect(modelRow({ instanceId: "opencode", model: "opencode/beam-free" })).toBe("Free model");
+  });
+
+  it("never names a ChatGPT model when ChatGPT isn't connected", () => {
+    fixture.instances = [free, codex];
+    expect(modelRow({ instanceId: "codex", model: "gpt-5.6-sol" })).toBe("Sign-in required");
+    fixture.instances = [free];
+    expect(modelRow({ instanceId: "codex", model: "gpt-5.6-sol" })).toBe("Unavailable");
   });
 });
 

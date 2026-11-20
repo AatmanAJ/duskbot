@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { AnimatePresence } from "motion/react";
 import { createPortal } from "react-dom";
 import { Check, Copy } from "../../icons";
 
@@ -9,7 +10,7 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { lowerFirst, upperFirst } from "@/lib/lower-first";
 import { routineRunsOn } from "@/lib/routine-display";
-import { fetchForecast, forecastLine, pauseLine, useLoaded } from "@/lib/spend";
+import { fetchForecast, forecastLine, forecastWarning, pauseLine, useLoaded } from "@/lib/spend";
 import { formatCost } from "@/lib/usage-trace";
 import { isRoutineProblemRun, type Routine, type RoutineRunOn } from "@/lib/routines";
 import { hoursLine, liveStrip, probeLine } from "@/lib/routine-display";
@@ -112,7 +113,7 @@ function AutomationRow({ bot, automation, routine, open, editing, onOpen, onClos
   const done = status.state === "done";
   const when = whenLine(automation);
   // the panel reads in sentence case; the routine words are shared lowercase fragments, so the row's line takes the capital
-  const hint = upperFirst(status.state === "needs-you" ? t("automations.needsYou", { reason: status.reason ?? "" }) : automation.enabled || done ? when : t("automations.status.paused"));
+  const hint = upperFirst(status.state === "needs-you" ? t("automations.needsYou", { reason: status.reason ?? "" }) : done ? t("automations.status.done") : automation.enabled ? when : t("automations.status.paused"));
   const detailId = `routine-detail-${automation.id}`;
   const name = automation.name.trim() || automationSentence(automation, bot.name);
 
@@ -149,13 +150,13 @@ function AutomationRow({ bot, automation, routine, open, editing, onOpen, onClos
         )}
       </div>
       {!open && actions.error && <p role="alert" className="m-0 px-2 pb-1.5 text-[12px] leading-4 text-danger">{actions.error}</p>}
-      {open && !(editing && automation.kind !== "schedule") && (
-        <GrokDialog data-panel-modal="routine" title={name} onClose={onClose}>
+      <AnimatePresence>{open && !(editing && automation.kind !== "schedule") && (
+        <GrokDialog key="routine" data-panel-modal="routine" title={name} onClose={onClose}>
           {editing && routine
             ? <RoutineForm bot={bot} routine={routine} onDone={() => onEdit(false)} />
             : <AutomationDetail id={detailId} bot={bot} automation={automation} routine={routine} actions={actions} onEdit={() => onEdit(true)} />}
         </GrokDialog>
-      )}
+      )}</AnimatePresence>
       {editing && automation.kind !== "schedule" && <ForeignEditor automation={automation} onClose={() => onEdit(false)} />}
     </div>
   );
@@ -186,7 +187,7 @@ function AutomationDetail({ id, bot, automation, routine, actions, onEdit }: {
   const [capSaved, setCapSaved] = useState(0);
   const forecast = useLoaded(() => (routine ? fetchForecast(routine.id) : Promise.resolve(null)), `${routine?.id}:${routine?.updatedAt}:${capSaved}:${automation.runs[0]?.status}`);
   const status = automationStatus(automation);
-  const runs = automation.runs.filter((run) => run.status !== "queued").slice(0, RECENT_RUNS);
+  const runs = automation.runs.filter((run) => run.status !== "queued" || Boolean(run.attention?.trim())).slice(0, RECENT_RUNS);
   const roomGoal = routine?.target === "room-goal";
   const worksOn = routineRunsOn({ roomGoal, runOn: routine?.runOn ?? automation.appTrigger?.runOn, computer: bot.computer, cloudHome: state.config?.cloudHome === true });
   const resultsTo = roomGoal
@@ -196,7 +197,6 @@ function AutomationDetail({ id, bot, automation, routine, actions, onEdit }: {
       : t("routines.results.main");
   const notes = [
     status.state === "needs-you" ? status.reason : null,
-    status.state === "done" ? t("automations.reason.done") : null,
     routine?.warning,
     routine && !routine.enabled && routine.pausedFor ? pauseLine(routine.pausedFor) : null,
   ].filter((note): note is string => Boolean(note));
@@ -207,6 +207,7 @@ function AutomationDetail({ id, bot, automation, routine, actions, onEdit }: {
   const fix = (kind: AutomationFix) => {
     if (kind === "usage") dispatch({ type: "toggleAppSettings", open: true, section: "usage" });
     else if (kind === "reconnect") dispatch({ type: "togglePlugins", open: true, surface: "apps" });
+    else if (kind === "answer") actions.answerRun(automation);
     else actions.openRun(automation, automation.runs.find((run) => run.status !== "queued"));
   };
 
@@ -225,8 +226,8 @@ function AutomationDetail({ id, bot, automation, routine, actions, onEdit }: {
         {automation.kind === "schedule" && <Fact term={t("routines.inline.resultsTo")}>{upperFirst(resultsTo)}</Fact>}
         {routine && forecast?.warnings && (
           <Fact term={t("routines.cost.term")}>
-            <span data-routine-forecast="">{upperFirst(forecastLine(forecast))}</span>
-            {forecast.warnings.map((warning) => <span key={warning} className="block text-[12px] leading-4 text-warning">{t(warning === "frequent" ? "routines.cost.frequent" : "routines.cost.costly")}</span>)}
+            <span data-routine-forecast="">{upperFirst(forecastLine(forecast, { once: routine.schedule.type === "once" }))}</span>
+            {forecast.warnings.map((warning) => <span key={warning} className="block text-[12px] leading-4 text-warning">{forecastWarning(warning, forecast)}</span>)}
           </Fact>
         )}
         {routine && <Fact term={t("usage.cap.label")}><SpendCap kind="routine" id={routine.id} capUsd={forecast?.capUsd} onSaved={() => setCapSaved((n) => n + 1)} className="mt-0.5" sentence /></Fact>}
@@ -262,6 +263,7 @@ function AutomationDetail({ id, bot, automation, routine, actions, onEdit }: {
           )}
         </Fact>
       </dl>
+      {status.state === "done" && <p data-routine-done="" className="m-0 text-[12px] leading-4 text-ink-secondary">{t("automations.reason.done")}</p>}
       {notes.map((note) => <p key={note} className="m-0 text-[12px] leading-4 text-warning">{note}</p>)}
       {status.state === "needs-you" && (status.fix === "answer" || status.fix === "sign-in" || status.fix === "usage" || status.fix === "reconnect") && (
         <button type="button" data-routine-action="fix" onClick={() => fix(status.fix!)} className={cn(buttonCls, "self-start")}>{upperFirst(t(AUTOMATION_FIX_LABEL[status.fix]))}</button>

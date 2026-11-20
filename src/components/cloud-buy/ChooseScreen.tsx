@@ -82,7 +82,7 @@ export function ChooseScreen({ offer, current = null, own = null, busy, signedOu
     <div className="flex flex-col gap-3">
       {pick && buy && <button type="button" data-plan-buy={pick.tier} className={PRIMARY_WIDE} disabled={busy} onClick={() => onStart(pick.tier)}>{buy}</button>}
       <div aria-live="polite" className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1.5 text-[12px] leading-4 text-ink-tertiary">
-        <p data-plan-terms="">{t(trial ? "cloudBuy.termsTrial" : "cloudBuy.terms")}{moneyBack && <> {t("cloudBuy.moneyBackLine", { days: offer.refundDays! })}</>}</p>
+        <p data-plan-terms="">{pick?.trialDays && pick.terms ? pick.terms : t("cloudBuy.terms")}{moneyBack && <> {t("cloudBuy.moneyBackLine", { days: offer.refundDays! })}</>}</p>
         {signedOut && <button type="button" className={cn(LINK, "text-[12px]")} onClick={onSignIn}>{t("cloudBuy.haveAccount")}</button>}
         {!signedOut && pending && onResume && <button type="button" data-plan-pending="" className={cn(LINK, "text-[12px]")} disabled={busy} onClick={onResume}>{t("cloudBuy.pending", { plan: pending })}</button>}
       </div>

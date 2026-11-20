@@ -4,6 +4,7 @@ import { formatCost } from "@/lib/usage-trace";
 import { api } from "@/state/store";
 import type { AllowanceReport, AutoTopUp, BatteryReport, DailyUsageReport, RoutineForecast, SpendCapInput } from "../../shared/spend";
 import type { RoutinePause } from "../../shared/routines";
+import { deviceHourCycle } from "@/lib/format-time";
 
 export type { AllowanceReport, BatteryReport, BatteryRow, DailyUsageReport, DailyUsageSeries, RoutineForecast } from "../../shared/spend";
 
@@ -25,7 +26,7 @@ export const topUpOffer = (weeklyUsd: number): number => Math.max(0.01, Math.rou
 
 /** "Monday 12:00 AM" for a reset time, in the app's language. */
 export function resetWhen(at: number): string {
-  return new Date(at).toLocaleString(activeLocale(), { weekday: "long", hour: "numeric", minute: "2-digit" });
+  return new Date(at).toLocaleString(activeLocale(), { weekday: "long", hour: "numeric", minute: "2-digit", hourCycle: deviceHourCycle() });
 }
 
 /** "in 2 days" or "in 5 hours" until a reset. */
@@ -60,14 +61,20 @@ export function useLoadedState<T>(load: () => Promise<T>, version: unknown): { v
   return { value, failed, retry: () => setAttempt((n) => n + 1) };
 }
 
-/** "About 168 runs a week · about $3.20 a week · 12% of your week", saying only what is known. */
-export function forecastLine(forecast: RoutineForecast): string {
+/** "About 168 runs a week · about $3.20 a week · 12% of your week", or "Runs once · about $0.01", saying only what is
+ * known. The share is left to the warning when it is one. */
+export function forecastLine(forecast: RoutineForecast, { once = false }: { once?: boolean } = {}): string {
+  if (once) return [t("routines.cost.once"), forecast.perRunUsd !== null ? t("routines.cost.each", { amount: formatCost(forecast.perRunUsd) }) : t("routines.cost.noPrice")].join(" · ");
   const parts: string[] = [];
-  if (forecast.runsPerWeek !== null) parts.push(t("routines.cost.runs", { count: String(forecast.runsPerWeek) }));
+  if (forecast.runsPerWeek !== null) parts.push(forecast.runsPerWeek === 1 ? t("routines.cost.runs.one") : t("routines.cost.runs", { count: String(forecast.runsPerWeek) }));
   if (forecast.weekUsd !== null) parts.push(t("routines.cost.week", { amount: formatCost(forecast.weekUsd) }));
   else parts.push(t("routines.cost.noPrice"));
-  if (forecast.shareOfWeek !== null) parts.push(t("routines.cost.share", { percent: sharePercent(forecast.shareOfWeek) }));
+  if (forecast.shareOfWeek !== null && !forecast.warnings.includes("costly")) parts.push(t("routines.cost.share", { percent: sharePercent(forecast.shareOfWeek) }));
   return parts.join(" · ");
+}
+
+export function forecastWarning(warning: RoutineForecast["warnings"][number], forecast: RoutineForecast): string {
+  return warning === "frequent" ? t("routines.cost.frequent") : t("routines.cost.costlyShare", { percent: sharePercent(forecast.shareOfWeek ?? 0) });
 }
 
 export function pauseLine(pause: RoutinePause): string {

@@ -17,7 +17,9 @@ vi.mock("react", async original => ({ ...await original<typeof import("react")>(
 vi.mock("@/state/store", () => ({ useStore: () => ({ state: f.state, dispatch: f.dispatch }) }));
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("./cloud-buy/AddCloudFlow", () => ({ AddCloudFlow: ({ source }: { source?: string }) => createElement("div", { "data-add-cloud-flow": source ?? "" }) }));
+import { AnimatePresence } from "motion/react";
 import { CloudAddDialog, CloudAddPanel, CloudAddSheet, type CloudAddActions, type CloudAddUi } from "./CloudAddDialog";
+import { DialogScrimLayer, DialogSheet } from "./ui/SheetMotion";
 import { ChooseScreen } from "./cloud-buy/ChooseScreen";
 import { cloudAddView, type CloudAddView } from "@/lib/cloud-plan";
 import { track } from "@/lib/analytics";
@@ -42,10 +44,13 @@ const acme = (machine: CloudTeam["machine"] = { status: "ready", origin: "https:
 const onTeam = (machine?: CloudTeam["machine"]): CloudAccountState => paid({ entitlement: { plan: "pro", tier: "team", status: "active", expiresAt: NOW + 30 * DAY, version: 2 }, teams: [acme(machine)] });
 
 type Node = ReactElement<Record<string, any>>;
+/** components with hooks of their own, which only a real render can call: their children are walked instead */
+const SEEN_THROUGH = new Set<unknown>([AnimatePresence, DialogScrimLayer, DialogSheet]);
 const nodes = (value: ReactNode): Node[] => {
   if (Array.isArray(value)) return value.flatMap(nodes);
   if (!isValidElement(value)) return [];
   const node = value as Node;
+  if (SEEN_THROUGH.has(node.type)) return [node, ...Children.toArray(node.props.children).flatMap(nodes)];
   if (typeof node.type === "function") return nodes((node.type as (props: unknown) => ReactNode)(node.props));
   return [node, ...Children.toArray(node.props.children).flatMap(nodes)];
 };
@@ -78,7 +83,7 @@ describe("each screen of the sheet says one thing and offers one next step", () 
     const { html, tree, handlers } = panel({ kind: "offer", offer: TRIAL, signedOut: true, notice: null });
     inOrder(text(html), ["dusk cloud", "Keep your bots working when this computer is off", "Plus", "Your bots keep working with the laptop shut", "$15", "a month after 7 days free",
       "Pro", "For heavy workloads, and for work", "$49", "a month after 7 days free", "4 vCPU, 4 GB RAM", "10 GB disk, grows to 100 GB", "Priority wake", "Work license for one person",
-      "Max", "The biggest machine, for heavy work", "$99", "Try Pro free for 7 days", "Card needed, nothing charged until your trial ends. Then monthly, plus tax where applicable. Cancel any time.", "14-day money-back.", "Already have a plan? Sign in"]);
+      "Max", "The biggest machine, for heavy work", "$99", "Try Pro free for 7 days", "7 days free, then $49/month + tax where applicable. Nothing charged until then. Cancel any time.", "14-day money-back.", "Already have a plan? Sign in"]);
     expect(html, "the name and the reason head the sheet").toMatch(/<header[^>]*><p[^>]*>dusk cloud<\/p><h2 id="cloud-add-title"/);
     const radios = tree.filter(node => node.type === "input" && node.props.type === "radio");
     expect(radios.map(node => [node.props["data-plan-pick"], node.props.name, node.props.checked, node.props.tabIndex]),

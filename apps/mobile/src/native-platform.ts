@@ -3,6 +3,7 @@ import { App } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
 import { Keyboard } from "@capacitor/keyboard";
+import { Network } from "@capacitor/network";
 import { Preferences } from "@capacitor/preferences";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { Share } from "@capacitor/share";
@@ -18,9 +19,16 @@ const keystore = SecureStorage as unknown as {
 };
 const SECRET_PREFIX = "dusk.";
 import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState } from "@capacitor-mlkit/barcode-scanning";
-import type { AppleCredential, CameraPermission, CameraScanner, MobilePlatform } from "@/mobile/platform";
+import { handleBack, type AppleCredential, type BackGestureEvent, type CameraPermission, type CameraScanner, type DeliveredNotification, type MobilePlatform, type OrientationBridge, type ScanOverlay, type TurnActivityBridge } from "@/mobile/platform";
+import type { NativeAction } from "@/mobile/phone-actions";
+import type { TurnActivityAttributes, TurnActivityState } from "../../../shared/phone-activity";
+import type { GlassBridge, GlassEvent, GlassGlyphs, GlassState } from "@/mobile/native-glass";
+import type { HomeGlassState } from "@/mobile/native-home-glass";
+import type { SlidePath } from "@/mobile/NavStack";
+import type { MenuBridge, NativeMenuArm, NativeMenuContent, NativeMenuEvent } from "@/mobile/native-menu";
 import { createVoiceEvents, type VoiceBridge, type VoiceEnd } from "@/lib/voice-input/bridge";
 import { registerPhoneVoice } from "@/lib/voice-input/device";
+import { attachToComposer, setNativeAttach } from "@/lib/native-attach";
 import { appLinkFromUniversal, type MobileOpenTarget } from "../../../shared/mobile-link";
 
 /** The app's own scanner on ios (ios/App/App/QrScannerPlugin.swift): the ML Kit plugin ships for CocoaPods only, and this
@@ -29,15 +37,42 @@ interface QrScannerPlugin {
   checkPermissions(): Promise<{ camera: string }>;
   requestPermissions(): Promise<{ camera: string }>;
   openSettings(): Promise<void>;
-  startScan(): Promise<void>;
+  startScan(options?: { overlay?: ScanOverlay }): Promise<{ fullScreen?: boolean } | undefined>;
   stopScan(): Promise<void>;
   isTorchAvailable(): Promise<{ available: boolean }>;
   setTorch(options: { on: boolean }): Promise<void>;
+  setBusy(options: { busy: boolean; label?: string }): Promise<void>;
   addListener(event: "codeScanned", listener: (event: { text?: string }) => void): Promise<PluginListenerHandle>;
+  addListener(event: "scannerAction", listener: (event: { key?: string }) => void): Promise<PluginListenerHandle>;
 }
 const QrScanner = registerPlugin<QrScannerPlugin>("QrScanner");
 /** The app's own Sign in with Apple (ios/App/App/AppleSignInPlugin.swift): AuthenticationServices, no SDK. */
 const AppleSignIn = registerPlugin<{ signIn(options: { nonce: string }): Promise<AppleCredential> }>("AppleSignIn");
+/** @capacitor/filesystem 8's native methods, reached by name so a build without the plugin still loads. */
+const Filesystem = registerPlugin<{
+  writeFile(options: { path: string; data: string; directory: "CACHE"; recursive: boolean }): Promise<{ uri: string }>;
+}>("Filesystem");
+
+function base64Of(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ""));
+    reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+/** A file through the system share sheet (Save to Files, Save Image, another app). @capacitor/share 8 shares only files
+ * in the app's cache folder on Android without a FileProvider entry of our own, so the copy goes there. */
+async function shareFileNatively(file: File): Promise<void> {
+  const name = file.name.replace(/[\\/:*?"<>|]/g, "_").slice(-120) || "file";
+  const { uri } = await Filesystem.writeFile({ path: `shared/${Date.now()}/${name}`, data: await base64Of(file), directory: "CACHE", recursive: true });
+  try {
+    await Share.share({ files: [uri], title: file.name });
+  } catch (error) {
+    if (!/cancel/i.test(String((error as { message?: unknown })?.message ?? error))) throw error;
+  }
+}
 
 /** The app's own dictation (ios/App/App/SpeechRecognizerPlugin.swift, android .../SpeechRecognizerPlugin.java): the
  * phone's recognizer, offline where it can be. Events carry the session number `start` was given. */
@@ -54,6 +89,165 @@ export interface SpeechPlugin {
   addListener(event: "end", listener: (event: { code?: number; reason?: string; session?: number }) => void): Promise<PluginListenerHandle>;
 }
 const DuskSpeech = registerPlugin<SpeechPlugin>("DuskSpeech");
+
+/** The app's own Liquid Glass chat chrome (ios/App/App/GlassChromePlugin.swift), iOS 26 and later. */
+interface GlassPlugin {
+  supported(): Promise<{ supported: boolean; acks?: boolean }>;
+  update(state: GlassState): Promise<void>;
+  setText(options: { text: string; seq: number }): Promise<void>;
+  clearText(options: { id: number }): Promise<void>;
+  setAvatar(options: { data: string | null }): Promise<void>;
+  focus(): Promise<void>;
+  blur(): Promise<void>;
+  clear(): Promise<void>;
+  slide(options: { path: SlidePath | null; at?: number }): Promise<void>;
+  glyphs(): Promise<GlassGlyphs>;
+  home(options: { state: HomeGlassState | null }): Promise<void>;
+  addListener(event: "glass", listener: (event: GlassEvent | { type: "paste"; files: NativeFile[] }) => void): Promise<PluginListenerHandle>;
+}
+const DuskGlass = registerPlugin<GlassPlugin>("DuskGlass");
+
+/** A file the app wrote to its tmp folder for the page (ios/App/App/PickerPlugin.swift). */
+interface NativeFile { path: string; name: string; type: string }
+/** The composer's photo library and Files pickers, each opened straight (ios/App/App/PickerPlugin.swift). */
+const DuskPicker = registerPlugin<{
+  photos(options: { multiple: boolean }): Promise<{ files: NativeFile[] }>;
+  files(options: { multiple: boolean }): Promise<{ files: NativeFile[] }>;
+}>("DuskPicker");
+
+export async function nativeFiles(list: readonly NativeFile[], read: typeof fetch = fetch): Promise<File[]> {
+  const files = await Promise.all(list.map(async (one) => {
+    try {
+      const response = await read(Capacitor.convertFileSrc(one.path));
+      return response.ok ? new File([await response.blob()], one.name, { type: one.type }) : null;
+    } catch {
+      return null;
+    }
+  }));
+  return files.filter((file): file is File => file !== null);
+}
+
+export function glassBridge(plugin: GlassPlugin, acks = false): GlassBridge {
+  const quiet = (work: Promise<unknown>) => { void work.catch(() => {}); };
+  return {
+    acks,
+    update: (state) => quiet(plugin.update(state)),
+    setText: (text, seq) => quiet(plugin.setText({ text, seq })),
+    clearText: (id) => quiet(plugin.clearText({ id })),
+    setAvatar: (data) => quiet(plugin.setAvatar({ data })),
+    focus: () => quiet(plugin.focus()),
+    blur: () => quiet(plugin.blur()),
+    clear: () => quiet(plugin.clear()),
+    slide: (path, at) => quiet(plugin.slide({ path, at })),
+    glyphs: () => plugin.glyphs().catch(() => ({})),
+    home: (state) => quiet(plugin.home({ state })),
+    onEvent: (listener) => unsubscribe([plugin.addListener("glass", (event) => {
+      if (event.type === "paste") void nativeFiles(event.files).then(attachToComposer);
+      else listener(event);
+    })]),
+  };
+}
+
+/** The app's own context menu over page items (ios/App/App/NativeMenuPlugin.swift), iOS 26 and later. */
+interface MenuPlugin {
+  supported(): Promise<{ supported: boolean }>;
+  arm(options: NativeMenuArm): Promise<void>;
+  disarm(options: { id?: string }): Promise<void>;
+  resolve(options: { id: string; content: NativeMenuContent }): Promise<void>;
+  addListener(event: "menu", listener: (event: NativeMenuEvent) => void): Promise<PluginListenerHandle>;
+}
+const DuskMenu = registerPlugin<MenuPlugin>("DuskMenu");
+
+export function menuBridge(plugin: MenuPlugin): MenuBridge {
+  const quiet = (work: Promise<unknown>) => { void work.catch(() => {}); };
+  return {
+    arm: (options) => quiet(plugin.arm(options)),
+    disarm: (id) => quiet(plugin.disarm({ id })),
+    resolve: (id, content) => quiet(plugin.resolve({ id, content })),
+    onEvent: (listener) => unsubscribe([plugin.addListener("menu", listener)]),
+  };
+}
+
+/** Which way the app may turn (ios/App/App/AppViewController.swift). */
+interface OrientationPlugin {
+  allowLandscape(options: { on: boolean }): Promise<void>;
+  rotate(options: { to: "portrait" | "landscape" }): Promise<void>;
+}
+const DuskOrientation = registerPlugin<OrientationPlugin>("DuskOrientation");
+
+/** ActivityKit and the Live Activity's buttons (ios/App/App/TurnActivityPlugin.swift). */
+interface TurnActivityPlugin {
+  start(options: { attributes: TurnActivityAttributes; state: TurnActivityState }): Promise<{ id?: string }>;
+  update(options: { id: string; state: TurnActivityState }): Promise<void>;
+  end(options: { id: string; state: TurnActivityState; now?: boolean }): Promise<void>;
+  list(): Promise<{ activities: Array<{ id: string; botId: string; threadId: string; startedAt: number }> }>;
+  lineKey(): Promise<{ key?: string }>;
+  addListener(event: "token", listener: (event: { id: string; threadId: string; token: string; startedAt: number }) => void): Promise<PluginListenerHandle>;
+  addListener(event: "startToken", listener: (event: { token: string }) => void): Promise<PluginListenerHandle>;
+  addListener(event: "action", listener: (event: NativeAction) => void): Promise<PluginListenerHandle>;
+}
+const DuskTurnActivity = registerPlugin<TurnActivityPlugin>("DuskTurnActivity");
+
+interface NotificationsPlugin {
+  setViewing(options: { threadId: string | null }): Promise<void>;
+  delivered(): Promise<{ notifications: DeliveredNotification[] }>;
+  remove(options: { ids: string[] }): Promise<void>;
+}
+const DuskNotifications = registerPlugin<NotificationsPlugin>("DuskNotifications");
+/** android only (android/.../PushSetupPlugin.java): whether the build carries a Firebase config, without which push
+ * registration crashes the app */
+const DuskPushSetup = registerPlugin<{ configured(): Promise<{ configured: boolean }> }>("DuskPushSetup");
+const DuskHaptics = registerPlugin<{ play(options: { kind: string }): Promise<void> }>("DuskHaptics");
+/** android only (android/.../InsetsPlugin.java): the window's insets edge to edge, and the keyboard's for the page */
+interface InsetsPlugin {
+  setMode(options: { ride: boolean }): Promise<void>;
+  setBars(options: { status: "dark" | "light"; ground: string; camera?: boolean }): Promise<void>;
+  setBackGesture(options: { on: boolean }): Promise<void>;
+  addListener(event: "keyboard", listener: (event: { height: number; settled: boolean; duration?: number; at?: number }) => void): Promise<PluginListenerHandle>;
+  addListener(event: "back", listener: (event: { phase: "start" | "progress" | "cancel" | "commit"; progress?: number }) => void): Promise<PluginListenerHandle>;
+}
+const DuskInsets = registerPlugin<InsetsPlugin>("DuskInsets");
+
+async function groundHex(): Promise<string> {
+  const { cssHex } = await import("@/mobile/native-glass");
+  const root = document.querySelector(".dusk-mobile") ?? document.documentElement;
+  return cssHex(getComputedStyle(root).getPropertyValue("--color-app")) ?? "";
+}
+
+/** Android's delivered pushes: FCM's data block is flat (server/mobile/push.ts messageData). */
+async function androidDelivered(): Promise<DeliveredNotification[]> {
+  const { notifications } = await PushNotifications.getDeliveredNotifications();
+  return notifications.map((one) => {
+    const data = (one.data ?? {}) as Record<string, unknown>;
+    return {
+      id: one.id,
+      ...(typeof data.threadId === "string" ? { threadId: data.threadId } : {}),
+      ...(typeof data.id === "string" ? { notificationId: data.id } : {}),
+    };
+  });
+}
+
+function turnActivityBridge(): TurnActivityBridge {
+  return {
+    async start(attributes, state) { return (await DuskTurnActivity.start({ attributes, state })).id ?? null; },
+    update: (id, state) => DuskTurnActivity.update({ id, state }),
+    end: (id, state, now) => DuskTurnActivity.end({ id, state, ...(now ? { now } : {}) }),
+    list: async () => (await DuskTurnActivity.list()).activities,
+    onToken: (listener) => unsubscribe([DuskTurnActivity.addListener("token", listener)]),
+    onStartToken: (listener) => unsubscribe([DuskTurnActivity.addListener("startToken", ({ token }) => listener(token))]),
+    lineKey: async () => (await DuskTurnActivity.lineKey()).key ?? null,
+  };
+}
+
+/** a push the bot host sent, as opposed to one from an older link that put its ids at the top level */
+const fromBotHost = (data: Record<string, unknown>) => ["dusk", "omb"].some((key) => data[key] && typeof data[key] === "object");
+
+export function orientationBridge(plugin: OrientationPlugin): OrientationBridge {
+  return {
+    allowLandscape: (on) => { void plugin.allowLandscape({ on }).catch(() => {}); },
+    rotate: (to) => { void plugin.rotate({ to }).catch(() => {}); },
+  };
+}
 
 const UNSUPPORTED = new Set(["recognizer-unavailable", "unsupported-locale"]);
 // android has no separate speech permission, so `speech` is absent there
@@ -134,8 +328,10 @@ export interface ScanDriver {
   permission(): Promise<string>;
   request(): Promise<string>;
   openSettings(): Promise<void>;
-  listen(onCode: (text: string | undefined) => void, onError: (message: string) => void): Promise<PluginListenerHandle[]>;
-  start(): Promise<void>;
+  listen(onCode: (text: string | undefined) => void, onError: (message: string) => void, onAction?: (key: string) => void): Promise<PluginListenerHandle[]>;
+  /** with an overlay a scanner may draw the whole screen itself, and says so */
+  start(overlay?: ScanOverlay): Promise<{ fullScreen?: boolean } | void>;
+  busy?(on: boolean, label?: string): Promise<void>;
   stop(): Promise<void>;
   torchAvailable(): Promise<boolean>;
   torch(on: boolean): Promise<void>;
@@ -145,8 +341,12 @@ const iosScanner: ScanDriver = {
   permission: async () => (await QrScanner.checkPermissions()).camera,
   request: async () => (await QrScanner.requestPermissions()).camera,
   openSettings: () => QrScanner.openSettings(),
-  listen: async (onCode) => [await QrScanner.addListener("codeScanned", ({ text }) => onCode(text))],
-  start: () => QrScanner.startScan(),
+  listen: async (onCode, _onError, onAction) => [
+    await QrScanner.addListener("codeScanned", ({ text }) => onCode(text)),
+    await QrScanner.addListener("scannerAction", ({ key }) => { if (typeof key === "string") onAction?.(key); }),
+  ],
+  start: async (overlay) => (await QrScanner.startScan(overlay ? { overlay } : undefined)) ?? undefined,
+  busy: (busy, label) => QrScanner.setBusy({ busy, label }),
   stop: () => QrScanner.stopScan(),
   torchAvailable: async () => (await QrScanner.isTorchAvailable()).available,
   torch: (on) => QrScanner.setTorch({ on }),
@@ -160,7 +360,7 @@ const androidScanner: ScanDriver = {
     await BarcodeScanner.addListener("barcodesScanned", ({ barcodes }) => onCode(barcodes[0]?.rawValue)),
     await BarcodeScanner.addListener("scanError", ({ message }) => onError(message)),
   ],
-  start: () => BarcodeScanner.startScan({ formats: [BarcodeFormat.QrCode] }),
+  start: async () => { await BarcodeScanner.startScan({ formats: [BarcodeFormat.QrCode] }); },
   stop: () => BarcodeScanner.stopScan(),
   torchAvailable: async () => (await BarcodeScanner.isTorchAvailable()).available,
   torch: (on) => (on ? BarcodeScanner.enableTorch() : BarcodeScanner.disableTorch()),
@@ -172,7 +372,7 @@ export function scannerCamera(driver: ScanDriver, scanning: (on: boolean) => voi
     permission: async () => cameraPermission(await driver.permission()),
     request: async () => cameraPermission(await driver.request()),
     openSettings: () => driver.openSettings(),
-    async start({ onCode, onError }) {
+    async start({ onCode, onError, overlay, onAction }) {
       let handles: PluginListenerHandle[] = [];
       const deliver = distinctCodes(onCode);
       let stopped = false;
@@ -197,11 +397,20 @@ export function scannerCamera(driver: ScanDriver, scanning: (on: boolean) => voi
       };
       try {
         scanning(true);
-        handles = await driver.listen((text) => { if (!stopped) deliver(text); }, (message) => { if (!stopped) onError?.(message); });
-        await driver.start();
-        const available = await driver.torchAvailable();
+        handles = await driver.listen(
+          (text) => { if (!stopped) deliver(text); },
+          (message) => { if (!stopped) onError?.(message); },
+          (key) => { if (!stopped) onAction?.(key); },
+        );
+        const fullScreen = Boolean((await driver.start(overlay))?.fullScreen);
+        // the system's own scanner covers the page, which stays as it is under it
+        if (fullScreen) scanning(false);
+        const available = !fullScreen && await driver.torchAvailable();
+        const busy = driver.busy;
         return {
           stop,
+          fullScreen,
+          busy: fullScreen && busy ? (on, label) => { if (!stopped) void busy(on, label).catch(() => {}); } : undefined,
           torch: available ? {
             set(on) {
               if (stopped) return Promise.resolve();
@@ -247,7 +456,11 @@ function unsubscribe(handles: PendingHandle[]): () => void {
 
 function setScanning(on: boolean) {
   document.documentElement.classList.toggle("mobile-scanning", on);
+  paintBars?.();
 }
+
+/** Android: puts the bars' icons and the window's ground in step with the page, and with a live scan over it. */
+let paintBars: (() => void) | null = null;
 
 async function ensureBarcodeModule(): Promise<boolean> {
   if ((await BarcodeScanner.isGoogleBarcodeScannerModuleAvailable()).available) return true;
@@ -292,17 +505,24 @@ export async function nativePlatform(): Promise<MobilePlatform> {
   const kind = Capacitor.getPlatform() as "ios" | "android";
   if (kind === "android") {
     overlayReady ??= StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
+  } else {
+    // WKWebView draws a form bar (previous, next, Done) over the keyboard; a chat has one field and its own send
+    void Keyboard.setAccessoryBarVisible({ isVisible: false }).catch(() => {});
   }
   // a plugin that never answers must not hold the first paint: each startup read gets two seconds
   const bounded = <T,>(work: Promise<T>, label: string): Promise<T | undefined> => new Promise((resolve) => {
     const timer = setTimeout(() => { console.warn(`startup: ${label} did not answer`); resolve(undefined); }, 2000);
     work.then(resolve, () => resolve(undefined)).finally(() => clearTimeout(timer));
   });
-  const [info, launch] = await Promise.all([
+  const [info, launch, , glass, menu, pushSetup] = await Promise.all([
     bounded(App.getInfo(), "app info"),
     bounded(App.getLaunchUrl(), "launch url"),
     bounded(overlayReady ?? Promise.resolve(), "status bar"),
+    kind === "ios" && Capacitor.isPluginAvailable("DuskGlass") ? bounded(DuskGlass.supported(), "glass") : undefined,
+    kind === "ios" && Capacitor.isPluginAvailable("DuskMenu") ? bounded(DuskMenu.supported(), "menu") : undefined,
+    kind === "android" && Capacitor.isPluginAvailable("DuskPushSetup") ? bounded(DuskPushSetup.configured(), "push setup") : undefined,
   ]);
+  const pushOn = kind === "ios" || Boolean(pushSetup?.configured);
   let pendingLaunchUrl = launch?.url;
   const secrets: MobilePlatform["secrets"] = {
     get: async (key) => {
@@ -313,6 +533,40 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     remove: async (key) => { await keystore.internalRemoveItem({ prefixedKey: SECRET_PREFIX + key, sync: false }); },
   };
   const speech = Capacitor.isPluginAvailable("DuskSpeech");
+  const turnActivityOn = kind === "ios" && Capacitor.isPluginAvailable("DuskTurnActivity");
+  const notificationsOn = kind === "ios" && Capacitor.isPluginAvailable("DuskNotifications");
+  const insetsOn = kind === "android" && Capacitor.isPluginAvailable("DuskInsets");
+  const backs: Array<() => boolean> = [];
+  let backButton: Promise<PluginListenerHandle> | undefined;
+  const atRoot = new WeakSet<() => boolean>();
+  let backOn = true;
+  let gestureOwner: (() => boolean) | null = null;
+  let gestureOn = false;
+  const gestures: Array<(event: BackGestureEvent) => boolean> = [];
+  const backRoute = () => {
+    const gesture = insetsOn && Boolean(gestureOwner) && backs.at(-1) === gestureOwner;
+    if (gesture !== gestureOn) {
+      gestureOn = gesture;
+      void DuskInsets.setBackGesture({ on: gesture }).catch(() => {});
+    }
+    const on = backs.some((one) => !atRoot.has(one));
+    if (kind !== "android" || on === backOn) return;
+    backOn = on;
+    void App.toggleBackButtonHandler({ enabled: on }).catch(() => {});
+  };
+  if (insetsOn) {
+    void DuskInsets.addListener("back", ({ phase, progress }) => {
+      const event: BackGestureEvent = phase === "start" || phase === "progress" ? { phase, progress: progress ?? 0 } : { phase };
+      const taken = gestures.reduce((any, listener) => listener(event) || any, false);
+      if (phase === "commit" && !taken && !handleBack(backs)) void App.minimizeApp().catch(() => {});
+    }).catch(() => {});
+  }
+  if (kind === "ios" && Capacitor.isPluginAvailable("DuskPicker")) {
+    setNativeAttach({
+      photos: async () => nativeFiles((await DuskPicker.photos({ multiple: true })).files),
+      files: async () => nativeFiles((await DuskPicker.files({ multiple: true })).files),
+    });
+  }
   registerPhoneVoice({
     os: kind,
     speech: speech ? phoneSpeech(DuskSpeech) : undefined,
@@ -325,7 +579,11 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     native: true,
     appVersion: info?.version || __APP_VERSION__,
     deviceName: () => kind === "ios" ? "iPhone" : "Android phone",
+    glass: glass?.supported ? glassBridge(DuskGlass, glass.acks === true) : undefined,
+    menu: menu?.supported ? menuBridge(DuskMenu) : undefined,
+    orientation: Capacitor.isPluginAvailable("DuskOrientation") ? orientationBridge(DuskOrientation) : undefined,
     haptic(type) {
+      if (Capacitor.isPluginAvailable("DuskHaptics")) { void DuskHaptics.play({ kind: type }).catch(() => {}); return; }
       void (async () => {
         switch (type) {
           case "light": case "soft":
@@ -340,7 +598,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
             await Haptics.selectionEnd();
             break;
           case "error":
-            await Haptics.notification({ type: NotificationType.Error });
+            await Haptics.notification({ type: NotificationType.Warning });
             break;
           case "success":
             await Haptics.notification({ type: NotificationType.Success });
@@ -348,23 +606,60 @@ export async function nativePlatform(): Promise<MobilePlatform> {
       })().catch(() => {});
     },
     onKeyboard(listener) {
-      return unsubscribe([
-        Keyboard.addListener("keyboardWillShow", ({ keyboardHeight }) => listener({ height: keyboardHeight, phase: "will" })),
+      if (insetsOn) {
+        return unsubscribe([DuskInsets.addListener("keyboard", ({ height, settled, duration, at }) => listener({ height, phase: settled ? "did" : "will", duration, at }))]);
+      }
+      const settled = [
         Keyboard.addListener("keyboardDidShow", ({ keyboardHeight }) => listener({ height: keyboardHeight, phase: "did" })),
-        Keyboard.addListener("keyboardWillHide", () => listener({ height: 0, phase: "will" })),
         Keyboard.addListener("keyboardDidHide", () => listener({ height: 0, phase: "did" })),
+      ];
+      // with the glass chrome a move comes from the notification the native composer rides, with its timing
+      if (glass?.supported) {
+        return unsubscribe([...settled, DuskGlass.addListener("glass", (event) => {
+          if (event.type === "keyboard") listener({ height: event.height, phase: event.settled ? "did" : "will", duration: event.duration, at: event.at, lift: event.lift });
+        })]);
+      }
+      return unsubscribe([
+        ...settled,
+        Keyboard.addListener("keyboardWillShow", ({ keyboardHeight }) => listener({ height: keyboardHeight, phase: "will" })),
+        Keyboard.addListener("keyboardWillHide", () => listener({ height: 0, phase: "will" })),
       ]);
     },
     hideKeyboard() {
       void Keyboard.hide().catch(() => {});
     },
+    keyboardMode: insetsOn ? (ride) => { void DuskInsets.setMode({ ride }).catch(() => {}); } : undefined,
     setStatusBar(style) {
+      if (insetsOn) {
+        paintBars = () => {
+          const camera = document.documentElement.classList.contains("mobile-scanning");
+          void groundHex().then((ground) => DuskInsets.setBars({ status: style, ground, camera })).catch(() => {});
+        };
+        paintBars();
+        return;
+      }
       void StatusBar.setStyle({ style: style === "dark" ? Style.Light : Style.Dark }).catch(() => {});
     },
     onBack(listener) {
-      return unsubscribe([App.addListener("backButton", () => {
-        if (listener() === false && kind === "android") void App.minimizeApp().catch(() => {});
-      })]);
+      backs.push(listener);
+      backButton ??= App.addListener("backButton", () => {
+        if (!handleBack(backs) && kind === "android") void App.minimizeApp().catch(() => {});
+      });
+      backRoute();
+      return () => { const at = backs.indexOf(listener); if (at >= 0) backs.splice(at, 1); backRoute(); };
+    },
+    backGesture(listener, on) {
+      gestureOwner = on ? listener : gestureOwner === listener ? null : gestureOwner;
+      backRoute();
+    },
+    onBackGesture(listener) {
+      gestures.push(listener);
+      return () => { const at = gestures.indexOf(listener); if (at >= 0) gestures.splice(at, 1); };
+    },
+    backAtRoot(listener, root) {
+      if (root) atRoot.add(listener);
+      else atRoot.delete(listener);
+      backRoute();
     },
     onAppUrl(listener) {
       // a universal link (https://dusk.bot/m/...) arrives as the app link it stands for
@@ -378,10 +673,18 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     onPause(listener) {
       return unsubscribe([App.addListener("pause", listener)]);
     },
+    onNetworkChange(listener) {
+      let last: string | null = null;
+      return unsubscribe([Network.addListener("networkStatusChange", ({ connected, connectionType }) => {
+        const now = `${connected}:${connectionType}`;
+        if (now !== last) { last = now; listener(); }
+      })]);
+    },
     prefs: {
       get: async (key) => (await Preferences.get({ key })).value,
       set: (key, value) => Preferences.set({ key, value }),
       remove: (key) => Preferences.remove({ key }),
+      keys: async () => (await Preferences.keys()).keys,
     },
     secrets,
     scanQr: kind === "android" ? async () => {
@@ -404,14 +707,16 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     // Capacitor 8 hands a top-level navigation off the app's own origin to the system (Mail for mailto:); the in-app
     // browser view takes web pages only
     openExternal: async (url) => { if (/^https?:/i.test(url)) await Browser.open({ url, presentationStyle: "popover" }); else window.location.href = url; },
+    closeBrowser() { void Browser.close().catch(() => {}); },
     share: async (data) => { await Share.share(data); },
+    shareFile: Capacitor.isPluginAvailable("Filesystem") ? shareFileNatively : undefined,
     appleSignIn: kind === "ios" && Capacitor.isPluginAvailable("AppleSignIn") ? async (nonceHash) => {
       try { return await AppleSignIn.signIn({ nonce: nonceHash }); } catch (error) {
         if ((error as { code?: unknown }).code === "canceled") return null;
         throw error;
       }
     } : undefined,
-    async registerPush(options) {
+    registerPush: pushOn ? async (options) => {
       try {
         const asked = (await PushNotifications.checkPermissions()).receive;
         if (asked === "denied" || (asked !== "granted" && !options?.prompt)) return null;
@@ -437,11 +742,48 @@ export async function nativePlatform(): Promise<MobilePlatform> {
       } catch {
         return null;
       }
+    } : undefined,
+    pushPermission: pushOn ? async () => {
+      try {
+        const { receive } = await PushNotifications.checkPermissions();
+        return receive === "granted" || receive === "denied" ? receive : "prompt";
+      } catch {
+        return "prompt";
+      }
+    } : undefined,
+    setViewingThread: notificationsOn ? (threadId) => { void DuskNotifications.setViewing({ threadId }).catch(() => {}); } : undefined,
+    async deliveredNotifications() {
+      try {
+        return notificationsOn ? (await DuskNotifications.delivered()).notifications : kind === "android" ? await androidDelivered() : [];
+      } catch {
+        return [];
+      }
+    },
+    async removeDeliveredNotifications(ids) {
+      if (!ids.length) return;
+      try {
+        if (notificationsOn) return await DuskNotifications.remove({ ids: [...ids] });
+        if (kind !== "android") return;
+        // Android cancels by id and tag, so the delivered entries go back whole
+        const { notifications } = await PushNotifications.getDeliveredNotifications();
+        const gone = notifications.filter((one) => ids.includes(one.id));
+        if (gone.length) await PushNotifications.removeDeliveredNotifications({ notifications: gone });
+      } catch {}
     },
     onNotificationOpen(listener) {
-      return unsubscribe([PushNotifications.addListener("pushNotificationActionPerformed", ({ notification }) => {
-        listener(notificationTarget(notification.data ?? {}));
+      return unsubscribe([PushNotifications.addListener("pushNotificationActionPerformed", ({ actionId, notification }) => {
+        const data = notification.data ?? {};
+        if (actionId === "tap" && !fromBotHost(data)) listener(notificationTarget(data));
       })]);
     },
+    onPhoneAction(listener) {
+      const handles = [PushNotifications.addListener("pushNotificationActionPerformed", ({ actionId, inputValue, notification }) => {
+        const data = notification.data ?? {};
+        if (actionId !== "tap" || fromBotHost(data)) listener({ actionId, ...(inputValue ? { inputValue } : {}), data });
+      })];
+      if (kind === "ios" && Capacitor.isPluginAvailable("DuskTurnActivity")) handles.push(DuskTurnActivity.addListener("action", listener));
+      return unsubscribe(handles);
+    },
+    turnActivity: turnActivityOn ? turnActivityBridge() : undefined,
   };
 }

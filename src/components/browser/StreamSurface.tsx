@@ -177,6 +177,8 @@ export function StreamSurface(props: {
   readonly onClient?: (client: PreviewStreamClient | null) => void;
   readonly onControl?: (control: PreviewStreamControl | null) => void;
   readonly onMessage?: (message: Readonly<Record<string, unknown>>) => void;
+  /** True for a notice the view answers itself (a step it took on its own), which is never shown as an error. */
+  readonly quietNotice?: (message: string) => boolean;
   readonly onConnectedChange?: (connected: boolean) => void;
   readonly onFirstFrame?: () => void;
   /** The view was refused before it opened (the route is missing, or the session is not allowed). */
@@ -413,7 +415,7 @@ export function StreamSurface(props: {
           } else if (message.type === "authPromptClosed") {
             setAuthPrompt((shown) => (shown && shown.id !== message.id ? shown : null));
           } else if (message.type === "notice" && typeof message.message === "string") {
-            notify({ kind: "error", message: message.message });
+            if (!propsRef.current.quietNotice?.(message.message)) notify({ kind: "error", message: message.message });
           }
           propsRef.current.onMessage?.(message);
         },

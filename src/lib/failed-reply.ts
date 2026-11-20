@@ -3,15 +3,17 @@ import { offersSignIn } from "@/components/EngineSetup";
 import { statusActivity } from "@/lib/activity-runs";
 import { t } from "@/lib/i18n";
 import { peerLine } from "@/lib/peer-message";
-import { plainErrorKind, plainErrorLine } from "@/lib/plain-error";
+import { isTechnicalError, plainErrorKind, plainErrorLine, providerSentence } from "@/lib/plain-error";
 import { isReceipt } from "@/lib/receipts";
 import type { LocaleKey } from "@/locales";
 import type { InstanceInfo, Message } from "@/state/store";
-import { failedTurnCause, type BrowserBlocker, type FailedReplyReason } from "../../shared/failed-turn";
+import { failedTurnCause, type BrowserBlocker } from "../../shared/failed-turn";
 import { isCancelledTranscriptRow } from "../../shared/client-cancel";
 import { freeFallback } from "../../shared/ai-ranking";
+import { hasRawDetail } from "../../shared/raw-detail";
+import { failurePlan, type FailureKind } from "../../shared/failure-plan";
 
-export type FailedReplyKind = FailedReplyReason | "claude_update" | "place" | "restart_interrupted" | "no_answer" | "blocker" | "other";
+export type FailedReplyKind = FailureKind;
 
 /** A failed turn's row: a reply that never came, not one that came back with a step that failed. */
 export function isFailedReply(message: Message): boolean {
@@ -77,15 +79,18 @@ export function restartAlreadyDid(cause: string): string | null {
   return RESTART_DID.exec(cause)?.[1]?.trim() || null;
 }
 
+
 const SIGNED_OUT_WORDS = /not logged in|logged out|\/login|not signed in|sign in again|authentication required|unauthori[sz]ed|invalid api key|\b401\b/i;
 const USAGE_WORDS = /usage limit|limit reached|hit your [\w' -]{0,30}limit/i;
+const SESSION_LOST_WORDS = /\bNo conversation found with session ID\b/i;
 const CREDIT_WORDS = /out of credits?|payment required|insufficient (?:funds|balance|credits?)/i;
 
 /** What stopped a failed row: the server's own reading when it stored one, its flags and words for an older row.
  * `ownAi`: an AI the person connected is ready now, so connecting one is no longer the fix. */
 /** What the free backup running out, being rate limited or not answering reads as: with no AI of the person's own none
  * of these is a failure they can fix by trying harder, only by connecting one. */
-const FREE_BACKUP_DOWN: ReadonlySet<FailedReplyKind> = new Set(["credits", "usage_limit", "rate_limit", "overloaded", "timeout", "no_answer", "other"]);
+const FREE_BACKUP_DOWN: ReadonlySet<FailedReplyKind> = new Set(["credits", "usage_limit", "rate_limit", "overloaded", "timeout", "no_answer", "other",
+  "model_not_found", "bad_request", "provider_down", "cli_missing", "cli_exit"]);
 
 export function failedReplyKind(tool: NonNullable<Message["tool"]>, engine: InstanceInfo | undefined, ownAi = false): FailedReplyKind {
   const kind = failedKind(tool, engine, ownAi);
@@ -103,6 +108,7 @@ function failedKind(tool: NonNullable<Message["tool"]>, engine: InstanceInfo | u
     CREDIT_WORDS.test(cause) ? "credits"
     : tool.limitResetsAt || USAGE_WORDS.test(cause) ? "usage_limit"
     : tool.setup && SIGNED_OUT_WORDS.test(cause) ? "signed_out"
+    : SESSION_LOST_WORDS.test(cause) ? "session_lost"
     : PLAIN_KIND[plainErrorKind(cause) ?? ""] ?? "other");
   // signed in again since: signing in is no longer the fix
   if (kind === "signed_out" && engine?.snapshot?.state === "available" && engine.snapshot.authenticated !== false) kind = "other";
@@ -123,19 +129,33 @@ export function plainFailureWords(cause: string): string | null {
 }
 
 /** Most actionable first: when bots fail for different reasons, the card says the one a person can fix. */
-const PRIORITY: FailedReplyKind[] = ["blocker", "no_ai", "signed_out", "claude_update", "credits", "usage_limit", "place", "restart_interrupted", "rate_limit", "overloaded", "timeout", "no_answer", "other"];
+const PRIORITY: FailedReplyKind[] = ["blocker", "no_ai", "signed_out", "cli_missing", "claude_update", "credits", "usage_limit", "model_not_found", "context", "session_lost", "place",
+  "restart_interrupted", "rate_limit", "overloaded", "provider_down", "timeout", "cli_exit", "bad_request", "no_answer", "other"];
 
 export function mostActionable<T extends { kind: FailedReplyKind }>(items: readonly T[]): T | undefined {
   return [...items].sort((a, b) => PRIORITY.indexOf(a.kind) - PRIORITY.indexOf(b.kind))[0];
 }
 
-const DETAIL: Record<Exclude<FailedReplyKind, "signed_out" | "credits" | "claude_update" | "place" | "blocker">, LocaleKey> = {
+/** the kinds whose line names the engine; a plain sentence from the engine itself says more, so it wins */
+const ENGINE_DETAIL: Record<"model_not_found" | "bad_request" | "context" | "provider_down" | "cli_missing" | "cli_exit", LocaleKey> = {
+  model_not_found: "failedReply.modelNotFound",
+  bad_request: "failedReply.badRequest",
+  context: "failedReply.context",
+  provider_down: "failedReply.providerDown",
+  cli_missing: "failedReply.cliMissing",
+  cli_exit: "failedReply.cliExit",
+};
+
+const hasEngineDetail = (kind: FailedReplyKind): kind is keyof typeof ENGINE_DETAIL => Object.hasOwn(ENGINE_DETAIL, kind);
+
+const DETAIL: Record<Exclude<FailedReplyKind, "signed_out" | "credits" | "claude_update" | "place" | "blocker" | keyof typeof ENGINE_DETAIL>, LocaleKey> = {
   usage_limit: "failedReply.usageLimit",
   rate_limit: "failedReply.rateLimited",
   overloaded: "failedReply.overloaded",
   timeout: "failedReply.timeout",
   no_ai: "failedReply.noAi",
   restart_interrupted: "failedReply.restarted",
+  session_lost: "failedReply.sessionLost",
   no_answer: "error.plain.generic",
   other: "error.plain.generic",
 };
@@ -145,10 +165,25 @@ const AI_UNREACHABLE: ReadonlySet<string> = new Set(["error.plain.unreachable", 
 /** The card's one plain line for a kind; place, trial and update failures bring their own words. Any other failure says
  * the server's own cause, as the sidebar does, unless it is technical. */
 export function failedReplyDetail(kind: FailedReplyKind, engineName: string, onServer: boolean, cause = ""): string {
+  // the server's English line for a known reason reads better in the reader's own language
+  const said = cause.trim() === failurePlan(kind).line ? "" : cause;
+  const words = detailWords(kind, engineName, onServer, said);
+  return said && hasRawDetail(words) ? detailWords(kind, engineName, onServer, "") : words;
+}
+
+function detailWords(kind: FailedReplyKind, engineName: string, onServer: boolean, cause: string): string {
   if (kind === "signed_out") return t(onServer ? "failedReply.signedOutServer" : "failedReply.signedOutHere", { engine: engineName });
   if (kind === "credits") return t("failedReply.credits", { engine: engineName });
   if (kind === "claude_update") return t("chat.claudeUpdate.offer");
   if (kind === "place" || kind === "blocker") return t("error.plain.generic");
+  // an engine's own words for a full context are token counts, never what to do next
+  if (kind === "context") return t(ENGINE_DETAIL.context, { engine: engineName });
+  if (kind === "session_lost") return t(DETAIL.session_lost);
+  if (hasEngineDetail(kind)) {
+    const text = cause.trim();
+    if (text && !isTechnicalError(text)) return currentFailureWords(text);
+    return (text && providerSentence(text)) || t(ENGINE_DETAIL[kind], { engine: engineName });
+  }
   // a turn's own network failure is its AI's server not answering, never the app: "fetch failed" from a model call
   if (kind === "other" && AI_UNREACHABLE.has(plainErrorKind(cause.trim()) ?? "")) return t("failedReply.unreachable", { engine: engineName });
   if (kind === "other" && cause.trim()) return plainErrorLine(cause) ?? currentFailureWords(cause.trim());
@@ -156,6 +191,13 @@ export function failedReplyDetail(kind: FailedReplyKind, engineName: string, onS
 }
 
 /** Why dusk bot stopped a browser run itself, in one line. */
+/** A failed row as a list previews it: the plain line its failure card leads with, never the engine's raw words. */
+export function failurePreviewLine(tool: NonNullable<Message["tool"]>, engine: InstanceInfo | undefined): string {
+  const kind = failedReplyKind(tool, engine, true);
+  if (kind === "blocker" && tool.blocker) return blockerDetail(tool.blocker);
+  return failedReplyDetail(kind, engine?.displayName ?? t("failedReply.yourAi"), false, failedTurnCause(tool.name) ?? "");
+}
+
 export function blockerDetail(blocker: BrowserBlocker): string {
   const site = blocker.site ?? "";
   if (blocker.kind === "loop") return site ? t("chat.blocker.loopOn", { site }) : t("chat.blocker.loop");
