@@ -271,7 +271,7 @@ export function FoundProvider({ instance }: { instance: InstanceInfo }) {
   const { refreshInstances } = useStore();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  if (!instance.found) return null;
+  if (!instance.found || instance.unknownDriver) return null;
   const use = () => {
     setBusy(true);
     setError(null);
@@ -379,6 +379,7 @@ function EngineRow({ instance, bare = false }: { instance: InstanceInfo; bare?: 
 
 function simpleStatus(instance: InstanceInfo, ready: boolean): string {
   const email = instance.snapshot.authenticated === true ? instance.snapshot.account?.email : undefined;
+  if (instance.unknownDriver) return t("settings.simple.ai.unknownDriver");
   if (ready && instance.found) return t("engines.found.status");
   if (ready) return email ? t("settings.simple.ai.connectedAs", { email }) : t("settings.simple.ai.connected");
   return t("settings.simple.ai.connect");
