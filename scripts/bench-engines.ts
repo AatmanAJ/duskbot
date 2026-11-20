@@ -5,7 +5,7 @@
 // servers up) -> first model request -> model's first byte -> engine's first text -> first text frame on /api/events
 // (the bubble the app draws) -> turn.completed. Costs a few cents per run; never part of a test suite.
 //   node --experimental-strip-types scripts/bench-engines.ts [--engines claude,codex,grokBuild,opencode,openai]
-//     [--runs 5] [--mode cold,warm,idle] [--set quick|work|remind] [--effort low] [--server built|ts] [--idle-ms N] [--json FILE]
+//     [--runs 5] [--mode cold,warm,idle] [--set quick|work|remind|mixed] [--effort low] [--server built|ts] [--idle-ms N] [--json FILE]
 //     [--keep] [--trace] [--dump-dir DIR] [--engine-args claude:--debug] [--claude-as gpt-6.2-sol]
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { copyFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync, appendFileSync } from "node:fs";
@@ -69,6 +69,20 @@ const REMIND = [
   "Remind me on Friday at 6pm to pay the electricity bill.",
   "Remind me next Monday at 10am to book a dentist appointment.",
   "Every Sunday at 7pm remind me to plan my week.",
+];
+
+// alternating quick questions and short asks the router counts as work (no tools needed): quick, work, quick, ...
+const MIXED = [
+  "What is 15 times 24?",
+  "Write a two-line poem about rain.",
+  "How many days are in a leap year?",
+  "Translate 'good morning' into French and Spanish.",
+  "What's the capital of Australia?",
+  "Summarize what photosynthesis is in one sentence.",
+  "Is 91 a prime number?",
+  "Draft a one-line birthday wish for a friend.",
+  "What is 18% of 2,450?",
+  "Write a one-sentence tip for better sleep.",
 ];
 
 const which = (name: string) => { try { return execFileSync("/bin/sh", ["-c", `command -v ${name}`], { encoding: "utf8" }).trim(); } catch { return ""; } };
@@ -285,7 +299,7 @@ function listen(fixture: Fixture): { on(listener: Listener): () => void; close()
   return { on: (listener) => { listeners.add(listener); return () => listeners.delete(listener); }, close: () => controller.abort() };
 }
 
-interface Sample { engine: string; mode: string; marks: Record<string, number>; ok: boolean; text: string; modelCalls: number; promptBytes: number; cacheRead: number; inputTokens: number }
+interface Sample { engine: string; mode: string; question?: string; marks: Record<string, number>; ok: boolean; text: string; modelCalls: number; promptBytes: number; cacheRead: number; inputTokens: number }
 
 const STAMP_HOPS: Record<string, { spawn: RegExp; ready: RegExp; text: RegExp }> = {
   claude: { spawn: /^spawn/, ready: /^out system:init$/, text: /^out stream_event:content_block_delta:text_delta$|^out assistant$/ },
@@ -376,9 +390,10 @@ try {
           await sleep(Number(opts["idle-ms"] ?? 10_000) + 2_500);
           await sleep(1_500);
         }
-        const pool = opts.set === "work" ? WORK : opts.set === "remind" ? REMIND : QUESTIONS;
+        const pool = opts.set === "work" ? WORK : opts.set === "remind" ? REMIND : opts.set === "mixed" ? MIXED : QUESTIONS;
         const question = opts.question ?? pool[q++ % pool.length]!;
         const sample = await runTurn(fixture, events, spec.id, bot, threadId, mode, question);
+        sample.question = question;
         if ((mode === "warm" || mode === "idle") && run === 0) { sample.mode = `${mode}-first`; }
         samples.push(sample);
         console.error(`${spec.id} ${sample.mode} #${run}: ${sample.ok ? "ok" : "FAILED"} ${HOPS.map((hop) => `${hop}=${sample.marks[hop] ?? "-"}`).join(" ")} calls=${sample.modelCalls} prompt=${sample.promptBytes}b cache=${sample.cacheRead}/${sample.inputTokens} "${sample.text}"`);
