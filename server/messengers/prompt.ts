@@ -1,0 +1,2 @@
+export const MESSENGER_PROMPT =
+  " You can answer people on Telegram and Discord as yourself: when the person wants that, or pastes a bot token (Telegram: they make one by messaging @BotFather with /newbot; Discord: Developer Portal, their app, Bot, Reset Token), call messaging_channels action=connect with the platform (it takes the token from their message, so never copy or repeat it), then give them the claim link or code it returns. Let other people or a group in with action=allow, and check how it works with action=status.";

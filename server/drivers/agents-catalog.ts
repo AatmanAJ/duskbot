@@ -7,6 +7,7 @@ import { MAUS_COLOR_NAMES } from "../../shared/wire.ts";
 import { agentToolAnnotations } from "../agent-tool-policy.ts";
 import { CHAT_CARD_TOOL_DEFINITIONS } from "./agents-chat-card-tools.ts";
 import { APP_SETTINGS_TOOL_DEFINITIONS } from "./agents-app-settings-tool.ts";
+import { MESSENGER_TOOL_DEFINITION } from "./agents-messenger-tool.ts";
 import { DEVS_TOOL_DEFINITIONS } from "./agents-devs-tools.ts";
 import { HELPER_TOOL_DEFINITIONS } from "./agents-helper-tools.ts";
 import { USAGE_LIMITS_TOOL_DEFINITION } from "./agents-usage-tool.ts";
@@ -542,7 +543,7 @@ const TOOL_DEFINITIONS = [
       required: ["text"],
     },
   },
-  ...SLACK_TOOL_DEFINITIONS, ...RESEARCH_TOOL_DEFINITIONS, READ_PAGES_DEFINITION, ...HELPER_TOOL_DEFINITIONS, ...PERSON_TOOL_DEFINITIONS, ...DEVS_TOOL_DEFINITIONS, ...APP_SETTINGS_TOOL_DEFINITIONS,
+  ...SLACK_TOOL_DEFINITIONS, ...RESEARCH_TOOL_DEFINITIONS, READ_PAGES_DEFINITION, ...HELPER_TOOL_DEFINITIONS, ...PERSON_TOOL_DEFINITIONS, ...DEVS_TOOL_DEFINITIONS, ...APP_SETTINGS_TOOL_DEFINITIONS, MESSENGER_TOOL_DEFINITION,
   {
     name: "memory_update",
     description:

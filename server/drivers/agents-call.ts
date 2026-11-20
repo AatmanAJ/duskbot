@@ -29,6 +29,7 @@ import { callPageTool, PAGE_TOOL_NAMES } from "./agents-pages-tools.ts";
 import { callSlackTool, SLACK_TOOL_NAMES } from "./agents-slack-tools.ts";
 import { callPersonTool, PERSON_TOOL_NAMES } from "./agents-person-tools.ts";
 import { APP_SETTINGS_TOOL_NAMES, callAppSettingsTool } from "./agents-app-settings-tool.ts";
+import { callMessengerTool, MESSENGER_TOOL } from "./agents-messenger-tool.ts";
 import { callDevsTool, DEVS_TOOL_NAMES } from "./agents-devs-tools.ts";
 import { STATUS_TOOL } from "../../shared/turn-progress.ts";
 import { callStatusTool } from "./agents-status-tool.ts";
@@ -257,6 +258,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
   if (PERSON_TOOL_NAMES.has(name)) return callPersonTool(name, args, context);
   if (DEVS_TOOL_NAMES.has(name)) return callDevsTool(name, args, context);
   if (APP_SETTINGS_TOOL_NAMES.has(name)) return callAppSettingsTool(name, args, context);
+  if (name === MESSENGER_TOOL) return callMessengerTool(name, args, context);
   if (TRIGGER_TOOL_NAMES.has(name)) return callTriggerTool(name, args, context);
   if (WAIT_TOOL_NAMES.has(name)) return callWaitTool(name, args, context);
   if (name === JOB_TOOL) return callJobTool(args, context);

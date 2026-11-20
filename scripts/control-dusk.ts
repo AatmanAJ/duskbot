@@ -188,6 +188,9 @@ export function verificationServerEnvironment(parentEnv: NodeJS.ProcessEnv, data
     childEnv.DUSK_OPENAI_LIVE_URL = liveUrl;
     if (parentEnv.DUSK_OPENAI_LIVE_KEY) childEnv.DUSK_OPENAI_LIVE_KEY = parentEnv.DUSK_OPENAI_LIVE_KEY;
   }
+  // Loopback chat-app fakes only (server/testing/fake-telegram.ts, fake-discord.ts): a test token never reaches the real ones.
+  for (const key of ["DUSK_TELEGRAM_API_URL", "DUSK_DISCORD_API_URL"]) if (/^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(parentEnv[key]?.trim() ?? "")) childEnv[key] = parentEnv[key]!.trim();
+  if (/^\d{1,2}$/.test(parentEnv.DUSK_TELEGRAM_POLL_SECONDS ?? "")) childEnv.DUSK_TELEGRAM_POLL_SECONDS = parentEnv.DUSK_TELEGRAM_POLL_SECONDS!;
   // A loopback account service only (apps/dashboard/scripts/fixture.ts): a fixture's reports and feedback never reach dusk.bot.
   const reportUrl = parentEnv.DUSK_BUG_REPORT_URL?.trim() ?? "";
   if (/^http:\/\/127\.0\.0\.1:\d{1,5}\/api\/bug-reports$/.test(reportUrl)) childEnv.DUSK_BUG_REPORT_URL = reportUrl;
