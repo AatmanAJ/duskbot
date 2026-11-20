@@ -558,6 +558,8 @@ export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLine
    * its words. On a room line this also carries `from`, so the room renders
    * the webhook's bot as the speaker. */
   webhookPost?: boolean;
+  /** A routine run's NOTHING NEW reply in the chat it worked in: kept for its session, never shown. */
+  quietRun?: true;
   /** user messages sent INTO a running turn (capabilities.queueing). */
   steered?: boolean;
   /** user messages a peer bot handed to this thread's RUNNING turn: peer

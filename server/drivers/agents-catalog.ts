@@ -159,7 +159,7 @@ const TRIGGER_FIELDS_SCHEMA = {
   },
   continuity: {
     type: "boolean",
-    description: "Schedules only: give each run the last completed run's report, for work that builds on last time (QA passes, monitoring, follow-ups). Default false; false in an update starts fresh.",
+    description: "Schedules only: give each run the last completed run's report, so it can say what is new since last time. Default true on create; false makes each run start fresh.",
   },
   overlap: {
     type: "string",
@@ -170,6 +170,19 @@ const TRIGGER_FIELDS_SCHEMA = {
     type: "boolean",
     description: "Repeating schedules only: also run once whenever dusk bot starts, for a computer often off when it is due.",
   },
+  check: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      kind: { type: "string", enum: ["page", "feed", "price", "script"] },
+      url: { type: "string" },
+      selector: { type: "string", description: "page: #id, .class, tag, tag#id or tag.class." },
+      command: { type: "string", description: "script: one shell command. Same output as last time = nothing new; last line {\"wakeAgent\":false} = skip, true = run." },
+    },
+    required: ["kind"],
+    description: "Schedules: a plain check before each run, no AI; the run happens only when it found something new.",
+  },
+  clear_check: { type: "boolean", description: "Updates: true removes the check." },
 } as const;
 
 const CHIEF_PROFILE_TARGET = " A Chief of Staff may pass for_bot_id (from list_bots) for a requested change to another bot.";
@@ -639,7 +652,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "trigger",
     description:
-      "Set up or change work that happens on its own (was create_trigger / manage_trigger): when <something happens>, a bot does <instructions>. create in this turn whenever the person describes recurring or event-based work (\"every morning send me…\", \"whenever I get an email from…\", \"when another app calls…\"); never ask for confirmation first. when=schedule runs on a time rule, cron included (for relative dates, the person's message carries the current time and timezone in its \"Current time when this message was sent\" line); when=app_event runs when something happens in a connected app (trigger_info action=events first; prefer it to a schedule that keeps checking); when=webhook gives an address another app sends to: the result carries its private address, so you can paste it into that app's setup yourself (never anywhere else). when=limit_reset runs when an AI's usage limit resets (\"run this when my limit resets\", or to finish work your own limit stopped). To the person these are automations: write name and instructions as they would say them. Something to do once, now, is not a trigger. update (only the fields to change), pause, resume and run_now (an app event or webhook gets a test event) act on one of the bot's routines, app events or webhooks, by its trigger_id from trigger_info. Before reporting a task finished, inspect related automations with trigger_info; pause a temporary monitor whose goal is met, then read its state back. Keep standing automations; delete_trigger deletes one only at the person's explicit request. Each applies at once; the person sees it with Edit, Pause and Undo. for_bot_id: a trigger of ANOTHER bot in your section, which keeps that bot's engine and permissions. email: your mail address; with trigger_id and email_from, their mail (to +email_alias) runs it.",
+      "Set up or change work that happens on its own (was create_trigger / manage_trigger): when <something happens>, a bot does <instructions>. create in this turn whenever the person describes recurring or event-based work (\"every morning send me…\", \"whenever I get an email from…\", \"when another app calls…\"); never ask for confirmation first. when=schedule runs on a time rule, cron included (for relative dates, the person's message carries the current time and timezone in its \"Current time when this message was sent\" line); when=app_event runs when something happens in a connected app (trigger_info action=events first; prefer it to a schedule that keeps checking); when=webhook gives an address another app sends to: the result carries its private address, so you can paste it into that app's setup yourself (never anywhere else). when=limit_reset runs when an AI's usage limit resets (\"run this when my limit resets\", or to finish work your own limit stopped). A schedule watching for something new (page, feed, price, chat, build) gets check, so it costs nothing until something changed; never make the AI poll. To come back to this chat later (\"check back in 20 min\"), use wait_until kind=time with follow_up. To the person these are automations: write name and instructions as they would say them. Something to do once, now, is not a trigger. update (only the fields to change), pause, resume and run_now (an app event or webhook gets a test event) act on one of the bot's routines, app events or webhooks, by its trigger_id from trigger_info. Before reporting a task finished, inspect related automations with trigger_info; pause a temporary monitor whose goal is met, then read its state back. Keep standing automations; delete_trigger deletes one only at the person's explicit request. Each applies at once; the person sees it with Edit, Pause and Undo. for_bot_id: a trigger of ANOTHER bot in your section, which keeps that bot's engine and permissions. email: your mail address; with trigger_id and email_from, their mail (to +email_alias) runs it.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

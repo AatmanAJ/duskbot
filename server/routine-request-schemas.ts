@@ -40,6 +40,13 @@ export const routineToolScheduleSchema = z.discriminatedUnion("type", [
   }).strict(),
 ]);
 
+const probeSchema = z.object({
+  kind: z.enum(["page", "feed", "price", "script"]),
+  url: z.string().max(2_000),
+  selector: z.string().max(200).optional(),
+  command: z.string().max(2_000).optional(),
+}).strict();
+
 export const routineToolDefinitionSchema = z.object({
   name: z.string().max(80),
   instructions: z.string().max(20_000),
@@ -50,12 +57,13 @@ export const routineToolDefinitionSchema = z.object({
   continuity: z.boolean().optional(),
   overlap: z.enum(["skip", "queue"]).optional(),
   runOnStartup: z.boolean().optional(),
+  probe: probeSchema.optional(),
 }).strict();
 
 export const routineToolChangesSchema = routineToolDefinitionSchema
-  .omit({ timeoutMinutes: true })
+  .omit({ timeoutMinutes: true, probe: true })
   .partial()
-  .extend({ timeoutMinutes: z.number().nullable().optional() })
+  .extend({ timeoutMinutes: z.number().nullable().optional(), probe: probeSchema.nullable().optional() })
   .strict()
   .refine(
   (changes) => Object.values(changes).some((value) => value !== undefined),
@@ -179,13 +187,15 @@ export const storedDefinitionSchema = z.object({
   continuity: z.boolean().optional(),
   overlap: z.enum(["skip", "queue"]).optional(),
   runOnStartup: z.boolean().optional(),
+  probe: probeSchema.optional(),
 }).strict();
 export const storedChangesSchema = storedDefinitionSchema
-  .omit({ schedule: true, timeoutMinutes: true })
+  .omit({ schedule: true, timeoutMinutes: true, probe: true })
   .partial()
   .extend({
     schedule: storedScheduleChangesSchema.optional(),
     timeoutMinutes: z.number().int().min(5).max(240).nullable().optional(),
+    probe: probeSchema.nullable().optional(),
   })
   .strict()
   .refine(

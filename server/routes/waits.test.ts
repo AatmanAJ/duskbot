@@ -203,3 +203,16 @@ describe("the waits route", () => {
       .toEqual([WAIT_MESSAGES.serverHost, WAIT_MESSAGES.guest]);
   });
 });
+
+describe("a time wait request", () => {
+  const NOW = Date.parse("2026-11-20T10:00:00Z");
+  it("takes minutes from now or an RFC3339 time with its offset, within a week", () => {
+    expect(parseWaitRequest({ label: "the deploy", kind: "time", minutes: 20 }, HOME, NOW)).toMatchObject({ ok: true, request: { kind: "time", at: NOW + 20 * 60_000 } });
+    expect(parseWaitRequest({ label: "standup", kind: "time", at: "2026-11-21T09:00:00+05:30" }, HOME, NOW)).toMatchObject({ ok: true, request: { at: Date.parse("2026-11-21T03:30:00Z") } });
+    expect(parseWaitRequest({ label: "x", kind: "time", at: "2026-11-21T09:00:00" }, HOME, NOW)).toMatchObject({ ok: false, error: expect.stringMatching(/offset/) });
+    expect(parseWaitRequest({ label: "x", kind: "time", at: "2026-11-19T09:00:00Z" }, HOME, NOW)).toMatchObject({ ok: false, error: expect.stringMatching(/already past/) });
+    expect(parseWaitRequest({ label: "x", kind: "time", minutes: 60 * 24 * 8 }, HOME, NOW)).toMatchObject({ ok: false, error: expect.stringMatching(/one-time trigger/) });
+    expect(parseWaitRequest({ label: "x", kind: "time" }, HOME, NOW)).toMatchObject({ ok: false });
+    expect(parseWaitRequest({ label: "x", kind: "file_exists", path: "/tmp/a", minutes: 5 }, HOME, NOW)).toMatchObject({ ok: false, error: expect.stringMatching(/only to time/) });
+  });
+});

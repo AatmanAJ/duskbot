@@ -209,9 +209,12 @@ function routineRequestOwnerKey(owner: RoutineRequestOwner): string {
  * have something to do on time. */
 export interface RoutineCheckResult { run?: { prompt: string; key: string }; trouble?: string; wakeAt?: number; /** It read nothing: a run holds its last change, or none may start now. */ held?: true }
 
+/** `scheduled`: the routine's own time came; otherwise a wake its checks asked for (`wakeAt`) or a person's run. */
+export interface RoutineCheckContext { manual: boolean; hold?: CheckHold; scheduled?: boolean }
+
 export interface RoutineChecks {
   /** Runs a routine's checks. With `hold` they may do only what needs no AI, and their items wait. */
-  check(routine: Routine, context: { manual: boolean; hold?: CheckHold }): Promise<RoutineCheckResult>;
+  check(routine: Routine, context: RoutineCheckContext): Promise<RoutineCheckResult>;
   /** Items handed to a run that was never queued. */
   release(key: string): void;
   /** A run holding checked items ended. Called again on later changes to that run. */
@@ -1016,13 +1019,13 @@ export class RoutineManager {
       const dueRoutines = this.routines.filter(isDue);
       const scheduledRuns: RoutineRun[] = [];
       const allocations: ResultsThreadAllocation[] = [];
-      const checks: Array<{ id: string; hold?: CheckHold }> = [];
+      const checks: Array<{ id: string; hold?: CheckHold; scheduled: boolean }> = [];
       if (dueRoutines.length > 0) {
         this.commitMutation(() => {
           for (const routine of dueRoutines) {
             // A routine with checks never misses: however late, one check reads everything since the last.
             if (routine.checks) {
-              if (!this.checking.has(routine.id)) checks.push({ id: routine.id, hold: checkHold(this.runs, routine.id, now) });
+              if (!this.checking.has(routine.id)) checks.push({ id: routine.id, hold: checkHold(this.runs, routine.id, now), scheduled: routine.nextRunAt != null && routine.nextRunAt <= now });
               if (routine.nextRunAt != null && routine.nextRunAt <= now) this.advancePastOccurrence(routine, now, routine.nextRunAt);
               delete routine.wakeAt;
               continue;
@@ -1069,7 +1072,7 @@ export class RoutineManager {
       for (const run of scheduledRuns) {
         if (run.status === "missed") this.options.onRunFailed?.(cloneRun(run));
       }
-      for (const { id, hold } of checks) this.runChecks(id, hold).catch((error) => console.error(`routines: the checks of ${id} failed`, error));
+      for (const { id, hold, scheduled } of checks) this.runChecks(id, hold, undefined, scheduled).catch((error) => console.error(`routines: the checks of ${id} failed`, error));
 
       // Oldest first, by id: a rollback across awaits can replace the run objects, and the array with them.
       let indexed: RoutineRun[] | null = null, byId = new Map<string, RoutineRun>();
@@ -1188,14 +1191,14 @@ export class RoutineManager {
 
   /** Runs a routine's checks: what needs the AI becomes one run, or fills `manual`, the queued run the person started.
    * Nothing new leaves no run behind a scheduled check, and a quiet completed one behind a manual check. */
-  private async runChecks(routineId: string, hold: CheckHold | undefined, manual?: string): Promise<void> {
+  private async runChecks(routineId: string, hold: CheckHold | undefined, manual?: string, scheduled = false): Promise<void> {
     const hook = this.options.checks, key = manual ?? routineId, routine = this.routines.find((candidate) => candidate.id === routineId);
     if (this.closing || !hook || !routine || this.checking.has(key)) return;
     const revision = routine.updatedAt;
     this.checking.add(key);
     let result: RoutineCheckResult;
     try {
-      result = await hook.check(cloneRoutine(routine), { manual: manual !== undefined, ...(hold ? { hold } : {}) });
+      result = await hook.check(cloneRoutine(routine), { manual: manual !== undefined, ...(hold ? { hold } : {}), ...(scheduled ? { scheduled } : {}) });
     } catch (error) {
       console.error(`routines: the checks of ${routineId} failed`, error);
       result = { trouble: "The checks could not run; they try again at the next check." };
@@ -1210,7 +1213,7 @@ export class RoutineManager {
     }
     if (current.updatedAt !== revision) {
       if (result.run) hook.release(result.run.key);
-      return this.runChecks(routineId, hold, manual);
+      return this.runChecks(routineId, hold, manual, scheduled);
     }
     const allocations: ResultsThreadAllocation[] = [];
     let run: RoutineRun | undefined;

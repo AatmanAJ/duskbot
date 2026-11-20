@@ -263,6 +263,16 @@ export function createAutomationReports(deps: AutomationReportDeps) {
       else if (reply.quiet) deps.routines()?.noteReport(run.id, { state: "quiet" });
       else if (bot) deps.notify("done", bot, run.threadId, reply.text);
     },
+    /** A run that worked in the person's own chat and found nothing new: its NOTHING NEW line is hidden, nobody is
+     * told, and it counts as quiet. False when it had something to say. */
+    quietInItsChat(run: RoutineRun, turnId?: string): boolean {
+      if (run.target !== "bot" || run.status !== "completed" || !run.threadId || run.deliver === "brief") return false;
+      const said = turnId ? store.activePath(run.threadId).findLast((message) => message.role === "bot" && message.kind === "text" && message.turnId === turnId) : replyOf(run);
+      if (!read(said).quiet) return false;
+      if (said) store.patchMessage(run.threadId, said.id, { quietRun: true });
+      deps.routines()?.noteReport(run.id, { state: "quiet" });
+      return true;
+    },
     /** A run failed in a way the person is told about: one line says so where its reports go. */
     runFailed(run: RoutineRun, detail: string): void {
       if (run.target !== "bot" || run.status !== "failed" || run.deliver === "brief" || !run.threadId) return;

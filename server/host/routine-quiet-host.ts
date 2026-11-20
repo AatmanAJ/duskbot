@@ -8,6 +8,7 @@ import { createAllowance } from "../allowance.ts";
 import { writeFileAtomic } from "../atomic.ts";
 import { ledgerCost } from "../model-prices.ts";
 import { createRoutineProbes, withProbes } from "../routine-probe.ts";
+import { runCheckScript } from "../routine-script.ts";
 import { flexOf, useFreeReruns } from "../routine-quiet.ts";
 import { nextOccurrence } from "../routine-schedules.ts";
 import { createRoutineSelfCap } from "../routine-self-cap.ts";
@@ -82,6 +83,8 @@ export function createRoutineHost(deps: RoutineHostDeps) {
   const probes = createRoutineProbes({
     dataDir: deps.dataDir,
     fetch: (url) => fetchPublicPage(url, loopback && url.startsWith(`${loopback}/`) ? { allow: () => true } : {}),
+    // Security: a Cloud home runs no script checks; its routines can be written by people who do not own the machine.
+    ...(deps.cloudHome ? {} : { script: (_routine: Routine, command: string) => runCheckScript(command) }),
     failed: (routine, sentence) => {
       const thread = resultsThread(routine);
       deps.tell(routine.botId, thread, serverLine(deps.language(thread), "server.routine.probeFailed", { routine: routine.name, reason: sentence }));

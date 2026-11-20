@@ -210,5 +210,23 @@ describe("mail routes and usage in the trigger tools", () => {
     expect(calls[0]!.path).toBe("/api/internal/trigger-usage?fromBotId=scout&fromThreadId=thread-1");
     expect(result.text).toContain("approximate dollars");
     expect(result.text).toContain("Poller");
+describe("a schedule's plain check in the trigger tool", () => {
+  it("sends check as the routine's probe, with continuity on by default", async () => {
+    const { calls, context: ctx } = context();
+    await callTool("trigger", { action: "create", when: "schedule", name: "Group watch", instructions: "Tell me what is new.",
+      schedule: { type: "interval", every_minutes: 30 }, check: { kind: "script", command: " ./last-id.sh " } }, ctx);
+    expect((calls[0]!.body as { routine: unknown }).routine).toMatchObject({ continuity: true, probe: { kind: "script", url: "", command: "./last-id.sh" } });
+    await callTool("trigger", { action: "create", when: "schedule", name: "Status", instructions: "Tell me.", continuity: false,
+      schedule: { type: "interval", every_minutes: 30 }, check: { kind: "page", url: "https://status.example/", selector: "#state" } }, ctx);
+    expect((calls[1]!.body as { routine: unknown }).routine).toMatchObject({ continuity: false, probe: { kind: "page", url: "https://status.example/", selector: "#state" } });
+  });
+
+  it("removes a check with clear_check and refuses a check without what it reads", async () => {
+    const { calls, context: ctx } = context();
+    await callTool("trigger", { action: "update", trigger_id: "r-1", clear_check: true }, ctx);
+    expect((calls[0]!.body as { changes: unknown }).changes).toEqual({ probe: null });
+    expect((await callTool("trigger", { action: "update", trigger_id: "r-1", check: { kind: "script" } }, ctx)).text).toContain("needs command");
+    expect((await callTool("trigger", { action: "update", trigger_id: "r-1", check: { kind: "feed" } }, ctx)).text).toContain("needs url");
+    expect((await callTool("trigger", { action: "create", when: "webhook", name: "A", instructions: "B", check: { kind: "feed", url: "https://a.example/f" } }, ctx)).text).toContain("takes no check");
   });
 });

@@ -49,7 +49,7 @@ export function continuityCarry(run: RoutineRun, routines: readonly Pick<Routine
     if (candidate.botId !== run.botId || candidate.target !== run.target || candidate.runOn !== run.runOn) continue;
     if (candidate.id === run.id) continue;
     if (candidate.status !== "completed") continue;
-    if (!candidate.output?.trim()) continue;
+    if (!candidate.output?.trim() || candidate.report?.state === "quiet") continue;
     if (!Number.isFinite(finishedOrder(candidate))) continue;
     if (!latest || finishedOrder(candidate) > finishedOrder(latest)) latest = candidate;
   }

@@ -4019,6 +4019,7 @@
   "routines.probe.page": "Changes to {place}",
   "routines.probe.feed": "New posts in {place}",
   "routines.probe.price": "The price on {place}",
+  "routines.probe.script": "What {place} prints",
   "routines.inline.check.probe": "A web page",
   "routines.inline.error.hours": "Pick hours that start before they end on the same day.",
   "routines.strip.term": "Last runs",

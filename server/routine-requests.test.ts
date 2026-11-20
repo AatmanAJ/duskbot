@@ -192,6 +192,21 @@ describe("RoutineRequestService", () => {
       } })).rejects.toMatchObject({ status: 409 });
     });
 
+    it("creates, changes and removes a schedule's plain check, and shows it on the card", async () => {
+      const { service, routines, store } = harness(undefined, undefined, undefined, () => "full-access");
+      const submit = (proposal: RoutineProposalInput) => service.submit({ botId: "bot-a", threadId: "thread-a", proposal });
+      const created = await submit(createProposal({ schedule: { type: "interval", everyMinutes: 30 }, probe: { kind: "feed", url: "https://blog.example/feed" } }));
+      const routineId = created.result!.resultId;
+      expect(routines.listRoutines()[0]).toMatchObject({ checks: ["probe"], probe: { kind: "feed", url: "https://blog.example/feed" } });
+      expect(JSON.stringify(store.messagesFor("thread-a"))).toContain("Checks first: new items in https://blog.example/feed");
+      await submit({ action: "update", routineId, changes: { probe: { kind: "page", url: "https://blog.example/", selector: "#latest" } } });
+      expect(routines.listRoutines()[0]!.probe).toEqual({ kind: "page", url: "https://blog.example/", selector: "#latest" });
+      await submit({ action: "update", routineId, changes: { probe: null } });
+      expect(routines.listRoutines()[0]!.probe).toBeUndefined();
+      expect(routines.listRoutines()[0]!.checks).toBeUndefined();
+      await expect(submit(createProposal({ name: "Bad", instructions: "Other.", probe: { kind: "page", url: "file:///etc/passwd" } }))).rejects.toMatchObject({ status: 400 });
+    });
+
     it("does not create repeated Full Access schedules", async () => {
       const { service, routines } = harness(undefined, undefined, undefined, () => "full-access");
       const args = { botId: "bot-a", threadId: "thread-a", proposal: createProposal() };

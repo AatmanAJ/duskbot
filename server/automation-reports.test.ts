@@ -136,6 +136,20 @@ describe("automation reports", () => {
     expect(f.notified).toEqual([]);
   });
 
+  it("hides a NOTHING NEW reply of a run that worked in the person's own chat, and tells no one", () => {
+    const f = fixture();
+    const quiet = f.store.appendMessage(f.main, { role: "bot", kind: "text", text: "NOTHING NEW", turnId: "turn-q", turnTerminal: true });
+    const run: RoutineRun = { id: "run-here", routineId: "routine-here", routineName: "Group watch", target: "bot", botId: f.bot.id, runOn: "maus",
+      scheduledFor: 0, status: "completed", manual: false, triggerSource: "schedule", threadId: f.main, resultsThreadId: f.main, createdAt: 0 };
+    f.runs.set(run.id, run);
+    expect(f.reports.quietInItsChat(run, "turn-q")).toBe(true);
+    expect(f.store.messagesFor(f.main).find((message) => message.id === quiet.id)?.quietRun).toBe(true);
+    expect(f.runs.get(run.id)!.report).toEqual({ state: "quiet" });
+    expect(f.notified).toEqual([]);
+    f.store.appendMessage(f.main, { role: "bot", kind: "text", text: "Two new messages from Ada.", turnId: "turn-n", turnTerminal: true });
+    expect(f.reports.quietInItsChat(run, "turn-n")).toBe(false);
+  });
+
   it("asks the person in the chat, as a normal line they can answer, when the run needs them", () => {
     const f = fixture();
     const run = f.finished("I drafted a reply to Acme.\nNEEDS INPUT: Should I send it?");

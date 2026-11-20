@@ -14,6 +14,8 @@ import {
   type RoutineToolScheduleInput,
 } from "./routine-request-schemas.ts";
 import { runsOnce } from "../shared/limit-reset.ts";
+import type { RoutineProbe } from "../shared/routines.ts";
+import { cleanProbe } from "./routine-quiet.ts";
 import { limitResetOccurrence } from "./routine-schedules.ts";
 import {
   intervalHasRestrictions,
@@ -371,7 +373,12 @@ function normalizeDefinition(input: RoutineToolDefinitionInput, now: number, own
     ...(input.continuity === true ? { continuity: true } : {}),
     ...(input.overlap === "queue" ? { overlap: "queue" as const } : {}),
     ...(input.runOnStartup === true ? { runOnStartup: true } : {}),
+    ...(input.probe ? { probe: requestProbe(input.probe) } : {}),
   };
+}
+
+function requestProbe(value: unknown): RoutineProbe {
+  try { return cleanProbe(value)!; } catch (error) { throw new RoutineRequestError(error instanceof Error ? error.message : String(error)); }
 }
 
 function normalizeChanges(input: RoutineToolChangesInput, now: number, ownEngine?: string): RoutineRequestChanges {
@@ -385,6 +392,7 @@ function normalizeChanges(input: RoutineToolChangesInput, now: number, ownEngine
   if (input.continuity !== undefined) changes.continuity = input.continuity === true;
   if (input.overlap !== undefined) changes.overlap = input.overlap;
   if (input.runOnStartup !== undefined) changes.runOnStartup = input.runOnStartup === true;
+  if (input.probe !== undefined) changes.probe = input.probe === null ? null : requestProbe(input.probe);
   return changes;
 }
 
@@ -627,9 +635,10 @@ function effectiveDefinition(operation: RoutineRequestOperation, manager: Routin
     ...(existing.continuity ? { continuity: true } : {}),
     ...(existing.overlap ? { overlap: existing.overlap } : {}),
     ...(existing.runOnStartup ? { runOnStartup: true } : {}),
+    ...(existing.probe ? { probe: existing.probe } : {}),
   };
   if (operation.action !== "update") return base;
-  const { schedule, timeoutMinutes, ...changes } = operation.changes;
+  const { schedule, timeoutMinutes, probe, ...changes } = operation.changes;
   const merged: RoutineRequestDefinition = {
     ...base,
     ...changes,
@@ -637,6 +646,8 @@ function effectiveDefinition(operation: RoutineRequestOperation, manager: Routin
   };
   if (timeoutMinutes === null) delete merged.timeoutMinutes;
   else if (timeoutMinutes !== undefined) merged.timeoutMinutes = timeoutMinutes;
+  if (probe === null) delete merged.probe;
+  else if (probe !== undefined) merged.probe = probe;
   if (runsOnce(merged.schedule)) delete merged.runOnStartup;
   return merged;
 }
@@ -710,6 +721,7 @@ function cardCopy(
       `Runs on: ${destination}`,
       `Run limit: ${definition.timeoutMinutes === undefined ? "No limit" : `${definition.timeoutMinutes} minutes`}`,
       `Continuity: ${definition.continuity ? "Carries the previous run's report into the next run" : "Each run starts fresh"}`,
+      ...(definition.probe ? [`Checks first: ${probeText(definition.probe)}; the bot runs only when that changed`] : []),
       `While busy: ${definition.overlap === "queue" ? "Queue one scheduled run; skip further occurrences until it starts" : "Skip overlapping scheduled occurrences"}`,
       ...(definition.runOnStartup || (operation.action === "update" && operation.changes.runOnStartup !== undefined)
         ? [`On startup: ${definition.runOnStartup ? "Also runs once each time dusk bot starts" : "Runs only on its schedule"}`]
@@ -739,7 +751,13 @@ function inputFromDefinition(definition: RoutineRequestDefinition, botId: string
     ...(definition.continuity ? { continuity: true } : {}),
     ...(definition.overlap === "queue" ? { overlap: "queue" as const } : {}),
     ...(definition.runOnStartup ? { runOnStartup: true } : {}),
+    ...(definition.probe ? { probe: definition.probe } : {}),
   };
+}
+
+function probeText(probe: RoutineProbe): string {
+  if (probe.kind === "script") return `the output of \`${redactSecretsInText(probe.command ?? "")}\``;
+  return `${probe.kind === "feed" ? "new items in" : probe.kind === "price" ? "the price on" : "changes to"} ${probe.url}${probe.selector ? ` (${probe.selector})` : ""}`;
 }
 
 function updateFromChanges(
@@ -757,6 +775,7 @@ function updateFromChanges(
   if (changes.continuity !== undefined) patch.continuity = changes.continuity;
   if (changes.overlap !== undefined) patch.overlap = changes.overlap;
   if (changes.runOnStartup !== undefined) patch.runOnStartup = changes.runOnStartup;
+  if (changes.probe !== undefined) patch.probe = changes.probe;
   return patch;
 }
 
@@ -831,6 +850,7 @@ function revalidateOperation(operation: RoutineRequestOperation, manager: Routin
         || Boolean(routine.continuity) !== Boolean(definition.continuity)
         || (routine.overlap ?? "skip") !== (definition.overlap ?? "skip")
         || Boolean(routine.runOnStartup) !== Boolean(definition.runOnStartup)
+        || !isDeepStrictEqual(routine.probe ?? null, definition.probe ?? null)
         || (routine.attachments?.length ?? 0) > 0) return false;
       if (schedule.type === "limit_reset" || routine.schedule.type === "limit_reset") {
         return schedule.type === routine.schedule.type && isDeepStrictEqual(requestSchedule(schedule), requestSchedule(routine.schedule));
@@ -916,6 +936,7 @@ function routineSnapshot(routine: Routine): RoutineRequestSnapshot | undefined {
     ...(routine.continuity ? { continuity: true } : {}),
     ...(routine.overlap === "queue" ? { overlap: "queue" as const } : {}),
     ...(routine.runOnStartup ? { runOnStartup: true } : {}),
+    ...(routine.probe ? { probe: routine.probe } : {}),
     enabled: routine.enabled,
     ...(routine.target === "room-goal" ? { target: "room-goal" as const } : {}),
     ...(routine.groupId ? { groupId: routine.groupId } : {}),
@@ -938,6 +959,7 @@ function restorePatch(before: RoutineRequestSnapshot, now: number): Partial<Rout
     continuity: before.continuity === true,
     overlap: before.overlap ?? "skip",
     runOnStartup: before.runOnStartup === true,
+    probe: before.probe ?? null,
   };
 }
 

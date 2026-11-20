@@ -142,6 +142,7 @@ export function createProactive(deps: ProactiveDeps) {
       if (found.gmail) suggestion.consider({ gmailConnected: found.gmail.connected, ...(found.gmail.address ? { inbox: found.gmail.address } : {}) });
     },
     ...(inbox ? { inbox } : {}),
+    busy: (botId) => store.bot(botId)?.busy === true,
   });
   /** One brief, the main agent's: a briefing routine of any other bot finds nothing to do. */
   const routineChecks: RoutineChecks = {

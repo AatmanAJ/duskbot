@@ -751,7 +751,7 @@ const noneTransparent = () => false;
 const hiddenSteps = (item: TranscriptItem) => item.kind !== "message";
 
 function hiddenChatRow(message: Message, botId: string, showToolCalls: boolean): boolean {
-  if (message.reaction || isCancelledTranscriptRow(message)) return true;
+  if (message.reaction || message.quietRun || isCancelledTranscriptRow(message)) return true;
   switch (richRowKind(message)) {
     case "activity":
       return Boolean(message.peerResume) || (!message.dataResult && !isStatusActivity(message) && quietRow(message, showToolCalls));

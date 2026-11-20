@@ -20,7 +20,7 @@ const USAGE_ROUTE = "/api/internal/trigger-usage";
 const MAIL_ROUTE = "/api/internal/bot-mail";
 const APP_ONLY = ["app", "event", "account"] as const;
 const REQUEST_ROUTE = "/api/internal/trigger-requests";
-const SCHEDULE_ONLY = ["schedule", "timeout_minutes", "timeoutMinutes", "clear_timeout", "continuity", "overlap", "run_on_startup", "runOnStartup"] as const;
+const SCHEDULE_ONLY = ["schedule", "timeout_minutes", "timeoutMinutes", "clear_timeout", "continuity", "overlap", "run_on_startup", "runOnStartup", "check", "clear_check"] as const;
 
 function jsonRecord(value: unknown): value is Json {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -269,7 +269,29 @@ function routineFields(args: Json): { fields: Json; error?: string } {
   if (typeof args.continuity === "boolean") fields.continuity = args.continuity;
   if (args.overlap !== undefined) fields.overlap = args.overlap;
   if (typeof runOnStartup === "boolean") fields.runOnStartup = runOnStartup;
+  const check = routineCheck(args.check, args.clear_check);
+  if (check.error) return { fields, error: check.error };
+  if (check.probe !== undefined) fields.probe = check.probe;
   return { fields };
+}
+
+/** check as the routine keeps it (its probe); null when clear_check removes it. */
+function routineCheck(raw: unknown, clear: unknown): { probe?: Json | null; error?: string } {
+  if (clear != null && typeof clear !== "boolean") return { error: "clear_check must be true or false." };
+  if (clear === true) return raw == null ? { probe: null } : { error: "Choose check or clear_check, not both." };
+  if (raw == null) return {};
+  let value = raw;
+  if (typeof value === "string") { try { value = JSON.parse(value); } catch { return { error: "check must be an object." }; } }
+  if (!jsonRecord(value)) return { error: 'check must be an object such as {"kind":"page","url":"https://example.com/status"} or {"kind":"script","command":"..."}.' };
+  const kind = value.kind;
+  if (kind === "script") {
+    if (typeof value.command !== "string" || !value.command.trim()) return { error: "A script check needs command: one shell command line." };
+    return { probe: { kind, url: "", command: value.command.trim() } };
+  }
+  if (kind !== "page" && kind !== "feed" && kind !== "price") return { error: "check.kind must be page, feed, price or script." };
+  if (typeof value.url !== "string" || !value.url.trim()) return { error: `A ${kind} check needs url: the full https address.` };
+  const selector = typeof value.selector === "string" && value.selector.trim() ? value.selector.trim() : undefined;
+  return { probe: { kind, url: value.url.trim(), ...(selector ? { selector } : {}) } };
 }
 
 
@@ -505,7 +527,8 @@ async function createTrigger(args: Json, forBotId: string | undefined, context: 
   if (when === "schedule") {
     if (!fields.schedule) return { text: "A schedule trigger needs schedule.", isError: true };
     if (fields.eventTypes) return { text: "webhook_event_types applies only to when=webhook.", isError: true };
-    const { eventTypes: _unused, ...routine } = fields;
+    const { eventTypes: _unused, ...asked } = fields;
+    const routine = typeof asked.continuity === "boolean" ? asked : { ...asked, continuity: true };
     return withRepeatHint(await request({ action: "create", kind: "schedule", routine, ...(forBotId ? { forBotId } : {}) }, context, `Created ${label}`), fields);
   }
   const misplaced = SCHEDULE_ONLY.find((key) => args[key] !== undefined && args[key] !== null);
