@@ -387,7 +387,8 @@ export interface WireBot extends DefaultBotFields, BotAccessFields {
   outbound?: { policy: "ask" | "allow"; dailyCap: number };
   /** Which of a paired phone's apps this bot may use; absent: every bot may use what the phone allows (shared/phone-apps.ts). */
   phoneApps?: import("./phone-apps.ts").PhoneApps;
-  /** Ordered backups used only by opt-in, pre-prompt startup recovery. */
+  /** The backups that carry a turn on when this bot's AI is limited, signed out or failing, in order. Absent: the
+   * person's other working AIs, chosen automatically; empty: No backup. A patch sends null to go back to automatic. */
   fallback?: Array<{ instanceId: string; model: string }>;
   /** What a turn does when its AI's usage limit refuses it and no backup can take over: "wait" (absent) holds it and
    * carries on by itself at the reset, "ask" offers the free model or the wait on a card, "free" moves to the free model. */
