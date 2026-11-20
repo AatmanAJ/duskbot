@@ -547,7 +547,7 @@ export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLine
     limitResetsAt?: number;
     /** error rows: the reply came back; only a step the turn ran failed or wasn't allowed (`owned`: and it says so itself, so no card repeats it). */
     partial?: boolean; owned?: boolean;
-    reason?: import("./failed-turn.ts").FailedReplyReason; blocker?: import("./failed-turn.ts").BrowserBlocker; // error rows: what stopped the reply, when the server could tell
+    reason?: import("./failed-turn.ts").FailedReplyReason; blocker?: import("./failed-turn.ts").BrowserBlocker; errorRef?: string; // error rows: what stopped the reply, when the server could tell, and the code it logged beside the real cause
     /** Provider item identity, scoped to the owning turn. */
     itemId?: string;
     /** Whether the harness captured the full redacted result. Private

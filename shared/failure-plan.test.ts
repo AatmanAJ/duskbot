@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { failedTurnCause, failedTurnTool, type FailedReplyReason } from "./failed-turn";
-import { FAILURE_PLANS, failurePlan, type FailureKind } from "./failure-plan";
+import { ERROR_KIND_OF, FAILURE_PLANS, failurePlan, isErrorRef, newErrorRef, type ErrorKind, type FailureKind } from "./failure-plan";
 import { hasRawDetail, rawDetailIn } from "./raw-detail";
 
 const REASONS: FailedReplyReason[] = ["signed_out", "credits", "usage_limit", "rate_limit", "overloaded", "timeout", "no_ai", "model_not_found",
@@ -20,24 +20,47 @@ const RAW_CAUSES = [
   "Traceback (most recent call last):\n  File \"agent.py\", line 3",
 ];
 
+const NAMED: ErrorKind[] = ["signed_out", "out_of_credit", "usage_limit", "busy", "no_reply", "model", "chat_full", "ai_setup", "no_ai", "computer",
+  "repeating", "interrupted", "other"];
+
 describe("every way a reply can be lost", () => {
-  it("has a plan: what heals it, and a button", () => {
-    expect(Object.keys(FAILURE_PLANS).sort()).toEqual([...KINDS].sort());
-    for (const kind of KINDS) {
+  it("is one of the named kinds", () => {
+    expect(Object.keys(ERROR_KIND_OF).sort()).toEqual([...KINDS].sort());
+    for (const kind of KINDS) expect(NAMED, kind).toContain(ERROR_KIND_OF[kind]);
+  });
+
+  it("has a plan for each named kind: what heals it, and a button", () => {
+    expect(Object.keys(FAILURE_PLANS).sort()).toEqual([...NAMED].sort());
+    for (const kind of NAMED) {
       const plan = FAILURE_PLANS[kind];
       expect(plan.action, kind).toBeTruthy();
       expect(plan.instead, `${kind}: its fallback is another button`).not.toBe(plan.action);
     }
     expect(failurePlan(undefined)).toBe(FAILURE_PLANS.other);
+    expect(failurePlan("rate_limit")).toBe(FAILURE_PLANS.busy);
   });
 
   it("says one or two plain sentences, with no path, address, stack, JSON or code", () => {
-    for (const kind of KINDS) {
+    for (const kind of NAMED) {
       const { line } = FAILURE_PLANS[kind];
       expect(rawDetailIn(line), `${kind}: ${line}`).toBeNull();
       expect(line, kind).toMatch(/^(?:dusk bot|[A-Z])[^\n]{10,120}\.$/);
       expect(line.split(/(?<=\.) /).length, kind).toBeLessThanOrEqual(2);
     }
+  });
+});
+
+describe("a reference code", () => {
+  it("is short, and has no letter or digit a person could misread", () => {
+    const codes = Array.from({ length: 200 }, () => newErrorRef());
+    for (const code of codes) expect(isErrorRef(code), code).toBe(true);
+    expect(newErrorRef(() => 0)).toBe("D-2222");
+    expect(newErrorRef(() => 0.999)).toBe("D-ZZZZ");
+    expect(codes.join("")).not.toMatch(/[01ILOU]/);
+  });
+
+  it("is kept on the row it was logged for", () => {
+    expect(failedTurnTool("boom", { errorRef: "D-7F3K" }).errorRef).toBe("D-7F3K");
   });
 });
 

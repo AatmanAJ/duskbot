@@ -30,7 +30,7 @@ import { createPersonWaits } from "./host/person-waits.ts"; import { askToolName
 import { assertRequestTarget, guardedRequestPath, requestConflict, requestNeedsInput } from "./guarded-requests.ts";
 import { botAvatarUrlFromStoredPath } from "../shared/bot-avatar.ts";
 import { BOT_PROFILE_LIMITS } from "../shared/bot-profile.ts";
-import { ERROR_DUMP_REFUSAL, failedTurnTool, sendsErrorDump, withoutEchoedPrompt } from "../shared/failed-turn.ts";
+import { ERROR_DUMP_REFUSAL, sendsErrorDump, withoutEchoedPrompt } from "../shared/failed-turn.ts"; import { failedTurnRow } from "./failed-turn-row.ts";
 import { plainComputerFailure } from "../shared/computer-unreachable.ts";
 import { routinePromptName } from "../shared/routine-run.ts";
 import { assistantTranscript, errorTranscript } from "../shared/client-cancel.ts"; import { PersonStops, stoppedTurnRow } from "./person-stops.ts"; import { LiveTurns } from "./live-turns.ts"; import { askedElsewhereAt, personClock, previousPersonMessageAt } from "./turn-gap.ts";
@@ -224,7 +224,7 @@ import { retryLine } from "./retry-line.ts";
 import { automaticBackups, recoveryCapabilityError, startupBackups } from "./automatic-recovery.ts";
 import { createQuotaSwitchHost } from "./host/quota-switch.ts"; import { quotaSwitchEnabled } from "./quota-switch.ts";
 import { decodeGeneratedImage } from "./generated-image.ts";
-import { failedReplyReason } from "./failed-reply-reason.ts"; import { isDiskFull } from "./sqlite-rollback.ts"; import { createMcpServersHost } from "./host/mcp-servers-host.ts"; import { createLimitTakeover, signedOutStop } from "./host/limit-takeover.ts";
+import { isDiskFull } from "./sqlite-rollback.ts"; import { createMcpServersHost } from "./host/mcp-servers-host.ts"; import { createLimitTakeover, signedOutStop } from "./host/limit-takeover.ts";
 import {
   isRemoteMcpServer,
   parseMcpServerMutation,
@@ -4195,7 +4195,7 @@ const handoffTicks = createHandoffTicks(), coordinator: Coordinator = createCoor
         const cause = followupLine ?? (child.outcome === "interrupted" && child.outcomeDetail ? child.outcomeDetail : child.result);
         const member = room ? store.bot(child.botId) : undefined;
         store.appendMessage(child.threadId, { role: "bot", kind: "activity",
-          ...(member ? { from: { botId: member.id, name: member.name, color: member.color } } : {}), tool: failedTurnTool(cause) });
+          ...(member ? { from: { botId: member.id, name: member.name, color: member.color } } : {}), tool: failedTurnRow(cause) });
         if (room) store.patchGroup(room.id, { unread: true });
         else store.patchTask(child.botId, child.threadId, { unread: true });
         return;
@@ -5313,7 +5313,7 @@ const watchdog = new TurnWatchdog({
     store.appendMessage(turn.threadId, {
       role: "bot",
       kind: "activity",
-      tool: failedTurnTool(cause),
+      tool: failedTurnRow(cause),
     });
     if (bot && routineRun?.target !== "bot") {
       reportIncident({ kind: "stalled", bot, threadId: turn.threadId, detail: cause });
@@ -7540,8 +7540,8 @@ bus.subscribe((event: RuntimeEvent) => {
       }
       if (introTurns.has(event.threadId)) break;
       // any failure on OpenCode's free backup is fixed by connecting an AI; the app says so unless one is connected by then
-      pushMessage({ role: "bot", kind: "activity", tool: failedTurnTool(event.message, { ...event,
-        reason: event.providerInstanceId && registry.knownSnapshot(event.providerInstanceId)?.freeFallback === true ? "no_ai" : failedReplyReason(event.message, event) }) });
+      pushMessage({ role: "bot", kind: "activity", tool: failedTurnRow(event.message, { ...event,
+        ...(event.providerInstanceId && registry.knownSnapshot(event.providerInstanceId)?.freeFallback === true ? { reason: "no_ai" as const } : {}) }) });
       if (event.setup && bot) store.setTaskActivity(bot.id, event.threadId, "dead");
       break;
     case "thread.token-usage.updated":
@@ -7991,7 +7991,7 @@ const openAsks = createOpenAsks({ store, handedOff: (threadId) => coordinator.ac
 const finishGuard = createFinishGuard({ asks: openAsks, botOf: (threadId) => (batchContinue.active(threadId) ? null : oneOnOne(threadId)), held: (threadId) => { const botId = oneOnOne(threadId); return !botId || watchdog.waiting(threadId) || threadBusy(botId, threadId) || hasQueuedSteeredMessages(botId, threadId); }, carryOn: (botId, threadId, note) => startTurn(botId, note, { threadId, unattended: true, cardContinuation: true }),
   line: (threadId, reason) => void store.appendMessage(threadId, { role: "bot", kind: "activity", tool: { name: `recovery: ${reason.kind === "plan" ? serverLine(threadLanguage(threadId), "server.finish.plan", { open: reason.open, total: reason.total }) : serverLine(threadLanguage(threadId), reason.kind === "ack" ? "server.finish.ack" : "server.finish.next")}`, ok: true } }) });
 const actionReceipts = createActionReceipts({ dataDir: DATA_DIR, botOf: (threadId) => (store.groupByThread(threadId) ? null : store.botByThread(threadId)?.id ?? null), mark: (threadId, turnId, kinds) => { const said = turnId ? store.activePath(threadId).findLast((line) => line.role === "bot" && line.kind === "text" && line.turnId === turnId) : undefined; return Boolean(said && store.patchMessage(threadId, said.id, { unconfirmed: kinds })); } });
-const browserLoops = createBrowserLoops({ stop: ({ threadId, blocker, cause }) => { const bot = store.botByThread(threadId); if (!bot) return; turnStops.stopping(threadId, liveTurnByThread.get(threadId), cause); routines?.failThread(threadId, `Stopped: ${cause}`, { cause: "cap" }); store.appendMessage(threadId, { role: "bot", kind: "activity", tool: failedTurnTool(`stopped: ${cause}`, { blocker }) }); void interruptDirectThread(bot.id, threadId, cause).catch(() => undefined); } });
+const browserLoops = createBrowserLoops({ stop: ({ threadId, blocker, cause }) => { const bot = store.botByThread(threadId); if (!bot) return; turnStops.stopping(threadId, liveTurnByThread.get(threadId), cause); routines?.failThread(threadId, `Stopped: ${cause}`, { cause: "cap" }); store.appendMessage(threadId, { role: "bot", kind: "activity", tool: failedTurnRow(`stopped: ${cause}`, { blocker }) }); void interruptDirectThread(bot.id, threadId, cause).catch(() => undefined); } });
 bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) { batchContinue.onEvent(event); finishGuard.onEvent(event); actionReceipts.onEvent(event); } });
 const reconnectResume = createReconnectResume({ botOf: oneOnOne, needing: (botId) => appsToReconnect(botId),
   held: (threadId) => { const botId = oneOnOne(threadId); return !botId || watchdog.waiting(threadId) || threadBusy(botId, threadId) || hasQueuedSteeredMessages(botId, threadId); },
@@ -8085,7 +8085,7 @@ function drainQueuedSendsNow() {
         const why = err instanceof Error ? err.message : String(err);
         store.appendMessage(threadId, {
           role: "bot", kind: "activity",
-          tool: failedTurnTool(`queued message could not start: ${why}`),
+          tool: failedTurnRow(`queued message could not start: ${why}`),
         });
         resolve();
           // A turn that never started publishes no completion to wake the groups behind it.
@@ -8353,7 +8353,7 @@ async function startOrQueueOpenedThread(
     store.appendMessage(threadId, {
       role: "bot",
       kind: "activity",
-      tool: failedTurnTool(`this thread could not start: ${why}`),
+      tool: failedTurnRow(`this thread could not start: ${why}`),
     });
     return { state: "failed", error: why };
   }
@@ -9144,7 +9144,7 @@ async function beginTurn(
         store.appendMessage(threadId, {
           role: "bot",
           kind: "activity",
-          tool: failedTurnTool(message, placeFailure ? { place: placeFailure.row } : {}),
+          tool: failedTurnRow(message, placeFailure ? { place: placeFailure.row } : {}),
         });
         if (opts?.automationSource === undefined && !opts?.commsDepth && !opts?.cardContinuation) {
           notify(buildNotification("turn-failed", bot, threadId, redactSecretsInText(withoutEchoedPrompt(message)), { avatarUrl: bot.avatarUrl }));
@@ -9715,7 +9715,7 @@ async function beginTurn(
         role: "bot",
         kind: "activity",
         turnSucceeded: false,
-        tool: failedTurnTool(message, e instanceof PlaceUnavailableError ? { place: e.row } : e instanceof TurnUsageLimitRefusedError ? { limitResetsAt: e.resetsAt } : e instanceof TurnAuthenticationRefusedError ? { setup: true, reason: "signed_out" } : {}),
+        tool: failedTurnRow(message, e instanceof PlaceUnavailableError ? { place: e.row } : e instanceof TurnUsageLimitRefusedError ? { limitResetsAt: e.resetsAt } : e instanceof TurnAuthenticationRefusedError ? { setup: true, reason: "signed_out" } : {}),
       });
       const personTurn = opts?.automationSource === undefined && !opts?.commsDepth && !opts?.cardContinuation, told = personTurn && takeoverScope === "signed-out" ? limitTakeover.tell(bot, bot.modelSelection, { scope: "signed-out" }) : null; // a limit or a sign-out is heard once a stretch, not once a turn
       if (told) store.appendMessage(threadId, { role: "bot", kind: "activity", tool: { name: `notice: ${told}`, ok: true, setup: true } });
@@ -10840,7 +10840,7 @@ async function runClaimedGroupMemberTurn(
       role: "bot",
       kind: "activity",
       from: { botId: bot.id, name: bot.name, color: bot.color },
-      tool: failedTurnTool(message),
+      tool: failedTurnRow(message),
     });
     onDispatchError?.(message);
     return true;
@@ -10968,7 +10968,7 @@ async function runClaimedGroupMemberTurn(
       role: "bot",
       kind: "activity",
       from: { botId: bot.id, name: bot.name, color: bot.color },
-      tool: failedTurnTool(message),
+      tool: failedTurnRow(message),
     });
     reportDispatchError(message);
     return true;
@@ -11152,7 +11152,7 @@ async function runClaimedGroupMemberTurn(
       store.appendMessage(threadId, {
         role: "bot", kind: "activity",
         from: { botId: bot.id, name: bot.name, color: bot.color },
-        tool: failedTurnTool(message, placeFailure ? { place: placeFailure.row } : {}),
+        tool: failedTurnRow(message, placeFailure ? { place: placeFailure.row } : {}),
       });
       reportDispatchError(message);
       // Claude settles the interrupt as exit_before_result: not a second incident.
@@ -11419,7 +11419,7 @@ async function runClaimedGroupMemberTurn(
         role: "bot",
         kind: "activity",
         from: { botId: bot.id, name: bot.name, color: bot.color },
-        tool: failedTurnTool(roomTurnTimeoutMessage(bot.name, timeoutMinutes, threadLanguage(threadId)), { reason: "timeout" }),
+        tool: failedTurnRow(roomTurnTimeoutMessage(bot.name, timeoutMinutes, threadLanguage(threadId)), { reason: "timeout" }),
       });
       finish("timed_out");
     });
@@ -11538,7 +11538,7 @@ async function runClaimedGroupMemberTurn(
           role: "bot",
           kind: "activity",
           from: { botId: bot.id, name: bot.name, color: bot.color },
-          tool: failedTurnTool(message),
+          tool: failedTurnRow(message),
         });
         reportDispatchError(message);
         watchdog.settle(threadId);
@@ -11747,7 +11747,7 @@ async function runClaimedGroupMemberTurn(
     store.appendMessage(threadId, {
       role: "bot", kind: "activity",
       from: { botId: bot.id, name: bot.name, color: bot.color },
-      tool: failedTurnTool(message, error instanceof PlaceUnavailableError ? { place: error.row } : {}),
+      tool: failedTurnRow(message, error instanceof PlaceUnavailableError ? { place: error.row } : {}),
     });
     reportDispatchError(message);
     if (orchestration) {
@@ -12246,7 +12246,7 @@ function drainQueuedChannelSendsNow(): void {
         store.appendMessage(threadId, {
           role: "bot",
           kind: "activity",
-          tool: failedTurnTool(`queued channel message could not start: ${error instanceof Error ? error.message : String(error)}`),
+          tool: failedTurnRow(`queued channel message could not start: ${error instanceof Error ? error.message : String(error)}`),
         });
       }
       queueMicrotask(drainQueuedChannelSends);
@@ -13217,7 +13217,7 @@ async function reloadProviders(before: Record<string, unknown>) {
       if (store.taskByThread(botId, threadId)) {
         store.appendMessage(threadId, {
           role: "bot", kind: "activity",
-          tool: failedTurnTool(cause),
+          tool: failedTurnRow(cause),
         });
         store.setTaskActivity(botId, threadId, "idle");
       }
@@ -16803,7 +16803,7 @@ function noteTurnsCutByShutdown(): void {
       if (threadBusy(bot.id, task.threadId) && cut(task.threadId) && introTurns.has(task.threadId)) {
         if (introAllowed(store.messagesFor(task.threadId))) store.appendMessage(task.threadId, { role: "bot", kind: "text", text: introFallback(conversationLanguage(task.threadId), bot) });
       } else if (threadBusy(bot.id, task.threadId) && cut(task.threadId)) {
-        store.appendMessage(task.threadId, { role: "bot", kind: "activity", tool: failedTurnTool("turn interrupted: dusk bot restarted") });
+        store.appendMessage(task.threadId, { role: "bot", kind: "activity", tool: failedTurnRow("turn interrupted: dusk bot restarted") });
       }
     }
   }
@@ -16811,7 +16811,7 @@ function noteTurnsCutByShutdown(): void {
     for (const threadId of group.dm ? [group.threadId] : store.groupTasks(group.id).map((task) => task.threadId)) {
       if (!groupThreadIsWorking(group.id, threadId) || !cut(threadId)) continue;
       const speaker = groupSpeakers.get(threadId);
-      store.appendMessage(threadId, { role: "bot", kind: "activity", ...(speaker ? { from: speaker } : {}), tool: failedTurnTool("turn interrupted: dusk bot restarted") });
+      store.appendMessage(threadId, { role: "bot", kind: "activity", ...(speaker ? { from: speaker } : {}), tool: failedTurnRow("turn interrupted: dusk bot restarted") });
     }
   }
 }

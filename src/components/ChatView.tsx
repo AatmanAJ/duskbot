@@ -39,7 +39,9 @@ import { ScreenAccessNotice } from "./ScreenAccessNotice";
 import { ComposerNoticeSlot } from "./ComposerNoticeSlot";
 import { macCuaPermissionMessage, missingMacCuaPermissions } from "@/lib/mac-cua-permissions";
 import { claudeUpdateTarget, failedTurnCause, signedOutEngine } from "@/lib/failed-turn";
-import { plainErrorLine } from "@/lib/plain-error";
+import { blockerDetail, failedReplyDetail, failedReplyKind } from "@/lib/failed-reply";
+import { resetTime } from "@/lib/limit-resets";
+import { providerName } from "@/lib/simple-model-menu";
 import { lowerFirst } from "@/lib/lower-first";
 import { openPlaceAction, placeRowViewFor, usePlaceSeat, worksOnSimpleLabel } from "@/lib/place-view";
 import type { PlaceRow } from "../../shared/place-view";
@@ -205,9 +207,13 @@ export function ErrorRow({
   action,
   setupInstance,
   claudeUpdateInstance,
+  plain,
 }: {
   message: string;
   headline?: string;
+  /** a failed reply read by the one classifier: its sentence alone, a notice for a usage limit, the reference code beside
+   * it, and never the raw words or a Copy details */
+  plain?: { tone?: "info"; errorRef?: string };
   onRetry?: () => void;
   action?: { label: string; onClick: () => void } | null;
   setupInstance?: InstanceInfo;
@@ -240,10 +246,13 @@ export function ErrorRow({
     <div className="flex justify-start">
       <ChatErrorCard
         className="w-fit max-w-[min(var(--chat-bubble-max),var(--chat-bubble-pct))]"
+        tone={plain?.tone}
+        icon={plain?.tone === "info" ? "batteryFull" : undefined}
         title={headline}
-        details={headline !== message ? details : null}
+        details={!plain && headline !== message ? details : null}
         actions={button}
       >
+        {plain?.errorRef && <span data-error-ref="" title={t("failedReply.refTitle")} className="block text-[12px] text-ink-tertiary tabular-nums">{t("failedReply.ref", { ref: plain.errorRef })}</span>}
         {macCuaReason && <MacCuaRecoveryActions reason={message} />}
         {!usageUrl && claudeUpdateInstance ? (
           <ClaudeUpdatePrompt instance={claudeUpdateInstance} onRetry={onRetry} />
@@ -291,10 +300,18 @@ export function FailedTurnRow({ tool, engine, onRetry, botId, threadId }: {
   const cause = failedTurnCause(tool.name) ?? tool.name;
   if (tool.partial) return tool.owned ? null : <PartlyDoneRow cause={cause} onRetry={onRetry} />;
   const signedOut = signedOutEngine(tool, engine);
+  const kind = failedReplyKind(tool, engine, true);
+  const limited = kind === "usage_limit";
+  const ai = engine ? providerName(engine) : t("failedReply.limitHold.anAi");
+  const headline = signedOut ? t("chat.error.signedOut", { name: signedOut.displayName })
+    : limited ? (tool.limitResetsAt ? t("failedReply.limitHit", { ai, time: resetTime(tool.limitResetsAt) }) : t("failedReply.limitHitUnknown", { ai }))
+    : tool.blocker ? blockerDetail(tool.blocker)
+    : failedReplyDetail(kind, engine?.displayName ?? t("failedReply.yourAi"), false);
   return (
     <ErrorRow
       message={cause}
-      headline={signedOut ? t("chat.error.signedOut", { name: signedOut.displayName }) : plainErrorLine(cause)}
+      headline={headline}
+      plain={{ ...(limited ? { tone: "info" as const } : {}), ...(tool.errorRef && !limited ? { errorRef: tool.errorRef } : {}) }}
       onRetry={onRetry}
       action={resume}
       setupInstance={tool.setup ? engine : undefined}

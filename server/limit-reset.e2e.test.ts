@@ -161,7 +161,7 @@ it("continues on the backup engine with one line, and goes back to its own engin
     await control("send", "--bot", bot.id, "--task", threadId, "--text", "Draft the launch plan");
     expect((await control("wait", "--bot", bot.id, "--task", threadId, "--timeout", "30")).status).toBe("settled");
     const first = await messagesOf(api, threadId);
-    expect(recoveryLines(first)).toEqual([expect.stringMatching(/^recovery: Verification fixture hit its limit \(resets .+\), so Codex took over\.$/)]);
+    expect(recoveryLines(first)).toEqual([expect.stringMatching(/^recovery: Verification fixture hit its limit until .+, Codex is answering\.$/)]);
     expect(first.some((message) => message.tool?.ok === false)).toBe(false);
     expect(first.findLast((message) => message.role === "bot" && message.kind === "text")).toMatchObject({ text: "done from fake codex", turnSucceeded: true });
     const task = async (id: string) => (await api("GET", "/api/bots")).bots.find((entry: any) => entry.id === bot.id).tasks.find((entry: any) => entry.threadId === id);
@@ -182,7 +182,7 @@ it("continues on the backup engine with one line, and goes back to its own engin
     expect((await control("wait", "--bot", bot.id, "--task", threadId, "--timeout", "30")).status).toBe("settled");
     const back = await messagesOf(api, threadId);
     expect(recoveryLines(back)).toEqual([
-      expect.stringContaining("so Codex took over"),
+      expect.stringMatching(/, Codex is answering\.$/),
       "recovery: Verification fixture's limit has reset, so this conversation is back on Verification fixture.",
     ]);
     expect((await task(threadId)).modelSelection).toEqual(claudeModel);
@@ -302,7 +302,7 @@ it("after a restart, a new conversation still starts on the backup that carries 
     const { task: other } = await api("POST", `/api/bots/${bot.id}/tasks`, { title: "After the restart" });
     await control("send", "--bot", bot.id, "--task", other.threadId, "--text", "And the budget");
     expect((await control("wait", "--bot", bot.id, "--task", other.threadId, "--timeout", "30")).status).toBe("settled");
-    expect(recoveryLines(await messagesOf(api, other.threadId))).toEqual([expect.stringMatching(/so Codex took over\.$/)]);
+    expect(recoveryLines(await messagesOf(api, other.threadId))).toEqual([expect.stringMatching(/, Codex is answering\.$/)]);
     expect(await reply(other.threadId)).toBe("done from fake codex");
     await control("send", "--bot", bot.id, "--task", threadId, "--text", "Now the timeline");
     expect((await control("wait", "--bot", bot.id, "--task", threadId, "--timeout", "30")).status).toBe("settled");
@@ -364,7 +364,7 @@ it.each([
     const messages = [...await messagesOf(api, threadId), ...await messagesOf(api, other.threadId)];
     const refused = { name: "error: Not logged in · Please run /login", ok: false, setup: true };
     expect(messages.filter((message) => message.tool?.ok === false), "each refused turn shows it failed, with the sign-in that fixes it")
-      .toEqual(Array(3).fill(expect.objectContaining({ tool: { ...refused, reason: "signed_out" } })));
+      .toEqual(Array(3).fill(expect.objectContaining({ tool: { ...refused, reason: "signed_out", errorRef: expect.stringMatching(/^D-/) } })));
     expect(messages.filter((message) => message.tool?.name?.startsWith("notice:")).map((message) => message.tool))
       .toEqual([{ name: `notice: ${told}`, ok: true, setup: true }]);
     const notified = (await api("GET", "/api/notifications")).notifications as any[];

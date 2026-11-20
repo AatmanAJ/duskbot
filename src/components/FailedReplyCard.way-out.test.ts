@@ -84,10 +84,11 @@ describe("a failure card always offers a way on", () => {
 describe("the card says what really stopped the reply", () => {
   const text = () => document.querySelector("[data-chat-error]")?.textContent ?? "";
 
-  it("a plain server cause is said as it is, not as Something went wrong", async () => {
-    await show(failed("The workspace was restored from a backup before this finished."), vi.fn());
-    expect(text()).toContain("The workspace was restored from a backup before this finished.");
-    expect(text()).not.toContain("Something went wrong");
+  it("says its kind's one sentence, never the cause, with the code support finds the cause by", async () => {
+    await show(failed("The workspace was restored from a backup before this finished.", { errorRef: "D-7F3K" }), vi.fn());
+    expect(text()).toContain("Your bot couldn't finish this reply. Try again.");
+    expect(text()).toContain("Ref D-7F3K");
+    expect(text()).not.toContain("restored from a backup");
   });
 
   it("a turn a restart cut says so, and Try again warns before it can repeat what already ran", async () => {

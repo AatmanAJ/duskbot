@@ -1,7 +1,8 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, LifeBuoy, Plus } from "../../icons";
+import { ChevronDown, ChevronUp, LifeBuoy, Plus } from "../../icons";
 
+import { automaticBackupList } from "@/lib/automatic-backups";
 import { cn } from "@/lib/cn";
 import { configuredModelInstances } from "@/lib/engine-rail";
 import { t } from "@/lib/i18n";
@@ -243,9 +244,19 @@ export function BackupChooser({ bot, current, exclude, onPick, label, title, but
   );
 }
 
+const MOVE_BUTTON = "flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-ink/[0.56] hover:bg-ink/[0.06] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:pointer-events-none disabled:opacity-0";
+
+/** A bot's backups in the order they are tried. Set to Automatic it shows the order the server uses; moving, changing or
+ * removing one saves that list as the bot's own. */
 export function BackupAis({ bot, onChange }: { bot: Bot; onChange: (fallback: Backup[]) => void }) {
   const { state } = useStore();
-  const chain = bot.fallback ?? [];
+  const automatic = bot.fallback === undefined;
+  const chain = bot.fallback ?? automaticBackupList(bot, state.instances, MAX_BACKUPS);
+  const move = (index: number, by: -1 | 1) => {
+    const next = [...chain];
+    [next[index], next[index + by]] = [next[index + by]!, next[index]!];
+    onChange(next);
+  };
   const addRef = useRef<HTMLButtonElement>(null);
   const others = (except: number | null) => new Set([bot.modelSelection, ...chain.filter((_, index) => index !== except)]
     .map((entry) => modelKey(entry.instanceId, entry.model)));
@@ -264,6 +275,7 @@ export function BackupAis({ bot, onChange }: { bot: Bot; onChange: (fallback: Ba
           <RowText title={t("botPanel.backups.title")} />
         </div>
         <p className="-mt-1 pl-[38px] text-[13px] leading-[1.35] text-ink-secondary">{t("botPanel.backups.hint", { name: bot.name })}</p>
+        {automatic && chain.length > 0 && <p data-backups-automatic="" className="pl-[38px] text-[12px] leading-[1.35] text-ink-tertiary">{t("botPanel.backups.automaticOrder")}</p>}
         {chain.length > 0 && (
           <ol aria-label={t("botPanel.backups.title")} className="flex flex-col gap-1 pl-[38px]">
             {chain.map((entry, index) => {
@@ -288,6 +300,18 @@ export function BackupAis({ bot, onChange }: { bot: Bot; onChange: (fallback: Ba
                     {!instance && <span className="shrink-0 text-[12px] text-warning">{t("botPanel.ui.modelSimpleUnavailable")}</span>}
                     <ChevronDown size={12} strokeWidth={2} aria-hidden="true" className="shrink-0 text-ink-tertiary group-hover:text-ink-secondary" />
                   </BackupChooser>
+                  {chain.length > 1 && (
+                    <span className="flex shrink-0 items-center">
+                      <button type="button" data-panel-action="backup-up" disabled={index === 0} aria-label={t("botPanel.backups.moveUp", { model: name })}
+                        title={t("botPanel.backups.moveUp", { model: name })} onClick={() => move(index, -1)} className={MOVE_BUTTON}>
+                        <ChevronUp size={14} aria-hidden="true" />
+                      </button>
+                      <button type="button" data-panel-action="backup-down" disabled={index === chain.length - 1} aria-label={t("botPanel.backups.moveDown", { model: name })}
+                        title={t("botPanel.backups.moveDown", { model: name })} onClick={() => move(index, 1)} className={MOVE_BUTTON}>
+                        <ChevronDown size={14} aria-hidden="true" />
+                      </button>
+                    </span>
+                  )}
                   <TrashButton
                     data-panel-action="backup-remove"
                     label={t("botPanel.backups.remove", { model: name })}

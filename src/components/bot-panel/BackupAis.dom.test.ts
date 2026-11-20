@@ -79,11 +79,38 @@ describe("a bot's backup AIs in Simple", () => {
     expect(card.textContent).toContain("Used only when Scout's AI is at its usage limit or can't start on a message.");
     expect(card.textContent).toContain("After a usage limit resets, the conversation goes back.");
     expect(card.querySelector('[role="switch"], input[type="checkbox"]')).toBeNull();
+  });
+
+  it("set to Automatic, shows the other AIs in the order they are tried, and moving one saves that order as the bot's own", () => {
+    render();
+    const rows = [...host.querySelectorAll("[data-backup]")];
+    expect(rows.map((row) => row.getAttribute("data-backup"))).toEqual(["codex", "gemini"]);
+    expect(host.querySelector("[data-backups-automatic]")?.textContent).toContain("tried in this order");
+    expect(rows[0]!.querySelector<HTMLButtonElement>("[data-panel-action=backup-up]")?.disabled).toBe(true);
+    click(rows[0]!.querySelector("[data-panel-action=backup-down]"));
+    expect(onChange).toHaveBeenCalledWith([{ instanceId: "gemini", model: "gemini-3-pro" }, { instanceId: "codex", model: "gpt-5.5" }]);
+  });
+
+  it("leaves out of the automatic order an AI that only chats, and another sign-in to the same plan", () => {
+    fixture.instances.push(engine("groq", "Groq", "groq", [["llama-4", "Llama 4"]]), engine("claude-2", "Claude (work)", "claudeAgent", [["claude-sonnet-5", "Claude Sonnet 5"]]));
+    render();
+    expect([...host.querySelectorAll("[data-backup]")].map((row) => row.getAttribute("data-backup"))).toEqual(["codex", "gemini"]);
+  });
+
+  it("reorders the bot's own list", () => {
+    render([{ instanceId: "codex", model: "gpt-5.5" }, { instanceId: "gemini", model: "gemini-3-pro" }]);
+    expect(host.querySelector("[data-backups-automatic]")).toBeNull();
+    click(host.querySelector('[data-backup="gemini"] [data-panel-action=backup-up]'));
+    expect(onChange).toHaveBeenCalledWith([{ instanceId: "gemini", model: "gemini-3-pro" }, { instanceId: "codex", model: "gpt-5.5" }]);
+  });
+
+  it("set to No backup, lists none", () => {
+    render([]);
     expect(host.querySelectorAll("[data-backup]")).toHaveLength(0);
   });
 
   it("adds one from the same model menu, never offering the bot's own AI", async () => {
-    render();
+    render([]);
     click(host.querySelector("[data-panel-action=backup-add]"));
     await settle();
     expect(menu()?.getAttribute("aria-label")).toBe("Choose a backup AI");
@@ -132,7 +159,7 @@ describe("a bot's backup AIs in Simple", () => {
 
   it("offers the bot's own account too, without its own model, and says it shares the usage limit", async () => {
     fixture.instances.splice(0, 1, engine("claude", "Claude", "claudeAgent", [["claude-sonnet-5", "Claude Sonnet 5"], ["claude-opus-5", "Claude Opus 5"]]));
-    render();
+    render([]);
     click(host.querySelector("[data-panel-action=backup-add]"));
     await settle();
     expect(providers()).toEqual(["claude", "codex", "gemini"]);
@@ -164,7 +191,7 @@ describe("a bot's backup AIs in Simple", () => {
   });
 
   it("closes its menu on Escape without letting the key close the panel", async () => {
-    render();
+    render([]);
     click(host.querySelector("[data-panel-action=backup-add]"));
     await settle();
     const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
