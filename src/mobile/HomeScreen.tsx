@@ -315,6 +315,12 @@ function PinnedTileFace({ bot }: { bot: Bot }) {
   );
 }
 
+/** An unread chat's row says so to a screen reader, and still reads its time and newest line as a read row does. */
+export function unreadRowLabel(name: string, entry: Pick<Entry, "unread" | "at" | "preview">): string | undefined {
+  if (!entry.unread) return undefined;
+  return [t("mobile.home.unreadChat", { name }), entry.at > 0 ? listTime(entry.at) : "", entry.preview.trim()].filter(Boolean).join(", ");
+}
+
 const HomeRow = memo(function HomeRow({ entry, onOpen, onMenu, native }: { entry: Entry; onOpen: (id: string) => void; onMenu: (entry: Entry, rect: DOMRect, source: HTMLElement | null) => void; native?: (entry: Entry) => NativePress }) {
   const ref = useRef<HTMLButtonElement>(null);
   useLongPress(ref, (rect) => onMenu(entry, rect, ref.current), true, native?.(entry));
@@ -324,7 +330,7 @@ const HomeRow = memo(function HomeRow({ entry, onOpen, onMenu, native }: { entry
       ref={ref}
       type="button"
       onClick={(event) => { holdPressed(event.currentTarget); onOpen(entry.id); }}
-      aria-label={entry.unread ? t("mobile.home.unreadChat", { name }) : undefined}
+      aria-label={unreadRowLabel(name, entry)}
       className="mobile-row block w-full rounded-[18px] text-left"
     >
       <RowFace entry={entry} />
