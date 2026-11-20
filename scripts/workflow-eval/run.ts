@@ -121,7 +121,12 @@ async function runCase(c: WorkflowCase, run: number): Promise<Record<string, unk
   const statePath = join(caseDir, "apps-state.json");
   writeFileSync(statePath, JSON.stringify({ mail: [], ...c.seed }, null, 2));
   const mcpServers = Object.fromEntries(c.apps.map((app) => [app, { command: process.execPath, args: [appsServer, app], env: { BIZ_STATE: statePath } }]));
-  const srv = await launchServer(values.repo!, caseDir, gateway, [values.model!], { mcpServers });
+  let srv: StressServer | null = null;
+  // two eval processes can pick the same free port pair at once: the loser exits on EADDRINUSE and tries again
+  for (let attempt = 0; !srv; attempt++) {
+    try { srv = await launchServer(values.repo!, caseDir, gateway, [values.model!], { mcpServers }); }
+    catch (error) { if (attempt >= 4) throw error; await sleep(2_000 + Math.random() * 6_000); }
+  }
   const started = Date.now();
   const api = client(srv.url);
   const tools: string[] = [];
