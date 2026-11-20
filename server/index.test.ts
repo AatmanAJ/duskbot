@@ -4657,7 +4657,8 @@ describe("harness HTTP API", () => {
     })).body.bot;
     try {
       const cases: Array<{ body: unknown; error: RegExp }> = [
-        { body: { instanceId: "missing", model: "anything" }, error: /instance .* unavailable/i },
+        { body: { instanceId: "missing", model: "anything" }, error: /instance "missing" is unavailable; no instance offers "anything"/i },
+        { body: { instanceId: "missing", model: selection.model }, error: new RegExp(`is offered by instance "${selection.instanceId}"`) },
         { body: { ...selection, model: `${selection.model}-not-offered` }, error: /not offered/i },
         { body: { ...selection, effort: "turbo" }, error: /not recognized/i },
         { body: { ...selection, effort: "none" }, error: /not offered/i },

@@ -536,7 +536,7 @@ import { lazyClaimRetryText, settledWithin, startAutoVmClaim, type AutoVmClaimTa
 import { CONTROL_ACT_WITHIN_MS, CONTROL_BUSY, CONTROL_HANDED_BACK, CONTROL_WAIT_MS, CONTROL_WAITED, controlRefusal, type ControlState } from "./control-client.ts";
 import { computerFreeAfterText, computerParkedText, computerPersonAwayText, computerStoppedWaitingText, computerWaitingText, type ComputerHolder } from "./computer-wait.ts";
 import { modelContextWindow } from "./model-context-window.ts";
-import { browserIsThePlace, chosenPin, cloudPlaceRefusal, continuesWithoutComputer, followedPin, computerSkippedNote, computerToolsRefusal, screenAccessMissingNote, parseSurface, pinSource, PlaceUnavailableError, placeUnavailable, resolveSurface, surfaceLabel, surfaceOfComputerKind, surfacePrompt, type ComputerWant, type PlaceSource, type Surface } from "./surface.ts";
+import { browserIsThePlace, chosenPin, cloudPlaceRefusal, continuesWithoutComputer, followedPin, computerSkippedNote, computerToolsRefusal, screenAccessMissingNote, parseSurface, pinSource, PlaceUnavailableError, placeUnavailable, resolveSurface, surfaceLabel, surfaceOfComputerKind, surfacePrompt, type ComputerWant, type PlaceSource, type Surface } from "./surface.ts"; import { instancesOffering } from "./model-offers.ts";
 import {
   PendingTurnCancellations,
   ProviderTurnGenerationRegistry,
@@ -2823,7 +2823,7 @@ function checkedModelSelection(
     // Free-form model ids: custom engines accept ids outside their catalog, and some drivers learn the catalog only at turn start.
   if (requireAvailableModel) {
     if (!target) {
-      return { ok: false, status: 400, error: `model instance "${selection.instanceId}" is unavailable` };
+      return { ok: false, status: 400, error: `model instance "${selection.instanceId}" is unavailable${instancesOffering(registry.instances(), selection.model)}` };
     }
     const offered =
       selection.model === target.models.default ||
