@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// Settings → general → bring in from other apps: Grok Bot's own row, what this computer holds (BringIn), then the first run's
+// Settings → general → bring in from other apps: the Grok Bot row, what this computer holds (BringIn), then the first run's
 // prompt for AIs online.
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -154,7 +154,7 @@ describe("Settings → bring in from other apps", () => {
     expect(host.querySelector("[data-bring-notes]")?.textContent).toMatch(/ChatGPT|notes/);
   });
 
-  it("has Grok Bot's own row: its bots one press from the move, then the bots still to send the rest, then already here", async () => {
+  it("has a row for Grok Bot: its bots one press from the move, then the bots still to send the rest, then already here", async () => {
     f.grok.detect = { available: true, found: true, bots: [grokBot("g1", "Nova"), grokBot("g2", "Quill"), grokBot("g3", "Rivet", true)], apps: [], problems: [], running: false, waiting: 0 };
     await show();
     const opened = vi.fn((event: Event) => event);
