@@ -10,6 +10,8 @@ import { api, useStore, type Message } from "@/state/store";
 import type { OfferAnswer } from "../../shared/offer";
 import { CARD_BUTTON_MD, cardPrimary, cardSecondary, cardTertiary } from "./AskCard";
 import { ChatMarkdown } from "./ChatMarkdown";
+import { SIMPLE_BOT_BUBBLE, SIMPLE_BUBBLE_MAX } from "./chat-bubble";
+import { cn } from "@/lib/cn";
 
 export function OfferCard({ threadId, message }: { threadId?: string; message: Message }) {
   const { state, dispatch } = useStore();
@@ -35,8 +37,8 @@ export function OfferCard({ threadId, message }: { threadId?: string; message: M
   const spinner = <Loader2 size={14} className="animate-spin" />;
 
   return (
-    <div data-offer={offer.id} className="max-w-[600px] text-[15px] leading-relaxed text-ink">
-      <ChatMarkdown text={message.text ?? ""} />
+    <div data-offer={offer.id} className="text-ink">
+      <div data-chat-bubble="simple" className={cn("w-fit", SIMPLE_BUBBLE_MAX, SIMPLE_BOT_BUBBLE)}><ChatMarkdown text={message.text ?? ""} /></div>
       {offer.answer ? (
         <p dir="auto" className="mt-1 flex flex-wrap items-center gap-x-2 text-[13px] text-ink-secondary">
           <span>{offer.answer === "do" ? t("chat.offer.started", { name: offer.botName }) : offer.answer === "notNow" ? t("chat.offer.notNowDone") : t("chat.offer.neverDone")}</span>
