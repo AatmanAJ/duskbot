@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
 import { probeMotion } from "@/lib/motion-probe";
+import { cssBezier, pacedMs, pacedOut } from "@/lib/motion-speed";
 import { contentTop, readingInset, landingReply, replyHoldTop } from "@/lib/reply-hold";
 
 import { usePrefersReducedMotion } from "@/components/mascot-clock";
@@ -43,10 +44,10 @@ export function visualSpring(visualDuration: number, bounce = 0): SpringTiming {
 
 /** How a transcript resting at its end follows a new row: one short ease that stops cleanly. A spring's long tail read
  * as the row landing and then creeping up a few more px. */
-export const FOLLOW: SpringTiming = { duration: 240, easing: "cubic-bezier(0.25, 0.46, 0.45, 0.94)" };
+export const FOLLOW: SpringTiming = { duration: pacedMs(240), easing: cssBezier(pacedOut([0.25, 0.46, 0.45, 0.94])) };
 /** The person's own send: the column follows on one short ease-out, the same one the bubble fades in on, and a send
  * that lands with room to spare rises SEND_RISE_PX instead. */
-export const SEND_FLOW: SpringTiming = { duration: 200, easing: "cubic-bezier(0.22, 1, 0.36, 1)" };
+export const SEND_FLOW: SpringTiming = { duration: pacedMs(200), easing: cssBezier(pacedOut([0.22, 1, 0.36, 1])) };
 export const SEND_RISE_PX = 8;
 
 /** The column's glide from where the rows were drawn to where they now rest: `from` px below its place, back to 0. */

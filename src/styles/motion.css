@@ -1,6 +1,7 @@
 /* grok bot motion tokens and keyframes, values read from its bundled css */
 :root {
   --dusk-inline-sign: 1;
+  --motion-scale: 1;
   --dusk-duration-instant: 50ms;
   --dusk-duration-fast: 100ms;
   --dusk-duration-normal: 150ms;

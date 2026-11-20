@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ChevronDown } from "../icons";
 import { cn } from "@/lib/cn";
+import { pacedMs } from "@/lib/motion-speed";
 import { usePrefersReducedMotion } from "@/components/mascot-clock";
 import { phraseAt, phraseHoldMs, rotationHoldMs } from "@/lib/live-activity";
 import { quietText } from "@/lib/now-steps";
@@ -11,7 +12,7 @@ import type { StepQuiet } from "../../shared/turn-progress";
 
 const FADE_MS = 320;
 /** Grok's activity line leaves in 140ms. */
-export const STATUS_EXIT_MS = 140;
+export const STATUS_EXIT_MS = pacedMs(140);
 
 export function useRotatingPhrase(
   phrases: readonly string[],

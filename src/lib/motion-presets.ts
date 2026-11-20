@@ -1,5 +1,6 @@
 // shared motion values for the `motion` package, read from Grok Bot's own bundle.
 // pass a preset as `transition`; under reduced motion use `REDUCED` and drop the movement, keep the fade.
+import { pacedOut, pacedSeconds } from "./motion-speed";
 
 /** a menu, popover or panel arriving: Grok's default UI spring */
 export const SPRING_UI = { type: "spring", stiffness: 175, damping: 26, mass: 1 } as const;
@@ -50,7 +51,7 @@ export const GROK_DURATION = {
 } as const;
 
 /** a centred dialog leaving: a 120ms fade on the out curve, the exit half of overlays.css's one dialog motion */
-export const SHEET_EXIT = { duration: 0.12, ease: [0.22, 1, 0.36, 1] } as const;
+export const SHEET_EXIT = { duration: pacedSeconds(0.12), ease: pacedOut([0.22, 1, 0.36, 1]) } as const;
 
 /** pane push and pop: incoming slides 100% (pop: -30%), outgoing leaves -30% (pop: 100%), 200ms */
 export const WIPE = { duration: 0.2, ease: EASE.out, pushFrom: "100%", popFrom: "-30%" } as const;
@@ -107,17 +108,18 @@ export const MSG_FADE = { duration: BENCHO.dur.fast, ease: EASE_OUT } as const;
  * scale from their centre. A dialog animated this way sets data-raw-dialog on its sheet and scrim so overlays.css's
  * keyframe stays off it (one motion, not two). */
 export function dialogMotion(reduced: boolean) {
-  const leave = { duration: DURATION.fast, ease: EASE_OUT };
+  const ease = pacedOut(EASE_OUT);
+  const leave = { duration: pacedSeconds(DURATION.fast), ease };
   return {
     // the whole transform string, not the scale shorthand, so the browser can run it off the main thread
     sheet: {
       initial: { opacity: 0, transform: reduced ? "none" : "scale(0.96)" },
-      animate: { opacity: 1, transform: reduced ? "none" : "scale(1)", transition: reduced ? REDUCED : { duration: DURATION.base, ease: EASE_OUT } },
+      animate: { opacity: 1, transform: reduced ? "none" : "scale(1)", transition: reduced ? REDUCED : { duration: pacedSeconds(DURATION.base), ease } },
       exit: { opacity: 0, transform: reduced ? "none" : "scale(0.98)", transition: reduced ? REDUCED : leave },
     },
     scrim: {
       initial: { opacity: 0 },
-      animate: { opacity: 1, transition: reduced ? REDUCED : { duration: BENCHO.dur.fast, ease: EASE_OUT } },
+      animate: { opacity: 1, transition: reduced ? REDUCED : { duration: pacedSeconds(BENCHO.dur.fast), ease } },
       exit: { opacity: 0, transition: reduced ? REDUCED : leave },
     },
   } as const;

@@ -135,11 +135,11 @@ describe("the menu motion in overlays.css", () => {
   const rule = (selector: string) => css.match(new RegExp(`^${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`, "m"))?.[1] ?? "";
 
   it("grows a menu in from .97 toward its trigger and shrinks it out", () => {
-    expect(rule(`${anchored}.animate-pop-in`)).toMatch(/transition:\s*opacity 120ms var\(--ease-menu-in\), transform 120ms var\(--ease-menu-in\)/);
+    expect(rule(`${anchored}.animate-pop-in`)).toMatch(/transition:\s*opacity calc\(120ms \* var\(--motion-scale, 1\)\) var\(--motion-ease-out, var\(--ease-menu-in\)\), transform calc\(120ms \* var\(--motion-scale, 1\)\) var\(--motion-ease-out, var\(--ease-menu-in\)\)/);
     expect(css).toMatch(/@starting-style \{\s*:is\(\[role="menu"\][^{]*\.animate-pop-in \{ opacity: 0; transform: translate3d\(0, calc\(var\(--menu-shift, -4px\)\), 0\) scale\(0\.97\); \}/);
     const out = rule(`${anchored}.animate-pop-out`);
     expect(out).toMatch(/opacity: 0;\s*transform: translate3d\(0, calc\(var\(--menu-shift, -4px\) \/ 2\), 0\) scale\(0\.98\);/);
-    expect(out).toMatch(/transition:\s*opacity 80ms var\(--ease-out-bencho\), transform 80ms var\(--ease-out-bencho\)/);
+    expect(out).toMatch(/transition:\s*opacity calc\(80ms \* var\(--motion-scale, 1\)\) var\(--motion-ease-out, var\(--ease-out-bencho\)\), transform calc\(80ms \* var\(--motion-scale, 1\)\) var\(--motion-ease-out, var\(--ease-out-bencho\)\)/);
     expect(css).toMatch(/--ease-menu-in: cubic-bezier\(0\.16, 1, 0\.3, 1\);/);
   });
 

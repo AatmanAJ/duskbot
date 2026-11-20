@@ -1066,7 +1066,7 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
       style={{ ...drawer.props?.style, ["--sidebar-width" as string]: `${sizing.width}px` } as MotionStyle}
       className={cn(
         "relative flex h-full shrink-0 flex-col border-r-[0.5px] border-transparent bg-panel max-md:[--scroll-fade-surface:var(--color-app)]",
-        sizing.resizing && !sizing.snapping ? "transition-none" : "transition-[width] duration-500 ease-(--dusk-spring-soft) motion-reduce:transition-none",
+        sizing.resizing && !sizing.snapping ? "transition-none" : "transition-[width] duration-[calc(500ms*var(--motion-scale,1))] ease-(--dusk-spring-soft) motion-reduce:transition-none",
         rail ? "w-[80px]" : "w-[288px] md:w-[var(--sidebar-width)]",
         "md:max-w-[calc(100vw-320px)]",
         // max-md: rather than an md: cancel: Tailwind v4 emits the native `translate`, and any value but `none` makes
