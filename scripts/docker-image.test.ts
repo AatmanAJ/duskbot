@@ -136,7 +136,7 @@ describe("container images", () => {
     const tools = home.findIndex(step => step.op === "RUN" && step.args.includes("$BOT_PYTHON_PACKAGES"));
     expect(tools).toBeGreaterThan(-1);
     const { args } = home[tools];
-    for (const pkg of ["python3-pip", "python3-venv", "ffmpeg", "imagemagick", "librsvg2-bin", "zip", "libreoffice-writer-nogui", "libreoffice-calc-nogui", "libreoffice-impress-nogui", "fonts-liberation2"]) {
+    for (const pkg of ["python3-pip", "python3-venv", "python-is-python3", "ffmpeg", "imagemagick", "librsvg2-bin", "zip", "libreoffice-writer-nogui", "libreoffice-calc-nogui", "libreoffice-impress-nogui", "fonts-liberation2"]) {
       expect(args, pkg).toMatch(new RegExp(`\\s${pkg}\\s`));
     }
     const pinned = home.find(step => step.op === "ARG" && step.args.startsWith("BOT_PYTHON_PACKAGES="))!.args;

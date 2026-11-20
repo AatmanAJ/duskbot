@@ -152,7 +152,7 @@ RUN apt-get update \
 # About 600 MB unpacked, in its own layer beneath the engines.
 ARG BOT_PYTHON_PACKAGES="reportlab==5.1.0 python-docx==1.2.0 python-pptx==1.0.2 openpyxl==3.1.5 matplotlib==3.11.2 pandas==3.1.1 numpy==2.4.6 pillow==13.0.0 requests==2.34.2 beautifulsoup4==4.15.0 lxml==6.1.3 pypdf==7.1.1"
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3-pip python3-venv ffmpeg imagemagick librsvg2-bin \
+  && apt-get install -y --no-install-recommends python3-pip python3-venv python-is-python3 ffmpeg imagemagick librsvg2-bin \
     zip jq sqlite3 wget file fonts-dejavu-core fonts-liberation2 \
     libreoffice-writer-nogui libreoffice-calc-nogui libreoffice-impress-nogui \
   && rm -rf /var/lib/apt/lists/* \
