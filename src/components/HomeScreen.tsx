@@ -35,6 +35,7 @@ export function homeScreenText(view: HomeView | null, now = Date.now()): { title
   // A Cloud the Admin's list says isn't running: what it is in plain words, with its one fitting action.
   if (view?.screen === "ended") return { title: named("cloudHome.ended", "cloudHome.endedNamed"), body: view.deleteAt ? t("cloudHome.endedFiles", { date: homeDay(view.deleteAt, now) }) : null,
     reason: null, action: "buy", busy: false };
+  if (view?.screen === "gone") return { title: named("cloudHome.gone", "cloudHome.goneNamed"), body: t("cloudHome.goneBody"), reason: null, action: null, busy: false };
   if (view?.screen === "checkout") return { title: named("cloudHome.checkout", "cloudHome.checkoutNamed"), body: t("cloudHome.checkoutBody"), reason: null, action: "continue", busy: false };
   if (view?.screen === "payment") return { title: named("cloudHome.payment", "cloudHome.paymentNamed"), body: t("cloudHome.paymentBody"), reason: null, action: "card", busy: false };
   if (view?.screen === "asleep") return { title: t("cloudAsleep.waking"), body: null, reason: null, action: null, busy: true };
@@ -100,7 +101,7 @@ export function HomeScreen({ bridge, manage }: { bridge: HomeBridge; manage?: ()
     ...(manage ? { manage, buy: manage, card: manage, continue: async () => { if (!(reopen && await reopen().catch(() => false))) await manage(); } } : {}),
   };
   const button = text.action && text.action !== "sign-in" && text.action !== "manage" ? text.action : null;
-  const removable = (view?.screen === "ended" || view?.screen === "payment") && view.removable === true && typeof bridge.remove === "function";
+  const removable = (view?.screen === "ended" || view?.screen === "payment" || view?.screen === "gone") && view.removable === true && typeof bridge.remove === "function";
   if (view?.screen === "asleep") return <CloudAsleepHome bridge={bridge} view={view} />;
   return (
     <main data-home-screen={view?.screen ?? "opening"} className="flex min-h-screen items-center justify-center bg-app px-6 text-ink" style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>

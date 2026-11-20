@@ -18,7 +18,7 @@ function MemberComputer({ bot, cloudFor }: { bot: Bot; cloudFor: readonly Bot[] 
 
 /** The bot panel's Computer tab for each member, one after another, and one cloud card for the whole group, after the last. */
 export function RoomComputerTab({ members }: { members: Bot[] }) {
-  if (members.length === 0) return <PanelEmpty data-panel-empty="screens">{t("room.panel.computer.empty")}</PanelEmpty>;
+  if (members.length === 0) return <PanelEmpty data-panel-empty="screens" art="computer" title={t("empty.screens.title")}>{t("room.panel.computer.empty")}</PanelEmpty>;
   return (
     <PanelSections data-panel-tabpanel="computer">
       {members.map((member, index) => <MemberComputer key={member.id} bot={member} cloudFor={index === members.length - 1 ? members : none} />)}
