@@ -13,6 +13,7 @@ import { localSystemVoiceActive } from "@/lib/local-voice";
 import { computerStartLine, useScreensWhile } from "@/lib/computer-start";
 import { useCaptionChrome, useDesktopCapabilities } from "@/components/DesktopCapabilities";
 import {
+  api,
   currentTaskBot,
   shownTranscript,
   useStore,
@@ -368,7 +369,7 @@ const Bubble = memo(function Bubble({
     pin: remoteClient ? undefined : {
       pinned,
       onToggle: () => dispatch({ type: "updateTask", botId, threadId, patch: { pinnedMessageId: pinned ? "" : message.id } }),
-    },
+    }, onStopSending: message.automation && !remoteClient ? () => void api("/api/proactive/stop", { method: "POST", body: JSON.stringify({ threadId, messageId: message.id }) }).catch(() => {}) : undefined,
   });
   noteMediaSizes(message.media);
   const attached = useMemo(() => splitMessageAttachments(message.attachments), [message.attachments]);
