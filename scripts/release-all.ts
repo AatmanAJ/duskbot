@@ -191,9 +191,11 @@ export async function release(r: Release, opt: ReleaseOptions): Promise<"done" |
   };
 
   await step("preflight", () => {
-    const head = r.sh("git", ["rev-parse", "HEAD"]), tag = r.sh("git", ["rev-parse", `${V}^{commit}`]), dirty = r.sh("git", ["status", "--porcelain", "--untracked-files=no"]);
+    let tag: string | null = null;
+    try { tag = r.sh("git", ["rev-parse", "--verify", "--quiet", `${V}^{commit}`]) || null; } catch { /* no such tag yet */ }
+    const head = r.sh("git", ["rev-parse", "HEAD"]), dirty = r.sh("git", ["status", "--porcelain", "--untracked-files=no"]);
     if (head !== tag || dirty) {
-      const why = head !== tag ? `HEAD is not ${V}` : "the checkout has changes";
+      const why = !tag ? `there is no tag ${V}` : head !== tag ? `HEAD is not ${V}` : "the checkout has changes";
       if (!dryRun) throw new Error(`${why}: check out ${V} cleanly first`);
       r.log(`  (dry run) ${why}`);
     }
@@ -244,7 +246,9 @@ export async function release(r: Release, opt: ReleaseOptions): Promise<"done" |
   });
   await step("link-agent", async () => {
     const agentVersion = (ref: string) => /^export const AGENT_VERSION = "(\d+\.\d+\.\d+)";$/m.exec(r.sh("git", ["show", `${ref}:apps/link-service/agent.mjs`]))?.[1] ?? null;
-    const want = agentVersion(V);
+    let ref = V;
+    try { r.sh("git", ["rev-parse", "--verify", "--quiet", `${V}^{commit}`]); } catch { if (!dryRun) throw new Error(`there is no tag ${V}`); ref = "HEAD"; }
+    const want = agentVersion(ref);
     const served = (await (await r.fetchImpl(`${r.cfg.linkUrl}/v1/release`, { cache: "no-store" })).json().catch(() => null) as { agent?: { version?: string } } | null)?.agent ?? null;
     if (!want || (served?.version && compareVersions(served.version, want) >= 0)) { r.log(`  the link service serves agent ${served?.version ?? "?"}; nothing to ship`); return; }
     // ci re-signs agent.mjs on main (link-agent-sign.yml); the deploy waits for that signature, then ships main's link service
