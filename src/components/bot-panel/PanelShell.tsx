@@ -9,11 +9,14 @@ import { Icon } from "../Icon";
 import { useCaptionChrome } from "../DesktopCapabilities";
 import type { useBotSettingsDerived } from "../bot-settings/useBotSettingsDerived";
 import { ComputerTab } from "./ComputerTab";
-import { panelTabs, screenViewAllowed } from "@/lib/store-app";
+import { TabBoundary } from "./TabBoundary";
+import { panelTabs, phoneApp, screenViewAllowed } from "@/lib/store-app";
+import { dur, ease, feel } from "@/mobile/motion";
 import { PAGES, resolveTarget, TAB_LABEL, type PanelTab, type PanelTarget, type SimplePageId } from "./page-registry";
 import { lazyScreen } from "../lazy-screen";
 import { linkTarget, usePanelLink, type PanelLink } from "./panel-link";
 import { PanelHero } from "./PanelHero";
+import { PanelResizeEdge } from "./PanelResizeEdge";
 import { PanelShareMenu } from "./PanelShareMenu";
 import { roundButtonCls } from "./rows";
 import { SegmentedTabs } from "../ui/SegmentedTabs";
@@ -126,6 +129,18 @@ export function BotPanel({ bot, derived, linkedSection, computerRequest = 0, onC
   const prefersReduced = useReducedMotion();
   const reduced = prefersReduced || (typeof document !== "undefined" && document.documentElement.dataset.reducedMotion === "true");
   const viewKey = page === null ? "tabs" : `${depth}:${page}`;
+  const order = panelTabs();
+  const tabMove = useRef({ tab, direction: 1 });
+  if (tabMove.current.tab !== tab) tabMove.current = { tab, direction: order.indexOf(tab) >= order.indexOf(tabMove.current.tab) ? 1 : -1 };
+  const phone = phoneApp();
+
+  const tabContent = (
+    <>
+      {tab === "details" && <PanelDetailsTab bot={bot} derived={derived} onOpen={openPage} />}
+      {tab === "computer" && screenViewAllowed() && <TabBoundary name={bot.name}><ComputerTab bot={bot} derived={derived} onOpen={openPage} /></TabBoundary>}
+      {tab === "advanced" && <PanelAdvancedTab bot={bot} derived={derived} onOpen={openPage} />}
+    </>
+  );
 
   const tabsView = (
     <>
@@ -155,19 +170,34 @@ export function BotPanel({ bot, derived, linkedSection, computerRequest = 0, onC
             value={tab}
             onChange={openTab}
             tabs={panelTabs().map((id) => ({ value: id, label: t(TAB_LABEL[id]) }))}
+            slide={phone ? (reduced ? null : feel.soft) : undefined}
           />
         </div>
       </div>
-      <MotionDiv
-        key={tab}
-        role="tabpanel" aria-label={t(TAB_LABEL[tab])} className="pt-2.5"
-        initial={reduced || !tabSwapped ? false : SWAP.initial}
-        animate={SWAP.animate}
-      >
-        {tab === "details" && <PanelDetailsTab bot={bot} derived={derived} onOpen={openPage} />}
-        {tab === "computer" && screenViewAllowed() && <ComputerTab bot={bot} derived={derived} onOpen={openPage} />}
-        {tab === "advanced" && <PanelAdvancedTab bot={bot} derived={derived} onOpen={openPage} />}
-      </MotionDiv>
+      {phone ? (
+        <AnimatePresence initial={false} mode="popLayout" custom={tabMove.current.direction}>
+          <MotionDiv
+            key={tab}
+            role="tabpanel" aria-label={t(TAB_LABEL[tab])} className="pt-2.5"
+            custom={tabMove.current.direction}
+            variants={reduced ? PHONE_TAB_FADE : PHONE_TAB_SLIDE}
+            initial={tabSwapped ? "enter" : false}
+            animate="center"
+            exit="exit"
+          >
+            {tabContent}
+          </MotionDiv>
+        </AnimatePresence>
+      ) : (
+        <MotionDiv
+          key={tab}
+          role="tabpanel" aria-label={t(TAB_LABEL[tab])} className="pt-2.5"
+          initial={reduced || !tabSwapped ? false : SWAP.initial}
+          animate={SWAP.animate}
+        >
+          {tabContent}
+        </MotionDiv>
+      )}
     </>
   );
 
@@ -210,8 +240,8 @@ export function BotPanel({ bot, derived, linkedSection, computerRequest = 0, onC
   return (
     <div className="relative flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
       <span id="bot-settings-title" className="sr-only">{bot.name}</span>
-      <span aria-hidden="true" data-panel-edge className="pointer-events-none absolute inset-y-0 left-0 z-10 w-[0.5px] bg-edge max-md:hidden" />
-      <div {...dragProps} className="relative flex h-[60px] shrink-0 items-center gap-2 p-3">
+      <PanelResizeEdge />
+      <div {...dragProps} data-panel-bar className="relative ms-2 flex h-[60px] shrink-0 items-center gap-2 p-3 ps-1">
         {page === null && (
           <span className="ms-auto flex items-center gap-2">
             <PanelShareMenu bot={bot} />
@@ -243,7 +273,7 @@ export function BotPanel({ bot, derived, linkedSection, computerRequest = 0, onC
           )}
         </AnimatePresence>
         {page !== null && <span className="ms-auto" />}
-        <button type="button" onClick={onClose} aria-label={t("botPanel.close")} title={t("botPanel.close")} className={roundButtonCls}>
+        <button type="button" onClick={onClose} aria-label={t("botPanel.closePanel")} title={t("botPanel.closePanel")} className={roundButtonCls}>
           <Icon name="close" size={16} />
         </button>
       </div>
@@ -258,6 +288,19 @@ export function BotPanel({ bot, derived, linkedSection, computerRequest = 0, onC
     </div>
   );
 }
+
+// the phone's tab swap: the new tab comes in from the side it sits on, the old one leaves the other way, faster
+const PHONE_TAB_SHIFT = 24;
+const PHONE_TAB_SLIDE = {
+  enter: (direction: number) => ({ opacity: 0, x: direction * PHONE_TAB_SHIFT }),
+  center: { opacity: 1, x: 0, transition: { x: { duration: dur.base, ease: ease.out }, opacity: { duration: dur.fast, ease: ease.out } } },
+  exit: (direction: number) => ({ opacity: 0, x: -direction * PHONE_TAB_SHIFT, transition: { duration: feel.exit.fade, ease: ease.out } }),
+};
+const PHONE_TAB_FADE = {
+  enter: { opacity: 0 },
+  center: { opacity: 1, transition: { duration: dur.fast, ease: ease.out } },
+  exit: { opacity: 0, transition: { duration: feel.exit.fade, ease: ease.out } },
+};
 
 const HEAD_IN = { duration: 0.15, ease: EASE_OUT } as const;
 const HEAD_OUT = { duration: 0.12, ease: EASE_OUT } as const;

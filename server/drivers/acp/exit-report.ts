@@ -129,3 +129,14 @@ export function exitDetail(code: number | null, signal: NodeJS.Signals | null, t
   if (words) return `: ${words}`;
   return tail ? `: ${tail}` : "";
 }
+
+/** Keeps an engine's last stderr lines from now on; the returned function words an exit before it answered. */
+export function earlyExitReport(engine: string, stderr: NodeJS.ReadableStream): (code: number | null, signal: NodeJS.Signals | null) => string {
+  const tail = new StderrTail();
+  stderr.setEncoding("utf8");
+  stderr.on("data", (chunk: string) => tail.write(chunk));
+  return (code, signal) => {
+    tail.flush();
+    return `${engine} exited ${code ?? signal ?? "unexpectedly"} before it answered${exitDetail(code, signal, tail.text)}`;
+  };
+}

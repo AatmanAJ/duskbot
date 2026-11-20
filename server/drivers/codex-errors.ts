@@ -2,6 +2,7 @@ import { cloudHomeConfigured } from "../cloud-home.ts";
 import { hostTimeZone } from "../turn-clock.ts";
 import { USAGE_LIMIT } from "./retry.ts";
 import { CODEX_USAGE_LIMIT_REACHED } from "../../shared/codex-usage-limit.ts";
+import { failureCode } from "../../shared/usage-signals.ts";
 
 /** How a Codex turn reaches OpenAI: dusk bot's ChatGPT plan, Codex's own sign-in, or any other provider. */
 export type CodexRoute = "plan" | "own" | "other";
@@ -124,3 +125,14 @@ export function missingNativeCodexThread(error: unknown, cursor: string): boolea
 /** Codex refuses to resume an archived session: "session <id> is archived. Run `codex unarchive <id>` to unarchive it first." */
 export const archivedNativeCodexThread = (error: unknown, cursor: string): boolean =>
   error instanceof CodexRpcError && error.message.includes(cursor) && /\bis archived\b/.test(error.message);
+
+/** codex app-server's codexErrorInfo as one code for usage reasons: the variant's name ("usageLimitExceeded", or
+ * "httpConnectionFailed" with its status as "httpConnectionFailed:http_502"); undefined for anything else */
+export function codexErrorCode(info: unknown): string | undefined {
+  if (typeof info === "string") return failureCode(info);
+  if (!info || typeof info !== "object" || Array.isArray(info)) return undefined;
+  const [name, value] = Object.entries(info)[0] ?? [];
+  const code = failureCode(name);
+  const status = (value as { httpStatusCode?: unknown } | null)?.httpStatusCode;
+  return code && Number.isInteger(status) && (status as number) >= 100 && (status as number) <= 599 ? `${code}:http_${status}` : code;
+}

@@ -20,6 +20,9 @@ const noop = () => {};
 const controller = (over: Partial<PhoneSetupController>): PhoneSetupController => ({
   state,
   account: null,
+  relay: null,
+  relayPairing: false,
+  relayChecked: true,
   phase: "qr",
   email: "",
   code: "",
@@ -49,6 +52,7 @@ const controller = (over: Partial<PhoneSetupController>): PhoneSetupController =
   requestCode: noop,
   verifyCode: noop,
   retryAccount: noop,
+  retryRelay: noop,
   cancel: noop,
   refreshCode: noop,
   finish: noop,
