@@ -28,6 +28,9 @@ export const GROK_MOVE_ROUTES = {
 
 /** Where a moved bot came from, on its installed package: the same Grok Bot by any path is this one bot. */
 export const GROK_ORIGIN_APP = "grok-bot";
+/** InstalledPackageMetadata.origin: the bot this one is in the app it was moved from (Grok Bot: its roster id). The
+ * same bot moved again, by any path, updates this one rather than making another. */
+export interface PackageOrigin { app: typeof GROK_ORIGIN_APP; id: string }
 /** The sidebar section moved bots land in. */
 export const GROK_SECTION = "Grok Bot";
 /** Grok Bot keeps at most this many recent chat entries per bot on the computer. */
