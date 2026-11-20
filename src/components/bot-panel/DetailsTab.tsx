@@ -15,6 +15,8 @@ import { UsageMeterRow } from "../native/UsageMeter";
 import { answeringModel, useThreadBackup } from "@/lib/thread-backup";
 import { setVoicePrefs, useVoicePrefs, VOICE_LANGUAGES, VOICE_SPEEDS } from "./voice-prefs";
 import { useCallPrefs } from "@/lib/voice-call/prefs";
+import { CALL_MODES, parseCallMode, setCallMode, useCallMode } from "@/lib/call-mode";
+import { liveCallEnabled } from "@/lib/feature-flags";
 
 type Derived = ReturnType<typeof useBotSettingsDerived>;
 
@@ -68,6 +70,7 @@ export function VoiceChatCard({ bot, patch }: { bot: Bot; patch: Derived["patch"
   const voices = useVoiceOptions(bot, Boolean(tts?.configured)) ?? [];
   const prefs = useVoicePrefs(bot.id);
   const globalSpeed = useCallPrefs().speed;
+  const callMode = useCallMode();
   const speed = prefs.speed ?? String(globalSpeed);
   const speeds = (VOICE_SPEEDS as readonly string[]).includes(speed) ? VOICE_SPEEDS : [...VOICE_SPEEDS, speed].sort((a, b) => Number(a) - Number(b));
   // grok names the voice a bot speaks with by default, so the default row wears that voice's name
@@ -101,6 +104,17 @@ export function VoiceChatCard({ bot, patch }: { bot: Bot; patch: Derived["patch"
           onChange={(language: string) => setVoicePrefs(bot.id, { language })}
         />
       </VoiceChatRow>
+      {liveCallEnabled() && (
+        <VoiceChatRow row="callMode" label={t("call.mode.menu")}>
+          <SelectPill
+            data-panel-select="callMode"
+            aria-label={t("call.mode.menu")}
+            value={callMode}
+            options={CALL_MODES.map((entry) => ({ value: entry.id, label: t(entry.label) }))}
+            onChange={(next: string) => setCallMode(parseCallMode(next))}
+          />
+        </VoiceChatRow>
+      )}
     </Card>
   );
 }

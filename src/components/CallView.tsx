@@ -25,7 +25,6 @@ import { isRoutineApproval, isSkillApproval, pendingApprovals, spokenApprovalPro
 import { callStarted } from "@/lib/product-events";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
 import { callCapabilityHelp, type CallCapabilityHelp } from "@/lib/call-capability";
-import { onCallStartRequest } from "@/lib/call-start-request";
 import { serverListeningReady, listensHere, speechBridge } from "@/lib/speech";
 import { VoiceSetupDialog } from "./lazy-screens";
 import { useLocalVoiceCall } from "@/lib/voice-call/availability";
@@ -36,12 +35,11 @@ import { MENU_SHEET } from "./menu-recipe";
 type Phase = "listening" | "sending" | "working" | "speaking";
 const CALL_ENDPOINT_MS = 850;
 
-/** `panel`: the small round button beside the bot in its panel, with no chevron. It leaves the composer's + menu to the
- * composer's own button: two buttons answering it would start two calls. */
+/** `panel`: the small round button beside the bot in its panel, with no chevron. */
 export type CallButtonPlacement = "header" | "composer" | "panel";
 
-/** `fill` (Simple composer): a round button in that colour with its glyph in `ink`, and no chevron; the + menu picks the
- * call mode. */
+/** `fill` (Simple composer): a round button in that colour with its glyph in `ink`, and no chevron; the bot's Voice chat
+ * settings pick the call mode. */
 /** `inverse` (phone composer): one of the pill's own 32 px controls, a plain glyph in the quiet ink, like its mic. */
 /** `live`: offer a Live call beside the built-in voice. */
 export function CallButton({ bot, placement = "header", fill, ink, inverse, live = true }: { bot: Bot; placement?: CallButtonPlacement; fill?: string; ink?: string; inverse?: boolean; live?: boolean }) {
@@ -194,18 +192,6 @@ export function CallTargetButton({
     onStart("turns");
     startCall(targetId);
   };
-
-  // The Simple composer's + menu: the same choice as this button's own call-mode menu, which it replaces there.
-  const requestedStart = useRef<(next: CallMode) => void>(() => {});
-  requestedStart.current = (next) => {
-    // Hidden below while Live's line is held on another device: the + menu must not start a second call either.
-    if (active || liveElsewhere || (next === "live" && !canLive) || lineHeldElsewhere) return;
-    closePopovers();
-    setCallMode(next);
-    start(next);
-  };
-  const answersPlusMenu = placement !== "panel";
-  useEffect(() => answersPlusMenu ? onCallStartRequest(targetId, (next) => requestedStart.current(next)) : undefined, [targetId, answersPlusMenu]);
 
   const popoverOpen = helpOpen || menuOpen || startPrompt;
   useEffect(() => {
