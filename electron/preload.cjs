@@ -750,7 +750,7 @@ const bridge = {
       return () => ipcRenderer.removeListener("start-fresh:changed", handler);
     },
   },
-  cloudMac: {
+  cloudMac: process.platform !== "darwin" ? undefined : {
     state: () => ipcRenderer.invoke("cloud-mac:state"),
     setEnabled: on => ipcRenderer.invoke("cloud-mac:setEnabled", on === true),
     setMode: mode => ipcRenderer.invoke("cloud-mac:setMode", String(mode)),

@@ -27,7 +27,9 @@ export function useCloudMacState(bridge: CloudMacBridge | undefined): [CloudMacS
 /** Settings > Your computer on the person's dusk cloud: whether its bots may use this Mac, or where to turn that on. */
 export function CloudMacCard() {
   const bridge = cloudMacBridge();
-  return bridge ? <CloudMacControls bridge={bridge} /> : <CloudMacElsewhere />;
+  if (bridge) return <CloudMacControls bridge={bridge} />;
+  const platform = typeof window === "undefined" ? undefined : window.duskDesktop?.platform;
+  return platform && platform !== "darwin" ? null : <CloudMacElsewhere />;
 }
 
 function CloudMacControls({ bridge }: { bridge: CloudMacBridge }) {

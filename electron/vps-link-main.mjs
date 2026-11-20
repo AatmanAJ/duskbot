@@ -11,7 +11,7 @@ import { pipeline } from "node:stream/promises";
 import { createMacControlHost } from "./mac-control.mjs";
 import { watchNetwork } from "./network-change.mjs";
 import { createLinkAwake } from "./vps-link-awake.mjs";
-import { createMacExecutor } from "./mac-control-tools.mjs";
+import { createMacExecutor, servesMacJobs } from "./mac-control-tools.mjs";
 import { cloudConnector, cloudRegister, cloudRelayUrl, newDirectKey, sshConnector, wssConnector } from "./vps-link-direct.mjs";
 import { loadDataChannel, rtcConnector } from "./vps-link-rtc.mjs";
 
@@ -163,7 +163,7 @@ export function installVpsLink(deps) {
     ? createLinkAwake({ blocker: deps.powerSaveBlocker, onBattery: () => deps.powerMonitor?.isOnBatteryPower?.() === true, log })
     : null;
   const execute = createMacExecutor({ log });
-  const macHost = process.env.DUSK_MAC_CONTROL === "off" ? null
+  const macHost = process.env.DUSK_MAC_CONTROL === "off" || !servesMacJobs() ? null
     : createMacControlHost({ fetch: (...args) => session.defaultSession.fetch(...args), name: deps.label, execute: (job, io) => (awake ? awake.busy(execute(job, io)) : execute(job, io)), log });
   const followMac = (view) => macHost?.follow(view?.server?.origin ?? null);
   const link = createVpsLink({

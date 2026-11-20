@@ -14,6 +14,9 @@ const LIST_MAX = 500;
 const KILL_GRACE_MS = 3000;
 const DOWNLOAD_MAX = 2 * 1024 ** 3;
 
+/** the tools are written for macOS (zsh, open, screencapture, and the bots are told it is a Mac), so only a Mac serves them */
+export const servesMacJobs = (platform = process.platform) => platform === "darwin";
+
 export function macLogFile(home = homedir()) {
   return path.join(home, "Library", "Logs", "Dusk Bot", "mac-control.log");
 }

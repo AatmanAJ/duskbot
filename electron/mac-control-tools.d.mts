@@ -15,3 +15,4 @@ export declare function createMacExecutor(options?: {
   screenshot?(): Promise<{ data: string; mimeType: string }>; opener?(args: string[]): Promise<unknown>;
   fetch?: typeof fetch; source?: string; defaultCwd?(): string;
 }): (job: MacJob, io?: { download?(path: string): Promise<Response>; signal?: AbortSignal }) => Promise<MacJobOutcome>;
+export declare function servesMacJobs(platform?: string): boolean;
