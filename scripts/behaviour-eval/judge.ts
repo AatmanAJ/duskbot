@@ -26,7 +26,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function judge(model: string, item: Case, output: string, tools: string[]): Promise<{ pass: boolean; why: string }> {
   const gateway = gatewayFromEnv(model);
-  const prompt = `You grade one reply of a personal assistant bot. The person asked:\n<ask>\n${item.say}\n</ask>\nEverything the bot showed the person, in order:\n<output>\n${output || "(nothing)"}\n</output>\nThe tools it called in this turn, in order (use_tool:<name> runs <name>; trigger creates or changes automations, trigger_info reads them, memory_update saves notes, create_bot makes a bot): ${tools.join(", ") || "none"}.\n${SETUP[item.place ?? "off"]}\nPass condition: ${item.pass}\nAlso fail it if the output only announces or describes what the bot will do next without the result, or ends mid-task.\nAnswer with JSON only: {"pass": true|false, "why": "<one short sentence>"}`;
+  const prompt = `You grade one reply of a personal assistant bot. The person asked:\n<ask>\n${item.say}\n</ask>\nEverything the bot showed the person, in order:\n<output>\n${output || "(nothing)"}\n</output>\nThe tools it called in this turn, in order (use_tool:<name> runs <name>; trigger creates or changes automations (+check: with a plain change check, no AI until something changed), trigger_info reads them, memory_update saves notes, create_bot makes a bot): ${tools.join(", ") || "none"}.\n${SETUP[item.place ?? "off"]}\nPass condition: ${item.pass}\nAlso fail it if the output only announces or describes what the bot will do next without the result, or ends mid-task.\nAnswer with JSON only: {"pass": true|false, "why": "<one short sentence>"}`;
   for (let attempt = 0; attempt < 5; attempt++) {
     const res = await fetch(`${gateway.url}/chat/completions`, {
       method: "POST",
@@ -47,7 +47,9 @@ export async function judge(model: string, item: Case, output: string, tools: st
 export function toolsOf(messages: Message[]): string[] {
   return messages.filter((m) => m.kind === "activity" && m.tool?.name).map((m) => {
     const name = m.tool!.name!;
-    if (!name.endsWith("use_tool")) return name;
-    try { const inner = JSON.parse(m.tool!.input ?? "{}").name; return typeof inner === "string" ? `use_tool:${inner}` : name; } catch { return name; }
+    // a schedule with a plain change check runs no AI until something changed: the judge needs to tell it apart
+    const checked = /"check"\s*:\s*\{/.test(m.tool!.input ?? "") ? "+check" : "";
+    if (!name.endsWith("use_tool")) return name + checked;
+    try { const inner = JSON.parse(m.tool!.input ?? "{}").name; return typeof inner === "string" ? `use_tool:${inner}${checked}` : name; } catch { return name; }
   });
 }

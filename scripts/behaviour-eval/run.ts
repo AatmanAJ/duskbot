@@ -10,9 +10,9 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { client } from "../memory-eval/client.ts";
 import { gatewayFromEnv, launchSandbox } from "../memory-eval/sandbox.ts";
-import { startProxy, type Recorded } from "../memory-eval/proxy.ts";
+import { startProxy } from "../memory-eval/proxy.ts";
 import { CAPABLE_CASES, CASES, type Case } from "./cases.ts";
-import { judge, rowText, type Message } from "./judge.ts";
+import { judge, rowText, toolsOf, type Message } from "./judge.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const { values } = parseArgs({ options: {
@@ -75,8 +75,7 @@ async function runModel(model: string): Promise<Result[]> {
         const shown = (from: number) => messages.slice(from).filter((m) => m.role === "bot").map(rowText).filter(Boolean);
         const output = shown(before).join("\n---\n");
         if (process.env.EVAL_DUMP) writeFileSync(join(process.env.EVAL_DUMP, `${model}-${item.id}-${run}.json`), JSON.stringify(messages.slice(before), null, 1));
-        const turnCalls = proxy.records.slice(recordsBefore).filter((rec: Recorded) => rec.tools.length > 0);
-        const tools = turnCalls.flatMap((rec) => rec.toolCalls ?? []);
+        const tools = toolsOf(messages.slice(before));
         let pass: boolean, why: string;
         if (item.check === "stop") {
           const after = shown(seenAtStop).filter((text) => text !== item.stop!.text);
