@@ -77,7 +77,8 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
   if (request.method === "initialize") {
     reply(request.id, { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "fixture", version: "1" } });
   } else if (request.method === "tools/list") {
-    reply(request.id, { tools: ["write", "wait", "fail", "read"].map((name) => ({ name, description: "Synthetic fixture operation", inputSchema: schema, ...(name === "read" ? { annotations: { readOnlyHint: true } } : {}) })) });
+    const extra = (process.env.FIXTURE_EXTRA_TOOLS ?? "").split(",").filter(Boolean);
+    reply(request.id, { tools: ["write", "wait", "fail", "read", ...extra].map((name) => ({ name, description: "Synthetic fixture operation", inputSchema: schema, ...(name === "read" ? { annotations: { readOnlyHint: true } } : {}) })) });
   } else if (request.method === "tools/call") {
     const { name, arguments: args } = request.params;
     await fetch(callback + "/mcp-start", { method: "POST", body: JSON.stringify({ name, args }) });
@@ -90,6 +91,11 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
       return;
     }
     if (name === "wait") await new Promise((resolve) => setTimeout(resolve, 30_000));
+    if (!["write", "wait"].includes(name)) {
+      appendFileSync(join(directory, "effects.ndjson"), JSON.stringify({ name, ...args }) + "\\n");
+      reply(request.id, { content: [{ type: "text", text: "ok" }] });
+      return;
+    }
     appendFileSync(join(directory, "effects.ndjson"), JSON.stringify({ name, ...args }) + "\\n");
     reply(request.id, { content: [{ type: "text", text: "Stored " + args.name + "=" + args.value }] });
   } else if (request.id !== undefined && request.method === "ping") reply(request.id, {});
@@ -1677,5 +1683,78 @@ describe("a provider that streams whole tool calls without an index", () => {
     expect(f.effects()).toEqual([{ name: "first", value: "done" }, { name: "second", value: "done" }]);
     const results = f.requests[1].messages.filter((message) => message.role === "tool").map((message) => message.tool_call_id);
     expect(results).toEqual(["function-call-14076893379878918689", "function-call-14076893379878916096"]);
+  });
+});
+
+describe("stop gates", () => {
+  const withTools = (f: Awaited<ReturnType<typeof fixture>>, extra: string): SendTurnInput["integrations"] =>
+    ({ custom: { audit: { ...f.integrations!.custom!.audit!, env: { FIXTURE_EXTRA_TOOLS: extra } } } });
+  const calls = (response: ServerResponse, name: string, value: string, id: string) =>
+    sse(response, [chunk({ tool_calls: [toolCall(name, JSON.stringify({ name: value, value }), id)] }, "tool_calls")]);
+  const lastNote = (f: Awaited<ReturnType<typeof fixture>>, round: number) => f.requests[round - 1]!.messages.at(-1)!.content;
+
+  it("sends a promised follow-up back once to set it up, then ends", async () => {
+    const f = await fixture((_body, response, round) => {
+      if (round === 1) answer(response, "The fare is $420 today. I'll let you know when it drops.");
+      else if (round === 2) calls(response, "audit_wait_until", "fare", "call-wait");
+      else answer(response, "Set up: I'll check the fare every morning.");
+    });
+    await f.start({ approvalMode: "full", integrations: withTools(f, "wait_until") });
+    expect(await f.completed()).toMatchObject({ ok: true, stopGates: ["follow_up"] });
+    expect(f.requests).toHaveLength(3);
+    expect(lastNote(f, 2)).toContain("promises to do something later");
+    expect(f.effects().map((effect) => effect.name)).toEqual(["fare"]);
+  });
+
+  it("lets a promise stand when nothing could set it up", async () => {
+    const f = await fixture((_body, response) => answer(response, "The fare is $420 today. I'll let you know when it drops."));
+    await f.start({ approvalMode: "full" });
+    const done = await f.completed();
+    expect(done).toMatchObject({ ok: true });
+    expect(done).not.toHaveProperty("stopGates");
+    expect(f.requests).toHaveLength(1);
+  });
+
+  it("sends a checklist with open items back after work ran, once", async () => {
+    const f = await fixture((_body, response, round) => {
+      if (round === 1) calls(response, "audit_write", "receipt", "call-1");
+      else if (round === 2) answer(response, "- [x] Saved the receipt\n- [ ] Save the invoice");
+      else if (round === 3) calls(response, "audit_write", "invoice", "call-2");
+      else answer(response, "- [x] Saved the receipt\n- [x] Saved the invoice\n- [ ] Archive both");
+    });
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: true, stopGates: ["checklist"] });
+    expect(f.requests).toHaveLength(4);
+    expect(lastNote(f, 3)).toContain("Save the invoice");
+    expect(f.effects().map((effect) => effect.name)).toEqual(["receipt", "invoice"]);
+  });
+
+  it("asks for one look at a change whose tool only said ok, and not when a lookup followed", async () => {
+    const f = await fixture((_body, response, round) => {
+      if (round === 1) calls(response, "audit_set_away", "on", "call-set");
+      else if (round === 2) answer(response, "Your status is now away.");
+      else if (round === 3) calls(response, "audit_read", "status", "call-read");
+      else answer(response, "Checked: your status shows away.");
+    });
+    await f.start({ approvalMode: "full", integrations: withTools(f, "set_away") });
+    expect(await f.completed()).toMatchObject({ ok: true, stopGates: ["unconfirmed_write"] });
+    expect(f.requests).toHaveLength(4);
+    expect(lastNote(f, 3)).toContain("only answered that it worked");
+  });
+
+  it("points a long result repeated word for word at its first call, and notes an A/B cycle", async () => {
+    const big = "v".repeat(600);
+    const f = await fixture((_body, response, round) => {
+      if (round <= 4) calls(response, "audit_read", round % 2 ? big : "small", `call-${round}`);
+      else answer(response, "Both values read.");
+    });
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: true });
+    const tools = f.requests[4]!.messages.filter((message) => message.role === "tool");
+    expect(tools.map((message) => message.tool_call_id)).toEqual(["call-1", "call-2", "call-3", "call-4"]);
+    expect(tools[0]!.content).toContain(big);
+    expect(tools[2]!.content).not.toContain(big);
+    expect(tools[2]!.content).toContain("earlier call call-1");
+    expect(tools[3]!.content).toContain("repeated the same 2 calls twice");
   });
 });

@@ -5,6 +5,8 @@
 // type "continue". A turn waiting on the person, any other question, a failed or
 // stopped turn and a person's own next message all leave it alone.
 import type { RuntimeEvent } from "../contracts.ts";
+import { effectfulCall } from "../drivers/openai-chat-habits.ts";
+import { openChecklist, promisesFollowUp, ranTool, schedulesWork, stopGateNote } from "../turn-stop-gates.ts";
 
 export const MAX_CONTINUES = 2;
 export const MAX_PLAN_CONTINUES = 6;
@@ -14,10 +16,13 @@ const START_DELAY_MS = 400;
 
 const PLAN_TOOL = /\b(?:todowrite|todo_write|write_todos|update_plan|updateplan|plan)\b/i;
 const STATUS = /"status"\s*:\s*"(pending|in_progress|completed|cancelled)"/g;
+// engine-native tools that only look: Claude Code's and Codex's names
+const NATIVE_LOOKUP = /^(?:read|grep|glob|ls|websearch|webfetch|web_search|todowrite|notebookread|view_image)$/;
 const AGREED = /\b(?:you'?re|you are)\s+(?:absolutely\s+|completely\s+|totally\s+|quite\s+)?right\b/i;
 
 export type PlanSteps = { open: number; total: number; steps?: string[] };
-export type FinishReason = { kind: "plan"; open: number; total: number; steps?: string[] } | { kind: "ack" } | { kind: "next" };
+export type FinishReason = { kind: "plan"; open: number; total: number; steps?: string[] } | { kind: "ack" } | { kind: "next" }
+  | { kind: "promise" } | { kind: "checklist"; items: string[] };
 
 const lastParagraph = (text: string) => text.trim().split(/\n\s*\n/).at(-1)!.trim();
 const lastSentence = (paragraph: string) => paragraph.split("\n").at(-1)!.trim().split(/(?<=[.!])\s+/).at(-1)!;
@@ -78,7 +83,7 @@ export function planSignature(plan: PlanSteps): string {
 const endsOnQuestion = (text: string) => /\?\s*[)"'”]?\s*$/.test(text.trim());
 
 /** Why a finished turn should carry on, or null. */
-export function finishReason(turn: { text: string; tools: number; plan: PlanSteps | null; toolsAfterText?: number }): FinishReason | null {
+export function finishReason(turn: { text: string; tools: number; plan: PlanSteps | null; toolsAfterText?: number; scheduled?: boolean; effectful?: number; gated?: readonly string[] }): FinishReason | null {
   if (!turn.text.trim()) return null;
   // a tool run after the last words (a choice card, a file, the very step it named) answers them
   const lastWords = !turn.toolsAfterText;
@@ -86,12 +91,17 @@ export function finishReason(turn: { text: string; tools: number; plan: PlanStep
   if (lastWords && turn.tools > 0 && asksToCarryOn(turn.text)) return { kind: "next" };
   if (endsOnQuestion(turn.text)) return null;
   if (turn.plan && turn.plan.open > 0) return { kind: "plan", ...turn.plan };
+  if (!turn.scheduled && !turn.gated?.includes("follow_up") && promisesFollowUp(turn.text)) return { kind: "promise" };
+  const items = turn.effectful && !turn.gated?.includes("checklist") ? openChecklist(turn.text) : null;
+  if (items) return { kind: "checklist", items };
   if (turn.tools === 0 && AGREED.test(turn.text)) return { kind: "ack" };
   if (lastWords && announcesStep(turn.text)) return { kind: "next" };
   return null;
 }
 
 export function continueNote(reason: FinishReason): string {
+  if (reason.kind === "promise") return stopGateNote("follow_up");
+  if (reason.kind === "checklist") return stopGateNote("checklist", { items: reason.items });
   if (reason.kind === "plan") {
     const shown = reason.steps?.slice(0, NOTE_STEPS_MAX) ?? [];
     const list = shown.length ? ` Still open: ${shown.map((step, index) => `${index + 1}. ${step}`).join("; ")}${(reason.steps?.length ?? 0) > shown.length ? "; and more" : ""}.` : "";
@@ -114,7 +124,7 @@ export interface FinishGuardDeps {
   later?: (run: () => void, ms: number) => void;
 }
 
-interface Turn { text: string; tools: number; toolsAfterText: number; plan: PlanSteps | null; carriable: boolean }
+interface Turn { text: string; tools: number; toolsAfterText: number; plan: PlanSteps | null; carriable: boolean; scheduled: boolean; effectful: number }
 
 export function createFinishGuard(deps: FinishGuardDeps) {
   const later = deps.later ?? ((run: () => void, ms: number) => { setTimeout(run, ms).unref?.(); });
@@ -129,7 +139,7 @@ export function createFinishGuard(deps: FinishGuardDeps) {
         const state = carried.get(threadId);
         if (state?.ours) state.ours = false;
         else carried.delete(threadId);
-        turns.set(threadId, { text: "", tools: 0, toolsAfterText: 0, plan: null, carriable: deps.botOf(threadId) !== null });
+        turns.set(threadId, { text: "", tools: 0, toolsAfterText: 0, plan: null, carriable: deps.botOf(threadId) !== null, scheduled: false, effectful: 0 });
         return;
       }
       const turn = turns.get(threadId);
@@ -138,13 +148,16 @@ export function createFinishGuard(deps: FinishGuardDeps) {
         turn.tools += 1;
         turn.toolsAfterText += 1;
         turn.plan = planSteps(event.title, event.input) ?? turn.plan;
+        const tool = ranTool(event.title ?? "", event.input);
+        if (schedulesWork(tool)) turn.scheduled = true;
+        else if (!NATIVE_LOOKUP.test(tool.toLowerCase()) && effectfulCall(tool.toLowerCase(), "{}")) turn.effectful += 1;
       } else if (event.type === "item.completed" && event.itemType === "assistant_text") {
         turn.text = event.text;
         turn.toolsAfterText = 0;
       } else if (event.type === "turn.completed" || event.type === "session.exited") {
         turns.delete(threadId);
         if (event.type !== "turn.completed" || !event.ok || event.stopReason === "cancelled" || event.stopReason === "interrupted") return;
-        const reason = finishReason(turn);
+        const reason = finishReason({ ...turn, ...(event.type === "turn.completed" && event.stopGates ? { gated: event.stopGates } : {}) });
         const botId = reason && turn.carriable ? deps.botOf(threadId) : null;
         const state = carried.get(threadId) ?? { count: 0, plans: 0, ours: false };
         if (!reason || !botId) return;

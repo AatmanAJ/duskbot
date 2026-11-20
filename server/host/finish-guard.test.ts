@@ -18,10 +18,10 @@ function harness(held = false) {
     later: (run) => run(),
   });
   const send = (body: Body, threadId = "t1") => guard.onEvent({ eventId: "e", provider: "fake", threadId, createdAt: "", ...body } as RuntimeEvent);
-  const turn = (text: string, opts: { plan?: string; tools?: number; ok?: boolean; threadId?: string; after?: string } = {}) => {
+  const turn = (text: string, opts: { plan?: string; tools?: number; tool?: string; ok?: boolean; threadId?: string; after?: string } = {}) => {
     send({ type: "turn.started" }, opts.threadId);
     if (opts.plan) send({ type: "item.started", itemType: "tool", title: "TodoWrite", input: opts.plan }, opts.threadId);
-    for (let i = 0; i < (opts.tools ?? 0); i += 1) send({ type: "item.started", itemType: "tool", title: "Read" }, opts.threadId);
+    for (let i = 0; i < (opts.tools ?? 0); i += 1) send({ type: "item.started", itemType: "tool", title: opts.tool ?? "Read" }, opts.threadId);
     send({ type: "item.completed", itemType: "assistant_text", text }, opts.threadId);
     if (opts.after) send({ type: "item.started", itemType: "tool", title: opts.after }, opts.threadId);
     send({ type: "turn.completed", ok: opts.ok ?? true }, opts.threadId);
@@ -145,5 +145,30 @@ describe("finish guard", () => {
     expect(h.carried).toHaveLength(1);
     h.turn("Let me check the prices.");
     expect(h.carried).toHaveLength(1);
+  });
+
+  it("carries on a promise of later work that nothing set up, and an open checklist after work ran", () => {
+    const h = harness();
+    h.turn("The fare is $420. I'll let you know when it drops.");
+    expect(h.carried).toHaveLength(1);
+    expect(h.carried[0]!.note).toContain("promises to do something later");
+    expect(h.lines.at(-1)).toEqual({ kind: "promise" });
+
+    const c = harness();
+    c.turn("- [x] Saved the receipt\n- [ ] Save the invoice", { tools: 1 });
+    expect(c.carried).toHaveLength(0);
+    c.turn("- [x] Saved the receipt\n- [ ] Save the invoice", { tools: 1, tool: "Write" });
+    expect(c.carried).toHaveLength(1);
+    expect(c.carried[0]!.note).toContain("Save the invoice");
+    const w = harness();
+    w.turn("I'll let you know when it drops.", { tools: 1, tool: "mcp__agents__wait_until" });
+    expect(w.carried).toHaveLength(0);
+    expect(finishReason({ text: "- [x] Saved the receipt\n- [ ] Save the invoice", tools: 1, plan: null, effectful: 1 })).toEqual({ kind: "checklist", items: ["Save the invoice"] });
+  });
+
+  it("leaves a promise alone once a wait or trigger was set up, or when the engine's loop already sent it back", () => {
+    expect(finishReason({ text: "I'll let you know when it drops.", tools: 1, plan: null, scheduled: true })).toBeNull();
+    expect(finishReason({ text: "I'll let you know when it drops. All set.", tools: 0, plan: null, gated: ["follow_up"] })).toBeNull();
+    expect(finishReason({ text: "- [x] a\n- [ ] b", tools: 1, plan: null, effectful: 1, gated: ["checklist"] })).toBeNull();
   });
 });

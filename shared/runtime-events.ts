@@ -63,6 +63,9 @@ export type RuntimeEvent = RuntimeEventBase &
         stopReason?: string | null;
         cost?: number | null;
         denials?: string[];
+        /** Stop gates the engine's own loop already applied in this turn ("follow_up", "checklist",
+         * "unconfirmed_write"), so the host does not apply them again. */
+        stopGates?: string[];
         /** THIS turn's token total, as the provider reports it at the end: the
          * one figure the harness accumulates. thread.token-usage.updated means
          * something different per driver and must never be summed. */
