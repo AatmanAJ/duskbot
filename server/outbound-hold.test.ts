@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Notification } from "../shared/notification.ts";
 import { flushDecisionLog, readDecisions } from "./decision-log.ts";
 import { OutboundCounts } from "./outbound-counts.ts";
-import { createOutboundHold, type OutboundHold, type OutboundHoldDeps } from "./outbound-hold.ts";
+import { createOutboundHold, declinedBefore, DECLINED_BEFORE, sendKey, type OutboundHold, type OutboundHoldDeps } from "./outbound-hold.ts";
 import { OutboundRequestService } from "./outbound-requests.ts";
 
 type HoldBot = Parameters<OutboundHold["hold"]>[0]["bot"];
@@ -146,7 +146,7 @@ describe("createOutboundHold", () => {
     const requestId = denied.appended[0].message.card!.requestId as string;
     denied.outboundRequests.resolve({ threadId: "t1", requestId, behavior: "deny" });
     await expect(pending).resolves.toEqual({ ok: false, text: expect.stringMatching(/the user declined/) });
-    expect(denied.patches).toEqual([]);
+    expect(denied.patches.map((one) => one.patch)).toEqual([{ card: expect.objectContaining({ outboundRequest: expect.objectContaining({ declined: true }) }) }]);
 
     vi.useFakeTimers();
     const timed = setup(bot(undefined));
@@ -294,5 +294,44 @@ describe("purchases and emails on their own cards", () => {
     await expect(held.hold.confirmPurchase({ bot: bot(undefined), threadId: "t1", summary, recorded: true, active: () => true })).resolves.toEqual({ ok: true, approved: true });
     expect(held.appended[1]!.message.card).toMatchObject({ answered: "allow", purchase: { recorded: true, merchant: "Acme" } });
     expect(held.outboundRequests.pending("t1")).toEqual([]);
+  });
+});
+
+describe("a declined send is final for the chat", () => {
+  const applied = (state: ReturnType<typeof setup>) => {
+    for (const { messageId, patch } of state.patches.splice(0)) {
+      const row = state.appended.find((entry) => entry.message.id === messageId);
+      if (row) Object.assign(row.message, patch);
+    }
+  };
+
+  it("refuses the same content again without a card until the person asks to send it again", async () => {
+    const state = setup(bot({ policy: "ask", dailyCap: 10 }));
+    const first = state.hold.hold({ ...state.input, active: () => true });
+    state.outboundRequests.resolve({ threadId: "t1", requestId: state.appended[0]!.message.card!.requestId as string, behavior: "deny" });
+    await expect(first).resolves.toMatchObject({ ok: false });
+    applied(state);
+    expect(state.appended[0]!.message.card).toMatchObject({ outboundRequest: { declined: true, sent: sendKey(calls) } });
+
+    // the same words, spaced and cased differently: refused, no second card
+    const again = [{ slug: "GMAIL_SEND_EMAIL", arguments: { subject: "hello ", to: "Ana@example.com" } }];
+    await expect(state.hold.hold({ ...state.input, calls: again, active: () => true })).resolves.toEqual({ ok: false, text: DECLINED_BEFORE });
+    expect(state.appended).toHaveLength(1);
+
+    // other content is a new send and gets its own card
+    const other = state.hold.hold({ ...state.input, calls: [{ slug: "GMAIL_SEND_EMAIL", arguments: { to: "ana@example.com", subject: "Lunch?" } }], active: () => true });
+    expect(state.appended).toHaveLength(2);
+    state.outboundRequests.resolve({ threadId: "t1", requestId: state.appended[1]!.message.card!.requestId as string, behavior: "allow" });
+    await expect(other).resolves.toEqual({ ok: true, approved: true });
+  });
+
+  it("a later message of the person's asking to send it lifts the refusal; a no or an app's message does not", () => {
+    const key = sendKey(calls);
+    const card: Parameters<typeof declinedBefore>[0][number] = { role: "bot", kind: "options", card: { title: "", subtitle: "", options: [], outboundRequest: { tool: "GMAIL_SEND_EMAIL", app: "Gmail", sent: key, declined: true } } };
+    expect(declinedBefore([card], key)).toBe(true);
+    expect(declinedBefore([card, { role: "user", kind: "text", text: "no, don't send it" }], key)).toBe(true);
+    expect(declinedBefore([card, { role: "user", kind: "text", text: "send it", fromApp: { app: "x" } as never }], key)).toBe(true);
+    expect(declinedBefore([card, { role: "user", kind: "text", text: "ok go ahead and send it to Ana" }], key)).toBe(false);
+    expect(declinedBefore([card], sendKey([{ slug: "GMAIL_SEND_EMAIL", arguments: { to: "bob@example.com" } }]))).toBe(false);
   });
 });
