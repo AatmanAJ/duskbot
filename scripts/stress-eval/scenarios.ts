@@ -24,6 +24,16 @@ export interface Scenario {
   /** the turns name a page the eval serves at {{PAGE}}; after the conversation the eval changes it and waits for the
    * bot to say so by itself, which only a watch that really runs can do */
   localPage?: boolean;
+  /** after the conversation the eval makes something happen that only a running watch, automation or chat app sees:
+   * page: changes {{PAGE}}; tg-watch: posts tgPush in a fake Telegram group; tg-chat: pairs through the start code the
+   * bot gave and asks tgAsk on Telegram; webhook: calls the bot's webhook automation with webhookBody */
+  live?: "page" | "tg-watch" | "tg-chat" | "webhook";
+  liveWaitMs?: number;
+  tgPush?: Array<{ chat: string; from: string; text: string }>;
+  tgAsk?: string;
+  webhookBody?: unknown;
+  /** a chat long enough to pass the compaction point (run with --compact-at) */
+  compact?: boolean;
 }
 
 const s = (id: string, persona: string, shape: string, turns: Array<string | Turn>, expect: string, extra: Partial<Scenario> = {}): Scenario =>
