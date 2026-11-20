@@ -5,7 +5,7 @@
 // servers up) -> first model request -> model's first byte -> engine's first text -> first text frame on /api/events
 // (the bubble the app draws) -> turn.completed. Costs a few cents per run; never part of a test suite.
 //   node --experimental-strip-types scripts/bench-engines.ts [--engines claude,codex,grokBuild,opencode,openai]
-//     [--runs 5] [--mode cold,warm] [--set quick|work] [--effort low] [--server built|ts] [--idle-ms N] [--json FILE]
+//     [--runs 5] [--mode cold,warm,idle] [--set quick|work|remind] [--effort low] [--server built|ts] [--idle-ms N] [--json FILE]
 //     [--keep] [--trace] [--dump-dir DIR] [--engine-args claude:--debug] [--claude-as gpt-6.2-sol]
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { copyFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync, appendFileSync } from "node:fs";
@@ -59,6 +59,16 @@ const WORK = [
   "Check what the tallest building in Europe is and how tall it is.",
   "Look up the exchange rate from US dollars to euros today.",
   "Find out who won the most recent FIFA World Cup and where it was held.",
+];
+
+// reminders: one-off and recurring automations, the commonest ask that runs tools
+const REMIND = [
+  "Remind me tomorrow at 9am to call mom.",
+  "Remind me in 2 hours to take the laundry out.",
+  "Every weekday at 8am send me a short motivational quote.",
+  "Remind me on Friday at 6pm to pay the electricity bill.",
+  "Remind me next Monday at 10am to book a dentist appointment.",
+  "Every Sunday at 7pm remind me to plan my week.",
 ];
 
 const which = (name: string) => { try { return execFileSync("/bin/sh", ["-c", `command -v ${name}`], { encoding: "utf8" }).trim(); } catch { return ""; } };
@@ -356,15 +366,20 @@ try {
     await api(fixture, "PATCH", `/api/bots/${bot.id}`, { modelSelection: { instanceId: spec.id, model: spec.model, ...(opts.effort ? { effort: opts.effort } : {}) } });
     for (const mode of modes) {
       let warmThread = "";
-      for (let run = 0; run < Number(opts.runs) + (mode === "warm" ? 1 : 0); run += 1) {
+      for (let run = 0; run < Number(opts.runs) + (mode === "warm" || mode === "idle" ? 1 : 0); run += 1) {
         const threadId = mode === "cold" || run === 0
           ? (await api(fixture, "POST", `/api/bots/${bot.id}/tasks`, { select: false })).task.threadId as string
           : warmThread;
         warmThread = threadId;
-        const pool = opts.set === "work" ? WORK : QUESTIONS;
+        if (mode === "idle" && run > 0) {
+          // the engine closes after its idle window; a person then types for a moment before sending
+          await sleep(Number(opts["idle-ms"] ?? 10_000) + 2_500);
+          await sleep(1_500);
+        }
+        const pool = opts.set === "work" ? WORK : opts.set === "remind" ? REMIND : QUESTIONS;
         const question = opts.question ?? pool[q++ % pool.length]!;
         const sample = await runTurn(fixture, events, spec.id, bot, threadId, mode, question);
-        if (mode === "warm" && run === 0) { sample.mode = "warm-first"; }
+        if ((mode === "warm" || mode === "idle") && run === 0) { sample.mode = `${mode}-first`; }
         samples.push(sample);
         console.error(`${spec.id} ${sample.mode} #${run}: ${sample.ok ? "ok" : "FAILED"} ${HOPS.map((hop) => `${hop}=${sample.marks[hop] ?? "-"}`).join(" ")} calls=${sample.modelCalls} prompt=${sample.promptBytes}b cache=${sample.cacheRead}/${sample.inputTokens} "${sample.text}"`);
         await waitIdle(fixture, bot.id);
