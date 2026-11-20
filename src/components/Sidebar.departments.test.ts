@@ -119,6 +119,8 @@ beforeEach(() => {
     setItem: (key: string, value: string) => { fixture.storage.set(key, value); },
     removeItem: (key: string) => { fixture.storage.delete(key); },
   });
+  // dragging is the person's own order; by recent activity the lists order themselves
+  fixture.storage.set("duskbot.sidebarBotOrder", "custom");
 });
 afterEach(() => vi.unstubAllGlobals());
 

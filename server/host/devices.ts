@@ -4,7 +4,6 @@ import type { PhoneBot, PhonePlace } from "../phones/access.ts";
 import { PHONE_INSTRUCTIONS } from "../phones/instructions.ts";
 import { botFile, computerFile } from "../mac-control/files.ts";
 import { createMacControl, type MacControl, type MacControlDeps } from "../mac-control/host.ts";
-import { MAC_INSTRUCTIONS } from "../mac-control/instructions.ts";
 import type { SessionRegistry } from "../sessions.ts";
 import type { BotRecord } from "../store.ts";
 import { PASS } from "../routes/table.ts";
@@ -13,7 +12,7 @@ import type { Phones } from "./phones.ts";
 
 type Turn = { botId: string; threadId: string; generation: string };
 
-export interface DevicesDeps extends Pick<MacControlDeps, "dataDir" | "offered" | "enabled" | "setEnabled" | "ownerOrAdmin" | "active" | "log"> {
+export interface DevicesDeps extends Pick<MacControlDeps, "dataDir" | "offered" | "enabled" | "setEnabled" | "ownerOrAdmin" | "active" | "log" | "cloud"> {
   phones: Phones;
   sessions: Pick<SessionRegistry, "isLive">;
   bot(id: string): BotRecord | null | undefined;
@@ -63,7 +62,7 @@ export function withMacControl(phones: Phones, mac: MacControl, botById: (id: st
         const live = botById(capability.botId);
         const phone = live && phones.mounts(live, capability) ? await phones.handle(body, capability, assertActive) as { tools: unknown[] } : { tools: [] };
         const macTools = mac.tools(capability);
-        return { tools: [...phone.tools, ...macTools], instructions: [phone.tools.length ? PHONE_INSTRUCTIONS : "", macTools.length ? MAC_INSTRUCTIONS : ""].filter(Boolean).join(" ") };
+        return { tools: [...phone.tools, ...macTools], instructions: [phone.tools.length ? PHONE_INSTRUCTIONS : "", macTools.length ? mac.instructions() : ""].filter(Boolean).join(" ") };
       }
       if (request.method === "tools/call" && mac.handles((request.params as { name?: unknown } | undefined)?.name)) {
         return mac.call(request.params, capability, assertActive);

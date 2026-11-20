@@ -11,6 +11,7 @@ import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createLinkService, publicIp } from "../src/app.mjs";
+import { createFleet, FLEET_WINDOW_MS } from "../src/packages.mjs";
 import { SERVER_RELEASE_KEYS, createServerUpdater, createTunnelAgent, serverReleaseSigned, open as agentOpen, openFrame as agentOpenFrame, sealBytes as agentSealBytes } from "../agent.mjs";
 import { PINNED_RELEASE_KEYS, signRelease } from "../../cloud-service/src/release-signing.ts";
 import { createRelayClient, createTunnelProxy, frameGuard, newLinkKeys, openFrame, openResult, seal, sealBytes, sealFrame, sha256hex, vpsTokenOf } from "../../../electron/vps-link-protocol.mjs";
@@ -391,6 +392,21 @@ describe("a linked server's own update", () => {
     expect(Buffer.from(await part.arrayBuffer())).toEqual(bytes.subarray(13));
   });
 
+  it("offers a linked server no build while the operator's policy is paused, and counts the versions servers report", async () => {
+    publish(Buffer.from("paused build"));
+    const { id, token } = await linked();
+    writeFileSync(join(dir, "data", "packages", "update-policy.json"), JSON.stringify({ body: JSON.stringify({ serial: 2, floor: null, blocked: [], paused: true }), signature: "r1.x.y.z" }));
+    const held = await get(`/v1/tunnels/${id}/server`, token, { "x-dusk-server-version": "1.1.0", "x-dusk-agent-version": "2.4.7" });
+    expect(held.status).toBe(404);
+    expect((await held.json()).code).toBe("paused");
+    let t = 0;
+    const fleet = createFleet(() => t);
+    fleet.saw("a", "1.1.0", "2.4.7"); fleet.saw("b", "1.2.0", "2.4.7"); fleet.saw("c", "not a version", undefined);
+    expect(fleet.counts().servers).toEqual([{ version: "1.2.0", count: 1 }, { version: "1.1.0", count: 1 }, { version: "unknown", count: 1 }]);
+    t = FLEET_WINDOW_MS + 1; fleet.saw("a", "1.2.0", "2.4.7");
+    expect(fleet.counts()).toMatchObject({ servers: [{ version: "1.2.0", count: 1 }], agents: [{ version: "2.4.7", count: 1 }] });
+  });
+
   it("the agent pins the same release keys as the service and the installer, and only those", () => {
     expect([...SERVER_RELEASE_KEYS]).toEqual(PINNED_RELEASE_KEYS.map(k => `${k.kid}:${k.x}`));
     const { privateKey } = generateKeyPairSync("ed25519");
@@ -428,6 +444,28 @@ describe("a linked server's own update", () => {
     expect(ready).toMatchObject({ v: 1, sha256: sha, size: bytes.length, version: "1.2.0" });
     expect(readFileSync(join(staged, `${sha}.tgz`)).equals(bytes)).toBe(true);
     expect(statSync(join(staged, "ready.json")).mode & 0o777).toBe(0o600);
+  });
+
+  it("the agent logs what each check found, once each time it changes", async () => {
+    const lines = [];
+    const quiet = await linked();
+    rmSync(join(dir, "data", "packages"), { recursive: true, force: true });
+    const none = createServerUpdater({ base, id: quiet.id, token: quiet.token, dir: join(dir, `server-release-${quiet.id}`), current: async () => "1.1.0", log: (line) => lines.push(line) });
+    expect(await none.check()).toBeNull();
+    expect(await none.check()).toBeNull();
+    expect(lines).toEqual(["link: no server build is published on the link service (it answered 404); the server stays as it is"]);
+
+    const { privateKey } = generateKeyPairSync("ed25519");
+    const signing = `test-vps:${privateKey.export({ format: "der", type: "pkcs8" }).toString("base64url")}`;
+    const keys = [`test-vps:${createPublicKey(privateKey).export({ format: "jwk" }).x}`];
+    const bytes = Buffer.from("current server build ".repeat(300));
+    publish(bytes, { signature: signRelease({ kind: "vps-package", name: "duskbot", version: "1.2.0", sha256: sha256hex(bytes), signedAt: 1 }, signing) });
+    const { id, token } = await linked();
+    lines.length = 0;
+    const current = createServerUpdater({ base, id, token, dir: join(dir, `server-release-${id}`), keys, current: async () => "1.2.0", log: (line) => lines.push(line) });
+    expect(await current.check()).toBeNull();
+    expect(await current.check()).toBeNull();
+    expect(lines).toEqual(["link: server 1.2.0 is up to date (the link service offers 1.2.0)"]);
   });
 });
 

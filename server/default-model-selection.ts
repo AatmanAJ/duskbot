@@ -9,6 +9,8 @@ export interface SelectableInstance {
   capabilities?: { effortLevels?: readonly EffortLevel[]; modelVariants?: boolean };
   access?: EngineAccess;
   enabled?: boolean;
+  /** Found on this computer, never chosen by the person: offered in every list, never picked on its own. */
+  found?: true;
 }
 
 export interface DefaultSelectionContext {
@@ -27,14 +29,30 @@ const best = (instances: readonly SelectableInstance[], context: DefaultSelectio
   return usable(ranked.filter((instance) => !freeFallback(instance))) ?? usable(ranked) ?? ranked[0];
 };
 
+/** Drops what the person disconnected in Settings, for every automatic pick that reads the registry directly (a limit
+ * switch, the free backup, voice fallbacks), so none of them brings it back before Reconnect. */
+export function connectedOnly<T extends { instanceId: string }>(instances: readonly T[], configs: InstanceConfigMap): T[] {
+  return instances.filter((instance) => configs[instance.instanceId]?.hidden !== true);
+}
+
 /** The saved config's enabled switch and picker group win over what the driver reports. */
 /** Every list a person or the server chooses a model from passes here, so a hidden provider drops out of all of them. */
-export function withInstanceConfig<T extends SelectableInstance>(instances: readonly T[], configs: InstanceConfigMap): T[] {
-  return instances.filter((instance) => configs[instance.instanceId]?.hidden !== true).map((instance) => ({
-    ...instance,
-    enabled: configs[instance.instanceId]?.enabled ?? instance.enabled,
-    ...(configs[instance.instanceId]?.access ? { access: configs[instance.instanceId].access } : {}),
-  }));
+export function withInstanceConfig<T extends SelectableInstance>(instances: readonly T[], configs: InstanceConfigMap,
+  inUse?: (instanceId: string) => boolean): T[] {
+  return connectedOnly(instances, configs).map((instance) => {
+    const config = configs[instance.instanceId];
+    const { found: _found, ...rest } = instance;
+    const described = { ...rest, enabled: config?.enabled ?? instance.enabled, ...(config?.access ? { access: config.access } : {}) } as T;
+    return inUse && onlyFound(described, config, inUse) ? { ...described, found: true as const } : described;
+  });
+}
+
+/** A provider the app found by itself (a CLI on this computer and its sign-in) that the person never chose and nothing uses.
+ * A key, an address or a CLI path someone set is a choice; OpenCode's free backup is the app's own default. */
+function onlyFound(instance: SelectableInstance, config: InstanceConfigMap[string] | undefined, inUse: (instanceId: string) => boolean): boolean {
+  if (config?.chosen === true || instance.access === "api" || instance.access === "custom" || freeFallback(instance)) return false;
+  const cli = (config?.config as { cli?: unknown } | undefined)?.cli;
+  return !(typeof cli === "string" && cli.trim()) && !inUse(instance.instanceId);
 }
 
 /** A custom endpoint brings its own credential, so its sign-in state does not count. */
@@ -66,17 +84,21 @@ export function selectDefaultModelSelection(
       !preferred.model.trim() ||
       // A disallowed saved engine is unusable like an unavailable one: setup, never another provider.
       context.refusal?.(instance) !== undefined ||
-      (preferred.variant !== undefined && !instance.capabilities?.modelVariants) ||
-      !(instance.models.default === preferred.model || instance.models.options.some((model) => model.id === preferred.model))
+      (preferred.variant !== undefined && !instance.capabilities?.modelVariants)
     ) {
       return { instanceId: "", model: "" };
+    }
+    if (instance.models.default !== preferred.model && !instance.models.options.some((model) => model.id === preferred.model)) {
+      // OpenCode's free models come and go: a pick it no longer lists runs on the free model there is now, not setup.
+      const now = freeFallback(instance) ? defaultModel(instance) : "";
+      return now ? { instanceId: instance.instanceId, model: now } : { instanceId: "", model: "" };
     }
     const selection = { ...preferred };
     // A saved effort can outlive driver support: keep the model, let the provider use its default effort.
     if (selection.effort && !instance.capabilities?.effortLevels?.includes(selection.effort)) delete selection.effort;
     return selection;
   }
-  const available = instances.filter((instance) => instance.enabled !== false && instance.snapshot.state === "available" && context.refusal?.(instance) === undefined && defaultModel(instance));
+  const available = instances.filter((instance) => !instance.found && instance.enabled !== false && instance.snapshot.state === "available" && context.refusal?.(instance) === undefined && defaultModel(instance));
   const ready = available.filter((instance) => readyToRun(instance, context));
   const company = context.company;
   const personal = company && instances.some((instance) => company(instance.instanceId))
@@ -94,7 +116,7 @@ const keyOnly = (instance: SelectableInstance) => instance.access === "api" || i
  * only a saved key makes ready counts once its test message answered. */
 export function connectedAiReady(instances: readonly SelectableInstance[], context: DefaultSelectionContext = {}): boolean {
   return instances.some((instance) => {
-    if (freeFallback(instance) || !readyToRun(instance, context) || !defaultModel(instance)) return false;
+    if (instance.found || freeFallback(instance) || !readyToRun(instance, context) || !defaultModel(instance)) return false;
     const answered = context.answered?.(instance);
     return answered === true || (answered === undefined && !keyOnly(instance));
   });
@@ -109,6 +131,15 @@ export function freeBackupOverConnected(
 ): boolean {
   const on = selection ? instances.find((instance) => instance.instanceId === selection.instanceId) : undefined;
   return Boolean(on && freeFallback(on)) && connectedAiReady(instances, context);
+}
+
+/** A bot or conversation the app itself put on the free backup moves to a connected AI; one the person put there stays. */
+export function leavesFreeBackup(
+  instances: readonly SelectableInstance[],
+  owner: { modelSelection?: ModelSelection; modelChosen?: true },
+  context: DefaultSelectionContext = {},
+): boolean {
+  return owner.modelChosen !== true && freeBackupOverConnected(instances, owner.modelSelection, context);
 }
 
 /** An explicit effort or variant wins; an engine without the level sends none rather than failing turn 1. */
