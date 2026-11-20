@@ -45,4 +45,9 @@ export function cloudMacPrompt(limits: CloudMacLimits): string {
   "Everything you do on the Mac shows in the chat. If it is offline the tool says so; tell the person to open dusk bot on the Mac."].filter(Boolean).join(" ");
 }
 
+/** A dusk cloud whose owner has not let it use their Mac yet: the bot says how instead of saying it has no access. */
+export const CLOUD_MAC_UNLINKED_PROMPT =
+  " The person's own Mac is not connected to you yet, so you cannot act on it now. When they ask for something on their Mac or computer, do what you can here, " +
+  "and say in one short sentence that they can let you use their Mac: in the dusk bot app on it, Settings > Your computer > Let my cloud bots use this Mac.";
+
 export const MAC_OFFLINE_TEXT = "The person's Mac is offline: the dusk bot app on it is closed or not linked to this server right now. Ask them to open it.";

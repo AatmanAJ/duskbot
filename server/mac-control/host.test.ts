@@ -132,3 +132,29 @@ describe("the owner's Mac", () => {
     expect(enabled).toBe(false);
   });
 });
+
+describe("a dusk cloud whose owner's Mac never linked", () => {
+  const cloudMac = (over: { enabled?: boolean; owner?: string | null } = {}) => createMacControl({
+    dataDir: dir, offered: () => true, enabled: () => over.enabled ?? true, setEnabled: () => {}, ownerOrAdmin: () => true, live: () => true,
+    bot: (id) => bots[id], turnOwner: () => (over.owner === undefined ? "owner" : over.owner), active: () => true,
+    openFile: async () => { throw new Error("none"); }, computerFile: async () => { throw new Error("none"); },
+    cloud: { approve: async () => null, linkKey: () => null },
+  });
+
+  it("tells the owner's bot how to let it use the Mac, and mounts no Mac tools", () => {
+    const cloud = cloudMac();
+    expect(cloud.tools(turn)).toEqual([]);
+    expect(cloud.promptPart(bots.nova!, turn).text).toBe("");
+    expect(cloud.unlinkedPart(bots.nova!, turn).text).toContain("Let my cloud bots use this Mac");
+    cloud.close();
+  });
+
+  it("says nothing on someone else's turn, with Mac use off, or off a cloud", () => {
+    const others = cloudMac({ owner: null }), off = cloudMac({ enabled: false });
+    expect(others.unlinkedPart(bots.nova!, turn).text).toBe("");
+    expect(off.unlinkedPart(bots.nova!, turn).text).toBe("");
+    expect(cloudMac().unlinkedPart({ ...bots.nova!, macControl: false }, turn).text).toBe("");
+    expect(mac.unlinkedPart(bots.nova!, turn).text).toBe("");
+    others.close(); off.close();
+  });
+});

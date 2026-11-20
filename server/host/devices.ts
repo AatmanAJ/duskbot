@@ -50,7 +50,7 @@ export function withMacControl(phones: Phones, mac: MacControl, botById: (id: st
     },
     promptParts(bot: PhoneBot & { macControl?: boolean }, input: { mounted: boolean; offered: boolean; turn: Turn; place: PhonePlace }): PromptPart[] {
       const phoneParts = phones.promptParts(bot, { ...input, mounted: input.mounted && phones.mounts(bot, input.turn) });
-      return [...phoneParts, input.mounted ? mac.promptPart(bot, input.turn) : { id: "mac", label: "Your Mac", text: "" }];
+      return [...phoneParts, input.mounted ? mac.promptPart(bot, input.turn) : input.offered ? mac.unlinkedPart(bot, input.turn) : { id: "mac", label: "Your Mac", text: "" }];
     },
     previewParts(bot: PhoneBot & { macControl?: boolean }, offered: boolean): PromptPart[] {
       return [...phones.previewParts(bot, offered), ...(offered ? [mac.previewPart(bot)] : [])];

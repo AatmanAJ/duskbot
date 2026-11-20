@@ -18,7 +18,7 @@ import { isMacToolName, type MacControlStatus, type MacToolName } from "../../sh
 import type { RequestAuth } from "../request-auth.ts";
 import { PASS, type RouteHandler } from "../routes/table.ts";
 import type { PromptPart } from "../system-prompt.ts";
-import { cloudMacInstructions, cloudMacPrompt, MAC_INSTRUCTIONS, MAC_OFFLINE_TEXT, MAC_PROMPT } from "./instructions.ts";
+import { CLOUD_MAC_UNLINKED_PROMPT, cloudMacInstructions, cloudMacPrompt, MAC_INSTRUCTIONS, MAC_OFFLINE_TEXT, MAC_PROMPT } from "./instructions.ts";
 import { macJobOutcome, MacJobs, MAC_RESULT_MAX_BYTES, type MacDownload } from "./jobs.ts";
 import { isMacSealKey, openMacOutcome, readLinkSigningKey, sealMacJob } from "./seal.ts";
 import { CLOUD_MAC_TOOLS, MAC_TOOLS, macErrorResult, macJobTimeoutMs, macToolCallProblem, type MacToolResult } from "./tools.ts";
@@ -239,6 +239,9 @@ export function createMacControl(deps: MacControlDeps) {
     /** The device server mounts for this turn because of the Mac (it may also mount for the phone). */
     mounts: (bot: MacBot, turn: Turn) => allowed(bot, turn) === null,
     promptPart: (bot: MacBot, turn: Turn): PromptPart => ({ id: "mac", label: "Your Mac", text: allowed(bot, turn) === null ? prompt() : "" }),
+    /** A dusk cloud's owner's turn when their Mac never linked: how to let the bot use it. */
+    unlinkedPart: (bot: MacBot, turn: Turn): PromptPart => ({ id: "mac", label: "Your Mac", text:
+      cloud && deps.offered() && !available() && deps.enabled() && bot.macControl !== false && deps.turnOwner(turn) !== null ? CLOUD_MAC_UNLINKED_PROMPT : "" }),
     /** The bot settings preview: the Mac as the owner's own turn would see it. */
     previewPart: (bot: MacBot): PromptPart => ({ id: "mac", label: "Your Mac", text: available() && deps.enabled() && bot.macControl !== false ? prompt() : "" }),
     tools: (turn: Turn) => (allowed(deps.bot(turn.botId), turn) === null ? [...catalog] : []),
