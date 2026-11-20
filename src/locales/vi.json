@@ -175,7 +175,6 @@
   "server.allowance.held": "Đã bỏ qua: chạm giới hạn tuần. Đặt lại: {reset}, {left}.",
   "server.allowance.refused": "Đã chạm giới hạn tuần nên tác vụ mới chờ đến {reset} ({left}). Bật chế độ tiết kiệm trong Mức sử dụng để tiếp tục trò chuyện bằng mô hình rẻ hơn.",
   "server.routine.selfCap": "Đã dừng “{routine}”: lần chạy này tốn gấp 3 lần bình thường. Tác vụ sẽ chạy lại vào giờ đã lên lịch tiếp theo.",
-  "server.routine.probeFailed": "“{routine}”: {reason} Tôi sẽ tiếp tục thử vào các giờ thường lệ.",
   "server.routine.fatigue": "Đã tạm dừng “{routine}” sau {count} lần chạy lỗi giống nhau: {error}. Bật lại khi đã khắc phục.",
   "server.routine.recheck": "Chưa đạt. Sẽ kiểm tra lại lúc {time}.",
   "server.notify.approval": "{who} cần được phê duyệt",

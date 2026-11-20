@@ -181,7 +181,6 @@
   "server.allowance.held": "Pominięto: osiągnięto limit tygodniowy. Reset: {reset}, {left}.",
   "server.allowance.refused": "Osiągnięto limit tygodniowy. Nowe zadania czekają do {reset} ({left}). Włącz tryb oszczędny w sekcji Wykorzystanie, aby kontynuować czat na tańszym modelu.",
   "server.routine.selfCap": "Zatrzymano “{routine}”: ten przebieg kosztował 3 razy więcej niż zwykle. Rutyna uruchomi się ponownie w następnym zaplanowanym terminie.",
-  "server.routine.probeFailed": "“{routine}”: {reason} Będę próbować dalej o zwykłych porach.",
   "server.routine.fatigue": "Wstrzymano „{routine}” po {count} uruchomieniach z tym samym błędem: {error}. Włącz rutynę ponownie po usunięciu problemu.",
   "server.routine.recheck": "Jeszcze nie. Kolejne sprawdzenie o {time}.",
   "server.notify.approval": "{who} potrzebuje zatwierdzenia",

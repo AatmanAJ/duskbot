@@ -175,7 +175,6 @@
   "server.allowance.held": "Atlandı: haftalık sınıra ulaşıldı. Sıfırlanma: {reset}, {left}.",
   "server.allowance.refused": "Haftalık sınıra ulaşıldı. Yeni görevler {reset} zamanına kadar bekler ({left}). Daha ucuz bir modelle sohbete devam etmek için Kullanım bölümünde Tasarruf modunu açın.",
   "server.routine.selfCap": "“{routine}” durduruldu: bu çalıştırma normalin 3 katı tutuyordu. Bir sonraki planlanan zamanda yeniden çalışır.",
-  "server.routine.probeFailed": "“{routine}”: {reason} Her zamanki saatlerinde denemeye devam edeceğim.",
   "server.routine.fatigue": "{count} çalıştırma aynı şekilde başarısız olduğu için “{routine}” duraklatıldı: {error}. Sorun düzeldiğinde tekrar aç.",
   "server.routine.recheck": "Henüz değil. {time} saatinde tekrar kontrol edilecek.",
   "server.notify.approval": "{who} onay bekliyor",

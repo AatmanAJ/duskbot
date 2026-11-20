@@ -213,7 +213,6 @@
   "server.allowance.held": "已跳过：达到每周上限。重置时间：{reset}，{left}。",
   "server.allowance.refused": "已达到每周上限，新任务将等待至 {reset}（{left}）。在用量中开启省钱模式，即可使用更便宜的模型继续聊天。",
   "server.routine.selfCap": "已停止“{routine}”：本次运行费用达到平时的 3 倍。下次预定时间会再次运行。",
-  "server.routine.probeFailed": "“{routine}”：{reason} 我会在平常的时间继续尝试。",
   "server.routine.fatigue": "“{routine}”{count} 次运行因相同原因失败，已暂停：{error}。问题解决后可重新启用。",
   "server.routine.recheck": "还没达到。将在 {time} 再次检查。",
   "server.notify.approval": "{who} 需要批准",

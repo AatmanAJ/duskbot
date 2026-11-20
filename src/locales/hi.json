@@ -144,7 +144,6 @@
   "server.allowance.held": "छोड़ा गया: साप्ताहिक सीमा पूरी हो गई। रीसेट होगा: {reset}, {left}।",
   "server.allowance.refused": "साप्ताहिक सीमा पूरी हो गई है, इसलिए नए काम {reset} तक रुकेंगे ({left})। सस्ते मॉडल पर चैट जारी रखने के लिए उपयोग में बचत मोड चालू करें।",
   "server.routine.selfCap": "“{routine}” रोक दिया गया: इस बार खर्च सामान्य से 3 गुना हो रहा था। यह अगली तय बारी पर फिर चलेगा।",
-  "server.routine.probeFailed": "“{routine}”: {reason} मैं इसके सामान्य समय पर कोशिश करता रहूँगा।",
   "server.routine.fatigue": "“{routine}” को {count} रन में एक जैसी विफलता के बाद रोक दिया गया: {error}। समस्या ठीक होने पर इसे फिर चालू करें।",
   "server.routine.recheck": "अभी नहीं हुआ। {time} पर फिर जाँच होगी।",
   "server.notify.approval": "{who} को मंज़ूरी चाहिए",

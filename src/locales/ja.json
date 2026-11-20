@@ -181,7 +181,6 @@
   "server.allowance.held": "スキップ: 週の上限に達しました。リセット: {reset}、{left}。",
   "server.allowance.refused": "週の上限に達したため、新しいタスクは{reset}まで待機します（{left}）。使用状況で節約モードをオンにすると、より安いモデルでチャットを続けられます。",
   "server.routine.selfCap": "“{routine}”を停止しました。今回の実行コストが通常の3倍になっていました。次の予定時刻にまた実行します。",
-  "server.routine.probeFailed": "“{routine}”: {reason} 通常の予定時刻に引き続き試します。",
   "server.routine.fatigue": "{count}回の実行が同じ原因で失敗したため、「{routine}」を一時停止しました: {error}。問題が解決したら、もう一度オンにしてください。",
   "server.routine.recheck": "まだです。{time}にもう一度確認します。",
   "server.notify.approval": "{who} が承認を求めています",

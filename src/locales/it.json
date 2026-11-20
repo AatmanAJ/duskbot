@@ -180,7 +180,6 @@
   "server.allowance.held": "Saltata: limite settimanale raggiunto. Si azzera {reset}, {left}.",
   "server.allowance.refused": "Limite settimanale raggiunto. Le nuove attività aspettano fino a {reset} ({left}). Attiva la modalità risparmio in Utilizzo per continuare a chattare con un modello più economico.",
   "server.routine.selfCap": "“{routine}” interrotta: questa esecuzione costava 3 volte il solito. Ripartirà al prossimo orario previsto.",
-  "server.routine.probeFailed": "“{routine}”: {reason} Continuerò a provare ai soliti orari.",
   "server.routine.fatigue": "«{routine}» in pausa dopo {count} esecuzioni fallite nello stesso modo: {error}. Riattivala quando il problema è risolto.",
   "server.routine.recheck": "Non ancora. Nuova verifica alle {time}.",
   "server.notify.approval": "{who} ha bisogno di un'approvazione",

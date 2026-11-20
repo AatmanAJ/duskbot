@@ -208,7 +208,6 @@
   "server.allowance.held": "건너뜀: 주간 한도에 도달했어요. 초기화: {reset}, {left}.",
   "server.allowance.refused": "주간 한도에 도달해 새 작업은 {reset}까지 기다려요({left}). 사용량에서 절약 모드를 켜면 더 저렴한 모델로 채팅을 계속할 수 있어요.",
   "server.routine.selfCap": "“{routine}”을 중지했어요. 이번 실행 비용이 평소의 3배에 달했어요. 다음 예정 시간에 다시 실행돼요.",
-  "server.routine.probeFailed": "“{routine}”: {reason} 평소 예정 시간에 계속 시도할게요.",
   "server.routine.fatigue": "{count}번의 실행이 같은 방식으로 실패해 “{routine}”을 일시 중지했어요: {error}. 문제가 해결되면 다시 켜세요.",
   "server.routine.recheck": "아직이에요. {time}에 다시 확인해요.",
   "server.notify.approval": "{who}에서 승인이 필요해요",

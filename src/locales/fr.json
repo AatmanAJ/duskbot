@@ -144,7 +144,6 @@
   "server.allowance.held": "Ignorée : limite hebdomadaire atteinte. Remise à zéro {reset}, {left}.",
   "server.allowance.refused": "Limite hebdomadaire atteinte. Les nouvelles tâches attendent jusqu’à {reset} ({left}). Activez le mode éco dans Utilisation pour continuer à discuter avec un modèle moins cher.",
   "server.routine.selfCap": "“{routine}” arrêtée : cette exécution coûtait 3 fois plus que d’habitude. Elle reprendra à la prochaine heure prévue.",
-  "server.routine.probeFailed": "“{routine}” : {reason} Je continuerai à essayer aux heures habituelles.",
   "server.routine.fatigue": "« {routine} » en pause après {count} exécutions ayant échoué de la même façon : {error}. Réactivez la routine une fois le problème résolu.",
   "server.routine.recheck": "Pas encore. Nouvelle vérification à {time}.",
   "server.notify.approval": "{who} a besoin d'une approbation",

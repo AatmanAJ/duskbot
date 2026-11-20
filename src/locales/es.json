@@ -310,7 +310,6 @@
   "server.allowance.held": "Omitida: límite semanal alcanzado. Se restablece {reset}, {left}.",
   "server.allowance.refused": "Límite semanal alcanzado. Las tareas nuevas esperan hasta {reset} ({left}). Activa el modo ahorro en Uso para seguir chateando con un modelo más barato.",
   "server.routine.selfCap": "Se detuvo “{routine}”: esta ejecución costaba 3 veces lo habitual. Volverá a ejecutarse a su próxima hora programada.",
-  "server.routine.probeFailed": "“{routine}”: {reason} Seguiré intentándolo en sus horarios habituales.",
   "server.routine.fatigue": "«{routine}» en pausa tras {count} ejecuciones que fallaron de la misma forma: {error}. Vuelve a activarla cuando se haya solucionado.",
   "server.routine.recheck": "Todavía no. Lo comprobaré de nuevo a las {time}.",
   "server.notify.workingFor": "{who}, trabajando para {other}",

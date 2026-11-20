@@ -173,7 +173,6 @@
   "server.allowance.held": "已略過：達到每週上限。重設時間：{reset}，{left}。",
   "server.allowance.refused": "已達到每週上限，新工作將等待至 {reset}（{left}）。在用量中開啟省錢模式，即可使用更便宜的模型繼續聊天。",
   "server.routine.selfCap": "已停止“{routine}”：本次執行費用達到平常的 3 倍。下次預定時間會再次執行。",
-  "server.routine.probeFailed": "“{routine}”：{reason} 我會在平常的時間繼續嘗試。",
   "server.routine.fatigue": "「{routine}」{count} 次執行因相同原因失敗，已暫停：{error}。問題解決後可重新開啟。",
   "server.routine.recheck": "還沒達到。將在 {time} 再次檢查。",
   "server.notify.approval": "{who} 需要核准",
