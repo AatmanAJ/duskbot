@@ -215,7 +215,7 @@ describe("Dusk, every person's helper", () => {
     const store = new Store(selection);
     const maus = boot(store)!;
     const [intro] = intros(store, maus);
-    expect(intro?.card?.options).toHaveLength(4);
+    expect(intro?.card?.options).toHaveLength(3);
     store.appendMessage(maus.threadId, { role: "user", kind: "text", text: "What can you do?" });
     expect(store.messagesFor(maus.threadId).find((message) => message.id === intro!.id)?.card?.dismissed).toBe(true);
     for (let restart = 0; restart < 2; restart++) boot(new Store(selection));
