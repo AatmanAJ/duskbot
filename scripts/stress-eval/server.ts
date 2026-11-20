@@ -33,7 +33,7 @@ export interface StressServer {
   close(keep?: boolean): Promise<void>;
 }
 
-export async function launchServer(repo: string, tmp: string, gateway: Gateway, models: string[]): Promise<StressServer> {
+export async function launchServer(repo: string, tmp: string, gateway: Gateway, models: string[], extraConfig: Record<string, unknown> = {}): Promise<StressServer> {
   const port = await freePair();
   mkdirSync(tmp, { recursive: true });
   const root = mkdtempSync(join(tmp, "srv-"));
@@ -42,6 +42,7 @@ export async function launchServer(repo: string, tmp: string, gateway: Gateway, 
   writeFileSync(join(dataDir, "config.json"), JSON.stringify({
     features: { smartSetupChoices: false },
     instances: { gw: { driver: "openai-compat", displayName: "Eval gateway", config: { url: gateway.url, key: gateway.key, model: models[0] } } },
+    ...extraConfig,
   }, null, 2), { mode: 0o600 });
   const logPath = join(root, "server.log");
   const env: NodeJS.ProcessEnv = {
