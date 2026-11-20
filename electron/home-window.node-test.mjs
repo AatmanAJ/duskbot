@@ -591,12 +591,8 @@ test("My Cloud as home with nothing else still opens the list of places, My Clou
   const cloud = { id: "c", kind: "remote", name: "My Cloud", origin: CLOUD, home: true };
   const rows = environments.workspaceMenuTemplate({ environments: [cloud], activeId: "c" }, { onSwitch() {}, onConnect() {}, onForget() {}, homeOrigin: CLOUD });
   assert.deepEqual(rows.map((row) => [row.label, row.checked]), [["dusk cloud", true]]);
-  const added = [];
-  const withAdd = environments.workspaceMenuTemplate({ environments: [cloud], activeId: "c" }, { onSwitch() {}, onConnect() {}, onForget() {}, onAddCloud: () => added.push(1), homeOrigin: CLOUD });
-  assert.deepEqual(withAdd.map((row) => row.label ?? row.type), ["dusk cloud", "separator", "Add dusk cloud…"], "one place still offers the way to add a cloud");
-  withAdd.at(-1).click();
-  assert.deepEqual(added, [1]);
-  assert.ok(MAIN.includes('homeWindow.cloudOrigin() && cloudOffersAllowed() ? { onAddCloud:'), "at home, main wires the add row");
+  const withAdd = environments.workspaceMenuTemplate({ environments: [cloud], activeId: "c" }, { onSwitch() {}, onConnect() {}, onForget() {}, onAddCloud() {}, homeOrigin: CLOUD });
+  assert.deepEqual(withAdd.map((row) => row.label ?? row.type), ["dusk cloud"], "home is dusk cloud: no Add dusk cloud…");
 });
 
 test("the place asked for: My Cloud unless a team is asked or remembered; a team is the session's, one the connected session no longer lists is gone, and one the Admin can't vouch for opens as saved", () => {

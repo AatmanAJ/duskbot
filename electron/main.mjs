@@ -3216,7 +3216,6 @@ ipcMain.handle("workspaces:menu", workspaceOnly(async (_event, from) => {
       onForget: (id) => void workspaceMenuAction(() => forgetEnvironment(id)),
       ...(serverCanMove(environmentsState.activeId) ? { onCloudMove: (id) => void askServerCloudMove(id).catch(error => slog(`cloud move menu: ${error?.message ?? error}`)) } : {}),
       ...cloudMenuOptions(from === "howto" ? "app_howto" : "app_menu"),
-      ...(homeWindow.cloudOrigin() && cloudOffersAllowed() ? { onAddCloud: () => void ensureCloudAccount().webHandoff({ page: "cloud" }).catch(error => slog(`add cloud: ${error?.message ?? error}`)) } : {}),
       kindIcon: placeKindIcon,
       // with My Cloud home, this computer stays one tap away: once its bots moved it opens fresh (its own first bot), never the frozen copy that refuses every send
       onLocal: () => void workspaceMenuAction(() => (cleanWorkspace.marker().frozen ? workspaceSwitch.around(() => homeWindow.openHere()) : activeEnvironment(environmentsState) ? switchEnvironment(LOCAL_ID) : workspaceSwitch.around(() => (homePlaces.remember(null), persistEnvironments(withActive(environmentsState, LOCAL_ID), "chosen"), navigateMainWindow(rendererOrigin()))))),
