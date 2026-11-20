@@ -97,6 +97,7 @@ const plain = (error, fallback) => {
  *   saveServer(server: { origin: string, name: string }): string,
  *   forgetServer(id: string, how?: { replaced?: boolean }): void,
  *   retarget?(from: string, to: string): void,
+ *   rehome?(from: string, to: { id: string, origin: string }): void,
  *   switchTo(id: string): Promise<void> | void,
  *   pin?(host: string, spki: string): void,
  *   ownHome: { start(id: string): Promise<unknown>, view(): any, away(): boolean, home(): any, chosen(): any, active?(): boolean, retry?(): Promise<void>, trouble?(): { error: string, retryAt: number } | null },
@@ -930,7 +931,7 @@ export function createVpsLink(deps) {
         await proxies.get(old.id)?.close();
         proxies.delete(old.id);
         peers.delete(old.id);
-        if (old.envId && old.envId !== link.envId) deps.forgetServer(old.envId, { replaced: true });
+        if (old.envId && old.envId !== link.envId) { deps.rehome?.(old.envId, { id: link.envId, origin: link.origin }); deps.forgetServer(old.envId, { replaced: true }); }
         if (state.move?.linkId === old.id) state.move.linkId = link.id;
       }
       state.links = [...state.links.filter((entry) => entry.id !== link.id && !replaced.includes(entry)), link];
@@ -1268,11 +1269,7 @@ export function createVpsLink(deps) {
     return view();
   }
 
-  function forget() {
-    const link = currentLink(), home = ownHome.away() ? ownHome.home() : null;
-    if (link && home && link.envId === home.id) throw new Error(`Your bots live on ${home.name}. Bring them back to this computer first, then remove it.`);
-    return forgetLink(link);
-  }
+  const forget = () => { const home = homeLink(); if (home && home === currentLink()) throw new Error(`Your bots live on ${home.name}. Bring them back to this computer first, then remove it.`); return forgetLink(currentLink()); };
   /** Start fresh: the linked server this saved place is, forgotten as Forget does (after its data was deleted, so there is
    * no session left there to sign out of: `quiet`); false when no link is that place. */
   async function forgetServer(envId) {

@@ -131,6 +131,7 @@ function controller({ local, ownHome, store, onChange = () => {}, grant = async 
     label: () => "Sid's MacBook",
     saveServer: ({ origin, name }) => { saved.push({ origin, name }); return `env-${saved.filter((entry) => entry.origin).length}`; },
     forgetServer: (id) => saved.push({ forgot: id }),
+    rehome: (from, to) => saved.push({ rehomed: [from, to.id] }),
     switchTo: () => {},
     ownHome,
     ownHomeReset: () => {},
@@ -286,6 +287,7 @@ describe("Add your VPS", () => {
     expect(store.read().links.map((entry) => entry.id)).toEqual([second]);
     expect(store.read().current).toBe(second);
     expect(saved).toContainEqual({ forgot: "env-1" });
+    expect(saved).toContainEqual({ rehomed: ["env-1", "env-2"] });
     expect(service.store.tunnels.has(first)).toBe(false);
     expect(service.store.tunnels.has(second)).toBe(true);
     await link.forget();

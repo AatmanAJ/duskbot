@@ -195,6 +195,10 @@ export function installVpsLink(deps) {
       const choice = ownHomeFiles[1], chosen = choice.read();
       if (chosen?.origin === from) choice.write({ ...chosen, origin: to });
     },
+    rehome(from, to) {
+      const choice = ownHomeFiles[1], chosen = choice.read();
+      if (chosen?.id === from) choice.write({ ...chosen, id: to.id, origin: to.origin });
+    },
     switchTo: deps.switchTo,
     pin(host, spki) {
       pins.add(host, spki);
