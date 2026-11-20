@@ -51,7 +51,7 @@ const row = (id: string) => host.querySelector<HTMLElement>(`[data-key-row="${id
 const rowsShown = () => [...host.querySelectorAll<HTMLElement>("[data-key-row]")].filter((element) => !element.closest("[hidden]")).map((element) => element.dataset.keyRow);
 const section = (id: string) => host.querySelector<HTMLElement>(`[data-keys-section="${id}"]`)!;
 // a row's field and extra settings open in a compact dialog, drawn over the page from the body
-const dialog = (id: string) => document.querySelector<HTMLElement>(`[data-key-dialog="${id}"]`);
+const dialog = (id: string) => [...document.querySelectorAll<HTMLElement>(`[data-key-dialog="${id}"]`)].find((el) => !el.closest("[data-leaving]")) ?? null;
 const openDialog = (id: string) => {
   flushSync(() => row(id)!.querySelector<HTMLButtonElement>("[data-key-add], [data-key-replace], [data-key-open]")!.click());
   return dialog(id)!;

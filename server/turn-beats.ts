@@ -1,5 +1,5 @@
 // The rhythm of a working turn, kept by the harness rather than left to the engine: a short ack a few seconds after the
-// person asks for real work, then about 15 s in a second message saying what they will get, and on a long job a milestone
+// person asks for real work, then, on a job past half a minute, a second message saying what they will get, and on a long job a milestone
 // when nothing has been said for a while. A small fast model writes each one in the bot's voice from what the person asked
 // and the steps run so far; the engine's own turn runs on untouched. Each beat is dropped the moment the engine has said
 // the same kind of thing itself, or is writing its result. Never for routines, teammates, cards or other turns nobody
@@ -13,11 +13,13 @@ export type BeatKind = "ack" | "plan" | "milestone";
 
 /** The earliest an ack goes out, so a fast reply never follows one. */
 export const ACK_MIN_MS = 1_500;
-/** An ack for work that has run no tool yet waits this long for the engine to answer by itself first. */
+/** An ack for work that has run no tool yet waits this long for the engine to answer by itself first, and goes out only
+ * once the engine shows it is thinking: an ack nothing follows is a promise the turn did not keep. */
 export const ACK_IDLE_MS = 4_000;
-/** The second message is written from here, once a tool has run, and goes out from PLAN_MIN_MS. */
-export const PLAN_WRITE_MS = 11_000;
-export const PLAN_MIN_MS = 15_000;
+/** The second message is written from here, once a tool has run, and goes out from PLAN_MIN_MS: only a job that runs
+ * past half a minute gets one, so a quick task reads as an ack and its result. */
+export const PLAN_WRITE_MS = 26_000;
+export const PLAN_MIN_MS = 30_000;
 /** A milestone after this long without any message from the bot, while tools keep running. */
 export const MILESTONE_QUIET_MS = 150_000;
 export const MAX_MILESTONES = 3;
@@ -81,6 +83,8 @@ interface Watch {
   /** Every message of the turn so far, the engine's and the harness's, in order. */
   said: string[];
   streaming: boolean;
+  /** The engine has shown it is working on it: reasoning streamed or a reasoning step began. */
+  thinking: boolean;
   planRewritten: boolean;
   steps: string[];
   stepsAtLastWord: number;
@@ -130,7 +134,7 @@ export function beatPrompt(kind: BeatKind, input: { name: string; soul?: string;
   if (kind === "ack") {
     return [...head, "",
       "Write the acknowledgement they see first.",
-      "- One sentence, 6 to 20 words, present tense, naming the concrete action and object, like \"On it, pulling this week's Delhi to Goa fares.\" or \"Got it, comparing the three plans now.\"",
+      "- One sentence, 6 to 20 words, present tense, naming the concrete action and object, like \"On it, pulling this week's Delhi to Goa fares.\" or \"Got it, comparing the three plans now.\" Write names and products exactly as the person did (EndNote, not \"the endnote\"). Say it in your own words, never their sentence back, and never a stock phrase like \"I'd be happy to help\".",
       `- Reply exactly SKIP if the message is only a greeting, thanks or small talk, if it is outside what ${input.name} does, if ${input.name}'s setup says it asks before using tools or fetching data, or if ${input.name} would need to ask the person something before starting.`,
       SHARED_RULES(input.name),
     ].join("\n");
@@ -139,7 +143,8 @@ export function beatPrompt(kind: BeatKind, input: { name: string; soul?: string;
     return [...head, "",
       `${input.name} already told them:`, said || "- (nothing yet)", "",
       `What ${input.name} has done so far:`, steps, "",
-      "Write the second message: what they will get and its shape (a short list, a table, a file, a link, a summary), any default you can see being assumed, and the one check that will happen before sending, only a check the request and the steps make natural (comparing sources, checking prices are current, checking a page loads).",
+      "Write the second message: what they will get and its shape (a short list, a table, a file, a link, a summary), and any default you can see being assumed.",
+      `- Never promise a check, a test, a price lookup or anything else that is not already among the steps: you cannot know ${input.name} can do it. No "before sending, I'll check" lines.`,
       "- 15 to 40 words, 1 or 2 sentences. Do not repeat what was already said.",
       "- If what was already said tells them what they will get, reply exactly SKIP.",
       "- Never promise a format, file or page the request does not call for.",
@@ -154,6 +159,9 @@ export function beatPrompt(kind: BeatKind, input: { name: string; soul?: string;
   ].join("\n");
 }
 
+/** A line about the bot's own reply ("a brief confirmation", "check it matches your message") rather than the work. */
+const ABOUT_ITSELF = /\ba (?:brief |short |quick )?confirmation\b|\bmy (?:reply|response|answer)\b|\bmatch(?:es)? your (?:message|request)\b/i;
+
 /** The model's reply as a chat line, or null when it declined or wrote something that is not one short message. */
 export function cleanBeat(kind: BeatKind, reply: string): string | null {
   let text = reply.replace(/\r/g, "").trim();
@@ -161,7 +169,7 @@ export function cleanBeat(kind: BeatKind, reply: string): string | null {
   if (!text || /\bSKIP\b/.test(text) || text.includes("```") || text.split("\n").filter((line) => line.trim()).length > 2) return null;
   text = redactSecretsInText(text.replace(/\s+/g, " ")).replace(/\s*!+/g, ".").replace(/\.\.+$/, ".");
   const words = text.split(" ").length;
-  if (words < 3 || words > MAX_WORDS[kind] || /\?\s*$/.test(text)) return null;
+  if (words < 3 || words > MAX_WORDS[kind] || /\?\s*$/.test(text) || ABOUT_ITSELF.test(text)) return null;
   return text;
 }
 
@@ -247,7 +255,7 @@ export function createTurnBeats(deps: TurnBeatsDeps) {
     if (!deps.live(watch.threadId, watch.turnId)) return end(watch);
     if (ack.phase === "ready") {
       if (engineSpoke) ack.phase = "dropped";
-      else if (elapsed >= ACK_MIN_MS && (watch.tools > 0 || (elapsed >= ACK_IDLE_MS && !watch.asksFirst))) post(watch, "ack", ack);
+      else if (elapsed >= ACK_MIN_MS && (watch.tools > 0 || (elapsed >= ACK_IDLE_MS && !watch.asksFirst && watch.thinking))) post(watch, "ack", ack);
     }
     if (ack.phase === "writing" || (ack.phase === "idle" && !engineSpoke && !watch.tools)) return;
 
@@ -284,7 +292,7 @@ export function createTurnBeats(deps: TurnBeatsDeps) {
       const watch: Watch = {
         botId: input.botId, threadId: input.threadId, ask: input.text, work: looksLikeWork(input.text, input.attachments), startedAt: now(),
         asksFirst: ASKS_FIRST.test(deps.bot(input.botId)?.soul ?? ""),
-        tools: 0, toolsDone: 0, engineTextAt: 0, engineMessages: 0, said: [], streaming: false, planRewritten: false, steps: [], stepsAtLastWord: 0, lastWordAt: 0, waiting: false,
+        tools: 0, toolsDone: 0, engineTextAt: 0, engineMessages: 0, said: [], streaming: false, thinking: false, planRewritten: false, steps: [], stepsAtLastWord: 0, lastWordAt: 0, waiting: false,
         ack: { phase: "idle" }, plan: { phase: "idle" }, milestone: { phase: "idle" }, milestones: 0, milestoneTriedAt: 0, posted: [],
         timer: setInterval(() => tick(watch), TICK_MS),
       };
@@ -304,6 +312,7 @@ export function createTurnBeats(deps: TurnBeatsDeps) {
       if (event.turnId && watch.turnId && event.turnId !== watch.turnId) return;
       switch (event.type) {
         case "item.started":
+          if (event.itemType === "reasoning") watch.thinking = true;
           if (event.itemType !== "tool") return;
           watch.tools++;
           watch.streaming = false;
@@ -328,6 +337,7 @@ export function createTurnBeats(deps: TurnBeatsDeps) {
           }
           break;
         case "content.delta":
+          if (event.streamKind === "reasoning_text") watch.thinking = true;
           if (event.streamKind === "assistant_text" && event.delta.trim()) {
             watch.engineTextAt = now();
             watch.streaming = true;

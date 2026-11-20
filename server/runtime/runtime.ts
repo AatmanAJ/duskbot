@@ -1,5 +1,6 @@
 // The store is the only state: tick() is the only place work is admitted or dispatched, and no timer lives here.
 import { randomUUID } from "node:crypto";
+import { plainComputerFailure } from "../../shared/computer-unreachable.ts";
 
 import { composeEnvelope } from "./envelope.ts";
 import { assignmentLevel } from "./level.ts";
@@ -445,7 +446,7 @@ export class Runtime {
    * carried for its requester to decide, and left unanswered, goes on with its default. */
   private finishTurn(n: Assignment, result: RunResult, live?: LiveTurn): void {
     const carried = n.carrying ?? [];
-    this.settleTurn(n, result, live);
+    this.settleTurn(n, result.kind === "failed" ? { ...result, text: plainComputerFailure(result.text) } : result, live);
     this.decideCarried(carried);
   }
 
