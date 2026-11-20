@@ -110,6 +110,8 @@ export interface SendTurnInput {
   /** Drivers namespace process-level resources (broker socket, CLI session) by botId too: threadIds may coincide across bots. */
   botId?: string;
   text: string;
+  /** A run of a routine, trigger or webhook rather than the person's own message: its replies never set up more later work. */
+  automationRun?: boolean;
   /** The recall block the harness put in front of `text`; it informs this turn only, so a replay can leave it out. */
   recalled?: string;
   /** Reasserted every turn so a resumed native session cannot keep a stale, more permissive mode. */

@@ -1706,6 +1706,13 @@ describe("stop gates", () => {
     expect(f.effects().map((effect) => effect.name)).toEqual(["fare"]);
   });
 
+  it("never sends a routine's own run back to set up more later work", async () => {
+    const f = await fixture((_body, response) => answer(response, "The fare is still $420. I'll check again tomorrow."));
+    await f.start({ approvalMode: "full", automationRun: true, integrations: withTools(f, "wait_until") });
+    expect(await f.completed()).toMatchObject({ ok: true });
+    expect(f.requests).toHaveLength(1);
+  });
+
   it("lets a promise stand when nothing could set it up", async () => {
     const f = await fixture((_body, response) => answer(response, "The fare is $420 today. I'll let you know when it drops."));
     await f.start({ approvalMode: "full" });

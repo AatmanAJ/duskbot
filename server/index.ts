@@ -9567,7 +9567,7 @@ async function beginTurn(
         system: prompt.text,
         systemStable: prompt.stable,
         systemVolatile: prompt.volatile,
-        mentionTurn: tagged.length > 0,
+        mentionTurn: tagged.length > 0, ...(opts?.automationSource !== undefined ? { automationRun: true } : {}),
         integrations,
         ...(integrations.browser && browserIsThePlace(turnSurfacePlan(bot, undefined, threadId, true)) ? { preloadBrowserTools: true } : {}), ...(takeComputerLikely(bot.id) && integrations.localComputer ? { preloadComputerTools: true } : {}),
         ...settingsTurnFields(cfg, DATA_DIR, managedPolicy.restrictsMcp()),

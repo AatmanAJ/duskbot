@@ -622,7 +622,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         }
         const mounted = tools.definitions.map((definition) => definition.function.name);
         const bridged = mounted.some((name) => /(?:^|_)use_tool$/.test(name));
-        canSchedule = bridged || mounted.some(schedulesWork);
+        canSchedule = !turn.automationRun && (bridged || mounted.some(schedulesWork));
         lookupFor = (tool) => bridged || mounted.some((name) => name !== tool && name.split("_")[0] === tool.split("_")[0] && !effectfulCall(name, "{}"));
         for (let round = 0; round < MAX_CHAT_ROUNDS; round++) {
           abort.signal.throwIfAborted();
