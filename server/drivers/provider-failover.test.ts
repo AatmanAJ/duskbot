@@ -14,6 +14,7 @@ describe("provider failures", () => {
     "429 Too Many Requests: rate limit",
     "stream error: connection reset by peer",
     "codex turn/start timed out after 180000ms",
+    "The model `gpt-9` does not exist: model not found",
   ])("counts %s", (cause) => expect(providerFailure(cause, "exit_before_result")).toBe(true));
 
   it.each([

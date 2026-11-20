@@ -15,8 +15,7 @@ import { saveWelcomeDraft } from "../../src/lib/welcome-draft";
 import { BEAT_ORDER, type BeatId } from "../../src/lib/onboarding";
 import { useStore } from "../../src/state/store";
 import { CloudReady } from "../../src/components/CloudSetup";
-import { AppUpdatePill } from "../../src/components/AppUpdatePill";
-import { SidebarCloudNudge } from "../../src/components/CloudUpsell";
+import { SidebarSpot, SpotCloudCard } from "../../src/components/SidebarSpot";
 import type { CloudOffer } from "../../electron/cloud-home.mjs";
 import { useSidebarFooterSlot } from "../../src/lib/sidebar-footer-slot";
 import { auditLayout } from "./chat-gallery/layout-audit";
@@ -68,6 +67,24 @@ if (params.get("card") === "cloud-stale-checkout") {
   } } });
 }
 
+// ?card=cloud-mac: this Mac's desktop app with a ready dusk cloud on the account, the bots kept here, and Screen Recording and
+// Accessibility not allowed yet; Allow turns each on, as macOS would
+if (params.get("card") === "cloud-mac") {
+  const account = { status: "connected", entitlement: { plan: "pro" }, account: { email: "sam@example.test" },
+    clouds: [{ id: "c1", name: "My Cloud", primary: true, role: "owner", teamId: null, managed: true, provider: "managed", status: "ready" }] };
+  const grants = { screen: "missing", accessibility: "missing" } as Record<"screen" | "accessibility", string>;
+  const capabilities = { host: { platform: "darwin", label: "This Mac", session: "unknown", packaged: true }, windowChrome: "native",
+    screenPreview: { available: false, interaction: "none" }, dictation: { available: false, engine: "none", onDevice: false },
+    localComputer: { available: false, support: "supported", enabled: true, status: "unavailable", reasonCode: "permission-denied" } };
+  Object.assign(window, { duskDesktop: { ...(window as { duskDesktop?: object }).duskDesktop, platform: "darwin",
+    getCapabilities: async () => capabilities,
+    cloudAccount: { state: async () => account, onState: () => () => undefined, offer: async () => GALLERY_OFFER, sheet: async () => undefined,
+      connectHome: async () => undefined, openDashboard: async () => undefined },
+    cloudSendPage: { keepHere: async () => ({ shown: false, moved: false }), setKeepHere: async () => ({ shown: false, moved: false }), notice: async () => null, onNotice: () => () => undefined },
+    macPermissions: { status: async () => ({ supported: true, ...grants }), request: async (kind: "screen" | "accessibility") => { grants[kind] = "granted"; return { supported: true, ...grants }; } },
+  } });
+}
+
 function Cards() {
   const slot = useSidebarFooterSlot();
   const [dock, setDock] = useState<Element | null>(null);
@@ -78,10 +95,10 @@ function Cards() {
   }, []);
   // ?card=app-update-available / -downloading / -ready: the sidebar's update pill, where it sits above the account row
   const update = APP_UPDATE[params.get("card") ?? ""];
-  if (update && slot) return createPortal(<AppUpdatePill bridge={update} />, slot);
+  if (update && slot) return createPortal(<SidebarSpot bridge={update} />, slot);
   if (params.get("card") === "cloud-ready") return <CloudReady slot={slot} onDone={() => undefined} />;
-  // ?card=cloud-nudge: the sidebar's dusk cloud card, as a scheduled showing puts it above the account row
-  if (params.get("card") === "cloud-nudge" && slot) return createPortal(<SidebarCloudNudge invested={null} onDismiss={() => undefined} onStart={() => undefined} />, slot);
+  // ?card=cloud-nudge: the dusk cloud offer as a scheduled showing puts it in the spot above the account row
+  if (params.get("card") === "cloud-nudge" && slot) return createPortal(<SpotCloudCard cta={{ id: "cloud", title: "Keep your bots working", art: "clock", closeLabel: "Hide", onStart: () => undefined, onClose: () => undefined }} card={{ body: "dusk cloud keeps your bots working, even when your Mac is off.", action: "Keep them working", invested: false }} />, slot);
   // ?card=toast-done / toast-error: a passing toast, held on screen
   if (params.get("card") === "toast-done") return <Toast text="Pepper is ready to use" action={{ label: "Undo", onClick: () => undefined }} timeoutMs={600_000} onDone={() => undefined} />;
   if (params.get("card") === "toast-error") return <Toast tone="error" text="Couldn't save Pepper's name. Try again." timeoutMs={600_000} onDone={() => undefined} />;
@@ -101,10 +118,13 @@ const GALLERY_TABS = [
   { title: "Example Domain", url: "https://example.com/", image: page("#555a63", "Example Domain", 4) },
   { title: "Example domains", url: "https://www.iana.org/help/example-domains", image: page("#8a5a1f", "Example domains", 6) },
 ];
-// ?card=local-browser-working / -closed / -offer: a local bot's browser with tabs open, closed four minutes ago, or idle
+// ?card=local-browser-working / -open / -held / -closed / -offer: a local bot's browser with tabs open as the
+// bot browses, open and idle, with a tab the person holds, closed four minutes ago, or never opened
 const localBrowser = params.get("card");
 if (localBrowser === "local-browser-working") setLocalBrowserFixture({ open: true, closed: null, tabs: GALLERY_TABS, working: true });
-if (localBrowser === "local-browser-closed") setLocalBrowserFixture({ open: false, closed: { at: Date.now() - 4 * 60_000, tabs: GALLERY_TABS.slice(0, 3) } });
+if (localBrowser === "local-browser-open") setLocalBrowserFixture({ open: true, closed: null, tabs: GALLERY_TABS });
+if (localBrowser === "local-browser-held") setLocalBrowserFixture({ open: true, closed: null, tabs: GALLERY_TABS, held: 0 });
+if (localBrowser === "local-browser-closed") setLocalBrowserFixture({ open: false, closed: { at: Date.now() - 4 * 60_000, tabs: GALLERY_TABS.slice(0, 3) }, tabs: GALLERY_TABS });
 if (localBrowser === "local-browser-offer") setLocalBrowserFixture({ open: false, closed: null });
 
 Object.assign(window, { __galleryAudit: auditLayout });

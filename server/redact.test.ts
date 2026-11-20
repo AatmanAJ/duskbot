@@ -58,6 +58,21 @@ describe("redactSecrets", () => {
     expect(out).toContain("«redacted 24 chars»");
   });
 
+  it("masks native log values whose names are credentials rather than keys", () => {
+    const out = flat(redactSecrets({
+      credential: "credential-value-1",
+      credentials: "credential-value-2",
+      cookie: "session=private-cookie-value",
+      passphrase: "private-passphrase-value",
+      privateKey: "private-key-value",
+      sessionKey: "private-session-key-value",
+    }));
+    for (const secret of ["credential-value-1", "credential-value-2", "private-cookie-value", "private-passphrase-value", "private-key-value", "private-session-key-value"]) {
+      expect(out).not.toContain(secret);
+    }
+    expect(out).toContain("credential");
+  });
+
   it("masks a Composio key in an MCP header and an env object", () => {
     const config = {
       mcpServers: {
@@ -297,6 +312,26 @@ describe("redactSecretsInText", () => {
     const once = redactSecrets(input);
 
     expect(redactSecrets(once)).toEqual(once);
+  });
+});
+
+describe("dusk's own credentials in text", () => {
+  it("masks a workspace session, a stream ticket, a pairing credential and a pairing link's payload", () => {
+    const session = `dusk_sess_${"a".repeat(43)}`;
+    const ticket = `dusk_tick_${"b".repeat(32)}`;
+    const pairing = `omb_pair_${"c".repeat(43)}`;
+    const deep = `duskbot://pair?m=${"d".repeat(64)}`;
+    const universal = `https://dusk.bot/m/pair#m=${"e".repeat(64)}&c=ABCD1234`;
+
+    const out = redactSecretsInText([session, ticket, pairing, deep, universal].join("\n"));
+
+    for (const value of ["a".repeat(43), "b".repeat(32), "c".repeat(43), "d".repeat(64), "e".repeat(64), "ABCD1234"]) {
+      expect(out).not.toContain(value);
+    }
+    expect((out.match(/«redacted/g) ?? []).length).toBe(6);
+    expect(out).toContain("duskbot://pair?m=«redacted");
+    expect(out).toContain("https://dusk.bot/m/pair#m=«redacted");
+    expect(out).toContain("&c=«redacted");
   });
 });
 

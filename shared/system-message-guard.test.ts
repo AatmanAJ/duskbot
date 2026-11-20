@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPureLeakedSystemHarnessMessage, stripLeakedSystemHarnessMessages } from "./system-message-guard.ts";
+import { botTextForDisplay, isPureLeakedBotText, isPureLeakedSystemHarnessMessage, stripLeakedSystemHarnessMessages } from "./system-message-guard.ts";
 
 describe("system-message-guard", () => {
   it("leaves ordinary conversational text alone", () => {
@@ -55,5 +55,19 @@ Everything compiled successfully and all tests pass!`;
 
     expect(stripLeakedSystemHarnessMessages(unclosed)).toBe("");
     expect(isPureLeakedSystemHarnessMessage(unclosed)).toBe(true);
+  });
+
+  it("strips an earlier-turn recap the bot copied into its reply, keeping the reply", () => {
+    const recap = "[What Dusky did in an earlier turn: · tools: agents_coordinate_bots ×1 (from tool previews) · reply: I've sent Luna to check [the docs] first.]";
+    expect(botTextForDisplay(`${recap}\nLuna found the prompt loop.`)).toBe("Luna found the prompt loop.");
+    expect(botTextForDisplay(`Done. ${recap}`)).toBe("Done.");
+    expect(botTextForDisplay(`${recap} And now the answer.`)).toBe("And now the answer.");
+    expect(botTextForDisplay("[What Dusky did in an earlier turn: · reply: cut off")).toBe("");
+    expect(isPureLeakedBotText(recap)).toBe(true);
+    expect(isPureLeakedBotText(`${recap} And now the answer.`)).toBe(false);
+    expect(isPureLeakedBotText("<SYSTEM_MESSAGE>x</SYSTEM_MESSAGE>")).toBe(true);
+    const asked = "[What we did] and what you did in an earlier turn: both fine.";
+    expect(botTextForDisplay(asked)).toBe(asked);
+    expect(stripLeakedSystemHarnessMessages(recap)).toBe(recap);
   });
 });

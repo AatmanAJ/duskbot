@@ -3,7 +3,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, mkdirSync, mkdtempSync, openSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { verificationServerArgs, verificationServerEnvironment } from "../../scripts/control-dusk.ts";
@@ -27,14 +27,20 @@ export interface RestartableServer {
   close(): Promise<void>;
 }
 
-export async function launchRestartableServer(options: { scripted?: boolean; dataDirRoot?: string } = {}): Promise<RestartableServer> {
+export async function launchRestartableServer(options: {
+  scripted?: boolean; dataDirRoot?: string;
+  /** The providers in config.json instead of the fake engine at its CLI path. */
+  instances?: Record<string, unknown>;
+  /** A folder searched for CLIs ahead of the fixture's own PATH, where a test puts a CLI for the app to find by itself. */
+  pathFirst?: string;
+} = {}): Promise<RestartableServer> {
   const port = await freePortBlock([0, 1]);
   // Native browser daemons use UNIX sockets, and a macOS temp home can exceed their path limit.
   const dataDir = mkdtempSync(join(options.dataDirRoot ?? tmpdir(), "dusk-restartable-"));
   mkdirSync(join(dataDir, "tmp"), { recursive: true });
   const planPath = join(dataDir, "room-plan.json");
   if (options.scripted) writeFileSync(planPath, "{}");
-  writeFileSync(join(dataDir, "config.json"), JSON.stringify({ language: "en", instances: { claude: {
+  writeFileSync(join(dataDir, "config.json"), JSON.stringify({ language: "en", instances: options.instances ?? { claude: {
     driver: "claudeAgent", displayName: "Verification fixture", config: { cli: join(ROOT, "server", "testing", "fake-claude-cli.ts") },
     ...(options.scripted ? { environment: { FAKE_CLAUDE_ROOM_PLAN: planPath } } : {}),
   } } }, null, 2));
@@ -47,6 +53,7 @@ export async function launchRestartableServer(options: { scripted?: boolean; dat
 
   const start = async () => {
     const env = verificationServerEnvironment(process.env, dataDir, port);
+    if (options.pathFirst) env.PATH = [options.pathFirst, env.PATH].join(delimiter);
     const log = openSync(logPath, "a", 0o600);
     child = spawn(process.execPath, verificationServerArgs(env), { cwd: ROOT, env, stdio: ["ignore", log, log] });
     closeSync(log);

@@ -150,7 +150,16 @@ export interface Subscription {
   amountUsd: number;
   currentPeriodEnd: number;
   cancelAt: number | null;
+  /** a free trial: the first charge is at currentPeriodEnd */
+  trialEndsAt?: number;
+  /** a smaller plan the owner chose, starting at `at` (the next billing date) */
+  scheduled?: { bundle: BundleId | null; selection: Selection; amountUsd: number; at: number };
 }
+
+/** what switching to a plan does, before it is confirmed: `today` is charged now (tax included), the new price `next`
+ * from `nextAt`. trial: nothing now, the trial keeps its end; now: the time left in the period; scheduled: nothing now,
+ * the switch happens at `effectiveAt`; undo: a waiting switch is dropped */
+export interface ChangeOffer { timing: "trial" | "now" | "scheduled" | "undo"; todayUsd: number; taxUsd: number; effectiveAt: number; nextUsd: number; nextAt: number | null }
 
 export interface PaymentMethod { brand: string; last4: string; expMonth: number; expYear: number }
 

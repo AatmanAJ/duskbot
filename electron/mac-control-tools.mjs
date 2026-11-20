@@ -12,6 +12,7 @@ export const OUTPUT_TAIL = 200 * 1024;
 const READ_MAX = 262_144;
 const LIST_MAX = 500;
 const KILL_GRACE_MS = 3000;
+const DOWNLOAD_MAX = 2 * 1024 ** 3;
 
 export function macLogFile(home = homedir()) {
   return path.join(home, "Library", "Logs", "Dusk Bot", "mac-control.log");
@@ -46,22 +47,36 @@ function tail() {
   };
 }
 
-export function runShell(command, { cwd, timeoutMs, shell = "/bin/zsh", spawnImpl = spawn }) {
+export function runShell(command, { cwd, timeoutMs, shell = "/bin/zsh", spawnImpl = spawn, signal: abort }) {
   return new Promise((resolve) => {
     const output = tail();
-    let timedOut = false, killer = null;
+    let timedOut = false, stopped = false, killer = null;
     const child = spawnImpl(shell, ["-l", "-c", command], { cwd, env: { ...process.env, TERM: "dumb" }, stdio: ["ignore", "pipe", "pipe"], detached: true });
     const stop = (signal) => { try { process.kill(-child.pid, signal); } catch { try { child.kill(signal); } catch { /* gone */ } } };
-    const timer = setTimeout(() => { timedOut = true; stop("SIGTERM"); killer = setTimeout(() => stop("SIGKILL"), KILL_GRACE_MS); }, timeoutMs);
+    const end = () => { stop("SIGTERM"); killer = setTimeout(() => stop("SIGKILL"), KILL_GRACE_MS); };
+    const timer = setTimeout(() => { timedOut = true; end(); }, timeoutMs);
+    const onAbort = () => { stopped = true; clearTimeout(timer); end(); };
+    if (abort?.aborted) onAbort(); else abort?.addEventListener("abort", onAbort, { once: true });
     child.stdout?.on("data", output.push);
     child.stderr?.on("data", output.push);
-    child.on("error", (error) => { clearTimeout(timer); resolve({ code: null, output: String(error?.message ?? error), timedOut: false, cut: false }); });
+    child.on("error", (error) => { clearTimeout(timer); abort?.removeEventListener("abort", onAbort); resolve({ code: null, output: String(error?.message ?? error), timedOut: false, stopped, cut: false }); });
     child.on("close", (code, signal) => {
       clearTimeout(timer);
       clearTimeout(killer);
-      resolve({ code: code ?? (signal ? `signal ${signal}` : null), output: output.text(), timedOut, cut: output.cut() });
+      abort?.removeEventListener("abort", onAbort);
+      resolve({ code: code ?? (signal ? `signal ${signal}` : null), output: output.text(), timedOut, stopped, cut: output.cut() });
     });
   });
+}
+
+/** a file name a site gave, or the link's last part */
+export function downloadName(url, disposition) {
+  const star = /filename\*\s*=\s*(?:UTF-8'')?([^;]+)/i.exec(disposition ?? "")?.[1];
+  const plain = /filename\s*=\s*"?([^";]+)"?/i.exec(disposition ?? "")?.[1];
+  let name = "";
+  try { name = decodeURIComponent((star ?? plain ?? path.posix.basename(url.pathname)).trim()); } catch { name = (plain ?? "").trim(); }
+  const clean = path.posix.basename(name.replace(/\\/g, "/")).replace(/[/:\0]/g, "-").replace(/^\.+/, "").trim().slice(0, 120);
+  return clean || "download";
 }
 
 const run = (file, args, timeout = 20_000) => new Promise((resolve, reject) => {
@@ -92,13 +107,16 @@ export function jobSummary(job) {
     case "mac_open": return clip(a.target) + (a.app ? ` with ${clip(a.app)}` : "");
     case "mac_save_from_cloud": return `${clip(a.source)} -> ${clip(a.to ?? "~/Downloads")}`;
     case "mac_screenshot": return "screen";
+    case "mac_download": return `${clip(a.url)} -> ${clip(a.to ?? "~/Downloads/")}`;
     default: return clip(a.path ?? "~");
   }
 }
 
 /**
  * @param {{ home?: string, shell?: string, log?(line: string): void, now?(): Date, spawnImpl?: typeof spawn,
- *   screenshot?(): Promise<{ data: string, mimeType: string }>, opener?(args: string[]): Promise<unknown> }} [options]
+ *   screenshot?(): Promise<{ data: string, mimeType: string }>, opener?(args: string[]): Promise<unknown>,
+ *   fetch?: typeof fetch, source?: string, defaultCwd?(): string }} [options] `source` starts each log line ("cloud");
+ *   `defaultCwd` is where mac_exec runs without a cwd (the home folder otherwise).
  */
 export function createMacExecutor(options = {}) {
   const home = options.home ?? homedir();
@@ -106,7 +124,9 @@ export function createMacExecutor(options = {}) {
   const at = (value) => resolveMacPath(value, home);
   let logReady = null;
   async function record(job, outcome) {
-    const line = `${(options.now?.() ?? new Date()).toISOString()} ${folderName(job.bot?.name)} ${job.tool} ${jobSummary(job)} -> ${outcome.ok ? "ok" : `failed: ${String(outcome.error).slice(0, 300)}`}\n`;
+    const from = options.source ? `${options.source} ` : "";
+    const approved = job.approved === true ? " (allowed in chat)" : "";
+    const line = `${(options.now?.() ?? new Date()).toISOString()} ${from}${folderName(job.bot?.name)} ${job.tool} ${jobSummary(job)}${approved} -> ${outcome.ok ? "ok" : `failed: ${String(outcome.error).slice(0, 300)}`}\n`;
     try {
       logReady ??= fsp.mkdir(path.dirname(logFile), { recursive: true, mode: 0o700 });
       await logReady;
@@ -115,12 +135,14 @@ export function createMacExecutor(options = {}) {
   }
 
   const tools = {
-    async mac_exec(a) {
-      const cwd = a.cwd ? at(a.cwd) : home;
+    async mac_exec(a, { signal } = {}) {
+      const cwd = a.cwd ? at(a.cwd) : options.defaultCwd ? at(options.defaultCwd()) : home;
+      if (!a.cwd && options.defaultCwd) await fsp.mkdir(cwd, { recursive: true });
       if (!(await exists(cwd))?.isDirectory()) throw new Error(`${cwd} is not a folder`);
       const seconds = Number.isInteger(a.timeoutSeconds) ? a.timeoutSeconds : 120;
-      const result = await runShell(String(a.command), { cwd, timeoutMs: seconds * 1000, shell: options.shell, spawnImpl: options.spawnImpl });
-      const head = result.timedOut ? `stopped after ${seconds} s (it may have changed things already); output so far:` : `exit code ${result.code}`;
+      const result = await runShell(String(a.command), { cwd, timeoutMs: seconds * 1000, shell: options.shell, spawnImpl: options.spawnImpl, signal });
+      const head = result.stopped ? "stopped on the Mac by the person (it may have changed things already); output so far:"
+        : result.timedOut ? `stopped after ${seconds} s (it may have changed things already); output so far:` : `exit code ${result.code}`;
       return { text: `${head}${result.cut ? " (last 200 KB of output)" : ""}\n${result.output}` };
     },
     async mac_read_file(a) {
@@ -168,6 +190,34 @@ export function createMacExecutor(options = {}) {
       catch (error) { throw new Error(String(error?.stderr || error?.message || error).trim().split("\n")[0] || "macOS could not open it"); }
       return { text: `opened ${a.app ? `${target} with ${a.app}` : url ? target : found ? file : `the app ${target}`}` };
     },
+    async mac_download(a, { signal } = {}) {
+      const url = new URL(String(a.url));
+      if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("only https and http links download");
+      const response = await (options.fetch ?? fetch)(url, { redirect: "follow", signal });
+      if (!response.ok || !response.body) throw new Error(`${url.host} answered ${response.status}`);
+      if (Number(response.headers.get("content-length")) > DOWNLOAD_MAX) throw new Error("the file is over 2 GB");
+      const wanted = a.to ? String(a.to) : "~/Downloads/";
+      const folderLike = /[/\\]$/.test(wanted) || (await exists(at(wanted)))?.isDirectory();
+      const file = await freeName(folderLike ? path.join(at(wanted), downloadName(url, response.headers.get("content-disposition"))) : at(wanted));
+      await fsp.mkdir(path.dirname(file), { recursive: true });
+      const part = `${file}.${randomBytes(4).toString("hex")}.part`;
+      let size = 0;
+      const counted = Readable.fromWeb(response.body).map((chunk) => {
+        size += chunk.length;
+        if (size > DOWNLOAD_MAX) throw new Error("the file is over 2 GB");
+        return chunk;
+      });
+      let saved;
+      try {
+        await pipeline(counted, createWriteStream(part, { flags: "wx" }), { signal });
+        saved = await freeName(file);
+        await fsp.rename(part, saved);
+      } catch (error) {
+        await fsp.rm(part, { force: true });
+        throw error;
+      }
+      return { text: `saved ${size} bytes from ${url.host} to ${saved}` };
+    },
     async mac_screenshot() {
       if (options.screenshot) return { text: "screenshot of the main screen", image: await options.screenshot() };
       const file = path.join(tmpdir(), `dusk-mac-${randomBytes(6).toString("hex")}.jpg`);
@@ -180,8 +230,8 @@ export function createMacExecutor(options = {}) {
     },
   };
 
-  /** runs one job; `download(path)` fetches a mac_save_from_cloud file from the server that sent it */
-  return async function execute(job, { download } = {}) {
+  /** runs one job; `download(path)` fetches a mac_save_from_cloud file from the server that sent it; `signal` stops it */
+  return async function execute(job, { download, signal } = {}) {
     let outcome;
     try {
       if (job.tool === "mac_save_from_cloud") {
@@ -199,7 +249,7 @@ export function createMacExecutor(options = {}) {
       } else {
         const tool = tools[job.tool];
         if (!tool) throw new Error(`this Mac app does not know ${job.tool}; update dusk bot on the Mac`);
-        outcome = { ok: true, result: await tool(job.arguments ?? {}) };
+        outcome = { ok: true, result: await tool(job.arguments ?? {}, { signal }) };
       }
     } catch (error) {
       outcome = { ok: false, error: String(error?.message ?? error).slice(0, 2000) };
