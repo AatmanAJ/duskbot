@@ -10064,8 +10064,7 @@ store.reconcileInterruptedGroupGoals((runId, threadId) => {
   );
   return { status, detail, finishedAt: run.finishedAt ?? groupGoalRecoveryAt };
 });
-const botWaits = new WaitManager(createWaitHost({ store, directChat: directChatOf, threadBusy, wrote: markTaskContextExternallyUpdated, notify, enqueue: (input) => routines!.enqueueWebhook(input), cloudHome: Boolean(CLOUD_HOME) })); store.onChange((change) => { if (change.type === "bot" && store.bot(change.botId)?.busy) botWaits.noteBotBusy(change.botId); });
-const jobs = createJobsHost({ dataDir: DATA_DIR, port: PORT, wrap: (request) => botBox.wrap(request), secret: (label, botId) => { try { return savedSecrets.ready() ? savedSecrets.find(label, botId)?.value ?? null : null; } catch { return null; } }, store, directChat: directChatOf, mainThread: botMainThread, threadBusy, wrote: markTaskContextExternallyUpdated, notify, routines: () => routines!, cloudHome: Boolean(CLOUD_HOME) }); store.onChange((change) => { if (change.type === "bot.deleted") jobs.removeForBot(change.botId); });
+const botWaits = new WaitManager(createWaitHost({ store, directChat: directChatOf, threadBusy, wrote: markTaskContextExternallyUpdated, notify, enqueue: (input) => routines!.enqueueWebhook(input), cloudHome: Boolean(CLOUD_HOME) })); store.onChange((change) => { if (change.type === "bot" && store.bot(change.botId)?.busy) botWaits.noteBotBusy(change.botId); }); const jobs = createJobsHost({ dataDir: DATA_DIR, port: PORT, wrap: (request) => botBox.wrap(request), secret: (label, botId) => { try { return savedSecrets.ready() ? savedSecrets.find(label, botId)?.value ?? null : null; } catch { return null; } }, store, directChat: directChatOf, mainThread: botMainThread, threadBusy, wrote: markTaskContextExternallyUpdated, notify, routines: () => routines!, cloudHome: Boolean(CLOUD_HOME) }); store.onChange((change) => { if (change.type === "bot.deleted") jobs.removeForBot(change.botId); });
 const recoveryOwners = routines.routineRequestReceiptOwners();
 if (recoveryOwners.length > 0) {
   const recoveryThreads = [...new Set(recoveryOwners.map((owner) => owner.threadId))];
@@ -12327,14 +12326,7 @@ function connectorThread(botId: string, threadId: string) {
 }
 function directChatOf(botId: string, threadId: string): boolean { const source = connectorThread(botId, threadId); return source !== null && !source.group; }
 function waitTurnChecks(capability: InternalCapability, sender: BotRecord): Pick<WaitRouteContext, "sourceRefusal" | "hostRefusal" | "guest" | "peer" | "elsewhere"> { const { threadId } = capability, place = () => { const turn = turnPlaces.get(threadId); return turn?.botId === sender.id ? turn.place : null; };
-  return { sourceRefusal: () => { const source = connectorThread(sender.id, threadId); return waitSourceRefusal({ owned: source !== null, room: Boolean(source?.group), depth: capability.depth, handedOff: Boolean(capability.roomHandoffId), routineRun: Boolean(activeRoutineRunForThread(threadId)), outsideDriven: outsideDrivenThread(threadId), personStarted: turnOrigin(capability).kind === "user", guest: cloudGuestDriven(threadId) }); }, hostRefusal: () => hostWaitRefusal({ cloudHome: Boolean(CLOUD_HOME), guest: cloudGuestDriven(threadId), place: place() }), guest: () => cloudGuestDriven(threadId), peer: (name) => findWaitPeer(reachablePeers(store.bots, sender), sender.id, name), elsewhere: placesElsewhere.explain }; }
-
-function jobTurn(capability: InternalCapability, sender: BotRecord): JobTurn {
-  const { threadId } = capability, source = connectorThread(sender.id, threadId);
-  return { owned: source !== null, room: Boolean(source?.group), guest: cloudGuestDriven(threadId), depth: capability.depth, handedOff: Boolean(capability.roomHandoffId),
-    routineRun: Boolean(activeRoutineRunForThread(threadId)), outsideDriven: outsideDrivenThread(threadId), personStarted: turnOrigin(capability).kind === "user",
-    fullAccess: fullAccessForSource(sender.id, threadId) };
-}
+  return { sourceRefusal: () => { const source = connectorThread(sender.id, threadId); return waitSourceRefusal({ owned: source !== null, room: Boolean(source?.group), depth: capability.depth, handedOff: Boolean(capability.roomHandoffId), routineRun: Boolean(activeRoutineRunForThread(threadId)), outsideDriven: outsideDrivenThread(threadId), personStarted: turnOrigin(capability).kind === "user", guest: cloudGuestDriven(threadId) }); }, hostRefusal: () => hostWaitRefusal({ cloudHome: Boolean(CLOUD_HOME), guest: cloudGuestDriven(threadId), place: place() }), guest: () => cloudGuestDriven(threadId), peer: (name) => findWaitPeer(reachablePeers(store.bots, sender), sender.id, name), elsewhere: placesElsewhere.explain }; } function jobTurn(capability: InternalCapability, sender: BotRecord): JobTurn { const { threadId } = capability, source = connectorThread(sender.id, threadId); return { owned: source !== null, room: Boolean(source?.group), guest: cloudGuestDriven(threadId), depth: capability.depth, handedOff: Boolean(capability.roomHandoffId), routineRun: Boolean(activeRoutineRunForThread(threadId)), outsideDriven: outsideDrivenThread(threadId), personStarted: turnOrigin(capability).kind === "user", fullAccess: fullAccessForSource(sender.id, threadId) }; }
 
 /** Read fresh every time; a line stamped via the HTTP API does not count, so a bot cannot re-arm the ceiling it just spent. */
 function lastHumanRoomMessageAt(group: GroupRecord): number | undefined {
@@ -14176,8 +14168,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
       });
       return json(res, 201, { token });
     }
-    if (path === JOB_NOTIFY_PATH) return jobs.notifyRoute(req, res, json, () => readBody(req));
-    if (path.startsWith("/api/internal/")) {
+    if (path === JOB_NOTIFY_PATH) return jobs.notifyRoute(req, res, json, () => readBody(req)); if (path.startsWith("/api/internal/")) {
       const internalCapability = authorizedInternalCapability(req.headers.authorization);
       if (!internalCapability) {
         return json(res, 401, { error: "unauthorized" });

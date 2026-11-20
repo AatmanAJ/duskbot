@@ -63,6 +63,19 @@ describe("background job supervisor", () => {
     expect([1, 2, 3, 10, 30].map((n) => restartDelay(n))).toEqual([1_000, 2_000, 4_000, 300_000, 300_000]);
   });
 
+  it("ends what a run left in its process group when its main process exits", async () => {
+    const { supervisor, root } = harness();
+    const marker = join(root, "child-alive");
+    const { job } = supervisor.start(spec(`(while true; do date > ${marker}; sleep 0.1; done) & sleep 0.3; exit 2`));
+    await expect.poll(() => supervisor.get(job.id, "bot-a")!.starts, { timeout: 5_000 }).toBeGreaterThanOrEqual(2);
+    supervisor.stop(job.id, "bot-a");
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const { readFileSync: read } = await import("node:fs");
+    const last = read(marker, "utf8");
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(read(marker, "utf8")).toBe(last);
+  });
+
   it("lets a job that ends cleanly stay done", async () => {
     const { supervisor } = harness();
     const { job } = supervisor.start(spec("echo finished"));
@@ -84,10 +97,11 @@ describe("background job supervisor", () => {
     const leftover = spawn("sh", ["-c", "sleep 30"], { detached: true, stdio: "ignore" });
     const saved = JSON.parse(readFileSync(first.options.file, "utf8"));
     saved.jobs[0].pid = leftover.pid;
+    saved.jobs[0].pidStamp = "stamp-1";
     const { writeFileSync } = await import("node:fs");
     writeFileSync(first.options.file, JSON.stringify(saved));
 
-    const second = harness({ leftover: (pid) => pid === leftover.pid, kill: (pid, signal) => { killed.push(pid); process.kill(-pid, signal); } }, first.root);
+    const second = harness({ stamp: (pid) => (pid === leftover.pid ? "stamp-1" : "other"), kill: (pid, signal) => { killed.push(pid); process.kill(-pid, signal); } }, first.root);
     second.supervisor.restore();
     expect(killed).toContain(leftover.pid);
     const again = second.supervisor.get(job.id, "bot-a")!;

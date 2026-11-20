@@ -44,6 +44,8 @@ describe("background jobs host", () => {
     expect(jobTurnRefusal({ ...PERSON_TURN, personStarted: false, routineRun: true }, "stop")).toBeNull();
     expect(jobTurnRefusal({ ...PERSON_TURN, guest: true }, "start")).toBe(JOB_MESSAGES.guest);
     expect(jobTurnRefusal({ ...PERSON_TURN, room: true }, "start")).toBe(JOB_MESSAGES.room);
+    expect(await fixture.call({ action: "logs", id: "any" }, { ...PERSON_TURN, guest: true })).toEqual({ status: 403, body: { error: JOB_MESSAGES.guest } });
+    expect((await fixture.call({ action: "list" }, { ...PERSON_TURN, room: true })).status).toBe(403);
     expect(envNameRefusal("PATH")).toContain("set by dusk bot");
     expect(envNameRefusal("TELEGRAM_BOT_TOKEN")).toBeNull();
   });

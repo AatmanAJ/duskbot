@@ -38,9 +38,10 @@ export interface JobTurn {
 /** Why this turn may not start (or with `stop`, stop) a job; null when it may. */
 export function jobTurnRefusal(turn: JobTurn, action: "start" | "stop" | "read"): string | null {
   if (!turn.owned) return JOB_MESSAGES.notYours;
-  if (action === "read") return null;
+  // Security: a job's log holds what it read (a Telegram group's messages), the owner's alone.
   if (turn.guest) return JOB_MESSAGES.guest;
   if (turn.room) return JOB_MESSAGES.room;
+  if (action === "read") return null;
   if (turn.depth > 0 || turn.handedOff || turn.outsideDriven || (!turn.personStarted && !(action === "stop" && turn.routineRun))) return JOB_MESSAGES.notPerson;
   if (action === "start" && !turn.fullAccess) return JOB_MESSAGES.level;
   return null;
@@ -129,13 +130,12 @@ export function cpuTimeMs(time: string): number {
   return Number.isFinite(total) ? Math.round(total * 1000) : 0;
 }
 
-/** Whether a pid an earlier server recorded still runs this job's command line. */
-export function leftover(pid: number, job: Pick<JobRecord, "command">): boolean {
+/** When a process started, as `ps` tells it: with the pid, what tells an earlier server's job from a reused pid. */
+export function processStamp(pid: number): string | null {
   try {
-    const args = execFileSync("ps", ["-ww", "-o", "args=", "-p", String(pid)], { encoding: "utf8", timeout: 5_000 });
-    return args.includes(job.command.slice(0, 200));
+    return execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 5_000 }).trim() || null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -192,7 +192,7 @@ export function createJobsHost(deps: JobsHostDeps) {
       if (!post(job, text)) pendingTells.push({ job, text, until: now() + 30 * 60_000 });
     },
     usage: psUsage,
-    leftover,
+    stamp: processStamp,
     limits: deps.limits,
     now,
     log,

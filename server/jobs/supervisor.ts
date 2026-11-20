@@ -39,6 +39,7 @@ export interface JobRecord extends JobSpec {
   lastExit?: string;
   stopReason?: string;
   pid?: number;
+  pidStamp?: string;
   /** The crash streak was reported to the chat (once per streak). */
   crashReported?: boolean;
 }
@@ -70,8 +71,9 @@ export interface SupervisorOptions {
   kill?(pid: number, signal: NodeJS.Signals): void;
   /** Memory and CPU time of each process group, by its leader's pid. */
   usage?(pids: readonly number[]): Promise<Map<number, JobUsage>>;
-  /** Whether a pid left by an earlier server is still this job's program (so it is ended before a new start). */
-  leftover?(pid: number, job: JobRecord): boolean;
+  /** When a process started (`ps` lstart): a pid an earlier server left is ended before a new start only while its stamp
+   * still matches, so a reused pid is never killed. */
+  stamp?(pid: number): string | null;
   now?: () => number;
   limits?: Partial<JobLimits>;
   log?: (line: string) => void;
@@ -109,7 +111,7 @@ const recordSchema = z.object({
   cwd: z.string().min(1), env: z.record(z.string(), z.string()), secrets: z.record(z.string(), z.string()), onNotify: z.string(),
   createdAt: z.number(), state: z.enum(["running", "stopped", "done"]), starts: z.number().int(), crashes: z.number().int(),
   lastStartAt: z.number().optional(), lastExitAt: z.number().optional(), lastExit: z.string().optional(), stopReason: z.string().optional(),
-  pid: z.number().int().optional(), crashReported: z.boolean().optional(),
+  pid: z.number().int().optional(), pidStamp: z.string().optional(), crashReported: z.boolean().optional(),
 });
 const fileSchema = z.object({ version: z.literal(1), jobs: z.array(z.unknown()) });
 
@@ -156,8 +158,9 @@ export class JobSupervisor {
   restore(): void {
     for (const job of this.jobs) {
       if (job.state !== "running") continue;
-      if (job.pid && this.options.leftover?.(job.pid, job)) this.killGroup(job.pid, "SIGKILL");
+      if (job.pid && job.pidStamp && this.options.stamp?.(job.pid) === job.pidStamp) this.killGroup(job.pid, "SIGKILL");
       delete job.pid;
+      delete job.pidStamp;
       this.spawn(job);
     }
     this.save();
@@ -325,7 +328,11 @@ export class JobSupervisor {
     this.tokens.set(token, job.id);
     job.starts += 1;
     job.lastStartAt = startedAt;
-    if (child.pid) job.pid = child.pid;
+    if (child.pid) {
+      job.pid = child.pid;
+      const stamp = this.options.stamp?.(child.pid);
+      if (stamp) job.pidStamp = stamp; else delete job.pidStamp;
+    }
     const write = (chunk: Buffer | string) => this.appendLog(job, redact(chunk.toString(), live.secrets));
     child.stdout?.on("data", write);
     child.stderr?.on("data", write);
@@ -335,12 +342,15 @@ export class JobSupervisor {
       ended = true;
       this.tokens.delete(token);
       if (this.live.get(job.id) === live) this.live.delete(job.id);
+      // What the job left running in its group would outlive it unsupervised, or run twice after the restart.
+      if (child.pid) this.killGroup(child.pid, "SIGKILL");
       if (live.stopping || this.closed) return;
       const at = this.now();
       if (error) this.appendLog(job, `\n[dusk bot] could not run: ${error.message}\n`);
       job.lastExitAt = at;
       if (!job.lastExit || !["memory", "cpu"].includes(job.lastExit)) job.lastExit = error ? "could not run" : signal ? `signal ${signal}` : `exit ${code}`;
       delete job.pid;
+      delete job.pidStamp;
       if (code === 0 && !signal && !error) {
         job.state = "done";
         job.crashes = 0;
@@ -394,6 +404,7 @@ export class JobSupervisor {
       }
     }
     delete job.pid;
+    delete job.pidStamp;
   }
 
   private remove(job: JobRecord, reason: string): void {
