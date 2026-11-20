@@ -3579,6 +3579,7 @@
   "localBrowser.cancel": "Cancel",
   "localBrowser.closeFailed": "Couldn’t close the browser. Try again.",
   "localBrowser.start": "Start browser",
+  "localBrowser.explain": "{name} opens its own browser here to look things up and fill in forms for you. You can watch it work.",
   "localBrowser.heldHere": "You’re using this tab",
   "localBrowser.heldThere": "You’re using {title}",
   "browser.typeSecret": "Type a password or code…",

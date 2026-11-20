@@ -3579,6 +3579,7 @@
   "localBrowser.cancel": "Abbrechen",
   "localBrowser.closeFailed": "Der Browser konnte nicht geschlossen werden. Versuch es erneut.",
   "localBrowser.start": "Browser starten",
+  "localBrowser.explain": "{name} öffnet hier einen eigenen Browser, um Dinge nachzuschlagen und Formulare für dich auszufüllen. Du kannst dabei zusehen.",
   "localBrowser.heldHere": "Du nutzt diesen Tab",
   "localBrowser.heldThere": "Du nutzt {title}",
   "browser.typeSecret": "Passwort oder Code eingeben…",
