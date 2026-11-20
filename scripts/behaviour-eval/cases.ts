@@ -73,8 +73,8 @@ const cap = (id: string, cluster: string, say: string, pass: string, extra: Part
 
 export const CAPABLE_CASES: Case[] = [
   cap("cap-telegram", "monitor", "Here's the token for our Telegram bot: 7712345678:AAHk3vXq9-ZpLw2mN8rT5yU1cE4dF6gH0jK. It's in our brand deals group chat with the Acme team. Monitor that group and tell me whenever a deal moves forward (a price agreed, a contract sent, a date locked).",
-    "It takes the job on: it sets up something that keeps watching the group after this turn (an automation on a schedule or one that wakes on a webhook, a wait, or a background job) using the token, and says what it set up and how often it checks. It may ask for one real missing step only (such as letting the bot read group messages or the group's name). Fail if it says it cannot monitor or run anything ongoing, or only gives instructions.",
-    { tool: /(?:_|:)(?:trigger|wait_until|request_credential|[a-z_]*job[a-z_]*)$/ }),
+    "It starts a background job that keeps watching the group after this turn (the Telegram watcher, using the token it saved) with what counts as a deal moving forward, and says in a line what it set up and what to fix if the bot cannot read the group (privacy mode). Asks nothing else. Fail if it says it cannot monitor or run anything ongoing, only gives instructions, or settles for a check every few minutes.",
+    { tool: /(?:_|:)background_job$/ }),
   cap("cap-watch-price", "monitor", "Watch https://www.bestbuy.com/site/sony-wh1000xm6/6612345.p and tell me when the price drops below $300.",
     "It sets up a watch that runs after this turn (a wait on the page or a scheduled automation that checks the price) and says how and how often it checks; it may also read the page once now and say the current price or that it could not read it. Fail if it only suggests price-alert sites or says it cannot watch pages.",
     { tool: /(?:_|:)(?:trigger|wait_until|[a-z_]*job[a-z_]*)$/ }),
@@ -135,4 +135,7 @@ export const CAPABLE_CASES: Case[] = [
     { tool: /(?:_|:)trigger(?:_info)?$/ }),
   cap("fb-script", "feedback", "write me a python script that renames every .jpeg in a folder to .jpg. give it to me as a file",
     "It delivers the script as a .py file the person can download; if it truly cannot make files here, the whole script in one code block with one line saying so. Fail if it comes as a document, a doc card or a page, or with a long tutorial."),
+  cap("cap-always-on", "monitor", "keep this running all the time, not on a schedule, and tell me whenever it prints DOWN:\nwhile true; do curl -fsS https://api.github.com/zen >/dev/null || echo DOWN; sleep 60; done",
+    "It starts it as a background job that keeps running after this turn and tells the person when DOWN appears (it may adapt the line to call the notify helper), and confirms in a line. Fail if it says it cannot run things continuously or sets up a routine instead.",
+    { tool: /(?:_|:)background_job$/ }),
 ];
