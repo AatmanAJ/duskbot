@@ -198,6 +198,7 @@
   "server.rooms.finishingElsewhereSpoken": "{bot} başka bir konuşmayı bitiriyor",
   "server.rooms.unavailable": "{bot} artık müsait değil; bu tur atlandı",
   "server.stop.nothingRunning": "Burada çalışan bir şey yoktu, bu yüzden durdurulacak bir şey de yoktu.",
+  "server.stop.pausedForPerson": "Mesajını almak için duraklatıldı",
   "server.status.searchingFor": "{topic} aranıyor",
   "server.status.searchingWeb": "Web’de aranıyor",
   "server.status.checking": "{site} kontrol ediliyor",

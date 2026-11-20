@@ -10,8 +10,6 @@ import { derivedLabel } from "../harness/derived-status.ts";
 import { burstNote, continuationNote, parseSideDecision, queuedTaskNote, redirectNote, sideReplyPrompt, steerNote, taskNote, type SideDecision, type SideLine } from "../side-reply-prompt.ts";
 
 export const SIDE_REPLY_TIMEOUT_MS = 12_000;
-/** What the chat says where a turn was paused to take in the person's message. */
-export const PAUSED_FOR_PERSON_LINE = "Paused to take in your message";
 /** How long a turn that has said and done nothing yet counts as just started: a message then is part of the same burst. */
 export const BURST_MS = 30_000;
 const STEP_CHARS = 90;

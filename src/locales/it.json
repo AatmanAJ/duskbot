@@ -203,6 +203,7 @@
   "server.rooms.finishingElsewhereSpoken": "{bot} sta finendo un'altra conversazione",
   "server.rooms.unavailable": "{bot} non è più disponibile: turno saltato",
   "server.stop.nothingRunning": "Qui non era in corso nulla, quindi non c'era niente da interrompere.",
+  "server.stop.pausedForPerson": "In pausa per leggere il tuo messaggio",
   "server.status.searchingFor": "Cerco {topic}",
   "server.status.searchingWeb": "Cerco sul web",
   "server.status.checking": "Controllo {site}",

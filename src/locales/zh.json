@@ -236,6 +236,7 @@
   "server.rooms.finishingElsewhereSpoken": "{bot} 正在结束另一个对话",
   "server.rooms.unavailable": "{bot} 已不可用，本轮已跳过",
   "server.stop.nothingRunning": "这里没有正在运行的内容，所以无需停止。",
+  "server.stop.pausedForPerson": "已暂停以接收你的消息",
   "server.status.searchingFor": "正在搜索{topic}",
   "server.status.searchingWeb": "正在搜索网页",
   "server.status.checking": "正在查看{site}",

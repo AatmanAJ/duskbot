@@ -204,6 +204,7 @@
   "server.rooms.finishingElsewhereSpoken": "{bot} заканчивает другой разговор",
   "server.rooms.unavailable": "{bot} больше недоступен, поэтому пропущен в этом раунде",
   "server.stop.nothingRunning": "Здесь ничего не выполнялось, так что останавливать было нечего.",
+  "server.stop.pausedForPerson": "Пауза, чтобы учесть ваше сообщение",
   "server.status.searchingFor": "Ищу {topic}",
   "server.status.searchingWeb": "Ищу в интернете",
   "server.status.checking": "Проверяю {site}",

@@ -198,6 +198,7 @@
   "server.rooms.finishingElsewhereSpoken": "{bot} đang hoàn tất một cuộc trò chuyện khác",
   "server.rooms.unavailable": "{bot} không còn khả dụng; đã bỏ qua lượt này",
   "server.stop.nothingRunning": "Ở đây không có gì đang chạy nên không cần dừng gì cả.",
+  "server.stop.pausedForPerson": "Đã tạm dừng để nhận tin nhắn của bạn",
   "server.status.searchingFor": "Đang tìm {topic}",
   "server.status.searchingWeb": "Đang tìm trên web",
   "server.status.checking": "Đang kiểm tra {site}",

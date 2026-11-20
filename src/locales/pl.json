@@ -204,6 +204,7 @@
   "server.rooms.finishingElsewhereSpoken": "{bot} kończy inną rozmowę",
   "server.rooms.unavailable": "{bot} nie jest już dostępny; pominięty w tej rundzie",
   "server.stop.nothingRunning": "Nic tu nie działało, więc nie było czego zatrzymywać.",
+  "server.stop.pausedForPerson": "Wstrzymano, aby uwzględnić twoją wiadomość",
   "server.status.searchingFor": "Szukam {topic}",
   "server.status.searchingWeb": "Szukam w internecie",
   "server.status.checking": "Sprawdzam {site}",

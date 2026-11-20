@@ -338,6 +338,7 @@
   "server.rooms.finishingElsewhereSpoken": "{bot} is finishing another conversation",
   "server.rooms.unavailable": "{bot} is no longer available, skipped this round",
   "server.stop.nothingRunning": "Nothing was running here, so nothing needed stopping.",
+  "server.stop.pausedForPerson": "Paused to take in your message",
   "server.limitHold.gaveUp": "{engine} is still at its limit, so this stopped waiting. Send a message to try again.",
   "server.limitHold.couldNotResume": "Could not continue after the limit reset. Send your message again.",
   "server.limitHold.askTitle": "{engine} reached its limit",

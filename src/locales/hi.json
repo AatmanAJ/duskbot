@@ -167,6 +167,7 @@
   "server.rooms.finishingElsewhereSpoken": "{bot} एक दूसरी बातचीत पूरी कर रहा है",
   "server.rooms.unavailable": "{bot} अब उपलब्ध नहीं है; यह दौर छोड़ दिया गया",
   "server.stop.nothingRunning": "यहाँ कुछ नहीं चल रहा था, इसलिए कुछ रोकने की ज़रूरत नहीं थी।",
+  "server.stop.pausedForPerson": "आपका संदेश लेने के लिए रोका गया",
   "server.status.searchingFor": "{topic} खोज रहा हूँ",
   "server.status.searchingWeb": "वेब पर खोज रहा हूँ",
   "server.status.checking": "{site} जाँच रहा हूँ",

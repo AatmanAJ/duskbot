@@ -231,6 +231,7 @@
   "server.rooms.finishingElsewhereSpoken": "{bot}이(가) 다른 대화를 마무리하는 중이에요",
   "server.rooms.unavailable": "{bot}을(를) 더 이상 쓸 수 없어서 이번 차례는 건너뛰었어요",
   "server.stop.nothingRunning": "여기서 실행 중인 작업이 없어서 중지할 것이 없었어요.",
+  "server.stop.pausedForPerson": "메시지를 반영하려고 잠시 멈췄어요",
   "server.status.searchingFor": "{topic} 검색 중",
   "server.status.searchingWeb": "웹 검색 중",
   "server.status.checking": "{site} 확인 중",

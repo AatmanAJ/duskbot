@@ -167,6 +167,7 @@
   "server.rooms.finishingElsewhereSpoken": "{bot} termine une autre conversation",
   "server.rooms.unavailable": "{bot} n'est plus disponible : tour passé",
   "server.stop.nothingRunning": "Rien n'était en cours ici, il n'y avait donc rien à arrêter.",
+  "server.stop.pausedForPerson": "En pause pour prendre en compte ton message",
   "server.status.searchingFor": "Recherche de {topic}",
   "server.status.searchingWeb": "Recherche sur le Web",
   "server.status.checking": "Vérification de {site}",

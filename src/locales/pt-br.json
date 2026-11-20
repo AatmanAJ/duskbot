@@ -196,6 +196,7 @@
   "server.rooms.finishingElsewhereSpoken": "{bot} está terminando outra conversa",
   "server.rooms.unavailable": "{bot} não está mais disponível; pulado nesta rodada",
   "server.stop.nothingRunning": "Nada estava em execução aqui, então não havia o que parar.",
+  "server.stop.pausedForPerson": "Pausado para considerar sua mensagem",
   "server.status.searchingFor": "Buscando {topic}",
   "server.status.searchingWeb": "Buscando na web",
   "server.status.checking": "Verificando {site}",

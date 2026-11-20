@@ -204,6 +204,7 @@
   "server.rooms.finishingElsewhereSpoken": "{bot} は別の会話を終えるところです",
   "server.rooms.unavailable": "{bot} は利用できなくなったため、この回はスキップしました",
   "server.stop.nothingRunning": "ここでは何も実行されていなかったので、停止するものはありませんでした。",
+  "server.stop.pausedForPerson": "メッセージを受け取るために一時停止しました",
   "server.status.searchingFor": "{topic}を検索中",
   "server.status.searchingWeb": "ウェブを検索中",
   "server.status.checking": "{site}を確認中",

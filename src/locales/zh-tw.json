@@ -196,6 +196,7 @@
   "server.rooms.finishingElsewhereSpoken": "{bot} 正在結束另一段對話",
   "server.rooms.unavailable": "{bot} 已無法使用，本輪已略過",
   "server.stop.nothingRunning": "這裡沒有正在執行的內容，所以不需要停止。",
+  "server.stop.pausedForPerson": "已暫停以接收你的訊息",
   "server.status.searchingFor": "正在搜尋{topic}",
   "server.status.searchingWeb": "正在搜尋網頁",
   "server.status.checking": "正在查看{site}",

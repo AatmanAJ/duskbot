@@ -338,6 +338,7 @@
   "server.rooms.finishingElsewhereSpoken": "{bot} está terminando otra conversación",
   "server.rooms.unavailable": "{bot} ya no está disponible; se saltó esta ronda",
   "server.stop.nothingRunning": "Aquí no había nada en marcha, así que no hacía falta detener nada.",
+  "server.stop.pausedForPerson": "En pausa para tener en cuenta tu mensaje",
   "server.limitHold.gaveUp": "{engine} sigue en su límite, así que se dejó de esperar. Envía un mensaje para volver a intentarlo.",
   "server.limitHold.couldNotResume": "No se pudo continuar tras restablecerse el límite. Vuelve a enviar tu mensaje.",
   "server.limitHold.askTitle": "{engine} alcanzó su límite",
