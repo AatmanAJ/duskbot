@@ -3,7 +3,7 @@ import { DELIGHT_GAP_MS, MASCOT_MOTION, MascotDirector, type MascotMotion, type 
 import { createTicker } from "./mascot-ticker";
 import { WORKING_MOODS, type WorkingMood } from "./working-mood";
 
-const VARIANTS: MascotVariant[] = ["card-calm", "card-balanced", "card-lively", "voxel-calm", "voxel-balanced", "voxel-lively"];
+const VARIANTS: MascotVariant[] = ["voxel-gentle", "card-calm", "card-balanced", "card-lively", "voxel-calm", "voxel-balanced", "voxel-lively"];
 
 function play(director: MascotDirector, script: Array<[WorkingMood, number]>, step = 1000 / 60): MascotMotion[] {
   const frames: MascotMotion[] = [];
@@ -19,8 +19,49 @@ const LONG_TURN: Array<[WorkingMood, number]> = [["thinking", 14_000], ["searchi
 const turnDiff = (a: number, b: number) => Math.abs(((((b - a + 180) % 360) + 360) % 360) - 180);
 
 describe("the working mascot's 3D motion", () => {
-  it("ships the current loops until one is picked", () => {
-    expect(MASCOT_MOTION).toBe("current");
+  it("ships the gentle voxel mascot", () => {
+    expect(MASCOT_MOTION).toBe("voxel-gentle");
+  });
+
+  it("plays a delight only every 18 to 25 s at the gentle pace, two or three in a minute-long turn", () => {
+    for (const seed of ["nova", "quill", "rivet", "x", ""]) {
+      const director = new MascotDirector({ variant: "voxel-gentle", seed });
+      play(director, [["thinking", 15_000], ["searching", 10_000], ["browsing", 15_000], ["writing", 20_000]]);
+      const starts = director.played.map((d) => d.at);
+      expect(starts.length, seed).toBeGreaterThanOrEqual(2);
+      expect(starts.length, seed).toBeLessThanOrEqual(3);
+      expect(starts[0]).toBeGreaterThanOrEqual(18_000);
+      for (let i = 1; i < starts.length; i++) expect(starts[i]! - starts[i - 1]!).toBeGreaterThanOrEqual(18_000);
+    }
+  });
+
+  it("at the gentle pace, holds its motion through a step shorter than 3 s, but answers a reply or a failure at once", () => {
+    const director = new MascotDirector({ variant: "voxel-gentle", seed: "s" });
+    director.motion(0);
+    director.setMood("searching", 1000);
+    director.motion(3500);
+    expect(director.shownMood, "a short step").toBe("thinking");
+    director.setMood("writing", 3900);
+    director.motion(6000);
+    expect(director.shownMood).toBe("thinking");
+    director.motion(6900);
+    expect(director.shownMood, "after 3 s of writing").toBe("writing");
+    director.setMood("searching", 7000);
+    director.setMood("writing", 8000);
+    director.motion(11_000);
+    expect(director.shownMood, "a step that came back changes nothing").toBe("writing");
+    director.setMood("replying", 11_100);
+    expect(director.shownMood).toBe("replying");
+    director.setMood("error", 11_200);
+    expect(director.shownMood).toBe("error");
+  });
+
+  it("moves 1.5 times slower and squashes less at the gentle pace than at the calm one", () => {
+    const gentle = new MascotDirector({ variant: "voxel-gentle", seed: "s" }), calm = new MascotDirector({ variant: "voxel-calm", seed: "s" });
+    for (const d of [gentle, calm]) d.setMood("writing", 0);
+    const range = (d: MascotDirector, key: "y" | "sy") => { const v = Array.from({ length: 600 }, (_, i) => d.motion(4000 + i * 10)[key]); return Math.max(...v) - Math.min(...v); };
+    expect(range(gentle, "y")).toBeLessThan(range(calm, "y"));
+    expect(range(gentle, "sy")).toBeLessThan(range(calm, "sy"));
   });
 
   it.each(VARIANTS)("never starts two delights within 8 s, nor the same one twice running (%s)", (variant) => {
@@ -28,7 +69,7 @@ describe("the working mascot's 3D motion", () => {
       const director = new MascotDirector({ variant, seed });
       play(director, LONG_TURN);
       const played = director.played;
-      expect(played.length, "a long turn has a few").toBeGreaterThanOrEqual(4);
+      expect(played.length, "a long turn has a few").toBeGreaterThanOrEqual(variant.endsWith("gentle") ? 3 : 4);
       expect(played[0]!.at).toBeGreaterThanOrEqual(DELIGHT_GAP_MS);
       for (let i = 1; i < played.length; i++) {
         expect(played[i]!.at - played[i - 1]!.at).toBeGreaterThanOrEqual(DELIGHT_GAP_MS);

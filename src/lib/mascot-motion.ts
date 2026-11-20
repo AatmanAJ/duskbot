@@ -2,30 +2,44 @@ import type { PixelState } from "@/pixel/engine";
 import type { WorkingMood } from "./working-mood";
 
 export type MascotLook = "card" | "voxel";
-export type MascotPace = "calm" | "balanced" | "lively";
+export type MascotPace = "gentle" | "calm" | "balanced" | "lively";
 export type MascotVariant = `${MascotLook}-${MascotPace}`;
 export type MascotMotionPick = "current" | MascotVariant;
 
-/** How the chat's working mascot moves: "current" keeps the shipped CSS loops; the others move it in 3D, drawn as a
- * flat card or as voxels, at a calm, balanced or lively pace. */
-export const MASCOT_MOTION: MascotMotionPick = "current";
+/** How the chat's working mascot moves: "current" keeps the old CSS loops; the others move it in 3D, drawn as a flat
+ * card or as voxels, at a gentle, calm, balanced or lively pace. */
+export const MASCOT_MOTION: MascotMotionPick = "voxel-gentle";
 
 /** No two delights (a roll, a barrel roll, a spin, a flip) start closer than this. */
 export const DELIGHT_GAP_MS = 8000;
-/** A change of step glides from wherever the mascot is to the new step's motion over this long. */
-export const BLEND_MS = 380;
 
 /** Where the mascot is at one moment: y in box heights (negative is up), squash as x and y scale about its feet,
  * rotations in degrees about its middle. */
 export type MascotMotion = { y: number; sx: number; sy: number; rx: number; ry: number; rz: number; face: PixelState; look: number; blink: boolean };
 
 type Delight = "roll" | "barrel" | "spin" | "flip";
-type Pace = { hop: number; sway: number; period: number; every: readonly [number, number]; delights: readonly Delight[] };
+type Pace = {
+  hop: number;
+  sway: number;
+  period: number;
+  /** every move plays this many times slower */
+  tempo: number;
+  /** share of the full squash and stretch */
+  give: number;
+  /** a new step (other than the reply, the end or a failure) moves the body only once it has lasted this long, ms */
+  settle: number;
+  /** a change of step glides from wherever the mascot is to the new motion over this long, ms */
+  blend: number;
+  every: readonly [number, number];
+  delights: readonly Delight[];
+};
 
+const BRISK = { tempo: 1, give: 1, settle: 0, blend: 380 };
 const PACES: Record<MascotPace, Pace> = {
-  calm: { hop: 0.1, sway: 1, period: 0.68, every: [10_000, 12_000], delights: ["roll", "spin", "barrel"] },
-  balanced: { hop: 0.135, sway: 1.2, period: 0.6, every: [9_000, 11_500], delights: ["roll", "spin", "barrel"] },
-  lively: { hop: 0.17, sway: 1.45, period: 0.54, every: [8_000, 10_000], delights: ["roll", "barrel", "spin", "flip"] },
+  gentle: { hop: 0.075, sway: 0.75, period: 0.68, tempo: 1.5, give: 0.6, settle: 3000, blend: 800, every: [18_000, 25_000], delights: ["roll", "spin", "barrel"] },
+  calm: { ...BRISK, hop: 0.1, sway: 1, period: 0.68, every: [10_000, 12_000], delights: ["roll", "spin", "barrel"] },
+  balanced: { ...BRISK, hop: 0.135, sway: 1.2, period: 0.6, every: [9_000, 11_500], delights: ["roll", "spin", "barrel"] },
+  lively: { ...BRISK, hop: 0.17, sway: 1.45, period: 0.54, every: [8_000, 10_000], delights: ["roll", "barrel", "spin", "flip"] },
 };
 
 const DELIGHT_MS: Record<Delight, number> = { roll: 950, barrel: 900, spin: 820, flip: 1050 };
@@ -48,6 +62,7 @@ const FACES: Record<WorkingMood, readonly Faced[]> = {
 const DELIGHT_MOODS = new Set<WorkingMood>(["thinking", "searching", "browsing", "running", "reading", "writing"]);
 const LOOKING_MOODS = new Set<WorkingMood>(["thinking", "searching", "reading"]);
 const SPIN_HOP_MOODS = new Set<WorkingMood>(["replying", "done"]);
+const AT_ONCE_MOODS = new Set<WorkingMood>(["replying", "done", "error"]);
 const SPIN_HOP_MS = 1000;
 
 const TAU = Math.PI * 2;
@@ -165,7 +180,8 @@ function rngOf(seed: string): () => number {
 const REDUCED: Partial<Record<WorkingMood, Partial<MascotMotion>>> = { error: { sy: 0.92, sx: 1.04, rz: -6 }, thinking: { rx: -8 } };
 
 /** One mascot's motion as a function of time: feed it the mood as it changes and ask where it is at each moment, times
- * never going back. A change of mood glides over BLEND_MS from wherever it was, even mid-roll; delights start at least
+ * never going back. A change of mood glides over the pace's blend from wherever it was, even mid-roll, and at a pace
+ * that settles, a step moves the body only once it has lasted that long; delights start at least
  * DELIGHT_GAP_MS apart, the first no sooner than that, never the same kind twice running and never while it waits,
  * fails or is done. Under reduced motion it holds one still pose per mood. */
 export class MascotDirector {
@@ -176,6 +192,7 @@ export class MascotDirector {
   private readonly blinkEvery: number;
   private mood: WorkingMood = "thinking";
   private moodAt: number;
+  private pending: { mood: WorkingMood; at: number } | null = null;
   private from: { at: number; gap: Omit<MascotMotion, "face" | "look" | "blink"> } | null = null;
   private nextDelight: number;
   private delight: { kind: Delight; at: number } | null = null;
@@ -198,8 +215,22 @@ export class MascotDirector {
     return Math.max(DELIGHT_GAP_MS, lo + this.rng() * (hi - lo));
   }
 
+  /** the mood the body is moving by now, which trails a step that has not settled yet */
+  get shownMood(): WorkingMood {
+    return this.mood;
+  }
+
   setMood(mood: WorkingMood, at: number): void {
-    if (mood === this.mood) return;
+    if (mood === this.mood) { this.pending = null; return; }
+    if (this.pace.settle && !AT_ONCE_MOODS.has(mood) && !this.reducedMotion) {
+      if (this.pending?.mood !== mood) this.pending = { mood, at };
+      return;
+    }
+    this.shift(mood, at);
+  }
+
+  private shift(mood: WorkingMood, at: number): void {
+    this.pending = null;
     const was = this.reducedMotion ? null : this.motion(at);
     this.mood = mood;
     this.moodAt = at;
@@ -210,9 +241,9 @@ export class MascotDirector {
   }
 
   private live(at: number): MascotMotion {
-    const mood = this.mood, ms = Math.max(0, at - this.moodAt), t = ms / 1000;
+    const mood = this.mood, ms = Math.max(0, at - this.moodAt), tempo = this.pace.tempo, t = ms / 1000 / tempo;
     const m: MascotMotion = { ...REST, face: faceAt(mood, ms) };
-    if (this.delight && at - this.delight.at >= DELIGHT_MS[this.delight.kind]) this.delight = null;
+    if (this.delight && at - this.delight.at >= DELIGHT_MS[this.delight.kind] * tempo) this.delight = null;
     if (!this.delight && at >= this.nextDelight && DELIGHT_MOODS.has(mood)) {
       const pool = this.pace.delights.filter((kind) => kind !== this.lastKind);
       const kind = pool[Math.floor(this.rng() * pool.length)]!;
@@ -222,11 +253,13 @@ export class MascotDirector {
       this.nextDelight = at + this.gap();
     }
     moodMotion(mood, t, this.pace, m);
-    if (SPIN_HOP_MOODS.has(mood) && ms < SPIN_HOP_MS) jumpTurn(m, ms / SPIN_HOP_MS, "ry", 360, this.pace.hop * 1.6);
+    if (SPIN_HOP_MOODS.has(mood) && ms < SPIN_HOP_MS * tempo) jumpTurn(m, ms / (SPIN_HOP_MS * tempo), "ry", 360, this.pace.hop * 1.6);
     if (this.delight) {
-      DELIGHT_MOVES[this.delight.kind](m, (at - this.delight.at) / DELIGHT_MS[this.delight.kind], this.pace);
+      DELIGHT_MOVES[this.delight.kind](m, (at - this.delight.at) / (DELIGHT_MS[this.delight.kind] * tempo), this.pace);
       m.face = "happy";
     }
+    m.sx = 1 + (m.sx - 1) * this.pace.give;
+    m.sy = 1 + (m.sy - 1) * this.pace.give;
     m.look = LOOKING_MOODS.has(mood) && Math.abs(m.ry) > 8 ? Math.sign(m.ry) : 0;
     m.blink = !this.delight && m.face !== "happy" && m.face !== "sad" && at % this.blinkEvery < (mood === "thinking" ? 200 : 120);
     return m;
@@ -237,10 +270,11 @@ export class MascotDirector {
       const face = FACES[this.mood].find((f) => !f.once)!.face;
       return { ...REST, face, ...REDUCED[this.mood] };
     }
+    if (this.pending && at - this.pending.at >= this.pace.settle) this.shift(this.pending.mood, at);
     const now = this.live(at);
-    const from = this.from;
-    if (!from || at - from.at >= BLEND_MS) { this.from = null; return now; }
-    const left = 1 - easeInOut(clamp01((at - from.at) / BLEND_MS)), gap = from.gap;
+    const from = this.from, blend = this.pace.blend;
+    if (!from || at - from.at >= blend) { this.from = null; return now; }
+    const left = 1 - easeInOut(clamp01((at - from.at) / blend)), gap = from.gap;
     return { ...now, y: now.y + gap.y * left, sx: now.sx + gap.sx * left, sy: now.sy + gap.sy * left, rx: now.rx + gap.rx * left, ry: now.ry + gap.ry * left, rz: now.rz + gap.rz * left };
   }
 }

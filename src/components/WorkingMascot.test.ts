@@ -15,7 +15,8 @@ const reduce = (on: boolean) => vi.spyOn(window, "matchMedia").mockImplementatio
   matches: on && query.includes("reduce"), media: query, addEventListener: () => {}, removeEventListener: () => {},
 }) as unknown as MediaQueryList);
 
-const draw = (mood?: WorkingMood) => act(() => root.render(createElement(WorkingMascot, { bot, size: 26, seed: "s", mood })));
+const draw = (mood?: WorkingMood, motion?: "current") => act(() => root.render(createElement(WorkingMascot, { bot, size: 26, seed: "s", mood, motion: motion ?? "current" })));
+const drawShipped = (mood?: WorkingMood) => act(() => root.render(createElement(WorkingMascot, { bot, size: 26, seed: "s", mood })));
 const drawMotion = (motion: "current" | "card-calm", mood: WorkingMood = "thinking") => act(() => root.render(createElement(WorkingMascot, { bot, size: 26, seed: "s", mood, motion })));
 const mascot = () => host.querySelector<HTMLElement>("[data-working-mascot]")!;
 const eyes = () => mascot().querySelectorAll("path")[1]!.getAttribute("d");
@@ -85,9 +86,11 @@ describe("the working mascot's face", () => {
     expect(eyes()).toBe(stillSvgPaths("kit", { scale: 1 }).eyes);
   });
 
-  it("keeps the shipped loops by default", () => {
+  it("moves the gentle 3D mascot in the chat line, and keeps the plain loops where it has no mood", () => {
     reduce(false);
-    draw("thinking");
+    drawShipped("thinking");
+    expect(mascot().dataset.motion).toBe("voxel-gentle");
+    drawShipped();
     expect(mascot().dataset.motion).toBeUndefined();
     expect(mascot().querySelector(".working-mascot-bob")).not.toBeNull();
   });
