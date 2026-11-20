@@ -376,7 +376,8 @@ export class GrokMover {
       this.step(row, record, "chat");
       const messages = chatMessages(window, this.now(), this.deps.language?.());
       const earlierThread = created ? null : records.chatThreadOf(bot.id);
-      const reuse = earlierThread && bot.tasks?.some((task) => task.threadId === earlierThread) ? earlierThread : null;
+      const untouched = earlierThread !== null && store.messagesFor(earlierThread).at(-1)?.id === records.chatEndOf(bot.id);
+      const reuse = untouched && bot.tasks?.some((task) => task.threadId === earlierThread) ? earlierThread : null;
       let threadId: string;
       if (reuse) {
         store.replaceTranscript(reuse, messages, messages.at(-1)!.id);
@@ -389,6 +390,7 @@ export class GrokMover {
       store.renameTask(bot.id, threadId, CHAT_TITLE);
       store.patchTask(bot.id, threadId, { unread: false });
       records.saveChatThread(bot.id, source.rosterId, threadId);
+      moved.chatEnd = messages.at(-1)!.id;
       counts.messages = window.lines.length;
       counts.earlier = window.earlier;
     }

@@ -85,6 +85,28 @@ describe("stage A: the move", () => {
     expect(app.store.bot(first)!.tasks!.length).toBe(1);
   });
 
+  it("an update keeps what was said here since the move, and puts the recent chat in a conversation of its own", async () => {
+    app = await grokMoveFixture();
+    const { finished: first } = await moved([{ rosterId: NOVA }]);
+    const nova = app.store.bot(first.bots[0]!.botId!)!;
+    const brought = app.store.messagesFor(nova.threadId).length;
+    app.store.appendMessage(nova.threadId, { role: "user", kind: "text", text: "said here after the move", at: Date.now() + 1_000 });
+    const { finished } = await moved([{ rosterId: NOVA }]);
+    expect(finished.bots[0]).toMatchObject({ botId: nova.id, update: true, state: "done" });
+    const kept = app.store.messagesFor(nova.threadId);
+    expect(kept.length).toBe(brought + 1);
+    expect(kept.at(-1)).toMatchObject({ text: "said here after the move" });
+    const tasks = app.store.bot(nova.id)!.tasks!;
+    expect(tasks.length).toBe(2);
+    const fresh = tasks.find((task) => task.threadId !== nova.threadId)!.threadId;
+    expect(app.store.messagesFor(fresh).length).toBe(brought);
+    await moved([{ rosterId: NOVA }]);
+    expect(app.store.bot(nova.id)!.tasks!.length).toBe(2);
+    expect(app.store.messagesFor(nova.threadId).length).toBe(brought + 1);
+    expect(await app.mover.undo(finished.moveId)).toMatchObject({ removedBots: 0, removedConversations: 1 });
+    expect(app.store.messagesFor(nova.threadId).at(-1)).toMatchObject({ text: "said here after the move" });
+  });
+
   it("stops after the bot it is moving and keeps the ones done", async () => {
     app = await grokMoveFixture();
     app.mover.start([{ rosterId: NOVA }, { rosterId: QUILL }, { rosterId: TALLY }]);
