@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { Bell, CalendarClock, Check, FileText, Globe, KeyRound, LayoutDashboard, LifeBuoy, Lock, LogOut, Mail, Mic, MonitorX, Palette, Plug, Plus, ShieldCheck, UserRound, Hand, Server, ZoomIn } from "../../icons";
+import { Bell, CalendarClock, Check, FileText, Globe, KeyRound, LayoutDashboard, LifeBuoy, Lock, LogOut, Mail, Mic, MonitorX, Palette, Plug, Plus, ShieldCheck, UserPlus, UserRound, Hand, Server, ZoomIn } from "../../icons";
 import { accountDashboardUrl } from "@/lib/account-dashboard";
 import { useGroupYou } from "@/components/GroupAvatar";
 import { UserFace } from "@/components/UserAvatar";
@@ -122,8 +122,10 @@ export const SettingsSheet: ComponentType<SheetPageProps<"settings">> = ({ sheet
     : page === "language" ? <LanguagePage />
     : page === "textSize" ? <TextSizePage />
     : page === "delete" && account?.account ? <DeleteAccountPage email={account.account.email} onDelete={account.deleteAccount} onCancel={pop} onDone={() => window.location.reload()} />
-    : page === "signOut" && account && signsOut ? <ConfirmPage title={t("accountGate.signOut")} heading={t("mobile.settings.signOutTitle")}
-      body={t(keepsComputers ? "mobile.settings.signOutKeepsComputers" : "mobile.settings.signOutBody")} action={t("accountGate.signOut")} onConfirm={account.signOutOfPhone} onCancel={pop} />
+    : page === "signOut" && account && signsOut ? <ConfirmPage title={t("accountGate.signOut")}
+      heading={account.accounts.length > 1 && account.account ? t("mobile.settings.signOutAccountTitle", { email: account.account.email }) : t("mobile.settings.signOutTitle")}
+      body={t(account.accounts.length > 1 ? "mobile.settings.signOutAccountBody" : keepsComputers ? "mobile.settings.signOutKeepsComputers" : "mobile.settings.signOutBody")}
+      action={t("accountGate.signOut")} onConfirm={account.signOutOfPhone} onCancel={pop} />
     : page === "removeComputer" && computer ? <ConfirmPage title={t("mobile.settings.removeComputer")} heading={t("mobile.settings.removeComputerTitle", { name: computerName })}
       body={t("mobile.settings.removeComputerBody", { name: computerName })} action={t("mobile.settings.removeComputerAction")}
       onConfirm={async () => { await removePlace(platform, computer.id); window.location.reload(); }} onCancel={pop} />
@@ -143,7 +145,7 @@ export const SettingsSheet: ComponentType<SheetPageProps<"settings">> = ({ sheet
 
 function SettingsList({ onClose, push }: { onClose: () => void; push: (page: SettingsPage) => void }) {
   const { state } = useStore();
-  const { connections, activeId } = useConnections();
+  const { connections, activeId, switchTo } = useConnections();
   const you = useGroupYou();
   const platform = usePlatform();
   const account = useMobileAccount();
@@ -177,7 +179,17 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
   const switchServers = () => {
     if (!switching) { setSwitching(true); return; }
     chooseAccountOrigin(account?.origin === PREVIEW_ORIGIN ? PRODUCTION_ORIGIN : PREVIEW_ORIGIN);
-    void (account?.signOutOfPhone() ?? Promise.resolve()).finally(() => window.location.reload());
+    void (account?.signOutEverywhere() ?? Promise.resolve()).finally(() => window.location.reload());
+  };
+
+  const otherAccounts = account?.accounts.filter((one) => one.id !== account.account?.id) ?? [];
+  const useAccount = async (id: string) => {
+    haptic("pick");
+    if (!(await account?.switchAccount(id))) { haptic("error"); setError(t("mobile.settings.workspaceError")); return; }
+    const linked = [...connections].sort((a, b) => b.lastUsedAt - a.lastUsedAt).find((one) => one.account?.id === id);
+    if (linked) { await switchTo(linked.id); return; }
+    onClose();
+    window.dispatchEvent(new Event("dusk:sign-in"));
   };
 
   const choosePlace = async (place: Place) => {
@@ -211,6 +223,10 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
         </div>
         {rows.dashboard && <SettingsRow icon={<LayoutDashboard />} label={t("mobile.settings.accountDashboard")} onClick={() => void accountDashboardUrl().then((url) => platform.openExternal(url))} />}
         {rows.signIn && <SettingsRow icon={<UserRound />} label={t("mobile.entry.signIn")} detail={t("mobile.settings.signInDetail")} onClick={() => { onClose(); window.dispatchEvent(new Event("dusk:sign-in")); }} />}
+        {otherAccounts.map((other) => (
+          <SettingsRow key={other.id} icon={<UserFace account={other} size={24} className="size-6 rounded-full" />} label={other.email} detail={t("mobile.settings.otherAccount")} onClick={() => void useAccount(other.id)} />
+        ))}
+        {account?.account && account.offered && <SettingsRow icon={<UserPlus />} label={t("mobile.settings.addAccount")} onClick={() => { haptic("pick"); onClose(); window.dispatchEvent(new Event("dusk:add-account")); }} />}
       </SettingsSection>
 
       <SettingsSection card title={t("mobile.settings.workspaces")} hint={error ? <span role="alert" className="text-danger">{error}</span> : email ? t("mobile.settings.workspacesHint") : undefined}>

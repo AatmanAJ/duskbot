@@ -7,12 +7,13 @@ import { THEME_SKINS } from "@/lib/skins";
 import { pairSignIn, parseMobilePairingLink, parseSignInLink, type MobileConnectionRecord, type PairSignIn } from "../../../shared/mobile-link";
 import { usePlatform } from "../platform";
 import { useMobileAccount } from "../account/AccountGate";
+import type { AccountPlaces } from "../account/account-client";
 import { enrollWorkspace } from "../account/enroll-workspace";
 import { linkedHere } from "../account/CloudPicker";
 import { placeKind } from "./connection-notice";
 import { followSignInService, takeHeldSignIn } from "../account/environment";
 import { installTransport, type PhoneTransport } from "../transport/transport";
-import { Onboarding } from "../onboarding/Onboarding";
+import { Onboarding, type OnboardingStart } from "../onboarding/Onboarding";
 import { SignInOffer } from "../account/SignInOffer";
 import { Success } from "../onboarding/Success";
 import { connectToWorkspace, createConnectionStore, PlaceGoneError } from "./connections";
@@ -39,6 +40,16 @@ export function pairedButUnreachable(error: unknown): boolean {
   return !(error instanceof PairError && error.code === "refused");
 }
 
+/** which signed-in account lists this dusk cloud, the one in use asked first */
+async function cloudOwner(account: { accounts: { id: string; email: string }[]; places(accountId?: string): Promise<AccountPlaces | null> },
+  record: MobileConnectionRecord): Promise<{ id: string; email: string } | null> {
+  for (const one of account.accounts) {
+    const places = await account.places(one.id).catch(() => null);
+    if (places && [...places.clouds, ...places.teams].some((cloud) => linkedHere(cloud, [record]))) return { id: one.id, email: one.email };
+  }
+  return null;
+}
+
 export function ConnectionGate({ children, forcePair }: { children: ReactNode; forcePair?: boolean }) {
   const platform = usePlatform();
   const account = useMobileAccount();
@@ -50,16 +61,20 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
   const [celebrate, setCelebrate] = useState<{ name: string; sequence: number } | null>(null);
   const [entered, setEntered] = useState(false);
   const [adding, setAdding] = useState(0);
-  // "dusk:sign-in" (Settings, signed out) opens the dusk cloud sign-in
-  const [addingStep, setAddingStep] = useState<"welcome" | "signin">("welcome");
+  // "dusk:sign-in" (Settings, signed out) opens the dusk cloud sign-in, "dusk:add-account" an empty one beside it
+  const [addingStep, setAddingStep] = useState<OnboardingStart>("welcome");
   // a dusk cloud's qr opens the app at that sign-in, its email filled in
   const [signInEmail, setSignInEmail] = useState<{ email: string; code?: string; cloud?: string; sequence: number } | null>(null);
   useEffect(() => {
     const signIn = () => { setAddingStep("signin"); setAdding((n) => n + 1); };
     const addPlace = () => { setAddingStep("welcome"); setAdding((n) => n + 1); };
+    const addAccount = () => { setSignInEmail(null); setAddingStep("addAccount"); setAdding((n) => n + 1); };
     window.addEventListener("dusk:sign-in", signIn);
     window.addEventListener("dusk:add-place", addPlace);
-    return () => { window.removeEventListener("dusk:sign-in", signIn); window.removeEventListener("dusk:add-place", addPlace); };
+    window.addEventListener("dusk:add-account", addAccount);
+    return () => {
+      window.removeEventListener("dusk:sign-in", signIn); window.removeEventListener("dusk:add-place", addPlace); window.removeEventListener("dusk:add-account", addAccount);
+    };
   }, []);
   // the app never reads the shelf shared by every workspace again; it may still hold an unlinked one's chats
   useEffect(() => { if (platform.native) void forgetTranscriptShelf(null); }, [platform]);
@@ -166,25 +181,33 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
   // the app coming back is the person using it, also when the web view misses its visibilitychange
   useEffect(() => platform.onResume?.(() => noteCloudPageActivity()), [platform]);
 
-  useEffect(() => {
-    if (state.kind === "ready" && account?.account) void enrollWorkspace(platform, state.id, account.account.id, account.enrollGrant);
-  }, [state, platform, account]);
-
-  // a dusk cloud the signed-in account lists keeps that account, so the phone still knows whose it is without the session
+  // the account in use follows the place on screen: a dusk cloud opens with the account it belongs to, so Settings,
+  // pairing and enrollment speak for that account and never for another one signed in on the phone
+  const [placeAccount, setPlaceAccount] = useState<{ id: string; owner: string | null } | null>(null);
   const tagged = useRef(new Set<string>());
   useEffect(() => {
-    const signedIn = account?.account;
-    if (state.kind !== "ready" || !signedIn || !account) return;
-    const key = `${state.id}:${signedIn.id}`;
+    if (state.kind !== "ready" || state.id === "same-origin" || !account?.account) return;
+    const key = `${state.id}:${account.accounts.map((one) => one.id).sort().join(",")}`;
     if (tagged.current.has(key)) return;
     tagged.current.add(key);
+    const placeId = state.id;
     void (async () => {
-      const record = (await store.list()).find((entry) => entry.id === state.id);
-      if (!record || placeKind(record) !== "cloud" || (record.account?.id === signedIn.id && record.account.email === signedIn.email)) return;
-      const places = await account.places();
-      if (places && [...places.clouds, ...places.teams].some((cloud) => linkedHere(cloud, [record]))) await store.setAccount(record.id, signedIn);
+      const record = (await store.list()).find((entry) => entry.id === placeId);
+      if (!record) return;
+      const owner = record.account && account.accounts.some((one) => one.id === record.account!.id) ? record.account : placeKind(record) === "cloud" ? await cloudOwner(account, record) : null;
+      if (owner && (record.account?.id !== owner.id || record.account.email !== owner.email)) await store.setAccount(record.id, owner);
+      if (owner && owner.id !== account.account?.id) await account.switchAccount(owner.id);
+      setPlaceAccount({ id: placeId, owner: owner?.id ?? record.account?.id ?? null });
     })().catch(() => {});
   }, [state, store, account]);
+
+  useEffect(() => {
+    const signedIn = account?.account;
+    if (state.kind !== "ready" || !signedIn || !account || placeAccount?.id !== state.id) return;
+    // Security invariant: a place another account owns is never enrolled into the account in use.
+    if (placeAccount.owner && placeAccount.owner !== signedIn.id) return;
+    void enrollWorkspace(platform, state.id, signedIn.id, account.enrollGrant);
+  }, [state, platform, account, placeAccount]);
 
   useEffect(() => {
     const receive = (url: string) => {
@@ -262,7 +285,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
   if (state.kind === "loading" && !incoming && !forcePair) return <div className="dusk-mobile flex size-full items-center justify-center bg-app"><MascotLoader naps={false} /></div>;
   if (state.kind === "offline" && !forcePair) {
     if (!incoming && adding === 0) return <>{success}<Unreachable record={state.record} others={state.others} attempts={state.attempts} trying={state.trying} gone={state.gone === true} onRetry={retry} onSwitch={switchTo} onRemove={() => removeGone(state.record.id, state.others[0]?.id)} /></>;
-    return <>{success}<Onboarding key={incoming ? `in-${incoming.sequence}` : `add-${adding}`} initial={incoming?.payload} initialSignIn={incoming?.signIn} startAtLink startAt={incoming ? undefined : addingStep} email={signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} signInCloud={incoming ? undefined : signInEmail?.cloud} onOpen={openKept} onLinked={linked} onCancel={() => { cancel(); setAdding(0); }} /></>;
+    return <>{success}<Onboarding key={incoming ? `in-${incoming.sequence}` : `add-${adding}`} initial={incoming?.payload} initialSignIn={incoming?.signIn} startAtLink startAt={incoming ? undefined : addingStep} email={addingStep === "addAccount" ? undefined : signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} signInCloud={incoming ? undefined : signInEmail?.cloud} onOpen={openKept} onLinked={linked} onCancel={() => { cancel(); setAdding(0); }} /></>;
   }
   if (onboarding) {
     return <>{success}<Onboarding key={incoming?.sequence ?? signInEmail?.sequence ?? 0} initial={incoming?.payload} initialSignIn={incoming?.signIn} reason={state.kind === "pair" ? state.reason : null}
@@ -274,7 +297,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
       <PhoneUpdateLine connection={state.kind === "ready" ? state.id : null} />
       {(incoming || adding > 0) && (
         <div className="fixed inset-0 z-50">
-          <Onboarding key={incoming ? `in-${incoming.sequence}` : `add-${adding}`} initial={incoming?.payload} initialSignIn={incoming?.signIn} startAtLink startAt={incoming ? undefined : addingStep} email={signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} signInCloud={incoming ? undefined : signInEmail?.cloud} onOpen={openKept}
+          <Onboarding key={incoming ? `in-${incoming.sequence}` : `add-${adding}`} initial={incoming?.payload} initialSignIn={incoming?.signIn} startAtLink startAt={incoming ? undefined : addingStep} email={addingStep === "addAccount" ? undefined : signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} signInCloud={incoming ? undefined : signInEmail?.cloud} onOpen={openKept}
             onLinked={linked} onCancel={() => { cancel(); setAdding(0); }} />
         </div>
       )}

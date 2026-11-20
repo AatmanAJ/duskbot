@@ -96,6 +96,35 @@ describe("signing out on the phone", () => {
   });
 });
 
+describe("two accounts, each with its own dusk cloud", () => {
+  const aliceCloud = record("alice-cloud", { origin: "https://d1111111111111111111a.dusk.bot", account: { id: "alice", email: "alice@example.com" }, lastUsedAt: 30 });
+  const bobCloud = record("bob-cloud", { origin: "https://d2222222222222222222b.dusk.bot", account: { id: "bob", email: "bob@example.com" }, lastUsedAt: 20 });
+
+  it("signing out of one takes only its cloud and opens the other account's", async () => {
+    save([aliceCloud, bobCloud], "alice-cloud");
+    expect(await signOutPhone({ platform, signOutAccount: async () => {}, signedOut: { account: "alice", othersStay: true }, fetch: fetcher })).toBe("workspace");
+    expect(saved()).toEqual(["bob-cloud"]);
+    expect(prefs.get(ACTIVE)).toBe("bob-cloud");
+    expect(leftFor("bob-cloud")).toEqual([true, true, true, true, true]);
+    expect(leftFor("alice-cloud")).toEqual([false, false, false, false, false]);
+  });
+
+  it("a cloud the phone linked before it knew whose it was leaves with the account that lists it, and no other", async () => {
+    const untagged = record("old-cloud", { origin: "https://d3333333333333333333c.dusk.bot", lastUsedAt: 40 });
+    save([untagged, bobCloud], "old-cloud");
+    await signOutPhone({ platform, signOutAccount: async () => {}, signedOut: { account: "bob", othersStay: true, listed: [] }, fetch: fetcher });
+    expect(saved()).toEqual(["old-cloud"]);
+    await signOutPhone({ platform, signOutAccount: async () => {}, signedOut: { account: "alice", othersStay: true, listed: [untagged.origin!] }, fetch: fetcher });
+    expect(saved()).toEqual([]);
+  });
+
+  it("the last account to sign out takes every cloud with it", async () => {
+    save([aliceCloud, bobCloud, mac], "alice-cloud");
+    await signOutPhone({ platform, signOutAccount: async () => {}, signedOut: { account: "alice", othersStay: false }, fetch: fetcher });
+    expect(saved()).toEqual(["mac"]);
+  });
+});
+
 describe("removing this computer", () => {
   it("ends the pairing there and here, and opens what is left", async () => {
     save([box, mac], "box");

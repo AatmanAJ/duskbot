@@ -13,18 +13,26 @@ import { claimFreshInstall } from "./install";
 import { signOutPhone } from "./sign-out";
 
 type AccountContextValue = { account: MobileAccount | null; origin: string;
+  /** every account signed in on the phone, the one in use first */
+  accounts: MobileAccount[];
+  /** counts the sign-ins made since launch, so a sign-in screen opened while signed in knows when its own one landed */
+  signIns: number;
   /** this app keeps a dusk account (the native app, or the preview's ?account=1) */
   offered: boolean;
-  /** the account only, for a sign-in screen moving to another account */
+  /** another account signed in on the phone becomes the one in use; false when it is not signed in here */
+  switchAccount(id: string): Promise<boolean>;
+  /** the account only, for a sign-in screen moving to another service */
   signOut(): Promise<void>;
-  /** Settings' Sign out: the account and its dusk clouds leave the phone, which opens again on what is left */
+  /** Settings' Sign out: the account in use and its dusk clouds leave the phone, which opens again on what is left */
   signOutOfPhone(): Promise<void>;
-  /** the same, staying where it is: a sign-in screen moving to another account */
-  leaveAccount(): Promise<void>;
+  /** Every account and every dusk cloud leave the phone, for a move to another account service. */
+  signOutEverywhere(): Promise<void>;
   /** deletes the account from the app; false when it could not be done (nothing changed) */
   deleteAccount(): Promise<boolean>; enrollGrant(): Promise<{ enrollToken: string; dashboardUrl: string } | null>;
-  clouds(): Promise<MobileCloud[] | null>; pairCloud(cloud: MobileCloud): Promise<CloudPairResult>; wakeCloud(): Promise<boolean>;
-  places(): Promise<AccountPlaces | null>; pairTeamCloud(cloud: MobileTeamCloud): Promise<CloudPairResult>; pairComputer(computer: MobileComputer): Promise<ComputerPairResult>;
+  clouds(): Promise<MobileCloud[] | null>; pairCloud(cloud: MobileCloud, accountId?: string): Promise<CloudPairResult>; wakeCloud(accountId?: string): Promise<boolean>;
+  /** `accountId`: another account signed in on the phone; the one in use without it */
+  places(accountId?: string): Promise<AccountPlaces | null>; pairTeamCloud(cloud: MobileTeamCloud, accountId?: string): Promise<CloudPairResult>;
+  pairComputer(computer: MobileComputer, accountId?: string): Promise<ComputerPairResult>;
   /** what the sign-in screen asks of the account service */
   signIn: {
     providers(): Promise<OAuthProvider[]>; emailStart(email: string): Promise<CloudSignInStart>; emailVerify(code: string): Promise<SignInVerify>;
@@ -92,6 +100,7 @@ export function AccountGate({ children }: { children: ReactNode }) {
   const follows = platform.native && !import.meta.env.VITE_DUSK_ACCOUNT_ORIGIN;
   const client = useMemo(() => createMobileAccount({ platform, origin }), [platform, origin]);
   const [account, setAccount] = useState<MobileAccount | null>(null);
+  const [signIns, setSignIns] = useState(0);
   // the phone's direct link to its server asks this account for TURN; signed out it uses STUN only
   useEffect(() => { setTurnSource(() => client.screenIce()); return () => setTurnSource(null); }, [client]);
   const [restoring, setRestoring] = useState(wanted);
@@ -103,7 +112,7 @@ export function AccountGate({ children }: { children: ReactNode }) {
     const stamp = revision;
     const follow = (task: Promise<AuthResult>) => {
       void task.then(result => {
-        if (active) { setAccount(client.account()); setProblem(authProblem(result)); setRestoring(false); }
+        if (active) { setAccount(client.account()); if (result && result.outcome === "signed-in") setSignIns((count) => count + 1); setProblem(authProblem(result)); setRestoring(false); }
       }).catch(() => { if (active) { setProblem(t("cloudBuy.signIn.failed")); setRestoring(false); } }).finally(() => {
         if (active && pendingAuth.current === task) pendingAuth.current = null;
       });
@@ -146,45 +155,61 @@ export function AccountGate({ children }: { children: ReactNode }) {
     }) : undefined;
     return () => { active = false; stop?.(); stopResume?.(); };
   }, [client, platform, wanted, origin, follows]);
-  const context = useMemo<AccountContextValue>(() => ({ account, origin, offered: wanted,
-    signOut: async () => { setAccount(null); setProblem(undefined); await client.signOut(); },
-    signOutOfPhone: async () => {
-      await signOutPhone({ platform, signOutAccount: () => client.signOut() });
-      window.location.reload();
-    },
-    leaveAccount: async () => {
-      setAccount(null); setProblem(undefined);
-      await signOutPhone({ platform, signOutAccount: () => client.signOut() });
-    },
-    deleteAccount: async () => {
-      const outcome = await client.deleteAccount();
-      if (outcome === "failed") return false;
-      await signOutPhone({ platform, signOutAccount: async () => {} });
-      setAccount(null); setProblem(undefined);
-      return true;
-    },
-    enrollGrant: () => client.enrollGrant(),
-    clouds: () => client.clouds(), pairCloud: cloud => client.pairCloud(cloud), wakeCloud: () => client.wakeCloud(),
-    places: () => client.places(), pairTeamCloud: cloud => client.pairTeamCloud(cloud), pairComputer: computer => client.pairComputer(computer),
-    signIn: {
-      providers: async () => providersFor(platform.kind, await client.providers()),
-      emailStart: email => client.emailStart(email), emailVerify: code => client.emailVerify(code), cancelEmail: () => client.cancelEmail(),
-      phoneCode: async code => {
-        const result = await client.phoneCode(code);
-        if (result.outcome === "signed-in") { setAccount(client.account()); setProblem(undefined); }
-        return result;
+  const context = useMemo<AccountContextValue>(() => {
+    const signedIn = () => { setAccount(client.account()); setSignIns((count) => count + 1); };
+    /** whose clouds leave with the account in use: its own and the ones it lists, the rest only when no account stays */
+    const leaving = async () => {
+      const id = client.account()?.id ?? null;
+      const listed = await client.places().catch(() => null);
+      const origins = listed ? [...listed.clouds, ...listed.teams].flatMap((cloud) => (cloud.origin ? [cloud.origin] : [])) : [];
+      return { account: id, othersStay: client.accounts().length > 1, listed: origins };
+    };
+    return { account, origin, offered: wanted, accounts: account ? client.accounts() : [], signIns,
+      switchAccount: async (id) => {
+        const next = await client.switchAccount(id);
+        setAccount(client.account()); setProblem(undefined);
+        return Boolean(next);
       },
-      browser: async provider => {
-        setProblem(undefined);
-        // on the iPhone, Apple signs in in the system's own sheet, not a web page
-        if (provider !== "apple" || !platform.appleSignIn) return client.oauthStart(provider);
-        const result = await client.appleNative();
-        if (result.outcome === "signed-in") setAccount(client.account());
-        else if (result.outcome !== "canceled") setProblem(appleProblemLine(result.outcome));
+      signOut: async () => { setAccount(null); setProblem(undefined); await client.signOut(); setAccount(client.account()); },
+      signOutOfPhone: async () => {
+        await signOutPhone({ platform, signOutAccount: () => client.signOut(), signedOut: await leaving() });
+        window.location.reload();
       },
-      problem, signedIn: () => { setAccount(client.account()); setProblem(undefined); },
-    },
-  }), [account, origin, wanted, client, platform, problem]);
+      signOutEverywhere: async () => {
+        await signOutPhone({ platform, signOutAccount: () => client.signOutAll() });
+        window.location.reload();
+      },
+      deleteAccount: async () => {
+        const signedOut = await leaving();
+        const outcome = await client.deleteAccount();
+        if (outcome === "failed") return false;
+        await signOutPhone({ platform, signOutAccount: async () => {}, signedOut });
+        setAccount(client.account()); setProblem(undefined);
+        return true;
+      },
+      enrollGrant: () => client.enrollGrant(),
+      clouds: () => client.clouds(), pairCloud: (cloud, id) => client.pairCloud(cloud, id), wakeCloud: id => client.wakeCloud(id),
+      places: id => client.places(id), pairTeamCloud: (cloud, id) => client.pairTeamCloud(cloud, id), pairComputer: (computer, id) => client.pairComputer(computer, id),
+      signIn: {
+        providers: async () => providersFor(platform.kind, await client.providers()),
+        emailStart: email => client.emailStart(email), emailVerify: code => client.emailVerify(code), cancelEmail: () => client.cancelEmail(),
+        phoneCode: async code => {
+          const result = await client.phoneCode(code);
+          if (result.outcome === "signed-in") { signedIn(); setProblem(undefined); }
+          return result;
+        },
+        browser: async provider => {
+          setProblem(undefined);
+          // on the iPhone, Apple signs in in the system's own sheet, not a web page
+          if (provider !== "apple" || !platform.appleSignIn) return client.oauthStart(provider);
+          const result = await client.appleNative();
+          if (result.outcome === "signed-in") signedIn();
+          else if (result.outcome !== "canceled") setProblem(appleProblemLine(result.outcome));
+        },
+        problem, signedIn: () => { signedIn(); setProblem(undefined); },
+      },
+    };
+  }, [account, signIns, origin, wanted, client, platform, problem]);
   if (wanted && restoring) return <div className="dusk-mobile flex size-full items-center justify-center bg-app"><MascotLoader naps={false} /></div>;
   return <AccountContext value={context}>{children}</AccountContext>;
 }
