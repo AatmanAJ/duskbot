@@ -590,7 +590,7 @@ export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLine
   /** Provider completion outcome, independent of whether it emitted text. */
   turnSucceeded?: boolean;
   /** An exact request was stopped; a restart must not revive an old result. */
-  requestCancelled?: boolean;
+  requestCancelled?: boolean; /** user messages: one ask of the person's in a one-on-one chat as the open-item ledger keeps it: `open` is not yet delivered, set waiting (a wait, routine, job or handed-off work exists) or said to be blocked; `dropped` the person stopped it; `nudged` the bot was sent back once for it while open. */ ask?: { state: "open" | "delivered" | "waiting" | "blocked" | "dropped"; nudged?: true };
   /** Set before execution and cleared only after the request's verified
    * final turn and dependencies settle. A restart never clears it. */
   requestPending?: boolean;
@@ -694,7 +694,7 @@ export function nextOpenThread<T extends OpenThreadCandidate>(tasks: readonly T[
 
 export interface OptionCardData extends WaitCardField, AccessRequestCardField, OutsideWriteCardField, PurchaseCardField, EmailCardField {
   /** calls: one per outbound call the card covers, in subtitle order. purchase: it buys, books, subscribes or moves money. */
-  outboundRequest?: { tool: string; app: string | null; calls?: Array<{ app: string | null; label: string }>; purchase?: true };
+  /** `sent`: a hash of exactly what would go out (never the content); `declined`: the person said no, so the same content is not sent again in this chat until they ask again. */ outboundRequest?: { tool: string; app: string | null; calls?: Array<{ app: string | null; label: string }>; purchase?: true; sent?: string; declined?: true };
   /** @deprecated team memory is retired; only older messages carry this. */
   teamMemoryRequest?: { section: string; entryId: string; kind: string; revision?: string };
   title: string;
