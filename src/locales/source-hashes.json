@@ -9666,7 +9666,10 @@
       "mobile.composer.approval": "5716094a512a3193c464d8b5aa2279211ba59a61fd5aaacab64e840df93f846e",
       "mobile.chat.waitingForConnection": "f12044f6625575358fcdd91549dd719ebddacff7c682271c7b6a42faeb3f0bf3",
       "chat.error.replyGone": "db61000e335eda4b97ee5a00bdad1c53ffce303afec255d317c63e134000ee17",
-      "localBrowser.explain": "ba40a6f296b5753fc1fade00d9b03f8580694fd3ad6a5139c564b5bb1ab0c095"
+      "localBrowser.explain": "ba40a6f296b5753fc1fade00d9b03f8580694fd3ad6a5139c564b5bb1ab0c095",
+      "botPanel.routines.loading": "810b33c1b24e71eb81f431c770138be42294413518e8fd00bbcc5a97a0e98cb9",
+      "botPanel.routines.loadError": "6a9569e26c99abeca4267e9a4977b877ad026fc4049506f45d97f028e39adf68",
+      "botPanel.routines.retry": "d8b8392e2c542950ca64867168e4ef87d4ad606882d5898f826b51c6d553988f"
     },
     "es": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -19344,7 +19347,10 @@
       "mobile.clouds.switchBody": "9350eebb466eb0a23305d603208219c50aede4b8c8a3746216106323d87083c7",
       "mobile.clouds.switchAccount": "fedce010cffcb86ed1d6e0e23fb16aab90072e07fd72561e54ad67ed0ea87f89",
       "composer.dictation.language": "fe82a337098a12a3e2f3b17ffef1a23d10afa2adf3502cd81ce233e6396c76d6",
-      "localBrowser.explain": "ba40a6f296b5753fc1fade00d9b03f8580694fd3ad6a5139c564b5bb1ab0c095"
+      "localBrowser.explain": "ba40a6f296b5753fc1fade00d9b03f8580694fd3ad6a5139c564b5bb1ab0c095",
+      "botPanel.routines.loading": "810b33c1b24e71eb81f431c770138be42294413518e8fd00bbcc5a97a0e98cb9",
+      "botPanel.routines.loadError": "6a9569e26c99abeca4267e9a4977b877ad026fc4049506f45d97f028e39adf68",
+      "botPanel.routines.retry": "d8b8392e2c542950ca64867168e4ef87d4ad606882d5898f826b51c6d553988f"
     },
     "fr": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
