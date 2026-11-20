@@ -264,9 +264,11 @@ export function CompanionSection({ profileEmail = "", focusRequest = 0 }: { prof
 
   return (
     <div className="flex flex-col gap-5">
-      <div ref={pairingFlow} tabIndex={-1} data-phone-pairing="computer" className="scroll-mt-4 rounded-[14px] focus:outline-none">
-        <SettingsRows><PhoneSetupFlowView controller={c} /></SettingsRows>
-      </div>
+      {c.phase !== "intro" && (
+        <div ref={pairingFlow} tabIndex={-1} data-phone-pairing="computer" className="scroll-mt-4 rounded-[14px] focus:outline-none">
+          <SettingsRows><PhoneSetupFlowView controller={c} /></SettingsRows>
+        </div>
+      )}
       {remoteBlocked && <p role="status" className="-mt-3 pl-3 text-[11px] leading-4 text-ink-tertiary">{remoteBlocked}</p>}
 
       {state.devices.length > 0 && (
