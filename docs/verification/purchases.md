@@ -4,7 +4,10 @@ A purchase (an order, a booking, a subscription, a payment, money sent) waits on
 **Confirm purchase** card at every access level, Full access included. An email a
 bot sends through Gmail or Outlook shows as a **Send this email?** card with its
 recipients, subject and whole text, which the person can edit before **Send
-email**. Product results show as cards in the chat.
+email**. At Full access with no sending rule this card replaces the automatic
+daily allowance for email only: other sends still go out on their own up to 25
+a day, and a daily allowance the person set still sends email on its own.
+Product results show as cards in the chat.
 
 ## Run
 
@@ -35,6 +38,10 @@ DUSK_VITEST_WORKERS=2 pnpm exec vitest run shared/purchase.test.ts server/purcha
   sending rule waits on its review card, and goes out as the person edited it;
   edits with an address that is not one send nothing; a daily allowance the
   person set still sends on its own.
+- `server/trust-controls.e2e.test.ts` (run it as
+  [gmail-drafts.md](gmail-drafts.md) says): the same policy end to end through
+  the connector relay on an isolated server, including the 25-a-day cap on
+  other sends and a routine that reports the cap with no card.
 - `src/components/ReviewCards.dom.test.ts`: the cards as the composer and the
   transcript draw them, on desktop and phone alike (the phone renders the same
   chat): the whole order with Cancel and Confirm purchase and no Always allow;

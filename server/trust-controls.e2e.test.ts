@@ -375,33 +375,45 @@ it("honors Ask every time on Full-access delegated and resumed turns without rel
   evidence.push({ outboundPolicyDelegation: readFileSync(join(fixture.info.dataDir, "gmail-plan.json.evidence.jsonl"), "utf8") });
 }, 90_000);
 
-it("sends 25 a day at Full access with no sending rule, refuses the 26th, and a routine at the cap reports it with no card", async () => {
+it("holds each email on its review card at Full access with no sending rule, sends other actions 25 a day, refuses the 26th, and a routine at the cap reports it with no card", async () => {
   const b = capBot;
   const email = (to: string) => ({ recipient_email: to, subject: "Reminder", body: "See you at nine." });
+  const message = (text: string) => ({ channel: "fixture", text });
   const token = await mint(b.id, b.threadId);
   const before = relayed.length;
   const sent = () => relayed.slice(before).filter((frame: any) => frame.method === "tools/call").length;
-  for (let count = 0; count < 25; count++) expect((await relay(token, "GMAIL_SEND_EMAIL", email(`person${count}@example.test`))).body.result.isError).not.toBe(true);
-  expect(sent()).toBe(25);
+
+  const reviewed = relay(token, "GMAIL_SEND_EMAIL", email("first@example.test"));
+  const review = await pending(b.threadId);
+  expect(review.card).toMatchObject({ title: "Send this email?", email: { to: ["first@example.test"], subject: "Reminder" } });
+  expect(sent(), "the email waits on the person").toBe(0);
+  await api("POST", `/api/threads/${b.threadId}/respond`, { requestId: review.card.requestId, behavior: "allow" });
+  expect((await reviewed).body.result.isError).not.toBe(true);
+  expect(sent()).toBe(1);
+  expect((await api("GET", `/api/bots/${b.id}/outbound`)).body.today, "a reviewed email spends no allowance").toBe(0);
+
+  for (let count = 0; count < 25; count++) expect((await relay(token, "SLACK_SEND_MESSAGE", message(`Reminder ${count}`))).body.result.isError).not.toBe(true);
+  expect(sent()).toBe(26);
   expect((await api("GET", `/api/bots/${b.id}/outbound`)).body.today).toBe(25);
-  const refused = (await relay(token, "GMAIL_SEND_EMAIL", email("late@example.test"))).body.result;
+  const refused = (await relay(token, "SLACK_SEND_MESSAGE", message("Late reminder"))).body.result;
   expect(refused.isError).toBe(true);
   expect(refused.content[0].text).toMatch(/did not send this\. Full default cap fixture has reached its daily limit of 25 outbound actions at Full access/);
-  expect(sent(), "nothing was sent").toBe(25);
+  expect(sent(), "nothing was sent").toBe(26);
+  expect((await cards(b.threadId)).filter((row: any) => row.card?.outboundRequest && !row.card.answered), "the refusal shows no card").toEqual([]);
 
   expect((await api("PATCH", `/api/bots/${b.id}`, { modelSelection: { instanceId: "gmailFixture", model: "claude-sonnet-5" }, threadId: b.threadId })).status).toBe(200);
   writeFileSync(join(fixture.info.dataDir, "gmail-plan.json"), JSON.stringify({ [b.id]: { timeoutMs: 60_000,
-    steps: [{ server: "composio", tool: "GMAIL_SEND_EMAIL", arguments: email("team@example.test"), expectError: true }],
+    steps: [{ server: "composio", tool: "SLACK_SEND_MESSAGE", arguments: message("Morning reminder"), expectError: true }],
     reply: "Report: the reminder was not sent, the daily sending limit is reached." } }));
-  const created = await api("POST", "/api/routines", { name: "Morning reminder", prompt: "Send the morning reminder email to the team.", botId: b.id, schedule: { type: "interval", everyMinutes: 1440, anchorAt: Date.now() + 86_400_000 } });
+  const created = await api("POST", "/api/routines", { name: "Morning reminder", prompt: "Post the morning reminder to the team channel.", botId: b.id, schedule: { type: "interval", everyMinutes: 1440, anchorAt: Date.now() + 86_400_000 } });
   expect(created.status, JSON.stringify(created.body)).toBe(201);
   const { run } = (await api("POST", `/api/routines/${created.body.routine.id}/run`)).body;
   let finished: any;
   await expect.poll(async () => (finished = (await api("GET", "/api/routines")).body.runs.find((item: any) => item.id === run.id))?.status, { timeout: 45_000 }).toBe("completed");
   expect(finished.output).toContain("Report: the reminder was not sent");
-  expect(sent()).toBe(25);
+  expect(sent()).toBe(26);
   const threads = (await api("GET", "/api/bots")).body.bots.find((bot: any) => bot.id === b.id).tasks.map((task: any) => task.threadId);
-  for (const thread of threads) expect((await cards(thread)).filter((row: any) => row.card?.outboundRequest), "no card waits on anyone").toEqual([]);
+  for (const thread of threads) expect((await cards(thread)).filter((row: any) => row.card?.outboundRequest && !row.card.answered), "no card waits on anyone").toEqual([]);
 }, 90_000);
 
 it("shows each outbound batch recipient and amount with explicit preview truncation before consent", async () => {
