@@ -68,7 +68,9 @@ export function valueUnderName(text: string, name: string): string | null {
   return namedValues(text).find((pair) => names(pair, name))?.value ?? null;
 }
 
-/** The newest value the person wrote under any of `names` in their own messages on this branch; never a bot's text. */
+/** The newest value the person wrote under any of `names` in their own messages on this branch; never a bot's text.
+ * A message that is nothing but a key, sent while a card asking for one of `names` was the bot's last word, is that
+ * key: the person answered the card in the chat. */
 export function pastedSecret(path: readonly Message[], wanted: readonly string[]): string | null {
   let seen = 0;
   for (let index = path.length - 1; index >= 0 && seen < RECENT_PERSON_MESSAGES; index--) {
@@ -77,6 +79,29 @@ export function pastedSecret(path: readonly Message[], wanted: readonly string[]
     seen++;
     const pairs = namedValues(message.text).reverse();
     for (const pair of pairs) if (wanted.some((name) => names(pair, name))) return pair.value;
+    const bare = bareKey(message.text);
+    if (bare && askedJustBefore(path, index, wanted)) return bare;
   }
   return null;
+}
+
+const BARE_KEY_MIN = 16;
+
+/** One word that reads as a key or token: long, with letters and digits, no spaces. */
+function bareKey(text: string): string | null {
+  const value = text.trim().replace(/^["'`]|["'`]$/g, "");
+  if (value.length < BARE_KEY_MIN || /\s/.test(value) || !/\d/.test(value) || !/\p{L}/u.test(value)) return null;
+  return looksLikeValue(value) ? value : null;
+}
+
+/** The bot's last word before the person's message at `index` included a card asking for one of `wanted`, still open. */
+function askedJustBefore(path: readonly Message[], index: number, wanted: readonly string[]): boolean {
+  for (let before = index - 1; before >= 0; before--) {
+    const message = path[before]!;
+    if (message.role === "user") return false;
+    const asked = message.kind === "secret" ? message.secret : undefined;
+    if (asked && !asked.dismissed && !asked.stopped && asked.savedAt === undefined && !asked.provided &&
+      wanted.some((name) => sameSecretName(asked.label, name))) return true;
+  }
+  return false;
 }

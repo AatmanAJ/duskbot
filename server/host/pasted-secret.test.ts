@@ -44,4 +44,16 @@ describe("a secret the person pasted in their own message", () => {
     expect(pastedSecret([said("user", "API_KEY=old111"), said("user", "API_KEY=new222")], ["API_KEY"])).toBe("new222");
     expect(pastedSecret([said("bot", "set API_KEY=bot333 like this")], ["API_KEY"])).toBeNull();
   });
+
+  it("is a bare key sent right under the card that asks for it, and nothing else that is bare", () => {
+    const card = (label: string, extra: Record<string, unknown> = {}) => ({ id: `card-${label}`, at: 0, role: "bot", kind: "secret", text: "", secret: { label, ...extra } }) as unknown as Message;
+    const key = "rk_test_51EvalOnlyFakeKey0000";
+    expect(pastedSecret([card("Stripe restricted key"), said("user", key)], ["Stripe restricted key"])).toBe(key);
+    expect(pastedSecret([card("Stripe key"), said("bot", "Add it in the card above."), said("user", ` ${key} `)], ["Stripe API key"])).toBe(key);
+    expect(pastedSecret([said("user", key)], ["Stripe key"])).toBeNull();
+    expect(pastedSecret([card("Telegram bot token"), said("user", key)], ["Stripe key"])).toBeNull();
+    expect(pastedSecret([card("Stripe key", { savedAt: 1 }), said("user", key)], ["Stripe key"])).toBeNull();
+    expect(pastedSecret([card("Stripe key"), said("user", "go ahead and set it up")], ["Stripe key"])).toBeNull();
+    expect(pastedSecret([card("Stripe key"), said("user", "abcdefghijklmnopqrstuv")], ["Stripe key"])).toBeNull();
+  });
 });
