@@ -296,11 +296,13 @@ export function parseCloudTeams(input) {
   return teams;
 }
 
+/** the cloud's Ed25519 link public key, base64 SPKI DER, as dusk.bot hands it out */
+const LINK_KEY = /^[A-Za-z0-9+/]{40,120}={0,2}$/;
 export function parsePairingGrant(input, origin, now) {
   if (!input || typeof input !== "object" || input.cloudContractVersion !== 1 || input.origin !== origin) return null;
   if (typeof input.code !== "string" || !CODE.test(input.code)) return null;
   if (!Number.isSafeInteger(input.expiresAt) || input.expiresAt <= now || input.expiresAt > now + MAX_GRANT_MS) return null;
-  return { origin, code: input.code, expiresAt: input.expiresAt };
+  return { origin, code: input.code, expiresAt: input.expiresAt, ...(typeof input.linkKey === "string" && LINK_KEY.test(input.linkKey) ? { linkKey: input.linkKey } : {}) };
 }
 
 /** Listed once, under the name and colour its owner chose while it was set up (`look`), else My Cloud; never renamed here after. */

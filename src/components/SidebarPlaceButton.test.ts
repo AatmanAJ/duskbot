@@ -56,7 +56,7 @@ it("one round button like search and +: the place's icon, an online dot, and its
   await mount();
   const control = button()!;
   expect(control.className).toContain("rounded-full");
-  expect(control.className).toContain("size-9");
+  expect(control.className).toContain("size-10");
   expect(control.getAttribute("aria-haspopup")).toBe("menu");
   expect(control.getAttribute("aria-label")).toBe("Switch server: This computer · Online");
   expect(control.querySelector("[data-icon-name]")?.getAttribute("data-icon-name")).toBe("laptop");
@@ -97,10 +97,14 @@ it("says so when main can't open the list", async () => {
   expect(host.querySelector("[role=alert]")?.textContent).toBe("Could not open the server list. Try the server menu.");
 });
 
-it("nothing once My Cloud is home with nothing else, and nothing in a browser", async () => {
+it("My Cloud as home with nothing else still shows the place button, a cloud, which opens the list; nothing in a browser", async () => {
   current = { local: false, name: "My Cloud", home: true };
   await mount();
-  expect(host.querySelector("[data-sidebar-place]")).toBeNull();
+  const control = button()!;
+  expect(control.getAttribute("data-place-kind")).toBe("cloud");
+  expect(control.innerHTML).toContain("cloud");
+  await act(async () => control.click());
+  expect(workspaces.menu).toHaveBeenCalledTimes(1);
   await act(async () => root?.unmount());
   Object.assign(window, { duskDesktop: undefined });
   await mount();
@@ -108,10 +112,21 @@ it("nothing once My Cloud is home with nothing else, and nothing in a browser", 
   expect(switchPlaceCommand()).toBeNull();
 });
 
-it("steps aside where the window's rail of places switches instead", async () => {
+it("this computer shows the laptop, a cloud window the cloud", async () => {
+  await mount();
+  expect(button()!.getAttribute("data-place-kind")).toBe("computer");
+  await act(async () => root?.unmount());
+  current = { local: false, name: "My Cloud" };
+  store.state = { ...store.state, config: { cloudHome: true } };
+  await mount();
+  expect(button()!.getAttribute("data-place-kind")).toBe("cloud");
+});
+
+it("stays in the header beside the window's rail of places too: never hidden", async () => {
   rail = { places: [], add: { cloud: false, link: false, address: false }, beside: true };
   await mount();
-  expect(host.querySelector("[data-switcher-beside-rail]")?.className).toBe("hidden");
+  expect(host.querySelector("[data-switcher-beside-rail]")).toBeNull();
+  expect(button()).not.toBeNull();
 });
 
 it("⌘K finds it as switch place, or by typing workspace, and opens the same native list", async () => {

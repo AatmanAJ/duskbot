@@ -570,7 +570,8 @@ await import(${JSON.stringify(pathToFileURL(join(SERVER_DIR, "testing", "fake-cl
     },
     handoff: (what) => asks.request(port, what as ConnectionAsk),
     async picture(bytes) {
-      const response = await fetch(`${desktopBase}/api/attachments`, { method: "POST", headers: { "x-dusk-desktop-owner": ownerCapability, "content-type": "image/png" }, body: bytes });
+      const png = Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), bytes]);
+      const response = await fetch(`${desktopBase}/api/attachments`, { method: "POST", headers: { "x-dusk-desktop-owner": ownerCapability, "content-type": "image/png" }, body: new Uint8Array(png) });
       return `/api/attachments/${((await response.json()) as { path: string }).path.split(/[\\/]/).pop()}`;
     },
     call: <T>(channel: string, page: "local" | "cloud", ...args: unknown[]) => Promise.resolve(handlers.get(channel)!({ page }, ...args)) as Promise<T>,
