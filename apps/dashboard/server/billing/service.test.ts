@@ -1211,6 +1211,6 @@ describe("payment problems", () => {
     expect(sub.paymentProblem).toEqual({ since: failedAt, fixBy: failedAt + config.graceDays * day, sent: [] });
     service.dunning(); service.dunning();
     expect(notices.map(notice => notice.kind), "the new first email, once").toEqual(["payment_failed"]);
-    expect(sub.paymentProblem?.sent).toEqual(["first"]);
+    expect(sub.paymentProblem).toMatchObject({ sent: ["first"] });
   });
 });
