@@ -475,7 +475,7 @@ import { recentTabs } from "./browser-recent-tabs.ts";
 import { browserEvidence, stepContext } from "./browser-steps.ts"; import { WakeGate } from "./wake-gate.ts"; import { startRunHealth } from "./run-health.ts";
 import { parseLoginFields, parseTotpField, createLoginRoutes } from "./routes/logins.ts";
 import { loginSite } from "../shared/logins.ts";
-import { browserEngineStatus } from "./browser-engine.ts";
+import { BROWSER_SETTING_UP_PROMPT, browserEngineStatus } from "./browser-engine.ts";
 import { chromeLauncher } from "./browser/chrome/launcher.ts";
 import { botThreadLimitText, botThreadsHost, maxConcurrentBotThreads, maxConcurrentChildThreads } from "./bot-thread-limits.ts"; import { createBrowserSeats } from "./host/browser-seats.ts"; import { createBrowserHost } from "./host/browser.ts"; import { createCloudPlanTier } from "./host/cloud-plan-tier.ts";
 import { createScreenFrameSource, rememberTurnFrame, type ScreenCapture } from "./screen-frame-source.ts";
@@ -8998,7 +8998,7 @@ async function beginTurn(
       if (dispatchContext.handoff) handoffs.begin(threadId, dispatchClaimId, dispatchContext.handoff);
 
       const integrations: NonNullable<Parameters<typeof instance.adapter.sendTurn>[0]["integrations"]> = {};
-      let browser: Awaited<ReturnType<typeof browserIntegration>> = null;
+      let browser: Awaited<ReturnType<typeof browserIntegration>> = null; let browserSettingUp = false;
       const skills = availableSkills(), phoneOffered = usbPhoneOffered(instance, skills) && !proactive.fence.confines(threadId) && !botApiThread(threadId);
       const selectedSkills = selectBundledSkills(
         providerText,
@@ -9429,7 +9429,7 @@ async function beginTurn(
         const selectedProfile = liveBot.browserProfile;
         await browserEngineInstalled(bot.id);
         browser = await browserIntegration(bot.id, selectedProfile, { threadId, generation: dispatchClaimId });
-        if (browser) integrations.browser = browser.integration;
+        if (browser) integrations.browser = browser.integration; else browserSettingUp = browserEngineStatus().kind === "unavailable";
         if (browser) {
           const spec = browser.spec;
           const session = browser.session;
@@ -9490,7 +9490,7 @@ async function beginTurn(
         { id: "cloud-home", label: "My Cloud", text: CLOUD_HOME ? cloudHomePrompt(syncedFolders(DATA_DIR)) : "" },
         { id: "composio", label: "Connected apps", text: integrations.composio ? composioSystemPrompt(liveBot?.connectorTools ?? bot.connectorTools, Boolean(integrations.browser)) + describeConnectorScopes((liveBot ?? bot).connectorScopes) : "" },
         { id: "mcp", label: "MCP servers", text: mcpPrompt(bot, integrations.custom ?? {}) }, { id: "to-connect", label: "Connections to make", text: cloudConnections.prompt(liveBot ?? bot) + teamConnections.prompt(threadId, dispatchClaimId, integrations) },
-        { id: "browser", label: "Browser", text: integrations.browser ? browserPromptFor(bot, Boolean(integrations.agents)) : "" },
+        { id: "browser", label: "Browser", text: integrations.browser ? browserPromptFor(bot, Boolean(integrations.agents)) : browserSettingUp ? BROWSER_SETTING_UP_PROMPT : "" },
         { id: "data", label: "Data", text: integrations.data ? BUILT_IN_DATA_SYSTEM_PROMPT : "" },
         { id: "email", label: "Email", text: instance.adapter.capabilities.emailMcp === true ? emailHost.prompt(liveBot ?? bot) : "" },
         ...phones.promptParts(liveBot ?? bot, {
