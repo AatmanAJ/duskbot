@@ -621,7 +621,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "trigger_info",
     description:
-      "Read this bot's triggers (was list_triggers / list_trigger_events). list: its routines (schedules), app events and webhooks: ids, when they fire, on or paused, next run or last fire, problems, and the computer's authoritative current time and timezone, then its jobs and waits: all that runs for it; trigger_id gives one trigger with its last 10 fires, and with include_address a webhook's private address, to paste into the setup of the app that sends to it. Before reporting completion, inspect related monitors and verify enabled=false and nextRunAt=null after stopping them with trigger. events: before a when=app_event trigger, the connected apps you may use, with their accounts and events, and popular apps not connected yet.",
+      "Read this bot's triggers (was list_triggers / list_trigger_events). list: its routines (schedules), app events and webhooks: ids, when they fire, on or paused, next run or last fire, problems, and the computer's authoritative current time and timezone, then its jobs and waits; trigger_id gives one trigger with its last 10 fires, and with include_address a webhook's private address, to paste into the setup of the app that sends to it. Before reporting completion, inspect related monitors and verify enabled=false and nextRunAt=null after stopping them with trigger. events: before a when=app_event trigger, the connected apps you may use, with their accounts and events, and popular apps not connected yet.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

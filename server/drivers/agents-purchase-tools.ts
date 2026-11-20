@@ -14,7 +14,7 @@ export const PURCHASE_TOOL_DEFINITIONS = [
   {
     name: "confirm_purchase",
     description:
-      "Required before a purchase's final step (Place order, Buy now, Pay, Book, Subscribe, sending money): shows the person the order summary from the checkout page and waits for their tap; the browser refuses that step until they confirm. Money as the page shows it; payment masked to its last four. Confirmed: take the step once. Cancelled: do not buy. Only if the person said to buy without asking, set without_asking with their exact words as quote; the card is then a record. Never for free things such as a calendar invite.",
+      "Required before a purchase's final step (Place order, Buy now, Pay, Book, Subscribe, sending money): shows the person the order summary from the checkout page and waits for their tap; the browser refuses that step until they confirm. Money as the page shows it; payment masked to its last four. Confirmed: take the step once. Cancelled: do not buy. Only if the person said to buy without asking, set without_asking with their exact words as quote; the card is then a record. Not for a free calendar invite.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
