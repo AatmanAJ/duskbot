@@ -16,7 +16,7 @@
 //   FAKE_CLAUDE_DUMP  path for the latest turn's {argv, env, cwd, prompt, systemPrompt, mcpConfig}
 //   FAKE_CLAUDE_ELICIT  JSON request body: a "hang" turn (or a failing FAKE_CLAUDE_TRANSIENTS launch) first asks it
 //     as control_request "elicit-1"
-//   FAKE_CLAUDE_CONTROL_LOG  JSON-lines file every control_response the host writes is appended to
+//   FAKE_CLAUDE_CONTROL_LOG  JSON-lines file every control_response and control_request the host writes is appended to
 //   FAKE_CLAUDE_EXIT_AFTER_TURN  1: exit once the turn is answered, so later turns relaunch with --resume
 //   FAKE_CLAUDE_AUTH_AFTER_TURN  1: from the second turn, answer as not-logged-in; FAKE_CLAUDE_AUTH_AFTER_WORK  1: not-logged-in
 //     calls a tool first
@@ -1346,6 +1346,12 @@ process.stdin.on("data", (c) => {
     try {
       prompt = JSON.parse(line);
     } catch {
+      continue;
+    }
+    if ((prompt as { type?: unknown } | null)?.type === "control_request") {
+      const request = prompt as { request_id?: unknown };
+      if (process.env.FAKE_CLAUDE_CONTROL_LOG) appendFileSync(process.env.FAKE_CLAUDE_CONTROL_LOG, `${line}\n`);
+      out({ type: "control_response", response: { subtype: "success", request_id: request.request_id } });
       continue;
     }
     if ((prompt as { type?: unknown } | null)?.type === "control_response") {

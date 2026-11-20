@@ -260,6 +260,9 @@ export interface ProviderAdapter {
     effortLevels?: readonly EffortLevel[];
     /** Only a model whose catalog entry lists `effortLevels` takes one, and only those levels. */
     effortByModel?: boolean;
+    /** A turn's effort is applied to that turn alone: an unset one is the engine's default again, and a change costs no
+     *  relaunch or prompt cache. Quick questions then run at low effort (turn-route.ts). */
+    effortPerTurn?: boolean;
     /** The driver validates and applies model-specific variant IDs per session. */
     modelVariants?: boolean;
     /** The driver keeps a live session and can take a user message mid-turn (steer). */
