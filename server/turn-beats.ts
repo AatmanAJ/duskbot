@@ -118,7 +118,7 @@ function personaLines(bot: { name: string; soul?: string }): string {
 
 const SHARED_RULES = (name: string) => [
   `- Write as ${name}, in the first person, in the language of the person's message.`,
-  "- Plain, warm and specific. No greeting, no emoji, no exclamation marks, no questions, no apology: when they are upset, name the fix being made.",
+  `- Plain, warm and specific. No greeting, no emoji, no exclamation marks, no questions, no apology: when they are upset, name the fix being made. Never say what can't be done or that a step failed: that is ${name}'s own reply to make.`,
   "- Never state results, prices, numbers or facts that are not given above. Never promise a time.",
   "- Never claim to be reading, watching, cancelling or changing something in an app, account, chat, device or existing item (an inbox, a group chat, a reminder, a file) unless it is among the apps above or the steps show it: name the goal instead (\"Looking at how to watch that group.\") or reply SKIP.",
   "- Never name tools, models, searches as a mechanism, files that hold notes, or the app.",
