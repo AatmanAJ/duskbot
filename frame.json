@@ -1,3 +1,27 @@
 {
-  "pr-28.sheet.png": { "crop": "0,0,441,586" }
+  "pr-28.before-after.png": {
+    "arrange": "auto",
+    "crop": "288,0,992,720"
+  },
+  "pr-28.before.png": {
+    "crop": "288,0,992,720"
+  },
+  "pr-28.after.png": {
+    "crop": "288,0,992,720"
+  },
+  "pr-28.gif": {
+    "crop": "288,0,992,720",
+    "labels": [
+      "panel open",
+      "edit saved, sheet open",
+      "one escape: sheet closed",
+      "second escape: panel closed"
+    ]
+  },
+  "pr-28.sheet.png": {
+    "shots": [
+      "pr-28.f02-sheet-open-edit-saved.raw.png"
+    ],
+    "crop": "421,85,438,550"
+  }
 }
