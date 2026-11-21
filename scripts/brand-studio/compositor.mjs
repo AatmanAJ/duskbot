@@ -1,5 +1,5 @@
 import { encodeGif } from "./gif.mjs";
-import { ACCENT, INK, planLayout, planTimeline } from "./layout.mjs";
+import { ACCENT, INK, cropPixels, planLayout, planTimeline } from "./layout.mjs";
 
 const LABEL_FONT = "studio-label";
 
@@ -18,7 +18,7 @@ function drawBackground(ctx, background, width, height) {
   ctx.drawImage(background, (width - drawn.width) / 2, (height - drawn.height) / 2, drawn.width, drawn.height);
 }
 
-function drawShot(ctx, shot, rect, layout) {
+function drawShot(ctx, shot, source, rect, layout) {
   const { density, radius } = layout;
   for (const shadow of [
     { blur: 90, offset: 36, alpha: 0.3 },
@@ -37,7 +37,7 @@ function drawShot(ctx, shot, rect, layout) {
   roundedPath(ctx, rect, radius);
   ctx.clip();
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(shot, rect.x, rect.y);
+  ctx.drawImage(shot, source.x, source.y, source.width, source.height, rect.x, rect.y, rect.width, rect.height);
   ctx.restore();
   ctx.save();
   ctx.strokeStyle = "rgba(19, 19, 22, 0.14)";
@@ -57,7 +57,7 @@ function drawLabel(ctx, text, label, layout, lit) {
   ctx.textBaseline = "middle";
   const textWidth = Math.ceil(ctx.measureText(text).width);
   const width = inset * 2 + textWidth + (lit ? dot + dotGap : 0);
-  const x = Math.round(label.centerX - width / 2);
+  const x = label.anchor === "center" ? Math.round(label.x - width / 2) : label.x;
   ctx.fillStyle = INK;
   roundedPath(ctx, { x, y: label.y, width, height: label.height }, label.height / 2);
   ctx.fill();
@@ -93,8 +93,8 @@ async function toBase64(bytes) {
 /**
  * Renders one job and answers the encoded file as base64.
  *
- * A "still" puts every shot side by side on one PNG; an "animation" gives
- * each shot a frame of a looping GIF.
+ * A "still" puts every shot on one PNG, side by side or stacked; an
+ * "animation" gives each shot a frame of a looping GIF.
  */
 async function render(job) {
   const font = new FontFace(LABEL_FONT, `url(${job.fontUrl})`);
@@ -103,10 +103,11 @@ async function render(job) {
   const shots = await Promise.all(job.shotUrls.map(load));
   const labelled = job.labels.length > 0;
   const animated = job.kind === "animation";
+  const sources = shots.map((shot, index) => cropPixels(job.crops[index], shot, job.density));
   const layout = planLayout({
-    shots: shots.map((shot) => ({ width: shot.width, height: shot.height })),
+    shots: sources,
     density: job.density,
-    arrange: animated ? "stack" : "row",
+    arrange: animated ? "overlay" : job.arrange,
     labelled,
     pad: job.pad ?? undefined,
   });
@@ -115,7 +116,7 @@ async function render(job) {
     drawBackground(ctx, background, layout.width, layout.height);
     for (const index of indexes) {
       const placed = layout.shots[index];
-      drawShot(ctx, shots[index], placed.rect, layout);
+      drawShot(ctx, shots[index], sources[index], placed.rect, layout);
       if (labelled && job.labels[index]) drawLabel(ctx, job.labels[index], placed.label, layout, animated || index === lastIndex);
     }
   };
@@ -124,7 +125,7 @@ async function render(job) {
     const { canvas, ctx } = canvasOf(layout.width, layout.height);
     paint(ctx, shots.map((_, index) => index));
     const png = await canvas.convertToBlob({ type: "image/png" });
-    return { width: layout.width, height: layout.height, base64: await toBase64(png) };
+    return { width: layout.width, height: layout.height, arrange: layout.arrange, columnScale: layout.columnScale, base64: await toBase64(png) };
   }
 
   const scale = Math.min(1, job.gifWidth / layout.width);
