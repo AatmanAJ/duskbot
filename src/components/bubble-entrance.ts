@@ -1,71 +1,56 @@
-import { springTiming } from "@/hooks/use-arrival-flow";
+import { SEND_FLOW, springTiming } from "@/hooks/use-arrival-flow";
+import { pacedSpring } from "@/lib/motion-speed";
 
-/** The person's words leave the field and settle into their bubble as its fill comes in. */
-export const SEND_MOVE = { duration: 240, easing: "cubic-bezier(0.25, 0.46, 0.45, 0.94)" } as const;
-export const SEND_FILL = { duration: 220, delay: 40, easing: "cubic-bezier(0.22, 1, 0.36, 1)" } as const;
-/** A reply grows out of its top corner, by the mascot, then its words fade in whole. */
-export const REPLY_GROW = springTiming(420, 32);
+/** The person's bubble comes out of the composer: it fades in, grows from 0.9 and rises 16px from its bottom end corner,
+ * on the same 200ms ease-out as the column's follow, so the two land together. */
+export const SEND_ENTER = SEND_FLOW;
+export const SEND_ENTER_FROM = 0.9;
+export const SEND_ENTER_RISE_PX = 16;
+/** A reply grows out of its top corner, by the mascot, its words with it. */
+const REPLY_SPRING = pacedSpring({ stiffness: 420, damping: 32 });
+export const REPLY_GROW = springTiming(REPLY_SPRING.stiffness, REPLY_SPRING.damping);
 export const REPLY_GROW_FROM = 0.94;
-export const REPLY_WORDS = { duration: 200, delay: 90, easing: "cubic-bezier(0.22, 1, 0.36, 1)" } as const;
-
-interface Launch { sendId: string; x: number; y: number; scale: number; at: number }
 
 const STALE_MS = 2_000;
-let launch: Launch | null = null;
+let launch: { sendId: string; at: number } | null = null;
 
-/** Where the typed words start in the field, noted as they are sent, for the bubble that carries them. */
-export function noteSendLaunch(sendId: string, field: HTMLElement | null): void {
-  launch = null;
-  if (!field) return;
-  const box = field.getBoundingClientRect();
-  if (!box.width || !field.offsetWidth) return;
-  const scale = box.width / field.offsetWidth;
-  const style = getComputedStyle(field);
-  launch = { sendId, scale, at: Date.now(),
-    x: box.left + (parseFloat(style.paddingLeft) || 0) * scale, y: box.top + (parseFloat(style.paddingTop) || 0) * scale };
+/** A send from this window's composer, noted as it goes, so only its own bubble plays the entrance. */
+export function noteSendLaunch(sendId: string): void {
+  launch = { sendId, at: Date.now() };
 }
 
 export function hasSendLaunch(sendId: string | undefined): boolean {
   return Boolean(sendId && launch?.sendId === sendId && Date.now() - launch.at < STALE_MS);
 }
 
-function takeSendLaunch(sendId: string | undefined): Launch | null {
-  if (!hasSendLaunch(sendId)) return null;
-  const taken = launch;
-  launch = null;
-  return taken;
-}
-
 const canAnimate = (el: Element) => typeof (el as HTMLElement).animate === "function";
 
-/** Moves the bubble from where its words were typed to where it rests, while `fill` (its background, drawn under the
- * words) fades in. Resolves when the fill is whole, or at once when there is nothing to play. */
-export function morphFromComposer(bubble: HTMLElement, fill: HTMLElement | null, sendId: string | undefined): Promise<void> {
-  const from = takeSendLaunch(sendId);
-  if (!from || !canAnimate(bubble)) return Promise.resolve();
-  const box = bubble.getBoundingClientRect();
-  const style = getComputedStyle(bubble);
-  const dx = (from.x - (box.left + (parseFloat(style.paddingLeft) || 0) * from.scale)) / from.scale;
-  const dy = (from.y - (box.top + (parseFloat(style.paddingTop) || 0) * from.scale)) / from.scale;
-  bubble.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "translate(0px, 0px)" }], SEND_MOVE);
-  if (!fill || !canAnimate(fill)) return Promise.resolve();
-  const fading = fill.animate([{ opacity: 0 }, { opacity: 1 }], { ...SEND_FILL, fill: "backwards" });
-  return new Promise((resolve) => {
-    fading.addEventListener("finish", () => resolve());
-    fading.addEventListener("cancel", () => resolve());
-  });
+/** Right to left by the element's own `dir`, read without computing its style: a computed style here restyled the whole
+ * transcript for every bubble that arrived. */
+function rightToLeft(el: Element): boolean {
+  try { return el.matches(":dir(rtl)"); } catch { return el.closest("[dir]")?.getAttribute("dir") === "rtl"; }
+}
+
+/** The person's bubble scales up out of the composer from its bottom end corner; under reduced motion it only fades.
+ * Transform and opacity alone, so it runs on the compositor and the layer it needs lives only as long. */
+export function enterFromComposer(bubble: HTMLElement, sendId: string | undefined, reduced: boolean): void {
+  if (!hasSendLaunch(sendId) || !canAnimate(bubble)) return;
+  launch = null;
+  const rtl = rightToLeft(bubble);
+  bubble.style.transformOrigin = rtl ? "0% 100%" : "100% 100%";
+  bubble.animate(reduced
+    ? [{ opacity: 0 }, { opacity: 1 }]
+    : [{ opacity: 0, transform: `translateY(${SEND_ENTER_RISE_PX}px) scale(${SEND_ENTER_FROM})` }, { opacity: 1, transform: "translateY(0px) scale(1)" }], SEND_ENTER);
 }
 
 /** The reply grows out of its top start corner, the mascot's side, so its top edge moves only with the conversation;
- * its words fade in once it is there. Under reduced motion it only fades. */
+ * its words come with it, so no frame shows an empty bubble where the working line just was. Under reduced motion it
+ * only fades. */
 export function growFromMascot(bubble: HTMLElement, reduced: boolean): void {
   if (!canAnimate(bubble)) return;
-  const rtl = getComputedStyle(bubble).direction === "rtl";
+  const rtl = rightToLeft(bubble);
   bubble.style.transformOrigin = rtl ? "100% 0%" : "0% 0%";
   bubble.animate(reduced
     ? [{ opacity: 0 }, { opacity: 1 }]
     : [{ opacity: 0, transform: `scale(${REPLY_GROW_FROM})` }, { opacity: 1, transform: "scale(1)" }], REPLY_GROW);
-  for (const part of bubble.children) {
-    if (canAnimate(part)) part.animate([{ opacity: 0 }, { opacity: 1 }], { ...REPLY_WORDS, fill: "backwards" });
-  }
 }

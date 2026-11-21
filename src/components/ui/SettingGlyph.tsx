@@ -1,7 +1,8 @@
 import { cn } from "@/lib/cn";
 
-/* Settings' row marks: one-colour pixel glyphs on a 12 by 12 grid, drawn at 2px a cell in the text's secondary ink. Each has
-   its own silhouette so no two rows look alike. A row is a string; "#" is ink, "." is empty. */
+/* Settings' row and rail marks: pixel glyphs on a 12 by 12 grid, drawn at 2px a cell. Each has its own silhouette and its own
+   brand colour (lilac, pink, lemon, lime, sky, peach): "#" is the deep line, and any empty cell the line closes in is filled
+   with the soft tint, like dusk's pixel art. A row is a string; "#" is ink, "." is empty. */
 const GLYPHS = {
   import: [
     "............",
@@ -339,19 +340,111 @@ const GLYPHS = {
     "...######...",
     "............",
   ],
+  gear: [
+    "............",
+    ".....##.....",
+    "..#.####.#..",
+    ".####..####.",
+    "..##....##..",
+    ".##..##..##.",
+    ".##..##..##.",
+    "..##....##..",
+    ".####..####.",
+    "..#.####.#..",
+    ".....##.....",
+    "............",
+  ],
+  key: [
+    "............",
+    "............",
+    "............",
+    "..####......",
+    ".#....#.....",
+    ".#....######",
+    ".#....#.#.#.",
+    "..####..#.#.",
+    "............",
+    "............",
+    "............",
+    "............",
+  ],
+  chart: [
+    "............",
+    ".........##.",
+    ".........##.",
+    "......##.##.",
+    "......##.##.",
+    "...##.##.##.",
+    "...##.##.##.",
+    "...##.##.##.",
+    "...##.##.##.",
+    ".##########.",
+    "............",
+    "............",
+  ],
+  download: [
+    "............",
+    ".....##.....",
+    ".....##.....",
+    ".....##.....",
+    "...######...",
+    "....####....",
+    ".....##.....",
+    "............",
+    ".#........#.",
+    ".#........#.",
+    ".##########.",
+    "............",
+  ],
 } as const;
 
 export type SettingGlyphName = keyof typeof GLYPHS;
 export const SETTING_GLYPHS = Object.keys(GLYPHS) as SettingGlyphName[];
 
-function runs(rows: readonly string[]) {
+/** each glyph's colour, from the brand's soft palette: a deep line and its pastel fill, readable on light and dark skins */
+const HUES = {
+  sky: { line: "#3f8fc9", fill: "#c4e9fb" },
+  pink: { line: "#d0679a", fill: "#fbd3e4" },
+  lilac: { line: "#8a6fd0", fill: "#e2d6fb" },
+  lemon: { line: "#c9901a", fill: "#fbeeb0" },
+  lime: { line: "#5f9e34", fill: "#d6f0bb" },
+  peach: { line: "#b07a3f", fill: "#f8e2c2" },
+} as const;
+
+export type GlyphHue = keyof typeof HUES;
+
+const HUE: Record<SettingGlyphName, GlyphHue> = {
+  import: "peach", person: "pink", theme: "lilac", picture: "sky", droplet: "sky", bubble: "pink", globe: "lime", enter: "lilac",
+  stack: "peach", bolt: "lemon", laptop: "sky", server: "lilac", cloud: "sky", team: "lilac", plus: "lime", shield: "lime",
+  sparkle: "lemon", clock: "pink", bell: "lemon", speaker: "lilac", note: "pink", mic: "pink", sliders: "lilac", phone: "sky",
+  gear: "lilac", key: "lemon", chart: "lime", download: "sky",
+};
+
+/** the empty cells a line closes in: everything the outside can't reach through empty cells */
+function inside(rows: readonly string[]) {
+  const h = rows.length;
+  const w = rows[0]!.length;
+  const out = rows.map((row) => Array.from(row, (c) => c === "."));
+  const stack: [number, number][] = [];
+  for (let x = 0; x < w; x += 1) stack.push([x, 0], [x, h - 1]);
+  for (let y = 0; y < h; y += 1) stack.push([0, y], [w - 1, y]);
+  while (stack.length) {
+    const [x, y] = stack.pop()!;
+    if (x < 0 || y < 0 || x >= w || y >= h || !out[y]![x]) continue;
+    out[y]![x] = false;
+    stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+  }
+  return out.map((row) => row.map((c) => (c ? "o" : ".")).join(""));
+}
+
+function runs(rows: readonly string[], ink: string) {
   const out: { x: number; y: number; w: number }[] = [];
   rows.forEach((row, y) => {
     let x = 0;
     while (x < row.length) {
-      if (row[x] !== "#") { x += 1; continue; }
+      if (row[x] !== ink) { x += 1; continue; }
       let end = x + 1;
-      while (end < row.length && row[end] === "#") end += 1;
+      while (end < row.length && row[end] === ink) end += 1;
       out.push({ x, y, w: end - x });
       x = end;
     }
@@ -359,12 +452,15 @@ function runs(rows: readonly string[]) {
   return out;
 }
 
-const DRAWN = Object.fromEntries(Object.entries(GLYPHS).map(([name, rows]) => [name, runs(rows)])) as Record<SettingGlyphName, ReturnType<typeof runs>>;
+const DRAWN = Object.fromEntries(Object.entries(GLYPHS).map(([name, rows]) => [name, { line: runs(rows, "#"), fill: runs(inside(rows), "o") }])) as Record<SettingGlyphName, { line: ReturnType<typeof runs>; fill: ReturnType<typeof runs> }>;
 
-export function SettingGlyph({ name, size = 24, className }: { name: SettingGlyphName; size?: number; className?: string }) {
+/** `mono`: the same pixel shape in the text's own ink, no colour (the Settings rail) */
+export function SettingGlyph({ name, size = 24, className, mono = false }: { name: SettingGlyphName; size?: number; className?: string; mono?: boolean }) {
+  const hue = mono ? { line: "currentColor", fill: "transparent" } : HUES[HUE[name]];
   return (
-    <svg aria-hidden="true" data-setting-glyph={name} width={size} height={size} viewBox="0 0 12 12" shapeRendering="crispEdges" fill="currentColor" className={cn("shrink-0 text-ink-secondary", className)}>
-      {DRAWN[name].map((run) => <rect key={`${run.x}-${run.y}`} x={run.x} y={run.y} width={run.w} height={1} />)}
+    <svg aria-hidden="true" data-setting-glyph={name} data-glyph-hue={HUE[name]} width={size} height={size} viewBox="0 0 12 12" shapeRendering="crispEdges" className={cn("setting-glyph shrink-0", className)}>
+      {DRAWN[name].fill.map((run) => <rect key={`f${run.x}-${run.y}`} x={run.x} y={run.y} width={run.w} height={1} fill={hue.fill} />)}
+      {DRAWN[name].line.map((run) => <rect key={`${run.x}-${run.y}`} x={run.x} y={run.y} width={run.w} height={1} fill={hue.line} />)}
     </svg>
   );
 }

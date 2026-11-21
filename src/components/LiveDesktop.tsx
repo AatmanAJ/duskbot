@@ -1,11 +1,15 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Hand, Loader2, Minimize2, RefreshCw, Send } from "../icons";
 import type RFB from "@novnc/novnc";
 import { cn } from "@/lib/cn";
 import { copyText } from "@/lib/copy-text";
-import { connectDesktop, isPasteShortcut, pasteOnDesktop, typeOnDesktop } from "@/lib/desktop-connection";
+import { connectDesktop, desktopSize, isPasteShortcut, keyOnDesktop, pasteOnDesktop, pointerOnDesktop, typeOnDesktop } from "@/lib/desktop-connection";
 import { t } from "@/lib/i18n";
 import { isMacPlatform } from "@/lib/keyboard-shortcuts";
+import { PlatformContext } from "@/mobile/platform";
+import { phoneApp } from "@/lib/store-app";
+import { rememberScreen } from "./bot-panel/last-screen";
+import { ScreenTrackpad, type RemoteInput } from "@/mobile/ScreenTrackpad";
 import { BotPointer } from "./BotPointer";
 import { ComputerFullscreen } from "./ComputerFullscreen";
 import { Icon } from "./Icon";
@@ -65,9 +69,19 @@ export function LiveDesktop({ target, threadId, botId, name, poster, expanded, o
   readyChanged.current = onReadyChange;
   const unreachable = useRef(onUnreachable);
   unreachable.current = onUnreachable;
+  const whose = useRef(botId);
+  whose.current = botId;
   const sized = useRef(onScreenSize);
   sized.current = onScreenSize;
   const [aspect, setAspect] = useState<number | undefined>(undefined);
+  const platform = useContext(PlatformContext);
+  const phoneKeyboard = useRef<HTMLInputElement>(null);
+  const remoteInput = useMemo<RemoteInput>(() => ({
+    size: () => rfb.current && desktopSize(rfb.current),
+    pointer: (x, y, mask) => { if (rfb.current) pointerOnDesktop(rfb.current, x, y, mask); },
+    key: (keysym, code) => { if (rfb.current) keyOnDesktop(rfb.current, keysym, code); },
+    text: (typed) => { if (rfb.current && !rfb.current.viewOnly) typeOnDesktop(rfb.current, typed); },
+  }), []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -118,6 +132,11 @@ export function LiveDesktop({ target, threadId, botId, name, poster, expanded, o
       connected.focusOnClick = !connected.viewOnly;
     }, () => { if (!controller.signal.aborted) lost(); });
     const disconnect = () => {
+      // on the phone its view comes back often (a tab, the sheet): it starts again on the last picture, not an empty frame
+      const owner = whose.current;
+      if (decoded && owner && phoneApp()) {
+        try { rememberScreen(owner, threadId, screen.current?.querySelector("canvas")?.toDataURL("image/jpeg", 0.8)); } catch { /* a canvas it cannot read */ }
+      }
       setText("");
       reportReady?.(false);
       controller.abort();
@@ -201,14 +220,16 @@ export function LiveDesktop({ target, threadId, botId, name, poster, expanded, o
   );
 
   const launching = useLaunchFeedback(screen, !viewOnly && connection === "connected");
+  const phoneTrackpad = Boolean(platform) && originalViewer && expanded && !viewOnly && connection === "connected";
 
   const desktopFrame = (
       <div className={cn("relative h-full w-full overflow-hidden", expanded ? "bg-black" : "bg-inset")}>
         {poster && connection !== "connected" && (
-          <img src={poster} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-contain opacity-50" />
+          <img src={poster} alt="" aria-hidden="true" className={cn("absolute inset-0 h-full w-full object-contain", !phoneApp() && "opacity-50")} />
         )}
         <div ref={screen} role="application" aria-label={label} data-live-desktop-screen="" data-watching={viewOnly ? "" : undefined} className="absolute inset-0" />
         {botId && viewOnly && connection === "connected" && <BotPointer host={screen} botId={botId} />}
+        {phoneTrackpad && <ScreenTrackpad screen={screen} input={remoteInput} keyboard={phoneKeyboard} haptic={platform?.haptic} label={label} />}
         {launching && (
           <span data-launch-spinner="" aria-hidden="true" className="pointer-events-none absolute z-[3] size-7 -translate-x-1/2 -translate-y-1/2" style={{ left: launching.x, top: launching.y }}>
             <span className="absolute inset-0 rounded-full border-2 border-white/25 border-t-white/90 drop-shadow-[0_0_2px_rgb(0_0_0/0.6)] motion-safe:animate-spin" />
@@ -240,6 +261,7 @@ export function LiveDesktop({ target, threadId, botId, name, poster, expanded, o
     <div data-live-desktop="" data-state={connection} data-view-only={viewOnly ? "true" : undefined}
       data-expanded={expanded ? "true" : undefined} className="relative h-full w-full">
       <ComputerFullscreen embedded expanded={expanded} label={label} aspect={aspect} onExit={() => onExpandedChange(false)}
+        onKeyboard={phoneTrackpad ? () => phoneKeyboard.current?.focus({ preventScroll: true }) : undefined}
         frame={desktopFrame} note={null} control={viewOnly
           ? { held: false, onTake: onTakeControl, busy: connection !== "connected" || handingBack || taking, pending: taking }
           : { held: true, onDone: onHandBack, asked, busy: handingBack }} />
@@ -258,7 +280,7 @@ export function LiveDesktop({ target, threadId, botId, name, poster, expanded, o
       }}
     >
       {expanded && (
-        <header {...dragProps} className={cn("flex shrink-0 flex-wrap items-center gap-2 border-b border-transparent bg-panel px-3 py-2", macInset && "pl-[86px]")}>
+        <header {...dragProps} className={cn("flex shrink-0 flex-wrap items-center gap-2 border-b border-transparent bg-panel pb-2 pt-[calc(var(--safe-area-inset-top,env(safe-area-inset-top,0px))+8px)] pe-[calc(var(--safe-area-inset-right,env(safe-area-inset-right,0px))+12px)]", macInset ? "pl-[86px]" : "ps-[calc(var(--safe-area-inset-left,env(safe-area-inset-left,0px))+12px)]")}>
           <span className="min-w-0 truncate text-[13px] font-medium text-ink">{label}</span>
           {!viewOnly && pill}
           {viewOnly && onTakeControl && <button type="button" style={noDragStyle} onClick={onTakeControl} disabled={connection !== "connected"} className={cn(iconButton, "ml-auto bg-control text-ink hover:bg-raised-hover")}>{t("computer.takeControl")}</button>}
