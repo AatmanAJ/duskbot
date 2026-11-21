@@ -23,7 +23,7 @@ import type { BotRecord, Store } from "../store.ts";
 import { deciderEnabled, type Decider } from "../decider/index.ts";
 import type { Extractor } from "../extractor/index.ts";
 import { createBrief, type BriefDeps } from "./brief.ts";
-import { WATCH_INSTRUCTIONS, WATCH_NAME, WATCH_SUGGESTION_TEXT, watchSchedule } from "./default-watch.ts";
+import { upgradedWatchPrompt, WATCH_INSTRUCTIONS, WATCH_NAME, WATCH_SUGGESTION_TEXT, watchSchedule } from "./default-watch.ts";
 import { createHelperSuggestion } from "./helper-suggestion.ts";
 import { createInboxTriage } from "./inbox-triage.ts";
 import { mainChief, proactiveOwner } from "./proactive-owner.ts";
@@ -243,6 +243,10 @@ export function createProactive(deps: ProactiveDeps) {
     } catch (error) {
       console.warn(`watch: not handed over yet: ${error instanceof Error ? error.message : String(error)}`);
       return null;
+    }
+    for (const routine of manager.listRoutines()) {
+      const prompt = isWatch(routine) && routine.name === WATCH_NAME ? upgradedWatchPrompt(routine.prompt) : null;
+      if (prompt) manager.update(routine.id, { prompt });
     }
     const kept = watchRecord();
     if (!composio.configured(cfg) || kept.createdAt || kept.offered || kept.notNowAt) return null;
