@@ -41,9 +41,17 @@ describe("what a bot's row or tile is marked for", () => {
 describe("a click on a bot's row or tile", () => {
   const work = { threadId: "work", unread: true };
 
-  it("opens the bot's one conversation while threads are hidden, whatever another of its threads is marked for", () => {
+  it("opens the bot's one conversation while threads are hidden, whatever another of its threads is unread for", () => {
     expect(opened(chief([work]))).toEqual([{ type: "select", id: "cos" }]);
-    expect(opened(chief([{ threadId: "work", busy: true }]))).toEqual([{ type: "select", id: "cos" }]);
+  });
+
+  it("opens the conversation the bot is working in, such as a job another bot handed it, not the last one the person wrote in", () => {
+    const to = (threadId: string) => [{ type: "switchTask", botId: "cos", threadId }];
+    expect(opened(chief([{ threadId: "handoff", busy: true }]))).toEqual(to("handoff"));
+    expect(opened(chief([{ threadId: "handoff", activity: "working" }]))).toEqual(to("handoff"));
+    expect(opened({ ...chief([]), tasks: [{ threadId: "main", busy: true, createdAt: 1 }, { threadId: "handoff", busy: true }] })).toEqual([{ type: "select", id: "cos" }]);
+    expect(opened(chief([{ threadId: "handoff", busy: true }, { threadId: "ask", activity: "waiting-on-you" }]))).toEqual(to("ask"));
+    expect(opened(chief([{ threadId: "run", busy: true, routineRunId: "r" }, { threadId: "old", busy: true, archivedAt: 1 }]))).toEqual([{ type: "select", id: "cos" }]);
   });
 
 

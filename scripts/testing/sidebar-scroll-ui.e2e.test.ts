@@ -56,6 +56,8 @@ type WireBot = { id: string; name: string; threadId: string; mainThreadId?: stri
     // used to hand focus back to on every later switch
     await clickByName(ui, /^Open Pepper's profile/, "button");
     await expect.poll(() => evaluate("Boolean(document.getElementById('bot-panel'))"), { timeout: 15_000 }).toBe(true);
+    // the person's own order keeps these rows far down; by recent activity the unread ones would rise to the top
+    await evaluate(`localStorage.setItem("duskbot.sidebarBotOrder", "custom"); true`);
     await evaluate("location.reload(); true");
     await expect.poll(() => evaluate("document.querySelectorAll('[data-sidebar-bot-row]').length"), { timeout: 30_000 }).toBeGreaterThanOrEqual(25);
     await expect.poll(() => evaluate("Boolean(document.getElementById('bot-panel'))"), { timeout: 15_000 }).toBe(true);

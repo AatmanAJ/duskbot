@@ -20,8 +20,52 @@
 		D05C00032F00000100B07D05 /* QrScannerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C00042F00000100B07D05 /* QrScannerPlugin.swift */; };
 		D05C00092F00000100B07D05 /* AppleSignInPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C000A2F00000100B07D05 /* AppleSignInPlugin.swift */; };
 		D05C000B2F00000100B07D05 /* SpeechRecognizerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C000C2F00000100B07D05 /* SpeechRecognizerPlugin.swift */; };
+		D05EF2BD1D3767199A4C8171 /* ControlsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05DF2BD1D3767199A4C8171 /* ControlsPlugin.swift */; };
+		D05E4C346D67B1393C017725 /* PulldownMenuPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05D4C346D67B1393C017725 /* PulldownMenuPlugin.swift */; };
+		D05E9240CB6504DB8342267F /* Chrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05D9240CB6504DB8342267F /* Chrome.swift */; };
+		D05E7A3B11C0FFEE00000001 /* AppearancePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05D7A3B11C0FFEE00000001 /* AppearancePlugin.swift */; };
+		D05C000D2F00000100B07D05 /* GlassChromePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C000E2F00000100B07D05 /* GlassChromePlugin.swift */; };
+		D05C000F2F00000100B07D05 /* NativeMenuPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C00102F00000100B07D05 /* NativeMenuPlugin.swift */; };
+		D05C00F12F00000100B07D05 /* HapticsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C00F22F00000100B07D05 /* HapticsPlugin.swift */; };
+		AB5100012F00000100B07D05 /* ShortcutsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5100022F00000100B07D05 /* ShortcutsPlugin.swift */; };
+		AB5100032F00000100B07D05 /* BotIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5100042F00000100B07D05 /* BotIntents.swift */; };
+		D05C00F32F00000100B07D05 /* PickerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C00F42F00000100B07D05 /* PickerPlugin.swift */; };
+		D05C01112F00000100B07D05 /* GlassVoiceWave.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C01122F00000100B07D05 /* GlassVoiceWave.swift */; };
+		D05C01132F00000100B07D05 /* GlassHomeBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C01142F00000100B07D05 /* GlassHomeBar.swift */; };
 		D05C00052F00000100B07D05 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D05C00062F00000100B07D05 /* PrivacyInfo.xcprivacy */; };
+		E1A100112F00000100B07D05 /* TurnActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A100012F00000100B07D05 /* TurnActivityPlugin.swift */; };
+		F2B100112F00000100B07D05 /* PhoneNotificationsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B100012F00000100B07D05 /* PhoneNotificationsPlugin.swift */; };
+		F2B100122F00000100B07D05 /* NotificationPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B100022F00000100B07D05 /* NotificationPresentation.swift */; };
+		E1A100122F00000100B07D05 /* TurnActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A100022F00000100B07D05 /* TurnActivity.swift */; };
+		E1A100132F00000100B07D05 /* TurnActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A100022F00000100B07D05 /* TurnActivity.swift */; };
+		E1A100142F00000100B07D05 /* TurnActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A100032F00000100B07D05 /* TurnActivityWidget.swift */; };
+		E1A100152F00000100B07D05 /* MascotBodies.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A100042F00000100B07D05 /* MascotBodies.swift */; };
+		E1A100162F00000100B07D05 /* TurnActivityWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E1A100072F00000100B07D05 /* TurnActivityWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		E1A100372F00000100B07D05 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E1A100312F00000100B07D05;
+			remoteInfo = TurnActivityWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		E1A100352F00000100B07D05 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				E1A100162F00000100B07D05 /* TurnActivityWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
@@ -39,8 +83,29 @@
 		D05C00042F00000100B07D05 /* QrScannerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QrScannerPlugin.swift; sourceTree = "<group>"; };
 		D05C000A2F00000100B07D05 /* AppleSignInPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSignInPlugin.swift; sourceTree = "<group>"; };
 		D05C000C2F00000100B07D05 /* SpeechRecognizerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognizerPlugin.swift; sourceTree = "<group>"; };
+		D05DF2BD1D3767199A4C8171 /* ControlsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlsPlugin.swift; sourceTree = "<group>"; };
+		D05D4C346D67B1393C017725 /* PulldownMenuPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulldownMenuPlugin.swift; sourceTree = "<group>"; };
+		D05D9240CB6504DB8342267F /* Chrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Chrome.swift; sourceTree = "<group>"; };
+		D05D7A3B11C0FFEE00000001 /* AppearancePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearancePlugin.swift; sourceTree = "<group>"; };
+		D05C000E2F00000100B07D05 /* GlassChromePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassChromePlugin.swift; sourceTree = "<group>"; };
+		D05C00102F00000100B07D05 /* NativeMenuPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMenuPlugin.swift; sourceTree = "<group>"; };
+		D05C00F22F00000100B07D05 /* HapticsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticsPlugin.swift; sourceTree = "<group>"; };
+		AB5100022F00000100B07D05 /* ShortcutsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsPlugin.swift; sourceTree = "<group>"; };
+		AB5100042F00000100B07D05 /* BotIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotIntents.swift; sourceTree = "<group>"; };
+		D05C00F42F00000100B07D05 /* PickerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PickerPlugin.swift; sourceTree = "<group>"; };
+		D05C01122F00000100B07D05 /* GlassVoiceWave.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassVoiceWave.swift; sourceTree = "<group>"; };
+		D05C01142F00000100B07D05 /* GlassHomeBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassHomeBar.swift; sourceTree = "<group>"; };
 		D05C00062F00000100B07D05 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		D05C00072F00000100B07D05 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
+		E1A100012F00000100B07D05 /* TurnActivityPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnActivityPlugin.swift; sourceTree = "<group>"; };
+		F2B100012F00000100B07D05 /* PhoneNotificationsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneNotificationsPlugin.swift; sourceTree = "<group>"; };
+		F2B100022F00000100B07D05 /* NotificationPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPresentation.swift; sourceTree = "<group>"; };
+		E1A100022F00000100B07D05 /* TurnActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnActivity.swift; sourceTree = "<group>"; };
+		E1A100032F00000100B07D05 /* TurnActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnActivityWidget.swift; sourceTree = "<group>"; };
+		E1A100042F00000100B07D05 /* MascotBodies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MascotBodies.swift; sourceTree = "<group>"; };
+		E1A100052F00000100B07D05 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		E1A100062F00000100B07D05 /* TurnActivityWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TurnActivityWidget.entitlements; sourceTree = "<group>"; };
+		E1A100072F00000100B07D05 /* TurnActivityWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TurnActivityWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -52,6 +117,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E1A100332F00000100B07D05 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -60,14 +132,36 @@
 			children = (
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
+				E1A100212F00000100B07D05 /* Shared */,
+				E1A100222F00000100B07D05 /* TurnActivityWidget */,
 				504EC3051FED79650016851F /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		E1A100212F00000100B07D05 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				E1A100022F00000100B07D05 /* TurnActivity.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		E1A100222F00000100B07D05 /* TurnActivityWidget */ = {
+			isa = PBXGroup;
+			children = (
+				E1A100032F00000100B07D05 /* TurnActivityWidget.swift */,
+				E1A100042F00000100B07D05 /* MascotBodies.swift */,
+				E1A100052F00000100B07D05 /* Info.plist */,
+				E1A100062F00000100B07D05 /* TurnActivityWidget.entitlements */,
+			);
+			path = TurnActivityWidget;
 			sourceTree = "<group>";
 		};
 		504EC3051FED79650016851F /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				504EC3041FED79650016851F /* App.app */,
+				E1A100072F00000100B07D05 /* TurnActivityWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -80,6 +174,21 @@
 				D05C00042F00000100B07D05 /* QrScannerPlugin.swift */,
 				D05C000A2F00000100B07D05 /* AppleSignInPlugin.swift */,
 				D05C000C2F00000100B07D05 /* SpeechRecognizerPlugin.swift */,
+				D05DF2BD1D3767199A4C8171 /* ControlsPlugin.swift */,
+				D05D4C346D67B1393C017725 /* PulldownMenuPlugin.swift */,
+				D05D9240CB6504DB8342267F /* Chrome.swift */,
+				D05D7A3B11C0FFEE00000001 /* AppearancePlugin.swift */,
+				D05C000E2F00000100B07D05 /* GlassChromePlugin.swift */,
+				D05C00102F00000100B07D05 /* NativeMenuPlugin.swift */,
+				D05C00F22F00000100B07D05 /* HapticsPlugin.swift */,
+				AB5100022F00000100B07D05 /* ShortcutsPlugin.swift */,
+				AB5100042F00000100B07D05 /* BotIntents.swift */,
+				D05C00F42F00000100B07D05 /* PickerPlugin.swift */,
+				D05C01122F00000100B07D05 /* GlassVoiceWave.swift */,
+				D05C01142F00000100B07D05 /* GlassHomeBar.swift */,
+				E1A100012F00000100B07D05 /* TurnActivityPlugin.swift */,
+				F2B100012F00000100B07D05 /* PhoneNotificationsPlugin.swift */,
+				F2B100022F00000100B07D05 /* NotificationPresentation.swift */,
 				D05C00062F00000100B07D05 /* PrivacyInfo.xcprivacy */,
 				D05C00072F00000100B07D05 /* App.entitlements */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
@@ -105,10 +214,12 @@
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
+				E1A100352F00000100B07D05 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				E1A100362F00000100B07D05 /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -117,6 +228,23 @@
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
+		};
+		E1A100312F00000100B07D05 /* TurnActivityWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E1A100432F00000100B07D05 /* Build configuration list for PBXNativeTarget "TurnActivityWidget" */;
+			buildPhases = (
+				E1A100322F00000100B07D05 /* Sources */,
+				E1A100332F00000100B07D05 /* Frameworks */,
+				E1A100342F00000100B07D05 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TurnActivityWidget;
+			productName = TurnActivityWidget;
+			productReference = E1A100072F00000100B07D05 /* TurnActivityWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -130,6 +258,10 @@
 					504EC3031FED79650016851F = {
 						CreatedOnToolsVersion = 9.2;
 						LastSwiftMigration = 1100;
+						ProvisioningStyle = Automatic;
+					};
+					E1A100312F00000100B07D05 = {
+						CreatedOnToolsVersion = 27.2;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -151,6 +283,7 @@
 			projectRoot = "";
 			targets = (
 				504EC3031FED79650016851F /* App */,
+				E1A100312F00000100B07D05 /* TurnActivityWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -167,6 +300,13 @@
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
 				D05C00052F00000100B07D05 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E1A100342F00000100B07D05 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -205,10 +345,44 @@
 				D05C00032F00000100B07D05 /* QrScannerPlugin.swift in Sources */,
 				D05C00092F00000100B07D05 /* AppleSignInPlugin.swift in Sources */,
 				D05C000B2F00000100B07D05 /* SpeechRecognizerPlugin.swift in Sources */,
+				D05EF2BD1D3767199A4C8171 /* ControlsPlugin.swift in Sources */,
+				D05E4C346D67B1393C017725 /* PulldownMenuPlugin.swift in Sources */,
+				D05E9240CB6504DB8342267F /* Chrome.swift in Sources */,
+				D05E7A3B11C0FFEE00000001 /* AppearancePlugin.swift in Sources */,
+				D05C000D2F00000100B07D05 /* GlassChromePlugin.swift in Sources */,
+				D05C000F2F00000100B07D05 /* NativeMenuPlugin.swift in Sources */,
+				D05C00F12F00000100B07D05 /* HapticsPlugin.swift in Sources */,
+				AB5100012F00000100B07D05 /* ShortcutsPlugin.swift in Sources */,
+				AB5100032F00000100B07D05 /* BotIntents.swift in Sources */,
+				D05C00F32F00000100B07D05 /* PickerPlugin.swift in Sources */,
+				D05C01112F00000100B07D05 /* GlassVoiceWave.swift in Sources */,
+				D05C01132F00000100B07D05 /* GlassHomeBar.swift in Sources */,
+				E1A100112F00000100B07D05 /* TurnActivityPlugin.swift in Sources */,
+				E1A100122F00000100B07D05 /* TurnActivity.swift in Sources */,
+				F2B100112F00000100B07D05 /* PhoneNotificationsPlugin.swift in Sources */,
+				F2B100122F00000100B07D05 /* NotificationPresentation.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E1A100322F00000100B07D05 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E1A100132F00000100B07D05 /* TurnActivity.swift in Sources */,
+				E1A100142F00000100B07D05 /* TurnActivityWidget.swift in Sources */,
+				E1A100152F00000100B07D05 /* MascotBodies.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		E1A100362F00000100B07D05 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E1A100312F00000100B07D05 /* TurnActivityWidget */;
+			targetProxy = E1A100372F00000100B07D05 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
@@ -354,7 +528,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.5;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = bot.dusk.mobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -378,9 +552,59 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = bot.dusk.mobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "$(DUSK_APP_PROFILE)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		E1A100412F00000100B07D05 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = TurnActivityWidget/TurnActivityWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = TurnActivityWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.5;
+				PRODUCT_BUNDLE_IDENTIFIER = bot.dusk.mobile.activity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		E1A100422F00000100B07D05 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = TurnActivityWidget/TurnActivityWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = TurnActivityWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.5;
+				PRODUCT_BUNDLE_IDENTIFIER = bot.dusk.mobile.activity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "$(DUSK_WIDGET_PROFILE)";
+				SKIP_INSTALL = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -404,6 +628,15 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E1A100432F00000100B07D05 /* Build configuration list for PBXNativeTarget "TurnActivityWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E1A100412F00000100B07D05 /* Debug */,
+				E1A100422F00000100B07D05 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
