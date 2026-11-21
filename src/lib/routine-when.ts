@@ -51,11 +51,15 @@ export function whenDraftFor(schedule: RoutineSchedule | undefined, now = Date.n
   return { ...draft, preset: "keep" };
 }
 
+function sameWindow(a: WhenDraft["window"], b: WhenDraft["window"]): boolean {
+  return a === b || (!!a && !!b && a.start === b.start && a.end === b.end);
+}
+
 function sameWhen(a: WhenDraft, b: WhenDraft): boolean {
   if (a.preset !== b.preset) return false;
   switch (a.preset) {
     case "keep": return true;
-    case "hourly": return JSON.stringify(a.window) === JSON.stringify(b.window);
+    case "hourly": return sameWindow(a.window, b.window);
     case "once": return a.date === b.date && a.time === b.time;
     case "weekly": return a.day === b.day && a.time === b.time;
     default: return a.time === b.time;
