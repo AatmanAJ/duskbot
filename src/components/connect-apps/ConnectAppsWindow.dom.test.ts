@@ -22,6 +22,7 @@ const fixture = vi.hoisted(() => ({
     ],
   },
   actions: { attio: { actions: ["Create record", "Find person"] } } as Record<string, { actions: string[]; triggers?: string[] }>,
+  mcpServers: [] as Array<{ name: string; enabled: boolean }>,
 }));
 
 vi.mock("@/state/store", async (original) => {
@@ -48,7 +49,7 @@ vi.mock("@/lib/connector-poll", () => ({ pollConnector: (_before: unknown, _read
 // sealing has its own tests (src/lib/sealed-send.test.ts): here the patch the key step asked to save is what the server gets
 vi.mock("@/lib/sealed-send", () => ({ putConfig: (patch: unknown) => fixture.api("/api/config", { method: "PUT", body: JSON.stringify(patch) }) }));
 vi.mock("@/lib/logins", () => ({ listLogins: async () => ({ logins: [], onePassword: { connected: false } }) }));
-vi.mock("@/lib/mcp-servers", () => ({ useMcpServers: () => ({ servers: [], error: false, refresh: async () => [] }) }));
+vi.mock("@/lib/mcp-servers", () => ({ useMcpServers: () => ({ servers: fixture.mcpServers, error: false, refresh: async () => fixture.mcpServers }) }));
 vi.mock("../McpServersPanel", () => ({ McpServersPanel: () => null }));
 vi.mock("../XCard", () => ({ XCard: () => null }));
 vi.mock("../EmailCard", () => ({ EmailCard: () => null }));
@@ -95,6 +96,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  fixture.mcpServers = [];
   fixture.memory = null;
   fixture.inventory = null;
   act(() => root.unmount());
@@ -855,6 +857,19 @@ describe("the Connect Apps window", () => {
     const custom = dialog().querySelector('[data-app-row="custom-mcp"]')!;
     expect(custom.textContent).toContain("Custom MCP");
     await act(async () => { custom.querySelector<HTMLButtonElement>(".ca-pill")!.click(); });
+    expect(dialog().querySelector("[data-detail-hero-title]")?.textContent).toBe("Custom MCP");
+  });
+
+  it.each(["notes", "broken"])("lists every custom MCP server on Your plugins, the ones that are off too, and opens Custom MCP from %s", async (opened) => {
+    act(() => root.unmount());
+    fixture.mcpServers = [{ name: "notes", enabled: true }, { name: "broken", enabled: false }];
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => { root.render(createElement(ConnectAppsWindow, { page: { kind: "yours" }, nonce: 7, onClose, onTemplates: vi.fn() })); });
+    await flush();
+    expect(dialog().querySelector('[data-app-row="mcp:notes"]')?.textContent).toContain("Connected");
+    const off = dialog().querySelector('[data-app-row="mcp:broken"]');
+    expect(off?.textContent, "a server that failed its test is still listed, as off").toContain("Off");
+    await act(async () => { dialog().querySelector<HTMLElement>(`[data-app-row="mcp:${opened}"] :is(button, [role=button])`)!.click(); });
     expect(dialog().querySelector("[data-detail-hero-title]")?.textContent).toBe("Custom MCP");
   });
 
