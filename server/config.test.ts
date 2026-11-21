@@ -765,6 +765,18 @@ describe("a config.json saved with a byte order mark", () => {
       expect(readdirSync(DATA_DIR).filter((name) => name.startsWith("config.json.unreadable-"))).toEqual([]);
     });
 
+    it("treats a file that parses but holds a setting of the wrong kind the same way: a save still takes effect", () => {
+      const wrongKind = JSON.stringify({ rooms: { turnTimeoutMinutes: "soon" } });
+      writeFileSync(path(), JSON.stringify({ rooms: { turnTimeoutMinutes: 25 } }));
+      loadConfig();
+      writeFileSync(path(), wrongKind);
+      expect(loadConfig().rooms).toEqual({ turnTimeoutMinutes: 25 });
+      expect(configFileProblem()).toMatchObject({ lastGood: true });
+      saveConfig({ language: "de" });
+      expect(readFileSync(path(), "utf8")).toBe(wrongKind);
+      expect(loadConfig()).toMatchObject({ language: "de", rooms: { turnTimeoutMinutes: 25 } });
+    });
+
     it("uses the defaults and says so when there is no earlier copy, and is quiet again once the file is fixed", () => {
       writeFileSync(path(), broken);
       expect(loadConfig().rooms).toBeUndefined();

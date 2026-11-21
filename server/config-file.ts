@@ -46,6 +46,9 @@ export function configFile<T>(path: () => string, parse: (value: JsonValue) => T
     return value;
   });
   const lastGood = settledFileCache(() => lastGoodPath(path()), () => parse(parseJson(readFileSync(lastGoodPath(path()), "utf8"))));
+  const accepts = (value: JsonObject) => {
+    try { parse(value); return true; } catch { return false; }
+  };
   let problem: ConfigFileProblem | null = null;
   let lastWarning = "";
 
@@ -76,7 +79,8 @@ export function configFile<T>(path: () => string, parse: (value: JsonValue) => T
     /** Where a save goes and what it starts from: a broken config.json is never written over, its last good copy is. */
     saveTarget(): { file: string; disk: JsonObject } {
       const current = readObject(path());
-      if (current !== "unreadable") return { file: path(), disk: current === "missing" ? {} : current };
+      if (current === "missing") return { file: path(), disk: {} };
+      if (current !== "unreadable" && accepts(current)) return { file: path(), disk: current };
       const copy = readObject(lastGoodPath(path()));
       return { file: lastGoodPath(path()), disk: typeof copy === "object" ? copy : {} };
     },
