@@ -26,6 +26,13 @@ describe("turnStartLogLine", () => {
     expect(line).toContain("«redacted");
   });
 
+  it("masks a key the 70-character cut would have split, however long the message is", () => {
+    const key = `sk-ant-api03-${"FAKE".repeat(10)}`;
+    const line = turnStartLogLine({ ...turn, text: `${"x".repeat(60)} ${key} ${"tail ".repeat(200_000)}`, spoken: false });
+    expect(line).not.toContain("sk-ant-api03");
+    expect(line).toContain("«redacted");
+  });
+
   it("masks a held secret value", () => {
     const remove = addHeldSecretScrubber((text) => text.replaceAll("plain-held-value", "••••••"));
     try {
