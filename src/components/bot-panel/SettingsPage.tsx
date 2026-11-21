@@ -10,7 +10,8 @@ import type { useBotSettingsDerived } from "../bot-settings/useBotSettingsDerive
 import { useDeleteAllThreads } from "../BotMenuDelete";
 import { useDesktopCapabilities } from "../DesktopCapabilities";
 import { SoulField } from "../SoulField";
-import { BackupAis } from "./BackupAis";
+import { LIMIT_MODES } from "../../../shared/wire";
+import { radioArrows, RadioRow, SwitchRow } from "./rows";
 import { BotConversations } from "./Conversations";
 import { panelMemoryNotes } from "./memory-notes";
 import type { SheetPage } from "./modals/panel-modal";
@@ -48,7 +49,8 @@ export function SettingsPage({ bot, onOpen, more }: {
   const open = (page: SheetPage) => () => onOpen?.(page);
 
   const skillsOn = skills.skills.filter((skill) => skill.enabled).length;
-  const backups = bot.fallback?.length ?? 0;
+  // absent: the automatic backup; empty: Off; a list someone set: on, that list first
+  const backupOn = bot.fallback === undefined || bot.fallback.length > 0;
   const engineCoordinates = state.instances.find((instance) => instance.instanceId === bot.modelSelection.instanceId)?.capabilities?.agentsMcp;
   const editable = bot.yourAccess !== "view";
 
@@ -59,7 +61,7 @@ export function SettingsPage({ bot, onOpen, more }: {
         <NavRow data-panel-page="identity" title={t("botPanel.ui.botSettingsSectionsIdentity")} value={bot.title?.trim() || undefined} onClick={open("identity")} />
         <NavRow data-panel-page="instructions" title={t("botPanel.ui.botSettingsSimpleInstructions")} value={(bot.soul ?? "").trim() ? undefined : t("botPanel.none")} onClick={open("instructions")} />
         <NavRow data-panel-page="memory" title={t("botPanel.memoryRow")} value={memoryLine} onClick={open("memory")} />
-        <NavRow data-panel-page="skills" title={t("botPanel.ui.botSettingsSimpleSkills")} value={skills.loading ? undefined : skillsOn > 0 ? t("botPanel.skills.on", { count: skillsOn }) : t("botPanel.none")} onClick={open("skills")} />
+        <NavRow data-panel-page="skills" title={t("botPanel.ui.botSettingsSimpleSkills")} value={skills.loading ? undefined : skills.loadFailed ? t("botPanel.skills.notLoaded") : skillsOn > 0 ? t("botPanel.skills.on", { count: skillsOn }) : t("botPanel.none")} onClick={open("skills")} />
         {slackAvailable && <NavRow data-panel-page="slack" title={t("slack.title")} value={slackValue} onClick={open("slack")} />}
       </Card>
 
@@ -68,7 +70,9 @@ export function SettingsPage({ bot, onOpen, more }: {
           <NavRow data-panel-page="tools" title={t("botPanel.page.tools")} value={bot.toolScope !== undefined ? t("botPanel.tools.custom") : undefined} onClick={open("tools")} />
           <NavRow data-panel-page="permissions" title={t("botPanel.ui.botSettingsSectionsPermissions")} value={bot.chiefOfStaff ? t("botPanel.ui.permissionsChiefTitle") : undefined} onClick={open("permissions")} />
           <NavRow data-panel-page="folder" title={t("botPanel.page.folder")} value={bot.cwd ? shortPath(bot.cwd, capabilities.host?.homeDir) : t("botPanel.folder.private")} tooltip={bot.cwd ?? undefined} onClick={open("folder")} />
-          <NavRow data-panel-page="backups" title={t("botPanel.page.backups")} value={backups > 0 ? t("botPanel.backups.count", { count: backups }) : t("botPanel.none")} onClick={open("backups")} />
+          <SwitchRow data-panel-row="backup-ai" color={bot.color} title={t("botPanel.backupAi")} label={t("botPanel.backupAi")}
+            tooltip={backupOn ? t("botPanel.backupAi.on") : t("botPanel.backupAi.off")} checked={backupOn} disabled={!editable}
+            onChange={() => dispatch({ type: "updateBot", botId: bot.id, patch: { fallback: backupOn ? [] : null } })} />
         </Card>
 
         {editable && (
@@ -108,8 +112,38 @@ export function InstructionsPage({ bot, derived }: { bot: Bot; derived: Derived 
   );
 }
 
+const LIMIT_MODE_TEXT = {
+  wait: { title: "botPanel.limitMode.wait", hint: "botPanel.limitMode.waitHint" },
+  ask: { title: "botPanel.limitMode.ask", hint: "botPanel.limitMode.askHint" },
+  free: { title: "botPanel.limitMode.free", hint: "botPanel.limitMode.freeHint" },
+} as const;
+
+/** "When the AI hits a limit": wait for the reset, ask, or the free model. */
+export function LimitModeCard({ bot, derived }: { bot: Bot; derived: Derived }) {
+  const mode = bot.limitMode ?? "wait";
+  const editable = bot.yourAccess !== "view";
+  return (
+    <Card label={t("botPanel.limitMode.title")} anchor="limit-mode" data-sheet-group="limit-mode" footnote={t("botPanel.limitMode.hint")}>
+      <div role="radiogroup" aria-label={t("botPanel.limitMode.title")} onKeyDown={radioArrows} className="contents">
+        {LIMIT_MODES.map((choice) => (
+          <RadioRow
+            key={choice}
+            data-panel-choice={`limit-${choice}`}
+            title={t(LIMIT_MODE_TEXT[choice].title)}
+            hint={t(LIMIT_MODE_TEXT[choice].hint)}
+            checked={mode === choice}
+            tabIndex={mode === choice ? 0 : -1}
+            disabled={!editable}
+            onClick={() => { if (mode !== choice) derived.patch({ limitMode: choice }); }}
+          />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 export function BackupsPage({ bot, derived }: { bot: Bot; derived: Derived }) {
-  return <BackupAis bot={bot} onChange={(fallback) => derived.patch({ fallback })} />;
+  return <LimitModeCard bot={bot} derived={derived} />;
 }
 
 export function ThreadsPage({ bot }: { bot: Bot }) {

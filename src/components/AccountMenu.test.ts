@@ -33,10 +33,10 @@ it("no rows on a page that isn't offered the sheet, or while nobody is signed in
   expect(accountMenuItems({ view: null, openSheet: null, noRail: true, ...actions })).toEqual([]);
 });
 
-it("another place's page shows no address, only the row that asks main for the sheet", () => {
+it("another place's page shows no address, only a Sign out row that asks main for the sheet", () => {
   const openSheet = vi.fn();
   const items = accountMenuItems({ view: null, openSheet, noRail: false, ...actions });
-  expect(items.map((item) => item.label)).toEqual(["Account and sign out"]);
+  expect(items.map((item) => item.label)).toEqual(["Sign out"]);
   expect(JSON.stringify(items.map(({ label, subtitle, title }) => ({ label, subtitle, title })))).not.toContain("@");
   items[0].onSelect();
   expect(openSheet).toHaveBeenCalled();

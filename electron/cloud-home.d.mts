@@ -113,7 +113,7 @@ export interface CloudOffer {
   /** Signed in: a checkout of theirs still open, and until when. */
   checkout?: { plan: string; openUntil: number };
 }
-export interface CloudHomeGrant { origin: string; code: string; expiresAt: number }
+export interface CloudHomeGrant { origin: string; code: string; expiresAt: number; linkKey?: string }
 export interface CloudHomeTarget { origin: string; grant: CloudHomeGrant | null }
 /** `largest`: the top plan, so nobody is pointed at a larger one. */
 export interface CloudPlanDisk { maxBytes: number; volumeBytes?: number; startBytes?: number; largest?: true }

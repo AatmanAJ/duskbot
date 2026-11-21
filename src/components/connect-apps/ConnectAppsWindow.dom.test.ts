@@ -26,7 +26,7 @@ const fixture = vi.hoisted(() => ({
 
 vi.mock("@/state/store", async (original) => {
   const store = await original<typeof import("@/state/store")>();
-  return { ...store, api: fixture.api, useStore: () => ({ state: store.initialState, dispatch: fixture.dispatch }) };
+  return { ...store, api: fixture.api, useStore: () => ({ state: { ...store.initialState, config: { ...store.initialState.config, features: { skillsLibrary: true } } }, dispatch: fixture.dispatch }) };
 });
 vi.mock("./composio-snapshot", async (original) => ({
   ...await original<typeof import("./composio-snapshot")>(),
@@ -167,11 +167,11 @@ describe("the Connect Apps window", () => {
     });
     const groups = [...dialog().querySelectorAll('[role="listbox"] [role="group"]')].map((group) => group.getAttribute("aria-label"));
     expect(groups).toEqual(["Plugins", "Skills", "Categories"]);
-    expect(dialog().querySelector('[role="option"]')?.textContent).toContain("Linear");
+    expect(dialog().querySelector('[role="option"]')?.textContent).toContain("JoinBot");
     await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); });
     expect(input.getAttribute("aria-activedescendant")).toBe("ca-option-0");
     await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
-    expect(dialog().querySelector("[data-app-page]")?.getAttribute("data-app-page")).toBe("linear");
+    expect(dialog().querySelector("[data-app-page]")?.getAttribute("data-app-page")).toBe("joinbot");
     await act(async () => { button("Back")!.click(); });
     expect(dialog().querySelector("[data-app-page]")).toBeNull();
   });
@@ -883,5 +883,26 @@ describe("the Connect Apps window", () => {
     expect(document.activeElement).toBe(document.body);
     await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("connected apps that could not be read", () => {
+  const reopen = async () => {
+    act(() => root.unmount());
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => { root.render(createElement(ConnectAppsWindow, { page: { kind: "home" }, nonce: 2, onClose, onTemplates: vi.fn() })); });
+    await flush();
+  };
+
+  it("says it could not check, never 0 connected, and Try again reads them again", async () => {
+    fixture.inventory = Promise.resolve({ services: {}, authoritative: false });
+    await reopen();
+    expect(dialog().querySelector(".ca-head")?.textContent).toContain("Couldn't check your apps");
+    expect(dialog().querySelector(".ca-head")?.textContent).not.toContain("0 connected");
+    fixture.inventory = Promise.resolve({ services: fixture.connected, authoritative: true });
+    await act(async () => { button("Try again")!.click(); });
+    await flush();
+    expect(button("Your plugins")?.textContent).toContain("1 connected");
+    expect(dialog().querySelector(".ca-head")?.textContent).not.toContain("Couldn't check");
   });
 });

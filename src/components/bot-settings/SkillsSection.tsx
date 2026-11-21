@@ -1,6 +1,9 @@
 import { ModalLayer } from "../ui/ModalLayer";
 import { BookOpen, Trash2 } from "../../icons";
 import { t } from "@/lib/i18n";
+import { phoneApp } from "@/lib/store-app";
+import { wakeSystemControls } from "@/lib/system-control";
+import { SheetPush } from "@/mobile/SheetPush";
 import { useEffect, useRef, useState } from "react";
 
 import { useStore, type Bot } from "@/state/store";
@@ -45,6 +48,8 @@ export function useManagedSkills(bot: Bot) {
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState("");
   const [error, setError] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
+  const listed = useRef(false);
   const [reviewing, setReviewing] = useState<{ skill: ManagedSkill; text: string } | null>(null);
   const assignmentBusy = useRef(false);
 
@@ -63,8 +68,12 @@ export function useManagedSkills(bot: Bot) {
       setAssignedSkills(result.assignedSkills ?? []);
       setAddFromLibrary("");
       setError("");
+      listed.current = true;
+      setLoadFailed(false);
     } catch (cause) {
-      if (!cancelled?.()) setError(friendlyError(cause, "could not load learned skills."));
+      if (cancelled?.()) return;
+      setError(friendlyError(cause, "could not load learned skills."));
+      if (!listed.current) setLoadFailed(true);
     } finally {
       if (!cancelled?.()) setLoading(false);
     }
@@ -72,6 +81,8 @@ export function useManagedSkills(bot: Bot) {
 
   useEffect(() => {
     let cancelled = false;
+    listed.current = false;
+    setLoadFailed(false);
     setLoading(true);
     setReviewing(null);
     void refresh(() => cancelled);
@@ -159,7 +170,7 @@ export function useManagedSkills(bot: Bot) {
   };
 
   return {
-    skills, staged, loading, working, setWorking, error, setError, reviewing, setReviewing, refresh, toggle, enableReviewed,
+    skills, staged, loading, loadFailed, working, setWorking, error, setError, reviewing, setReviewing, refresh, toggle, enableReviewed,
     libraryPool, addFromLibrary, setAddFromLibrary, assignmentBusy, putAssignments, addToBot,
   };
 }
@@ -214,6 +225,13 @@ export function SkillReviewDialog({
     };
   }, [working]);
 
+  const phone = phoneApp();
+  useEffect(() => {
+    if (!phone) return;
+    wakeSystemControls();
+    return () => wakeSystemControls();
+  }, [phone]);
+
   return (
     <ModalLayer><div
       ref={dialogRef}
@@ -221,6 +239,8 @@ export function SkillReviewDialog({
       role="dialog"
       aria-modal="true"
       aria-labelledby="skill-review-title"
+      data-phone-modal-layer={phone ? "" : undefined}
+      style={phone ? { paddingTop: "max(var(--m-safe-top, 0px), 16px)", paddingBottom: "max(var(--m-safe-bottom, 0px), 16px)" } : undefined}
       className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-6"
     >
       <div className="flex max-h-[min(760px,90vh)] w-full max-w-2xl flex-col rounded-2xl bg-card p-5 shadow-2xl">
@@ -266,13 +286,96 @@ export function SkillReviewDialog({
   );
 }
 
+export function SkillReviewSheet({
+  reviewing,
+  error,
+  working,
+  onCancel,
+  onEnable,
+}: {
+  reviewing: { skill: ManagedSkill; text: string } | null;
+  error: string;
+  working: boolean;
+  onCancel: () => void;
+  onEnable: () => void;
+}) {
+  const last = useRef<{ skill: ManagedSkill; text: string } | null>(null);
+  if (reviewing) last.current = reviewing;
+  const shown = reviewing ?? last.current;
+
+  if (!phoneApp()) {
+    return reviewing ? (
+      <SkillReviewDialog
+        skill={reviewing.skill}
+        text={reviewing.text}
+        error={error}
+        working={working}
+        onCancel={onCancel}
+        onEnable={onEnable}
+      />
+    ) : null;
+  }
+
+  if (!shown) return null;
+  return (
+    <SheetPush
+      open={Boolean(reviewing)}
+      onClose={() => { if (!working) onCancel(); }}
+      title={`Review ${shown.skill.name}`}
+      pageId="skill-review"
+    >
+      <div className="flex flex-col gap-4 px-4 pb-8 pt-2">
+        <div className="rounded-[26px] bg-(--m-ios-card,var(--color-menu)) p-4">
+          <div className="text-[17px] font-semibold text-ink">
+            Review {shown.skill.name} before enabling
+          </div>
+          <div className="mt-1 break-all text-[13px] text-ink-secondary">
+            Source: {shown.skill.source}
+          </div>
+          {shown.skill.warnings.length > 0 && (
+            <div className="mt-2 text-[13px] text-warning">
+              {shown.skill.warnings.join(" · ")}
+            </div>
+          )}
+          <pre
+            tabIndex={0}
+            aria-label={`Full SKILL.md for ${shown.skill.name}`}
+            className="mt-3 max-h-[55vh] overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-inset p-3 font-mono text-[12px] leading-relaxed text-ink"
+          >
+            {shown.text}
+          </pre>
+          {error && <div role="alert" className="mt-2 text-[13px] text-danger">{error}</div>}
+        </div>
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            disabled={working}
+            onClick={onEnable}
+            className="h-12 w-full rounded-full bg-ink px-4 text-[16px] font-semibold text-app disabled:opacity-40"
+          >
+            Enable reviewed skill
+          </button>
+          <button
+            type="button"
+            disabled={working}
+            onClick={onCancel}
+            className="h-11 w-full rounded-full bg-ink/[0.06] px-4 text-[16px] font-medium text-ink disabled:opacity-40"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </SheetPush>
+  );
+}
+
 export function SkillsSection({ bot }: { bot: Bot }) {
   const { request: api } = useBotEditor();
   const { state } = useStore();
   const featureEnabled = skillAuthoringEnabled(state.config);
   const libraryOn = skillsLibraryEnabled(state.config);
   const {
-    skills, staged, loading, working, setWorking, error, setError, reviewing, setReviewing, refresh, toggle, enableReviewed,
+    skills, staged, loading, loadFailed, working, setWorking, error, setError, reviewing, setReviewing, refresh, toggle, enableReviewed,
     libraryPool, addFromLibrary, setAddFromLibrary, assignmentBusy, putAssignments, addToBot,
   } = useManagedSkills(bot);
   const [viewing, setViewing] = useState<{ name: string; text: string } | null>(null);
@@ -452,6 +555,11 @@ export function SkillsSection({ bot }: { bot: Bot }) {
 
         {loading ? (
           <div className="mt-3 text-[12px] text-ink-secondary">{t("skills.loading")}</div>
+        ) : loadFailed ? (
+          <div role="alert" className="mt-3 flex items-center gap-3 text-[12px] text-warning">
+            <span>{t("botPanel.skills.loadFailed")}</span>
+            <button type="button" onClick={() => void refresh()} className="rounded-lg bg-raised px-3 py-1 text-[12px] font-medium text-ink">{t("botPanel.skills.retry")}</button>
+          </div>
         ) : skills.length === 0 ? (
           <div className="mt-3 text-[12px] text-ink-secondary">{t("skills.empty")}</div>
         ) : (
@@ -509,7 +617,7 @@ export function SkillsSection({ bot }: { bot: Bot }) {
             {staged.length} proposal{staged.length === 1 ? " is" : "s are"} waiting for a decision in chat.
           </div>
         )}
-        {error && <div role="alert" className="mt-2 text-[12px] text-danger">{error}</div>}
+        {error && !loadFailed && <div role="alert" className="mt-2 text-[12px] text-danger">{error}</div>}
       </div>
 
       <WriteCommandCard bot={bot} taken={skills.map((skill) => skill.name)} onSaved={() => void refresh()} />
