@@ -43,6 +43,7 @@ deploy/.env
 id_rsa
 id_ed25519
 .dusk-scratch
+/qa-assets/
 
 # junk output from a script run with an unset output dir
 /undefined/
