@@ -77,7 +77,6 @@ suite("the v2 stream on real Chrome", () => {
       browser: async (botId) => ({ botId, session: target.session, spec: { command: "dusk-cdp", args: [target.key], env: {} } }),
       authorize: async () => null,
       current: () => true,
-      restartRefusal: () => null,
     });
     const handle = async (req: IncomingMessage, res: ServerResponse) => {
       const url = new URL(req.url ?? "/", "http://localhost");

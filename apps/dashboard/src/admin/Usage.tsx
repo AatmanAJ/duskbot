@@ -8,7 +8,7 @@ import { Figure } from "../ui/Figure";
 import { Table, Td, Th } from "../ui/table";
 import { useAdmin } from "./api";
 import { duration, percent, type Range } from "./kit";
-import { Failed, Loading, n } from "./ui";
+import { Failed, Loading, PartialNote, n } from "./ui";
 import { MORE_TITLE, MoreCards, MoreTable, type MoreAnswer, type MoreDetail } from "./UsageMore";
 
 interface Row { key: string; turns: number; failed: number; share: number; previous: number; trend: number[]; p50Ms?: number | null }
@@ -16,7 +16,7 @@ interface FailureRow { kind: "engine" | "tool" | "app"; key: string; turns: numb
 interface ProblemGroup { key: string; engine: string; category: string; touch: string; count: number; previous: number; trend: number[]; examples: string[] }
 interface Theme { key: string; label: string; count: number; examples: string[]; pain: boolean }
 export interface UsageAnswer {
-  from: string; to: string; days: string[]; tracked: boolean;
+  from: string; to: string; days: string[]; tracked: boolean; partialBefore?: number | null;
   totals: { turns: number; people: number; perPersonDay: number | null; success: number | null; failRate: number | null; cancelRate: number | null; p50Ms: number | null; p90Ms: number | null;
     runs: number; runSuccess: number | null; frustrations: number; digests: number };
   previous: { turns: number; people: number; failRate: number | null };
@@ -44,7 +44,7 @@ const CATEGORY: Record<string, { label: string; icon: ReactNode; wash: string }>
   image: { label: "images", icon: <Image {...I} />, wash: "bg-wash-pink" }, chat: { label: "just chatting", icon: <MessageSquare {...I} />, wash: "bg-wash-sky" },
   other: { label: "other", icon: <Sparkles {...I} />, wash: "bg-wash-lemon" },
 };
-const TOOL: Record<string, string> = { browser: "browser", computer: "computer use", terminal: "terminal", files: "files", web: "web search", memory: "memory", routine: "routine tools",
+const TOOL: Record<string, string> = { browser: "browser", computer: "computer use", terminal: "terminal", files: "files", web: "web search", x: "X search", memory: "memory", routine: "routine tools",
   page: "pages", widget: "widgets", bots: "other bots", phone: "phone control", image: "images", data: "data tools", app: "connected apps", mcp: "mcp tools", other: "other tools" };
 const SOURCE: Record<string, string> = { app: "in the app", remote: "phone or another device", routine: "routines", bot: "another bot", helper: "helper" };
 const PLACE: Record<string, string> = { desktop: "desktop", cloud: "cloud", server: "own server" };
@@ -238,6 +238,7 @@ export function UsageSection({ range }: { range: Range }) {
         </div>
       ) : (
         <div className="flex flex-col gap-2">
+          {data.partialBefore ? <div className="px-1"><PartialNote before={data.partialBefore} /></div> : null}
           <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] gap-2 max-lg:grid-cols-1">
             <FocusBox items={data.focus} open={open} />
             <div className="grid grid-cols-2 gap-2 rounded-[24px] bg-wash-sky p-2">

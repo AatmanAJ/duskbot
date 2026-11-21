@@ -3,6 +3,16 @@
 Notable changes to dusk bot, newest first. Installers and checksums for each version are on the
 [releases page](https://github.com/DuskBotAI/duskbot/releases) and at [dusk.bot/download](https://dusk.bot/download).
 
+## 0.2.15
+
+- The free model stays first in the model picker, with OpenCode's free models listed by name, and a bot's model badge names the model that is really answering.
+- Link your iPhone from Settings > Phone: one QR code and a short letters-only code, and every linked phone shows where it is connected.
+- When a reply fails, it says why in plain words: a missing model, a refused request, a chat that got too long, an outage or a stopped AI.
+- dusk cloud starts with 3 days free, and the first chat is ready to type in with jobs to tap.
+- The account menu leads with your name, then your address and plan; give feedback and updates share one slim line in the sidebar.
+- Codex signs in through your browser on this computer instead of a device code.
+- Fixed: local memory search on Windows, Grok sign-in errors and rate limits, the Computer tab showing the right screen, and many smaller fixes.
+
 ## 0.2.14
 
 - A fresh install starts clean: nothing from other apps is copied in, and no keychain prompt asks for another app's key.
