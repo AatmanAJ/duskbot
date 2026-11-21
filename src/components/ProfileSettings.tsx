@@ -164,7 +164,10 @@ export function ProfileFields({ face }: { face?: PersonFace | null }) {
   const [emailInvalid, setEmailInvalid] = useState(false);
   const emailErrorId = useId();
   useEffect(() => setName(state.config?.profile?.name ?? ""), [state.config?.profile?.name]);
-  useEffect(() => setEmail(state.config?.profile?.email ?? ""), [state.config?.profile?.email]);
+  useEffect(() => {
+    setEmail(state.config?.profile?.email ?? "");
+    setEmailInvalid(false);
+  }, [state.config?.profile?.email]);
 
   const team = Boolean(state.config?.team);
   const save = () => {
