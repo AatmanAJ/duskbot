@@ -2,8 +2,6 @@
 // failing the same way back to back: it steers one note at steerAt, and stops the turn at stopAt only when that is set,
 // because a wait that fails until ready (`curl -f …/health`) is the same failure repeated. A turn waiting on a person
 // or a computer is never acted on.
-import { z } from "zod";
-
 import { failedTurnRow } from "../failed-turn-row.ts";
 import { nameIsCommand } from "../../shared/tool-name.ts";
 import type { RuntimeEvent, SteerOutcome } from "../contracts.ts";
@@ -11,24 +9,7 @@ import { quoteInNote } from "../peer-provenance.ts";
 import { RepeatDetector, callKey, toolItemKey } from "../repeat-detector.ts";
 import { RepeatStreak, failureDigest } from "../repeat-streak.ts";
 import { COMMAND_SUMMARY_MAX, previewIsPartial } from "../tool-summary.ts";
-
-const COUNT_MIN = 2;
-const COUNT_MAX = 1000;
-const count = z.number().int().min(COUNT_MIN).max(COUNT_MAX);
-const MAX_CORRECTIVE_ROUNDS = 5;
-
-/** The `loopGuard` section of config.json. */
-export const loopGuardConfigSchema = z.object({
-  /** Off unless true; DUSK_LOOP_GUARD=1 switches it on too. */
-  enabled: z.boolean().optional(),
-  /** Identical failures in a row before the note; 5 when unset. */
-  steerAt: count.optional(),
-  /** Identical failures in a row before the turn is stopped; unset never stops. DUSK_LOOP_GUARD_STOP_AT wins; null clears. */
-  stopAt: count.nullable().optional(),
-  /** For bots on API models: times a turn that answers after a failed tool call is sent back to re-run it; 0 when unset. */
-  correctiveRounds: z.number().int().min(0).max(MAX_CORRECTIVE_ROUNDS).optional(),
-}).strict();
-export type LoopGuardConfig = z.output<typeof loopGuardConfigSchema>;
+import { COUNT_MAX, COUNT_MIN, type LoopGuardConfig } from "./loop-guard-config.ts";
 
 export interface LoopGuardSettings {
   enabled: boolean;
