@@ -8,7 +8,6 @@ export type MobileSheet =
   | { kind: "create" }
   | { kind: "routines"; botId?: string }
   | { kind: "connectors" }
-  | { kind: "vault" }
-  | { kind: "link" };
+  | { kind: "vault" };
 
 export type OpenSheet = (sheet: MobileSheet) => void;

@@ -122,6 +122,11 @@ function notifyState(connection) {
   stateListener(connection);
 }
 
+/** The driver record now: what cloud-screen.mjs speaks to for a dusk cloud's screen jobs. */
+export function cuaConnection() {
+  return connectionStore.get();
+}
+
 export function setCuaStateListener(listener) {
   stateListener = typeof listener === "function" ? listener : () => {};
 }
@@ -407,6 +412,7 @@ export async function cuaPermissionsStatus() {
     killSignal: "SIGKILL",
     maxBuffer: 65_536,
     env: { ...process.env, ...CUA_ENV },
+    windowsHide: true,
   }).catch((error) => ({ stdout: error.stdout }));
   try {
     return { available: true, ...JSON.parse(out.stdout) };

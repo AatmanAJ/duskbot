@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { cloudSetupOf, myCloudOrigin, readyCloudOrigin, rememberedCloudHome } from "./cloud-home.mjs";
-import { createHomeWindow, createReadyClock, FRESH_MS, HOME_SCREEN_PATH, NAME_RETRY_MS, NAME_WAIT_MS, nameNotFound, RETRY_MS } from "./home-window.mjs";
+import { CONNECT_GRACE_MS, createHomeWindow, createReadyClock, FRESH_MS, HOME_SCREEN_PATH, NAME_RETRY_MS, NAME_WAIT_MS, nameNotFound, RETRY_MS } from "./home-window.mjs";
 
 const CLOUD = "https://dusk-u-new1.fly.dev";
 const TEAM = "https://dusk-u-acme.fly.dev";
@@ -265,16 +265,19 @@ test("after ten minutes without its name the offline screen shows, and it still 
   assert.deepEqual(w.went.at(-1), [CLOUD, CLOUD]);
 });
 
-test("an older Cloud's name failing is the offline screen at once, as before: only a Cloud ready within minutes is waited out", async () => {
+test("an older Cloud's name failing is the offline screen once the connect grace is over: only a Cloud ready within minutes is waited out longer", async () => {
   // Never seen being set up: listed ready from the start.
   const known = world({ state: ready(), found: false });
   await known.home.openCloud();
-  assert.equal(known.home.view().screen, "offline");
+  assert.equal(known.home.view().screen, "opening", "still connecting: the loader, not an error");
   assert.deepEqual(known.resolved, [], "nothing special is looked up for it");
   assert.deepEqual(known.timers.map((timer) => timer.ms), [RETRY_MS[0]]);
+  await known.later(CONNECT_GRACE_MS);
+  assert.equal(known.home.view().screen, "offline");
   // Became ready over FRESH_MS ago (kept across a launch).
   const old = world({ state: ready(), found: false, kept: { origin: CLOUD, readyAt: NOW - FRESH_MS - 1 } });
   await old.home.openCloud();
+  await old.later(CONNECT_GRACE_MS);
   assert.equal(old.home.view().screen, "offline");
   // Its page failing on its name the same.
   const page = world({ state: ready(), url: `${CLOUD}/chats` });

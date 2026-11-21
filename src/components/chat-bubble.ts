@@ -39,8 +39,8 @@ export function emojiOnly(text: string | undefined): boolean {
   return [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(bare)].length <= EMOJI_MAX;
 }
 
-/** An emoji-only message's type, every nested element following it. */
-export const EMOJI_ONLY_TEXT = "text-ink text-[40px] leading-[48px] [&_*]:text-[length:inherit] [&_*]:leading-[inherit] [&_*]:m-0";
+/** An emoji-only message's type; nested prose inherits it while floating reactions and notes keep their own size. */
+export const EMOJI_ONLY_TEXT = "text-ink text-[40px] leading-[48px]";
 
 /** At most 560 wide, 80% of the column, and always 82px short of it, so a reply never meets the far edge. */
 export const SIMPLE_BUBBLE_MAX = "max-w-[min(var(--chat-bubble-max),var(--chat-bubble-pct),calc(100%-82px))]";
@@ -67,7 +67,7 @@ export function joinedCorners(side: "start" | "end", join: BubbleJoin): string {
 
 /** Which bubble group a transcript row belongs to in Simple mode: this bot's words, the person's own words, or none. */
 export function bubbleGroup(message: Message, botId: string): "bot" | "user" | null {
-  if (message.kind !== "text" || message.publishedPage || message.automation || message.helperFollowup) return null;
+  if (message.kind !== "text" || message.publishedPage || message.document || message.automation || message.helperFollowup) return null;
   if (message.role === "user") return peerLine(message) ? null : "user";
   if (message.role !== "bot" || peerRequest(message, botId)) return null;
   return isPureLeakedSystemHarnessMessage(message.text) && !message.attachments?.length ? null : "bot";

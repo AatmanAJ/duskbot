@@ -31,3 +31,11 @@ it("lays the open island's mascots out in a wrapping grid: no sideways scroll or
   expect(grid).toContain("overflow-y: auto");
   expect(grid).not.toContain("mask-image");
 });
+
+it("paints the dock's flares through the window's overhang, flush with the body, so no seam shows at the screen's edge", () => {
+  const ear = rule(".amb-dock .amb-ear");
+  expect(ear).toContain("right: 0");
+  expect(ear).toContain("border-right: var(--amb-over, 0px) solid var(--amb-panel)");
+  expect(ear).toContain("box-sizing: content-box");
+  expect(ear).toContain("background-repeat: no-repeat");
+});

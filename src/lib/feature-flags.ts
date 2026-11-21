@@ -1,20 +1,35 @@
 import { t } from "./i18n";
 
 export interface FeatureFlagConfig {
-  features?: { skillAuthoring?: boolean; skillReview?: boolean; skillReviewSteps?: number; showToolCalls?: boolean; browser?: boolean; claudeUserMcp?: boolean; claudeUserSkills?: boolean; llmThreadTitles?: boolean; quickUpdates?: boolean; skillsLibrary?: boolean; shareLearnedSkills?: "off" | "ask" | "auto"; roomMemoryCapture?: boolean };
+  features?: { skillAuthoring?: boolean; skillReview?: boolean; skillReviewSteps?: number; showToolCalls?: boolean; browser?: boolean; claudeUserMcp?: boolean; claudeUserSkills?: boolean; llmThreadTitles?: boolean; quickUpdates?: boolean; skillsLibrary?: boolean; shareLearnedSkills?: "off" | "ask" | "auto"; roomMemoryCapture?: boolean; suggestions?: boolean };
   browserEngine?: { kind: "engine" | "unavailable"; reason?: string; installable?: boolean; installing?: boolean; installError?: string };
 }
 
-/** The phone app, off until it ships: the first run's phone step, Settings → phone, "connect your phone" and every pairing
- * prompt in the desktop app follow this one switch. A build with `VITE_DUSK_PHONE_APP=1` brings them all back. */
+/** a build made with `VITE_DUSK_PHONE_APP=0`: no phone app anywhere */
+export function phoneAppHiddenByBuild(): boolean {
+  return import.meta.env?.VITE_DUSK_PHONE_APP === "0";
+}
+
+/** The phone app (iPhone on the App Store, Android as an APK on dusk.bot): the first run's phone step, Settings → phone,
+ * "connect your phone" and every pairing prompt follow this one switch. */
 export function phoneAppEnabled(): boolean {
-  return import.meta.env?.VITE_DUSK_PHONE_APP === "1";
+  return !phoneAppHiddenByBuild();
+}
+
+/** The first run's phone step and the intro's phone chip. */
+export function phoneAppPrompted(): boolean {
+  return !phoneAppHiddenByBuild();
 }
 
 /** Live calls, off: the call button, its mode menu, the live bar and pill, the "live key needed" prompt and the
  * live key rows in Settings all follow this one switch. The engine stays; a build with `VITE_DUSK_LIVE_CALL=1` brings it back. */
 export function liveCallEnabled(): boolean {
   return import.meta.env?.VITE_DUSK_LIVE_CALL === "1";
+}
+
+/** Voice calls with the built-in voice: on unless a build sets `VITE_DUSK_VOICE_CALL=0`. */
+export function voiceCallsEnabled(): boolean {
+  return import.meta.env?.VITE_DUSK_VOICE_CALL !== "0";
 }
 
 export function browserAvailable(config: FeatureFlagConfig | null | undefined): boolean {
@@ -37,7 +52,7 @@ export const MIN_SKILL_REVIEW_STEPS = 3;
 export const MAX_SKILL_REVIEW_STEPS = 100;
 
 export function skillReviewEnabled(config: FeatureFlagConfig | null | undefined): boolean {
-  return skillAuthoringEnabled(config) && config?.features?.skillReview === true;
+  return skillAuthoringEnabled(config) && config?.features?.skillReview !== false;
 }
 
 export function skillReviewSteps(config: FeatureFlagConfig | null | undefined): number {

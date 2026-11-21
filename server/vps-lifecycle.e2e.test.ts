@@ -48,7 +48,7 @@ it.skipIf(process.platform === "win32")("closes the primary browser at 3h, stops
     expect(h.containers()[0].State.Running).toBe(true);
     await expect.poll(() => h.containers()[0].State.Running, { timeout: 8_000, interval: 25 }).toBe(false);
     await expect.poll(() => h.state().entries.find((entry: any) => !entry.target.botId)?.completed.includes("computer"), { timeout: 8_000, interval: 25 }).toBe(true);
-    expect(h.commands().filter(args => args[0] === "stop")).toEqual([["stop", id]]);
+    expect(h.commands().filter(args => args[0] === "stop")).toEqual([["stop", "--time", "10", id]]);
     expect(h.commands().some(args => ["rm", "pull", "build"].includes(args[0]!))).toBe(false);
     expect(statSync(join(h.fixture.info.dataDir, "vps-lifecycle.json")).mode & 0o777).toBe(0o600);
   } finally { await h.close(); }
