@@ -135,11 +135,33 @@ const __APP_VERSION__: string;
     keepAwake: boolean;
     /** a power assertion is held right now */
     hold: boolean;
-    /** "due" | "running" while held; "off" | "battery" | "idle" | "stopped" otherwise */
+    /** keep awake while plugged in, whenever a routine is enabled here */
+    pluggedIn?: boolean;
+    /** "due" | "running" | "plugged-in" while held; "off" | "battery" | "idle" | "stopped" otherwise */
     reason: string;
     /** the due routine's time, when the hold is for a due routine */
     at: number | null;
     onBattery: boolean;
+    /** when this computer last went to sleep, in this app run, with a routine enabled here and keep awake while plugged in off */
+    sleptAt?: number | null;
+  }
+  interface CloudMacBridge {
+    state(): Promise<import("../../shared/cloud-mac").CloudMacState>;
+    /** Turning on asks on the Mac first; declined, it stays off. */
+    setEnabled(on: boolean): Promise<import("../../shared/cloud-mac").CloudMacState>;
+    /** The Mac's own folder picker. */
+    addFolder(): Promise<import("../../shared/cloud-mac").CloudMacState>;
+    removeFolder(path: string): Promise<import("../../shared/cloud-mac").CloudMacState>;
+    /** auto: only risky actions wait for Allow; ask: every action but an ordinary read does; never: nothing asks. */
+    setMode(mode: import("../../shared/cloud-mac").CloudMacMode): Promise<import("../../shared/cloud-mac").CloudMacState>;
+    /** On: reading, saving and downloads stay inside the listed folders. */
+    setLimitFolders(on: boolean): Promise<import("../../shared/cloud-mac").CloudMacState>;
+    openLog(): Promise<void>;
+    /** "Let them use this Mac's screen": turning on asks on the Mac first. Absent on an older app. */
+    setScreen?(on: boolean): Promise<import("../../shared/cloud-mac").CloudMacState>;
+    /** Stops what a cloud bot does on the screen now and turns the screen off. */
+    stopScreen?(): Promise<import("../../shared/cloud-mac").CloudMacState>;
+    onChange(listener: (state: import("../../shared/cloud-mac").CloudMacState) => void): () => void;
   }
   interface DesktopRemoteClientState {
     active: boolean;
@@ -176,6 +198,9 @@ const __APP_VERSION__: string;
       sealTrust?: { check(identity: string): Promise<{ ok: boolean; pinned: boolean }> };
       /** A linked server's page only: the direct ssh path for that link (null where it does not apply). */
       linkDirect?: { state(): Promise<LinkDirectState | null>; set(on: boolean): Promise<LinkDirectState | null> };
+      /** This computer's page and the person's own dusk cloud page: whether that cloud's bots may use this Mac, its
+       * folders, the work running now and the kill switch. Absent in a browser, on the phone and on an older app. */
+      cloudMac?: CloudMacBridge;
       /** A VPS's own page: its bots straight to dusk cloud. Absent on an older app. */
       vpsCloudMove?: import("../lib/vps-cloud-move").VpsCloudMoveBridge;
       /** This computer's page only: Add your VPS, its install, sign-in, move, and the Transfer pane (electron/vps-link.mjs). */
@@ -254,6 +279,14 @@ const __APP_VERSION__: string;
         cloudMove?: (id: string) => Promise<boolean>;
         /** Main's word that the places or the sign-in changed: read them again. */
         onChanged?: (callback: () => void) => () => void;
+        /** Main's word that a switch to another place began (true) or ended without a new page (false). */
+        onSwitching?: (callback: (on: boolean) => void) => () => void;
+        /** The loading mascot this page shows, handed on to the page the switch opens. */
+        handLook?: (look: import("../lib/mascot-loading").HandedLook) => void;
+        /** The mascot the page before handed on, once, while it is fresh. */
+        takeLook?: () => import("../lib/mascot-loading").HandedLook | null;
+        /** Whether a switch of place opened this page just now; absent on an older app. */
+        arrived?: () => boolean;
       };
       /** Buying another Cloud from the rail's ＋, on this app's page or a hosted Cloud's; absent on an older app. */
       cloudAdd?: {
@@ -325,6 +358,8 @@ const __APP_VERSION__: string;
       routines?: {
         wakeState(): Promise<DesktopRoutineWake>;
         keepAwake(enabled: boolean): Promise<DesktopRoutineWake>;
+        /** Hold this computer awake whenever a routine is enabled here, on AC power only. */
+        keepAwakePluggedIn?(enabled: boolean): Promise<DesktopRoutineWake>;
       };
       companionAccount?: {
         state(): Promise<CompanionAccountState>;
@@ -335,6 +370,12 @@ const __APP_VERSION__: string;
          * is pairing now. Absent in older desktop builds. */
         prepare?(): Promise<CompanionAccountState>;
         signOut(): Promise<CompanionAccountState>;
+      };
+      /** This computer's relay to its phones (electron/phone-relay.mjs); absent on remote pages and older builds.
+       * `ready` starts it when remote access is on and waits a few seconds for it. */
+      phoneRelay?: {
+        state(): Promise<PhoneRelayState>;
+        ready(): Promise<PhoneRelayState>;
       };
       /** Local-shell-only bridge for trusted approval-mode transitions. It is
        * absent on remote server pages and in older desktop builds. */
@@ -502,6 +543,8 @@ const __APP_VERSION__: string;
       openLogsFolder?(): Promise<{ folder: string; opened: boolean; error?: string }>;
       /** This app's own login item, which opens the window. `available`: false in a build that cannot add one. */
       openAtLogin?: { state(): Promise<{ available: boolean; on: boolean }>; set(on: boolean): Promise<{ available: boolean; on: boolean }> };
+      /** An AppImage's entry in this computer's app menu. `available`: false anywhere else (and with the .deb installed). */
+      appMenuEntry?: { state(): Promise<{ available: boolean; on: boolean }>; set(on: boolean): Promise<{ available: boolean; on: boolean }> };
       /** Save a provider credential through Electron's OS-backed store. */
       setCredential?(
         name: "composioApiKey" | "xaiApiKey" | "opencodeGoApiKey" | "ttsKey" | "fishAudioKey" | "geminiTtsKey" | "deepgramKey" | "cartesiaKey" | "assemblyAiKey" | "jevApiKey" | "openrouterDeciderKey" | "gatewayDeciderKey" | "workersAiToken" | "openaiImageApiKey" | "customImageApiKey" | "openaiLiveKey" | "tregApiKey",
@@ -524,11 +567,21 @@ export interface LinuxLocalControlStatus {
   warnings?: Array<{ label: string; status: string; message: string; detail?: string }>;
 }
 
+/** `off`: remote access is off (it can start); `signed-out`: no dusk account to make the relay with; `error`: the link
+ * service refused, `message` says why. */
+export interface PhoneRelayState {
+  status: "off" | "signed-out" | "starting" | "ready" | "error";
+  code?: string;
+  message?: string;
+}
+
 export interface CompanionAccountState {
   available: boolean;
   status: "signed-out" | "connecting" | "ready" | "error";
   email?: string;
   endpoint?: string;
   message?: string;
+  /** set only when `available` is false: `offline` when the service could not be reached, `unsupported` when it was reached but offers no secure access */
+  reason?: "offline" | "unsupported";
 }
 

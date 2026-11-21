@@ -16,6 +16,7 @@ describe("built-in agent tool read policy", () => {
       "skills_list",
       "list_unread_notifications",
       "usage_limits",
+      "list_documents",
       "list_room_targets",
       "list_team_library",
       "set_status",

@@ -31,14 +31,14 @@ export function newTypingHold(messages: readonly Message[], now: number): Typing
  * for TYPING_MIN_MS, as each of Grok Bot's bubbles does; the rows after it wait with it so the order holds. Once the turn
  * is over (`busy` false), the held rows land in the frame the line starts leaving, growing out of where it was. The person's own
  * words are never held back: a send while a bubble waits lets everything through at once. */
-export function holdRows(messages: readonly Message[], state: TypingHoldState, { botId, busy, now }: { botId: string; busy: boolean; now: number }): TypingHold {
+export function holdRows(messages: readonly Message[], state: TypingHoldState, { botId, busy, now, shownAlready }: { botId: string; busy: boolean; now: number; shownAlready?: (id: string) => boolean }): TypingHold {
   const release = (): TypingHold => {
     for (const message of messages) state.known.add(message.id);
     state.heldAt.clear();
     return { rows: messages as Message[], typing: false, wakeAt: Infinity };
   };
   for (;;) {
-    const at = messages.findIndex((message) => !state.known.has(message.id) && message.at > state.openedAt - 2_000 && isBotTextRow(message, botId) && Boolean(message.text?.trim()));
+    const at = messages.findIndex((message) => !state.known.has(message.id) && message.at > state.openedAt - 2_000 && isBotTextRow(message, botId) && Boolean(message.text?.trim()) && !shownAlready?.(message.id));
     if (at < 0) return release();
     if (messages.slice(at).some((message) => message.role === "user")) return release();
     for (const message of messages.slice(0, at)) state.known.add(message.id);
@@ -57,13 +57,13 @@ export function holdRows(messages: readonly Message[], state: TypingHoldState, {
 }
 
 /** holdRows for one chat, waking when the hold changes. Rows are the given array itself whenever nothing is held. */
-export function useTypingHold(key: string, messages: readonly Message[], botId: string, busy: boolean): TypingHold {
+export function useTypingHold(key: string, messages: readonly Message[], botId: string, busy: boolean, shownAlready?: (id: string) => boolean): TypingHold {
   const [, wake] = useState(0);
   const state = useRef<{ key: string; hold: TypingHoldState } | null>(null);
   const cut = useRef<{ source: readonly Message[]; rows: Message[] } | null>(null);
   const now = Date.now();
   if (!state.current || state.current.key !== key) state.current = { key, hold: newTypingHold(messages, now) };
-  const result = holdRows(messages, state.current.hold, { botId, busy, now });
+  const result = holdRows(messages, state.current.hold, { botId, busy, now, shownAlready });
   // the same cut of the same rows keeps its identity, so what derives from it does not re-run every render
   let rows = result.rows;
   if (rows !== messages) {

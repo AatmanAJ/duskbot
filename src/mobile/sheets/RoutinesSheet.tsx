@@ -1,6 +1,5 @@
 import { noteRoutineRun } from "@/lib/product-analytics";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronRight } from "../../icons";
 import { BotAvatar } from "@/components/Avatar";
 import { WorkingDots } from "@/components/WorkingIndicator";
 import { t } from "@/lib/i18n";
@@ -10,6 +9,7 @@ import { scheduleLabel } from "@/lib/schedule-label";
 import type { Routine, RoutineRun } from "@/lib/routines";
 import { api, useStore } from "@/state/store";
 import { Sheet } from "../Sheet";
+import { SheetPush } from "../SheetPush";
 import { haptic } from "../haptics";
 import { SettingsSwitch } from "./SettingsRow";
 import { SwipeRow } from "./SwipeRow";
@@ -78,29 +78,21 @@ export function RoutinesSheet({ sheet, open, onClose, onOpenChat }: SheetPagePro
     finally { pending.current.delete(routine.id); setBusy([...pending.current]); }
   };
   const back = () => { setSelectedId(null); setArmed(null); setError(null); setNotice(false); };
-  const runs = selected ? state.routineRuns.filter((run) => run.routineId === selected.id).sort((a, b) => routineRunTime(b) - routineRunTime(a)) : [];
-  const selectedBot = state.bots.find((entry) => entry.id === selected?.botId);
+  const lastSelected = useRef<Routine | null>(null);
+  if (selected) lastSelected.current = selected;
+  const shown = selected ?? lastSelected.current;
+  const runs = shown ? state.routineRuns.filter((run) => run.routineId === shown.id).sort((a, b) => routineRunTime(b) - routineRunTime(a)) : [];
+  const selectedBot = state.bots.find((entry) => entry.id === shown?.botId);
   const askBot = bot ?? state.bots.find((entry) => entry.defaultBot && !entry.hidden) ?? state.bots.find((entry) => !entry.hidden);
   const loadFailed = state.routinesLoadState === "error" || error === t("mobile.routines.loadError");
-  const title = selected?.name ?? (bot ? t("mobile.routines.botTitle", { name: bot.name }) : t("mobile.routines.title"));
+  const title = bot ? t("mobile.routines.botTitle", { name: bot.name }) : t("mobile.routines.title");
   return (
-    <Sheet open={open} onClose={onClose} full title={title} back={selected ? back : undefined}>
-      <div className="px-3 pt-2">
-        {error && (selected || !loadFailed || routines.length > 0) && <p role="alert" className="px-3 py-3 text-[15px] text-danger">{error}</p>}
-        {!selected && loadFailed && routines.length === 0 && !loading && <EmptyState tone="error" art="clock" title={t("mobile.routines.loadErrorTitle")} body={t("mobile.routines.loadErrorBody")} action={{ label: t("mobile.routines.retry"), onClick: () => void load() }} className="pt-16" />}
-        {selected ? (
-          <div className="flex flex-col gap-5 px-3">
-            <div><h2 className="text-[14px] font-medium text-ink-secondary">{t("mobile.routines.schedule")}</h2><p className="mt-1 text-[16px] text-ink">{upperFirst(scheduleLabel(selected.schedule))}</p><p className="mt-1 text-[14px] text-ink-secondary">{routineNextLabel(selected)}</p></div>
-            <p className="whitespace-pre-wrap text-[16px] text-ink-secondary">{selected.prompt}</p>
-            <button type="button" disabled={busy.includes(selected.id)} onClick={() => void work(selected, "run")} className="mobile-press flex h-12 items-center justify-center gap-2 rounded-full bg-ink text-[16px] font-semibold text-app disabled:opacity-40">{busy.includes(selected.id) && <WorkingDots size={4} />}{t("mobile.routines.run")}</button>
-            {notice && <p role="status" className="text-[14px] text-ink-secondary">{t("mobile.routines.started")}</p>}
-            <button type="button" disabled={!selectedBot} onClick={() => { if (selectedBot) { onClose(); onOpenChat(selectedBot.id); dispatch({ type: "switchTask", botId: selectedBot.id, threadId: routineResultsThread(selected, selectedBot) }); } }} className="mobile-press h-12 rounded-full bg-ink/[0.05] text-[16px] font-semibold text-ink disabled:opacity-40">{t("mobile.routines.results")}</button>
-            <section><h2 className="pb-2 text-[14px] font-medium text-ink-secondary">{t("mobile.routines.runs")}</h2>
-              {runs.length ? <ul>{runs.map((run) => <li key={run.id} className="flex min-h-14 items-center justify-between gap-3 py-2"><span className="text-[16px] font-semibold text-ink">{routineRunLabel(run)}</span><time dateTime={new Date(routineRunTime(run)).toISOString()} className="text-right text-[14px] text-ink-secondary">{routineDateTime(routineRunTime(run))}</time></li>)}</ul> : <p className="py-3 text-[14px] text-ink-secondary">{t("mobile.routines.noRuns")}</p>}
-            </section>
-          </div>
-        ) : (loading || state.routinesLoadState === "loading" && !error) && !routines.length ? <div role="status" aria-label={t("mobile.routines.loading")}>{[0, 1, 2].map((key) => <div key={key} aria-hidden className="flex min-h-[84px] items-center gap-3 px-3 py-3"><span className="size-9 shrink-0 rounded-full bg-ink/[0.06]" /><span className="flex-1 space-y-2"><span className="block h-4 w-2/5 rounded-full bg-ink/[0.06]" /><span className="block h-3 w-3/5 rounded-full bg-ink/[0.05]" /></span></div>)}</div> : routines.length ? (
-          <ul>{routines.map((routine) => {
+    <Sheet open={open} onClose={onClose} full title={title}>
+      <div className="px-4 pt-2">
+        {error && !selected && (!loadFailed || routines.length > 0) && <p role="alert" className="px-3 py-3 text-[15px] text-danger">{error}</p>}
+        {loadFailed && routines.length === 0 && !loading && <EmptyState tone="error" art="clock" title={t("mobile.routines.loadErrorTitle")} body={t("mobile.routines.loadErrorBody")} action={{ label: t("mobile.routines.retry"), onClick: () => void load() }} className="pt-16" />}
+        {(loading || state.routinesLoadState === "loading" && !error) && !routines.length ? <div role="status" aria-label={t("mobile.routines.loading")}>{[0, 1, 2].map((key) => <div key={key} aria-hidden className="flex min-h-[84px] items-center gap-3 px-3 py-3"><span className="size-9 shrink-0 rounded-full bg-ink/[0.06]" /><span className="flex-1 space-y-2"><span className="block h-4 w-2/5 rounded-full bg-ink/[0.06]" /><span className="block h-3 w-3/5 rounded-full bg-ink/[0.05]" /></span></div>)}</div> : routines.length ? (
+          <ul data-settings-card="" className="flex flex-col gap-[2px] overflow-hidden rounded-[16px] [&>*]:bg-menu [&_.mobile-row]:rounded-none">{routines.map((routine) => {
             const owner = state.bots.find((entry) => entry.id === routine.botId);
             return <li key={routine.id} aria-busy={busy.includes(routine.id)}>
               <SwipeRow actions={[{ label: armed === routine.id ? t("mobile.routines.confirmDelete") : t("mobile.routines.delete"), danger: true, onPress: () => void work(routine, "delete") }]}>
@@ -108,15 +100,31 @@ export function RoutinesSheet({ sheet, open, onClose, onOpenChat }: SheetPagePro
                   <button type="button" onClick={() => { setSelectedId(routine.id); setError(null); setNotice(false); setArmed(null); }} className="mobile-row flex min-h-[84px] min-w-0 flex-1 items-center gap-3 rounded-2xl px-3 py-3 text-left">
                     {owner && <BotAvatar bot={owner} size={36} animated={false} label="" />}
                     <span className="min-w-0 flex-1"><span className="block truncate text-[16px] font-semibold text-ink">{routine.name}</span><span className="mt-0.5 block text-[14px] text-ink-secondary">{upperFirst(scheduleLabel(routine.schedule))}</span><span className="block text-[14px] text-ink-secondary">{routineNextLabel(routine)}</span></span>
-                    <ChevronRight aria-hidden size={16} className="shrink-0 text-ink-tertiary" />
                   </button>
-                  <div className="w-[68px] shrink-0 [&_button>span:first-child]:sr-only [&_button]:justify-center [&_button]:gap-0 [&_button]:px-2"><SettingsSwitch label={t("mobile.routines.enable", { name: routine.name })} checked={routine.enabled} onChange={() => { if (!pending.current.has(routine.id)) { haptic("selection"); void work(routine, "toggle"); } }} /></div>
+                  <div className="w-[68px] shrink-0 [&_button>span:first-child]:sr-only [&_button]:justify-center [&_button]:gap-0 [&_button]:px-2"><SettingsSwitch label={t("mobile.routines.enable", { name: routine.name })} checked={routine.enabled} onChange={() => { if (!pending.current.has(routine.id)) { haptic("toggle"); void work(routine, "toggle"); } }} /></div>
                 </div>
               </SwipeRow>
             </li>;
           })}</ul>
         ) : !error && state.routinesLoadState === "ready" ? <EmptyState art="clock" title={t("mobile.routines.empty")} body={t("mobile.routines.emptyHint")} action={askBot ? { label: t("mobile.routines.ask", { name: askBot.name }), onClick: () => { onClose(); onOpenChat(askBot.id); } } : undefined} className="pt-16" /> : null}
       </div>
+      <SheetPush open={Boolean(selected)} onClose={back} title={shown?.name}>
+        {shown && (
+          <div className="px-4 pt-2">
+            {error && <p role="alert" className="px-3 py-3 text-[15px] text-danger">{error}</p>}
+            <div className="flex flex-col gap-5 px-3">
+              <div><h2 className="text-[14px] font-medium text-ink-secondary">{t("mobile.routines.schedule")}</h2><p className="mt-1 text-[16px] text-ink">{upperFirst(scheduleLabel(shown.schedule))}</p><p className="mt-1 text-[14px] text-ink-secondary">{routineNextLabel(shown)}</p></div>
+              <p className="whitespace-pre-wrap text-[16px] text-ink-secondary">{shown.prompt}</p>
+              <button type="button" disabled={busy.includes(shown.id)} onClick={() => void work(shown, "run")} className="mobile-press flex h-12 items-center justify-center gap-2 rounded-full bg-ink text-[16px] font-semibold text-app disabled:opacity-40">{busy.includes(shown.id) && <WorkingDots size={4} />}{t("mobile.routines.run")}</button>
+              {notice && <p role="status" className="text-[14px] text-ink-secondary">{t("mobile.routines.started")}</p>}
+              <button type="button" disabled={!selectedBot} onClick={() => { if (selectedBot) { onClose(); onOpenChat(selectedBot.id); dispatch({ type: "switchTask", botId: selectedBot.id, threadId: routineResultsThread(shown, selectedBot) }); } }} className="mobile-press h-12 rounded-full bg-ink/[0.05] text-[16px] font-semibold text-ink disabled:opacity-40">{t("mobile.routines.results")}</button>
+              <section><h2 className="pb-2 text-[14px] font-medium text-ink-secondary">{t("mobile.routines.runs")}</h2>
+                {runs.length ? <ul>{runs.map((run) => <li key={run.id} className="flex min-h-14 items-center justify-between gap-3 py-2"><span className="text-[16px] font-semibold text-ink">{routineRunLabel(run)}</span><time dateTime={new Date(routineRunTime(run)).toISOString()} className="text-right text-[14px] text-ink-secondary">{routineDateTime(routineRunTime(run))}</time></li>)}</ul> : <p className="py-3 text-[14px] text-ink-secondary">{t("mobile.routines.noRuns")}</p>}
+              </section>
+            </div>
+          </div>
+        )}
+      </SheetPush>
     </Sheet>
   );
 }

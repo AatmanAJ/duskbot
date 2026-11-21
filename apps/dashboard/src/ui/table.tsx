@@ -33,7 +33,7 @@ export function SectionHead({ id, children, action, className }: { id?: string; 
   );
 }
 
-export interface MenuItem { label: string; onSelect(): void; danger?: boolean; disabled?: boolean; checked?: boolean }
+export interface MenuItem { label: string; onSelect(): void; danger?: boolean; disabled?: boolean; checked?: boolean; lead?: ReactNode }
 
 type MenuSpot = { top?: number; bottom?: number; left?: number; right?: number; maxHeight: number; up: boolean };
 const ITEM_H = 36, PAD = 12, GAP = 4, EDGE = 8;
@@ -101,7 +101,7 @@ export function RowMenu({ label, items, align = "end", icon, active }: { label: 
           <Pop open={open} className={cx("pop min-w-[200px] max-w-[min(320px,calc(100vw-16px))] overflow-y-auto rounded-[16px] bg-pop p-1.5", up ? (align === "end" ? "origin-bottom-right" : "origin-bottom-left") : align === "end" ? "origin-top-right" : "origin-top-left")} style={{ boxShadow: "var(--pop-shadow)", maxHeight }}>
             {items.map((item) => (
               <button key={item.label} type="button" role={item.checked === undefined ? "menuitem" : "menuitemradio"} aria-checked={item.checked} disabled={item.disabled} onClick={() => { close(); button.current?.focus({ preventScroll: true }); item.onSelect(); }} className={cx("hover-ghost flex h-9 w-full items-center justify-between gap-3 rounded-[10px] px-2.5 text-start text-13 outline-none focus-visible:bg-card-2 disabled:opacity-45", item.danger ? "text-bad" : "text-ink-2")}>
-                <span className="truncate">{item.label}</span>
+                <span className="flex min-w-0 items-center gap-2.5">{item.lead}<span className="truncate">{item.label}</span></span>
                 {item.checked && <Check size={15} strokeWidth={1.75} className="shrink-0 text-ink-2" aria-hidden />}
               </button>
             ))}
