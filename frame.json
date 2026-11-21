@@ -1,3 +1,5 @@
 {
-  "pr-36.before-after.png": { "arrange": "auto" }
+  "pr-36.before-after.png": { "arrange": "auto", "crop": ["364,772,1000,128", "364,712,1000,188"] },
+  "pr-36.before.png": { "crop": "364,772,1000,128" },
+  "pr-36.after.png": { "crop": "364,712,1000,188" }
 }

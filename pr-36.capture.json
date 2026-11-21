@@ -1,0 +1,27 @@
+{
+  "about": "A 12.0 MB PNG (12,619,860 bytes: a PNG header followed by zeros, made in the page and named site-survey-drone.png) given to the composer's own file input. Before is the base of the pull request, after is its branch.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1440,
+  "height": 900,
+  "scale": 2,
+  "reducedMotion": false,
+  "steps": [
+    {
+      "eval": "(() => { const bytes = new Uint8Array(12619860); bytes.set([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 16, 0, 0, 0, 12, 0, 8, 6, 0, 0, 0]); const files = new DataTransfer(); files.items.add(new File([bytes], 'site-survey-drone.png', { type: 'image/png' })); const input = document.querySelector('input[type=file]'); input.files = files.files; input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()"
+    },
+    {
+      "waitFor": "document.body.innerText.includes('site-survey-drone.png is over 10 MB')"
+    },
+    {
+      "waitFor": "!!document.querySelector('button[aria-label=\"Send message\"]')",
+      "only": "after"
+    },
+    {
+      "waitMs": 1500
+    },
+    {
+      "shot": true
+    }
+  ]
+}
