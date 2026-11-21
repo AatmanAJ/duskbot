@@ -6,7 +6,9 @@ import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { normalizeImageGenerationUrl, type ImageGenerationConfig } from "../shared/image-generation.ts";
-import { botAvatarUrlSchema } from "../shared/bot-avatar.ts"; import { TALKING_STYLES, type TalkingStyle } from "../shared/talking-style.ts";
+import { botAvatarUrlSchema } from "../shared/bot-avatar.ts";
+import type { SyncedAccountFace } from "../shared/user-avatar.ts"; import { TALKING_STYLES, type TalkingStyle } from "../shared/talking-style.ts";
+import { accountFaceSchema } from "./account-face-schema.ts";
 import { writeFileAtomic } from "./atomic.ts"; import { setAsideUnreadable } from "./registry-file.ts";
 import { defaultBotThreads, MAX_CONCURRENT_BOT_THREADS } from "./bot-thread-limits.ts";
 import { anthropicKeyEnv } from "./anthropic-key-env.ts";
@@ -382,9 +384,9 @@ const appConfigSchema = z.object({
       "Use a model ID without control characters",
     ).optional(),
   }).optional(),
-  /** Non-secret profile details; aboutMe is shared with every bot. `accountName`: the dusk cloud account's name this
-   * computer last copied into `name`; while `name` is still that copy, a new name on the account replaces it. */
-  profile: z.object({ name: optionalText, email: optionalText, aboutMe: z.string().max(24_000).optional(), avatarUrl: z.union([z.literal(""), botAvatarUrlSchema]).optional(), accountName: optionalText }).optional(),
+  /** Non-secret profile details; aboutMe is shared with every bot. `accountName` and `accountFace`: the dusk cloud
+   * account's name and avatar last synced from the desktop app so paired phones render the same identity. */
+  profile: z.object({ name: optionalText, email: optionalText, aboutMe: z.string().max(24_000).optional(), avatarUrl: z.union([z.literal(""), botAvatarUrlSchema]).optional(), accountName: optionalText, accountFace: accountFaceSchema.nullable().optional() }).optional(),
   /** UI language override (BCP-47, lowercase), absent follows the system; what a paired phone calls this computer, "" for the default. */
   language: optionalText, computerName: z.string().trim().max(63).optional(), talkingStyle: z.enum(TALKING_STYLES).optional(),
   rooms: roomConfigSchema.optional(),
@@ -473,7 +475,7 @@ export interface AppConfig extends HelperConfig {
   decider?: DeciderConfig;
   imageGen?: ImageGenerationConfig;
   live?: LiveConfig;
-  profile?: { name?: string; email?: string; aboutMe?: string; avatarUrl?: string; accountName?: string };
+  profile?: { name?: string; email?: string; aboutMe?: string; avatarUrl?: string; accountName?: string; accountFace?: SyncedAccountFace | null };
   rooms?: { turnTimeoutMinutes: number };
   mcp?: { callTimeoutMinutes?: number };
   threads?: { maxConcurrentPerBot: number; eventLogMaxBytes?: number; eventLogRetentionDays?: number };

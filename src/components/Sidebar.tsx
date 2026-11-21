@@ -479,7 +479,7 @@ function RowGazeAvatar(props: Omit<React.ComponentProps<typeof BotAvatar>, "gaze
         const box = anchor.current?.getBoundingClientRect();
         if (!box) return;
         const look = hoverGaze(box, event.clientX, event.clientY);
-        const next = { x: Math.round(look.x * 100) / 100, y: Math.round(look.y * 100) / 100 };
+        const next = { x: Math.abs(look.x) > 0.25 ? Math.sign(look.x) : 0, y: Math.abs(look.y) > 0.35 ? Math.sign(look.y) : 0 };
         setGaze((current) => (current && current.x === next.x && current.y === next.y ? current : next));
       });
     };
@@ -539,6 +539,7 @@ export const BotListItem = memo(function BotListItem(props: BotRowProps) {
   // grok names a row with what it is doing: "Manager, Main Bot, Needs attention", "Koder, Working", "Content, Unread activity"
   const grokName = [bot.name, main ? t("sidebar.grok.mainBot") : "", waiting ? t("sidebar.grok.needsAttention") : working ? t("sidebar.grok.working") : unread ? t("sidebar.grok.unreadActivity") : ""].filter(Boolean).join(", ");
   const onLiveCall = liveBadgeFor(bot.id, liveMedia, liveCall);
+  const avatarAnimated = working || waiting || markState !== "idle" || Boolean(mascotMotion);
   const body = (
     <>
       <span data-morph={`bot:${bot.id}`} className="relative flex shrink-0">
@@ -548,14 +549,14 @@ export const BotListItem = memo(function BotListItem(props: BotRowProps) {
           size={avatarSize}
           motion={mascotMotion?.kind ?? "none"}
           motionKey={mascotMotion?.nonce ?? 0}
-          animated
+          animated={avatarAnimated}
         /> : <BotAvatar
           bot={bot}
           state={markState}
           size={avatarSize}
           motion={mascotMotion?.kind ?? "none"}
           motionKey={mascotMotion?.nonce ?? 0}
-          animated
+          animated={avatarAnimated}
         />}
         {/* Bottom-left, clear of the status dots on the right and of the row's hover actions. */}
         {simpleRow && <AvatarActivityDot activity={rowActivity} />}
@@ -834,17 +835,10 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
   }, [remoteClient]);
 
   useEffect(() => (remoteClient ? undefined : onOpenTemplates(() => setTeamLibraryOpen(true))), [remoteClient]);
-  // Templates is fetched ahead, once launch is over (or at once when the menu that offers it opens), so its first open
-  // draws in one frame instead of after the fetch
   useEffect(() => {
-    if (remoteClient) return;
-    const fetchTemplates = () => {
-      void TeamLibraryPanel.preload().catch(() => {});
-      warmTeamCatalog();
-    };
-    if (plusOpen) return fetchTemplates();
-    const timer = setTimeout(fetchTemplates, 4_000);
-    return () => clearTimeout(timer);
+    if (remoteClient || !plusOpen) return;
+    void TeamLibraryPanel.preload().catch(() => {});
+    warmTeamCatalog();
   }, [plusOpen, remoteClient]);
 
   useEffect(() => {
@@ -1203,10 +1197,10 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
                     name={sectionLabel(id, true)}
                     line
                     count={sectionChiefItems.length + sectionBotItems.length + sectionGroupItems.length}
-                    onMenu={sectionMenuFor(id) && ((button) => {
+                    onMenu={sectionMenuFor(id) ? (button) => {
                       const rect = button.getBoundingClientRect();
                       openSectionMenu(id, rect.left, rect.bottom + 4, button);
-                    }) || undefined}
+                    } : undefined}
                     menuOpen={sectionMenu?.id === id}
                     onContextMenu={sectionMenuFor(id) ? (event) => {
                       event.preventDefault();
