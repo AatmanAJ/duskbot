@@ -51,6 +51,11 @@ const pageServer = createServer((req, res) => {
 await new Promise<void>((done) => pageServer.listen(0, "127.0.0.1", done));
 const pageOrigin = `http://127.0.0.1:${(pageServer.address() as AddressInfo).port}`;
 const OWNER = { fromId: 501, from: "Maya" };
+// a person's form or store reaches the bot from the internet, as on dusk cloud or a desktop with Remote access on: the
+// server advertises this public origin, and the eval's own posts to it go to the server's local receiver
+const PUBLIC_HOOKS = "https://hooks.dusk-eval.example";
+const localHook = (url: string, srv: StressServer) => url.replace(PUBLIC_HOOKS, `http://127.0.0.1:${Number(new URL(srv.url).port) + 1}`);
+const pairCodes = (said: string) => [...said.matchAll(/start=([\w-]{4,64})/g), ...said.matchAll(/\/start\s+([\w-]{4,64})/g)].map((m) => m[1]!);
 
 type Message = { id: string; role: string; kind?: string; text?: string; card?: any; tool?: { name?: string }; document?: { title: string; kind: string } ; attachments?: Array<{ name?: string; path: string }> };
 
@@ -147,7 +152,7 @@ async function runCase(c: WorkflowCase, run: number): Promise<Record<string, unk
   // two eval processes can pick the same free port pair at once: the loser exits on EADDRINUSE and tries again
   const launch = async (reuseRoot?: string): Promise<StressServer> => {
     for (let attempt = 0; ; attempt++) {
-      try { return await launchServer(values.repo!, caseDir, gateway, [values.model!], { mcpServers }, reuseRoot, { env: { DUSK_TELEGRAM_API_URL: telegram.origin, DUSK_PROBE_LOOPBACK_ORIGIN: pageOrigin } }); }
+      try { return await launchServer(values.repo!, caseDir, gateway, [values.model!], { mcpServers }, reuseRoot, { env: { DUSK_TELEGRAM_API_URL: telegram.origin, DUSK_PROBE_LOOPBACK_ORIGIN: pageOrigin, DUSK_WEBHOOK_PUBLIC_URL: PUBLIC_HOOKS } }); }
       catch (error) { if (attempt >= 4) throw error; await sleep(2_000 + Math.random() * 6_000); }
     }
   };
@@ -163,8 +168,11 @@ async function runCase(c: WorkflowCase, run: number): Promise<Record<string, unk
     const runsSettled = async () => {
       const deadline = Date.now() + 420_000;
       while (Date.now() < deadline) {
-        const { routines, runs } = await api.call("GET", "/api/routines?since=0").catch(() => ({ routines: [], runs: [] }));
-        const ids = new Set((routines as any[]).filter((r) => r.botId === bot.id).map((r) => r.id));
+        const [{ routines, runs }, hooks] = await Promise.all([
+          api.call("GET", "/api/routines?since=0").catch(() => ({ routines: [], runs: [] })),
+          api.call("GET", "/api/webhooks").then((r) => r.webhooks ?? []).catch(() => []),
+        ]);
+        const ids = new Set([...(routines as any[]), ...(hooks as any[])].filter((r) => r.botId === bot.id).map((r) => r.id));
         if (!(runs as any[]).some((r) => ids.has(r.routineId) && ["queued", "running", "waiting"].includes(r.status))) return;
         await sleep(5_000);
       }
@@ -178,11 +186,24 @@ async function runCase(c: WorkflowCase, run: number): Promise<Record<string, unk
     const messages = async (threadId: string): Promise<Message[]> => (await api.call("GET", `/api/threads/${threadId}/messages?limit=400`)).messages;
     const setupThread = await api.newThread(bot.id);
     const states: string[] = [];
+    // the owner taps Start on a pairing link the moment the bot gives it, as a person with the phone in hand would
+    const tapped = new Set<string>();
+    const tapStart = async () => {
+      if (!c.telegram) return;
+      const said = (await messages(setupThread)).filter((m) => m.role === "bot").map((m) => `${m.text ?? ""} ${JSON.stringify(m.card ?? "")}`).join("\n");
+      const code = pairCodes(said).filter((one) => !tapped.has(one)).at(-1);
+      if (!code) return;
+      tapped.add(code);
+      telegram.message(tgToken, { ...OWNER, text: `/start ${code}` });
+      await sleep(6_000);
+    };
     states.push(await say(setupThread, c.ask));
+    await tapStart();
     for (let i = 0; i < Number(values["max-setup-turns"]); i++) {
       const next = await personReply(gateway, c, render(await messages(setupThread)));
       if (next.includes(DONE)) break;
       states.push(await say(setupThread, next));
+      await tapStart();
     }
     await sleep(5_000);
     if (c.restart) {
@@ -209,7 +230,7 @@ async function runCase(c: WorkflowCase, run: number): Promise<Record<string, unk
       else {
         const address = await api.call("GET", `/api/webhooks/${hook.id}/address`).catch((error: Error) => ({ error: error.message }));
         const credential = address.credential as { url?: string; bearer?: string } | undefined;
-        const res = credential?.url ? await fetch(credential.url, { method: "POST", headers: { "content-type": "application/json", ...(credential.bearer ? { authorization: `Bearer ${credential.bearer}` } : {}) }, body: JSON.stringify(c.fire.body) }).catch(() => null) : null;
+        const res = credential?.url ? await fetch(localHook(credential.url, srv), { method: "POST", headers: { "content-type": "application/json", ...(credential.bearer ? { authorization: `Bearer ${credential.bearer}` } : {}) }, body: JSON.stringify(c.fire.body) }).catch(() => null) : null;
         posted = credential?.url ? `posted ${JSON.stringify(c.fire.body)} to the webhook "${hook.name}" (HTTP ${res?.status ?? "unreachable"})` : `the webhook "${hook.name}" gave no address: ${JSON.stringify(address).slice(0, 200)}`;
       }
       await sleep(8_000);
@@ -218,9 +239,9 @@ async function runCase(c: WorkflowCase, run: number): Promise<Record<string, unk
     }
     if (c.telegram) {
       const said = (await messages(setupThread)).filter((m) => m.role === "bot").map((m) => `${m.text ?? ""} ${JSON.stringify(m.card ?? "")}`).join("\n");
-      const code = /start=([\w-]{4,64})/.exec(said)?.[1] ?? /\/start\s+([\w-]{4,64})/.exec(said)?.[1] ?? null;
+      const code = pairCodes(said).at(-1) ?? null;
       const connected = telegram.calls.some((call) => call.token === tgToken && call.method === "getMe");
-      if (code) { telegram.message(tgToken, { ...OWNER, text: `/start ${code}` }); await sleep(8_000); }
+      if (code && !tapped.has(code)) { tapped.add(code); telegram.message(tgToken, { ...OWNER, text: `/start ${code}` }); await sleep(8_000); }
       const flipAt = Date.now();
       pages.set(`${pageKey}/${c.telegram.change.page}/pricing`, c.telegram.change.html);
       let pinged: string[] = [];

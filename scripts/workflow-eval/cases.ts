@@ -278,7 +278,13 @@ export const CASES: WorkflowCase[] = [
     brief: "You are Maya, founder of Loomware (Loom Lite smart loom, $129). The form is a Tally form; it can call a link (webhook) on each new submission if the bot gives you one, and you paste it in yourself. It sends name, email, company and message. Emails from maya@loomware.co, short and warm, sign '- Maya'. Demos are booked at loomware.co/demo. No existing sheet: make one. Never email the same lead twice on day one. India time.",
     expect: "A webhook automation whose instructions add the lead to a new leads sheet (name, email, company, message, status, dates), send a short personal hello from maya@loomware.co at once, and arrange one follow-up 2 days later only when the lead has not replied (a wait, a daily automation that reads the sheet and the inbox, or similar), never twice. It gives the person the private address and where to paste it in Tally. When the eval posts a sample lead to the webhook, the sheet gets that lead and the hello goes to that lead's address.",
     change: "make the follow-up after 3 days instead, and cc me on the hello: maya@loomware.co",
-    fire: { body: { name: "Priya Nair", email: "priya@brightloom.in", company: "Brightloom Studio", message: "Saw the Loom Lite on Instagram. Can it do twill? Thinking of 2 for my studio." } },
+    // Tally's own FORM_RESPONSE shape
+    fire: { body: { eventId: "evt_7Qm2", eventType: "FORM_RESPONSE", createdAt: new Date().toISOString(), data: { responseId: "r_8JkL", submissionId: "r_8JkL", respondentId: "p_31x", formId: "wMzKq4", formName: "Contact Loomware", createdAt: new Date().toISOString(), fields: [
+      { key: "question_name", label: "Name", type: "INPUT_TEXT", value: "Priya Nair" },
+      { key: "question_email", label: "Email", type: "INPUT_EMAIL", value: "priya@brightloom.in" },
+      { key: "question_company", label: "Company", type: "INPUT_TEXT", value: "Brightloom Studio" },
+      { key: "question_message", label: "Message", type: "TEXTAREA", value: "Saw the Loom Lite on Instagram. Can it do twill? Thinking of 2 for my studio." },
+    ] } } },
   },
   {
     id: "competitor-telegram", dept: "marketing", apps: [], seed: {},
