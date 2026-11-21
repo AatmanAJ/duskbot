@@ -1,0 +1,14 @@
+import { spawn } from "node:child_process";
+import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+const [root, port] = [process.argv[2], Number(process.argv[3])];
+const { verificationServerEnvironment, verificationServerArgs } = await import(join(root, "scripts/control-dusk.ts"));
+const dataDir = mkdtempSync(join(tmpdir(), "duskbot-verify-second-"));
+mkdirSync(join(dataDir, "tmp"), { recursive: true });
+const env = verificationServerEnvironment(process.env, dataDir, port);
+const child = spawn(process.execPath, verificationServerArgs(env), { env, cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+let out = "";
+child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+const timer = setTimeout(() => child.kill("SIGINT"), 60_000);
+child.on("close", (code) => { clearTimeout(timer); process.stdout.write(out); console.log(`exit code: ${code}`); rmSync(dataDir, { recursive: true, force: true }); });
