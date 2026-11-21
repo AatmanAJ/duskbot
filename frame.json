@@ -1,0 +1,5 @@
+{
+  "pr-12-before-after.png": { "crop": "460,170,520,560" },
+  "pr-12-steps-before.gif": { "crop": "460,170,520,560", "labels": ["open", "edit", "saved: next run moved"] },
+  "pr-12-steps-after.gif": { "crop": "460,170,520,560", "labels": ["open", "edit", "saved: next run kept"] }
+}
