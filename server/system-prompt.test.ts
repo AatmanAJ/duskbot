@@ -557,3 +557,8 @@ it("an automation's report opens with the finding, and a scheduled run does its 
 it("a sandboxed engine asks to run a blocked step outside its sandbox instead of working around it", () => {
   expect(SANDBOX_ESCALATION_PROMPT).toContain("rerun that command asking for permission to run it outside the sandbox instead of working around it");
 });
+
+it("pauses only an automation whose steps need an app not connected yet, and keeps one another app calls by link on", () => {
+  expect(TRIGGER_PROMPT).toContain("an automation whose steps need it is made paused until it is connected");
+  expect(TRIGGER_PROMPT).toContain("one another app calls by link stays on: it does nothing until called");
+});
