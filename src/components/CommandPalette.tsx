@@ -24,7 +24,6 @@ import { pacedMs } from "@/lib/motion-speed";
 import { openSettings } from "@/lib/open-settings";
 import { settingsCommands } from "./palette-commands";
 
-/** What the app used to call a place. The screens no longer say it, and people still type it to find the switcher. */
 const FORMER_PLACE_WORD = "workspace";
 
 /** A row's 49px and the 2px gap under it. */
