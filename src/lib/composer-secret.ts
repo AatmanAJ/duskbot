@@ -24,11 +24,18 @@ export function keyInSend(text: string, messages: readonly Message[] | undefined
   return key ? { key, cardId: openSecretCard(messages)?.id ?? null } : null;
 }
 
+const tidy = (text: string) => text.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+$/gm, "").trim();
+
+/** The words with one credential taken out; any other stays, to be caught by the next send. */
+export function withoutKey(text: string, key: string): string {
+  return tidy(text.replace(key, ""));
+}
+
 /** The words with every credential taken out. */
 export function withoutKeys(text: string): string {
   let out = text;
   for (let key = firstCredential(out); key; key = firstCredential(out)) out = out.replace(key, "");
-  return out.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+$/gm, "").trim();
+  return tidy(out);
 }
 
 const offered = new Map<string, string>();

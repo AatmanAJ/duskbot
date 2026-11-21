@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
-import { keyInSend, offerToSecretCard, withoutKeys, type KeyInSend } from "@/lib/composer-secret";
+import { keyInSend, offerToSecretCard, withoutKey, withoutKeys, type KeyInSend } from "@/lib/composer-secret";
 import type { Message } from "@/state/store";
 import type { FollowUp } from "../../shared/follow-up";
 import { CARD_ACTION, ChatErrorCard } from "./ChatErrorBanner";
@@ -17,7 +17,7 @@ export function ComposerKeyWarning({ botName, cardLabel, onKeepOut, onSendAnyway
   onDismiss: () => void;
 }) {
   return (
-    <div data-composer-key-warning="" className="mb-2">
+    <div data-composer-key-warning="" className="mb-2" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onDismiss(); } }}>
       <ChatErrorCard
         tone="warning"
         icon="key"
@@ -40,13 +40,15 @@ export function ComposerKeyWarning({ botName, cardLabel, onKeepOut, onSendAnyway
 
 /** The composer's hold on a send whose words hold a key. `holds` stops such a send and shows the warning; `warning`
  * draws it, with Send anyway calling `send` again past the check. Any change to `reset` drops a shown warning. */
-export function useKeyGate({ text, reset, messages, botName, keep }: {
+export function useKeyGate({ text, reset, messages, botName, keep, focus }: {
   text: string;
   reset: string;
   messages: readonly Message[] | undefined;
   botName: string;
-  /** puts the words, keys taken out, back in the field; `toCard` when the key went to a Secrets card */
-  keep: (rest: string, toCard: boolean) => void;
+  /** puts the words, keys taken out, back in the field */
+  keep: (rest: string) => void;
+  /** returns the caret to the field once the warning is gone, unless the key's Secrets card took it */
+  focus: () => void;
 }) {
   const [held, setHeld] = useState<(KeyInSend & { followUp: FollowUp | undefined }) | null>(null);
   const allowed = useRef(false);
@@ -61,15 +63,20 @@ export function useKeyGate({ text, reset, messages, botName, keep }: {
       botName={botName}
       cardLabel={held.cardId ? messages?.find((message) => message.id === held.cardId)?.secret?.label ?? null : null}
       onKeepOut={() => {
-        if (held.cardId) offerToSecretCard(held.cardId, held.key);
         setHeld(null);
-        keep(withoutKeys(text), held.cardId !== null);
+        if (held.cardId) {
+          offerToSecretCard(held.cardId, held.key);
+          keep(withoutKey(text, held.key));
+        } else {
+          keep(withoutKeys(text));
+          focus();
+        }
       }}
       onSendAnyway={() => {
         allowed.current = true;
         try { send(held.followUp); } finally { allowed.current = false; }
       }}
-      onDismiss={() => setHeld(null)}
+      onDismiss={() => { setHeld(null); focus(); }}
     />
   );
   return { holds, warning };

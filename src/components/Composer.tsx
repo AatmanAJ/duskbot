@@ -681,7 +681,7 @@ export function Composer({
     requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(next.length, next.length); });
   };
   const keyGate = useKeyGate({ text, reset: `${threadId}\n${effectiveText}`, messages: group ? undefined : bot?.messages, botName: bot?.name ?? group?.name ?? "",
-    keep: (rest, toCard) => { editText(rest); setCaret(rest.length); if (!toCard) requestAnimationFrame(() => inputRef.current?.focus()); } });
+    keep: (rest) => { editText(rest); setCaret(rest.length); }, focus: () => requestAnimationFrame(() => inputRef.current?.focus()) });
   const send = (followUp: FollowUp | undefined = followUpFor(false)) => {
     if (locked || attachmentPending || unsentUpload) return;
     if (

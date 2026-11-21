@@ -81,6 +81,29 @@ describe("a key typed into the composer", () => {
     expect(warning()).toBeNull();
   });
 
+  it("moves one key into the card and leaves a second in the words, to be asked about on the next send", () => {
+    const second = "sk-ant-ZZtestOTHER9876543210";
+    mount([card]);
+    const input = fill(`${KEY} and ${second}`);
+    enter(input);
+    click("[data-key-keep-out]");
+    expect(takeOfferedSecret(card.id)).toBe(KEY);
+    expect(input.value).toBe(`and ${second}`);
+    enter(input);
+    expect(sends()).toEqual([]);
+    expect(warning()).not.toBeNull();
+  });
+
+  it("closes on Escape without sending or changing the words", () => {
+    mount([]);
+    const input = fill(`deploy with ${KEY}`);
+    enter(input);
+    flushSync(() => warning()!.querySelector("button")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    expect(warning()).toBeNull();
+    expect(sends()).toEqual([]);
+    expect(input.value).toBe(`deploy with ${KEY}`);
+  });
+
   it("with no card open, the safe choice takes it out of the words", () => {
     mount([]);
     const input = fill(`deploy with ${KEY} please`);
