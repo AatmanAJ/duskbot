@@ -355,6 +355,7 @@ function closingWords(r: Json, action: string): string {
     return `In a sentence or two of plain words, tell the person what you set up and what you assumed: when it runs, saying the time zone as "${plain}", never as a zone id; where its results will appear (here in this chat); what each run covers; that the first run is ${next}; and that they can change, pause or stop it by saying so here.`;
   }
   if (next && (action === "update" || action === "resume")) return `Tell the person in one plain sentence what changed, saying the time zone as "${plain}", and that the next run is ${next}.`;
+  if (action === "create") return "Tell the person in a sentence or two what will happen, and that they can change, pause or stop it by saying so here.";
   return "Tell the person in one sentence what will happen.";
 }
 

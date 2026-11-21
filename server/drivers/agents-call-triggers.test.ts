@@ -82,6 +82,8 @@ describe("a schedule's confirmation, in the person's words", () => {
     expect(update.text).toMatch(/Tell the person in one plain sentence what changed, saying the time zone as "India time", and that the next run is tomorrow/);
     const paused = await callTool("manage_trigger", { trigger_id: "r-1", action: "pause" }, context({ response: { ok: true, status: 201, body: { result: { resultId: "r-1" }, nextRunAt: null, timeZone: "Asia/Calcutta" } } }).context);
     expect(paused.text).toMatch(/Tell the person in one sentence what will happen\.$/);
+    const hook = await callTool("create_trigger", { when: "webhook", name: "Website leads", instructions: "Add the lead to the sheet." }, context({ response: { ok: true, status: 201, body: { result: { resultId: "r-2" }, nextRunAt: null } } }).context);
+    expect(hook.text).toMatch(/what will happen, and that they can change, pause or stop it by saying so here\.$/);
   });
 });
 
