@@ -34,3 +34,28 @@ describe("runtime events in the trail", () => {
     expect(JSON.stringify(events)).not.toMatch(/secret input|account 1234|login/);
   });
 });
+
+describe("a tool's name in the trail", () => {
+  it("is the engine's tool name, never a command, script or file name its title carried", async () => {
+    const { configureTrail } = await import("../electron/trail.mjs");
+    const { traceRuntimeEvents, loggedToolName } = await import("./trail-events.ts");
+    expect(loggedToolName("Bash", "echo hi", "command")).toBe("Bash");
+    expect(loggedToolName("gws sheets get 1AbCdEfGhIjKlMn", "gws sheets get 1AbCdEfGhIjKlMn", "command")).toBe("shell");
+    expect(loggedToolName("ls", "ls -la", "command")).toBe("shell");
+    expect(loggedToolName("Read budget.xlsx", undefined, "read")).toBe("read");
+    expect(loggedToolName("report.py", undefined, undefined)).toBe("tool");
+    expect(loggedToolName("mcp__dusk-browser__get_url", undefined, "fetch")).toBe("mcp__dusk-browser__get_url");
+    const written: Array<Record<string, unknown>> = [];
+    configureTrail({ src: "server", writer: { write: (event) => written.push(event), flush: async () => {}, flushSync() {}, close() {} } });
+    let listener: (event: never) => void = () => {};
+    traceRuntimeEvents({ subscribe: (fn) => { listener = fn as never; } }, () => "b1");
+    const base = { eventId: "e", provider: "antigravity", threadId: "t2", createdAt: "", turnId: "u2" };
+    const command = "python3 export_sheet.py --sheet 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms";
+    listener({ ...base, type: "item.started", itemType: "tool", itemId: "i2", title: command.slice(0, 80), summary: command } as never);
+    listener({ ...base, type: "item.completed", itemType: "tool", itemId: "i2", ok: true } as never);
+    listener({ ...base, type: "request.opened", requestType: "permission", requestId: "r1", tool: "cat ~/notes/diary.txt", summary: "cat", commandLine: "cat ~/notes/diary.txt" } as never);
+    expect(written.find((event) => event.ev === "bot.tool")).toMatchObject({ tool: "shell" });
+    expect(written.find((event) => event.ev === "bot.card.shown")).toMatchObject({ tool: "shell" });
+    expect(JSON.stringify(written)).not.toMatch(/export_sheet|1BxiMVs0|python3|diary/);
+  });
+});

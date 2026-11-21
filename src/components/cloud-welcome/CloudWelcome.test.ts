@@ -88,6 +88,7 @@ afterEach(() => {
   host.remove();
   delete window.duskDesktop;
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 const signedIn = { ...claude, snapshot: { state: "available", authenticated: true } };
@@ -103,6 +104,7 @@ const withSend = (value: CloudSendNotice | null, more: Record<string, unknown> =
 
 describe("CloudWelcome", () => {
   it("is one screen: the bots landing on the cloud, what is different now, and one thing to do, with no steps to go through", () => {
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     render();
     expect(host.querySelector("[data-cloud-move-scene]")).not.toBeNull();
     expect(host.querySelector("h1")?.textContent).toBe("Welcome to dusk cloud");

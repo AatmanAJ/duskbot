@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { t } from "@/lib/i18n";
 import { UNREAD_DIVIDER_FADE_MS } from "@/lib/unread-divider";
 import { cn } from "@/lib/cn";
+import { phoneApp } from "@/lib/store-app";
 
 /**
  * grok's "New" line: 1px rules in the accent at 20%, the word in the accent. `tint` is the bot's colour, when the chat
@@ -15,7 +16,8 @@ export function NewMessagesDivider({ fading, tint, grokTint }: { fading: boolean
       data-unread-divider
       className={cn(
         "grid ease-out transition-[grid-template-rows,opacity,margin-bottom] motion-reduce:transition-none",
-        fading ? "-mb-3 grid-rows-[0fr] opacity-0" : "mt-1 mb-2 grid-rows-[1fr] opacity-100",
+        fading && !phoneApp() ? "-mb-3 grid-rows-[0fr] opacity-0" : "mt-1 mb-2 grid-rows-[1fr]",
+        fading ? "opacity-0" : "opacity-100",
       )}
       style={{
         transitionDuration: `${UNREAD_DIVIDER_FADE_MS}ms`,

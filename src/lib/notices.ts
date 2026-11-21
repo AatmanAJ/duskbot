@@ -9,6 +9,10 @@ export const CLOUD_NOTICE = "cloud-notice";
 export const TWO_PLACES_NOTICE = "two-places";
 /** A routine on this computer ran late or not at all while it slept: dusk cloud offered once, at that moment. */
 export const LATE_ROUTINE_NOTICE = "late-routine-v1";
+/** This computer's sleep costs its routines: dusk cloud or keep awake while plugged in, offered once. */
+export const ROUTINE_SLEEP_NOTICE = "routine-sleep-v1";
+/** A bot was working when this computer went to sleep: dusk cloud offered once, after it wakes. */
+export const ASLEEP_NOTICE = "asleep-work-v1";
 /** Someone clearly invested (shared/cloud-upsell.ts INVESTED): the sidebar dusk cloud card says it once, in their numbers.
  * Not a corner notice: the id only records that it was said. */
 export const INVESTED_NOTICE = "cloud-invested-v1";
@@ -25,7 +29,9 @@ export const NOTICES = [
   WHATS_NEW_NOTICE,
   BRING_NOTICE,
   TWO_PLACES_NOTICE,
+  ROUTINE_SLEEP_NOTICE,
   LATE_ROUTINE_NOTICE,
+  ASLEEP_NOTICE,
   CLOUD_INTRO,
   CLOUD_TRIAL_NOTICE,
   CLOUD_NOTICE,
