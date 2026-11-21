@@ -76,7 +76,7 @@ import { enterFromComposer, growFromMascot, hasSendLaunch } from "./bubble-entra
 import { STATUS_MOUNT_MS, useReached } from "@/hooks/use-reached";
 import { lifeDraw } from "@/lib/reply-life";
 import { lastNonReceipt } from "@/lib/receipts";
-import { routineStartName } from "./RoutineStartLine"; import { SILENT_LINE } from "../../shared/routine-run.ts"; import { routineRetryFor } from "@/lib/routine-retry"; import { useTurnLive } from "@/state/turn-status"; import { useLiveReplyActive } from "@/state/live-reply"; import { useTurnNow } from "./NowCard"; import { useThreadRoutineRun } from "@/state/older-routine-runs";
+import { routineStartName } from "./RoutineStartLine"; import { SILENT_LINE } from "../../shared/routine-run.ts"; import { useRoutineRetry } from "@/lib/routine-retry"; import { useTurnLive } from "@/state/turn-status"; import { useLiveReplyActive } from "@/state/live-reply"; import { useTurnNow } from "./NowCard"; import { useThreadRoutineRun } from "@/state/older-routine-runs";
 import { followSentTurn, sentTurn, useSentTurn } from "@/state/sent-turn";
 import { waitsForNetwork } from "@/state/network-wait";
 import { useOffline } from "@/mobile/network";
@@ -1231,19 +1231,14 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
     return ids;
   }, [trailing, turnBusy, messages]);
   const clearLimitError = useCallback(() => dispatch({ type: "error", message: null }), [dispatch]);
-  const routineRetry = useMemo(() => routineRetryFor(lastUserMessage, state.routines), [lastUserMessage, state.routines]);
-  const routineRetryKnown = routineRetry && (routineRetry.state !== "gone" || state.routinesLoadState === "ready") ? routineRetry : null;
+  const { retry: routineRetry, known: routineRetryKnown, canRetry: canRegenerate } = useRoutineRetry(lastUserMessage, state.routines, state.routinesLoadState);
   const regenerate = useCallback(() => {
     if (bot.busy) return;
-    if (routineRetry) {
-      if (routineRetry.state === "ready") dispatch({ type: "runRoutine", routineId: routineRetry.routineId });
-      return;
-    }
+    if (routineRetry) { if (routineRetry.state === "ready") dispatch({ type: "runRoutine", routineId: routineRetry.routineId }); return; }
     if (lastUserMessage?.text && !lastUserMessage.id.startsWith("optimistic-")) {
       dispatch({ type: "editMessage", botId: bot.id, threadId: bot.threadId, messageId: lastUserMessage.id, text: lastUserMessage.text });
     }
   }, [lastUserMessage, routineRetry, bot.busy, bot.id, bot.threadId, dispatch]);
-  const canRegenerate = Boolean(lastUserMessage) && (!routineRetry || routineRetry.state === "ready");
 
   const currentLink = profile.tasks?.find((task) => task.threadId === bot.threadId)?.link;
   const threadLink = useMemo(() => canWrite !== false

@@ -250,7 +250,7 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
           </p>
         )}
         {did && <p dir="auto" className="text-ink-secondary">{t("failedReply.restartedDid", { done: did })}</p>}
-        {routine && routine.state !== "event" && <p dir="auto" className="text-ink-secondary" data-routine-retry={routine.state}>{t(`failedReply.routine.${routine.state}`, { name: routine.name })}</p>}
+        {routine && (routine.state === "paused" || routine.state === "gone") && <p dir="auto" className="text-ink-secondary" data-routine-retry={routine.state}>{t(`failedReply.routine.${routine.state}`, { name: routine.name })}</p>}
         {update}
       </ChatErrorCard>
       {connecting && <ConnectAiDialog tested={null} start={typeof connecting === "string" ? connecting : undefined} onClose={() => setConnecting(false)} />}

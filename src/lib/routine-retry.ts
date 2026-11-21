@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { routineStartOf } from "../../shared/routine-run";
 import type { Routine } from "../../shared/routines";
 import type { Message } from "@/state/store";
@@ -16,4 +17,12 @@ export function routineRetryFor(message: Pick<Message, "role" | "text" | "routin
   const routine = routines.find((candidate) => candidate.id === start.routineId);
   if (!routine) return { state: "gone", name: start.name };
   return { state: routine.enabled ? "ready" : "paused", routineId: routine.id, name: routine.name };
+}
+
+/** The failed turn's routine, the one the card may name (a "gone" routine only once routines have loaded), and whether
+ * Try again has anything to do. */
+export function useRoutineRetry(message: Pick<Message, "role" | "text" | "routineStart"> | undefined, routines: readonly Pick<Routine, "id" | "name" | "enabled">[], loadState: string | undefined) {
+  const retry = useMemo(() => routineRetryFor(message, routines), [message, routines]);
+  const known = retry && (retry.state !== "gone" || loadState === "ready") ? retry : null;
+  return { retry, known, canRetry: Boolean(message) && (!retry || retry.state === "ready") };
 }

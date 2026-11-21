@@ -8736,7 +8736,8 @@ async function beginTurn(
   }
 
   let userMessage = opts?.userMessage;
-  if (opts?.editedMessageId) { if (routineStartOf(store.messagesFor(threadId).find((message) => message.id === opts.editedMessageId) ?? { role: "" })) throw Object.assign(new Error("a routine run's prompt is not a message to send again: run the routine again instead"), { status: 409, code: "routine_line" });
+  if (opts?.editedMessageId) {
+    if (routineStartOf(store.messagesFor(threadId).find((message) => message.id === opts.editedMessageId) ?? { role: "" })) throw Object.assign(new Error("a routine run's prompt is not a message to send again: run the routine again instead"), { status: 409, code: "routine_line" });
     const edited = store.branchMessage(threadId, opts.editedMessageId, text, opts.sendId, opts.sender, opts.dataContext);
     if (!edited) throw Object.assign(new Error("only a user text message can be edited"), { status: 400 });
     store.patchTask(bot.id, threadId, { rewound: true });
