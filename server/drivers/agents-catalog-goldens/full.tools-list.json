@@ -2244,7 +2244,7 @@
           },
           "on_notify": {
             "type": "string",
-            "description": "What to do when woken; that run won't see this chat."
+            "description": "What to do when woken; that run won't see this chat. Use only what a wake carries (telegram_watch: chat, sender, time, id, text)."
           },
           "bytes": {
             "type": "integer",

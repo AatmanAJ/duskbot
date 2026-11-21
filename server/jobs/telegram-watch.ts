@@ -46,7 +46,7 @@ export function wanted(message: TelegramMessage, chats: readonly string[], keywo
 
 export function noteFor(messages: readonly TelegramMessage[], limit = 3_800): string {
   const lines = messages.map((m) => `[${m.chat}] ${m.from} (${new Date(m.at).toISOString().slice(0, 16).replace("T", " ")} UTC${m.id === undefined ? "" : `, message ${m.id}`}): ${m.text.replace(/\s+/g, " ").trim()}`);
-  let note = `New Telegram messages (${messages.length}):\n`;
+  let note = `New Telegram messages (${messages.length}), each with all this watch knows of it: chat, sender, time, message id and text:\n`;
   for (const line of lines) {
     if (note.length + line.length + 1 > limit) { note += "[more messages were left out]"; break; }
     note += `${line}\n`;

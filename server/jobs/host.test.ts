@@ -104,7 +104,7 @@ describe("telegram_watch", () => {
     expect(messages.filter((m) => wanted(m, ["deals"], []))).toHaveLength(2);
     expect(messages.filter((m) => wanted(m, [], ["loi"]))).toHaveLength(1);
     expect(messages.filter((m) => wanted(m, ["-11"], []))).toHaveLength(1);
-    expect(noteFor(messages)).toMatch(/^New Telegram messages \(3\):\n\[Brand deals\] Ana \(2023-11-14 22:13 UTC, message 42\): Acme signed the LOI\n\[Friends\] bo \(2023-11-14 22:14 UTC\): lunch\?/);
+    expect(noteFor(messages)).toMatch(/^New Telegram messages \(3\), each with all this watch knows of it: chat, sender, time, message id and text:\n\[Brand deals\] Ana \(2023-11-14 22:13 UTC, message 42\): Acme signed the LOI\n\[Friends\] bo \(2023-11-14 22:14 UTC\): lunch\?/);
     expect(noteFor(messages, 120)).toContain("[more messages were left out]");
   });
   it("talks to a test Bot API only on loopback, Telegram otherwise", () => {
