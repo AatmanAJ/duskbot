@@ -8,6 +8,8 @@ import type { AnalyticsSink } from "./sink.ts";
 import { cookieless, requestContext, type EventContext } from "./context.ts";
 import { APP_EVENTS_PATH, TRACK_PATH, handleAppEvents, handleTrack } from "./ingest.ts";
 import { createPresence } from "./presence.ts";
+import { createRollups, memoryRollupStore } from "./rollup.ts";
+import { DIGESTS } from "./digests.ts";
 import { isAiCrawler } from "./sources.ts";
 
 export interface AnalyticsOptions {
@@ -77,6 +79,9 @@ export function createAnalytics(options: AnalyticsOptions) {
   }
   const markUntil = (at: number) => Math.max(at, now()) + 3 * DAY_MS;
   const presence = createPresence(now);
+  // the admin's views read digests of closed hours and days; with a database a timer keeps them built ahead of the reads
+  const rollups = createRollups({ store: sink.rollups ?? memoryRollupStore(), digests: DIGESTS, now });
+  if (sink.rollups) rollups.start();
 
   async function record(name: EventName, input: { accountId?: string | null; props?: Props; at?: number; visitor?: string | null; ctx?: EventContext } = {}) {
     const accountId = input.accountId ?? null, at = input.at ?? now(), day = dayOf(at);
@@ -205,6 +210,6 @@ export function createAnalytics(options: AnalyticsOptions) {
   }
 
   return { sink, presence, track, record, identify, crawlerVisit, onTrack: (fn: (name: EventName, input: Parameters<typeof record>[1]) => void) => { listeners.push(fn); }, appActive, botReplied, setOptOut, forget, handle, stats, optedOut: (accountId: string) => optOut.has(accountId),
-    onForget: (fn: (accountId: string) => void) => { forgetters.push(fn); }, close: () => store.close() };
+    onForget: (fn: (accountId: string) => void) => { forgetters.push(fn); }, rollups, close: () => { rollups.stop(); return store.close(); } };
 }
 export type Analytics = ReturnType<typeof createAnalytics>;

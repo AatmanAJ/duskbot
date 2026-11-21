@@ -8,12 +8,25 @@ export interface NodeHandle {
   backendNodeId: number;
 }
 
+/** How a snapshot named a ref's element: its accessible role and name, and which of the frame's elements with both it was. */
+export interface RefLocator {
+  role: string;
+  name: string;
+  nth: number;
+  count: number;
+}
+
 /** Ref numbers come from one counter per browser, so a ref from one tab never names an element in another. */
 export class RefCounter {
   #next = 1;
 
   take(): number {
     return this.#next++;
+  }
+
+  /** The last number taken, or 0: refs above it are given out later. */
+  peek(): number {
+    return this.#next - 1;
   }
 }
 
@@ -31,6 +44,7 @@ export class RefTable {
   readonly #counter: RefCounter;
   readonly #byRef = new Map<string, NodeHandle>();
   readonly #byNode = new Map<string, string>();
+  readonly #locators = new Map<string, RefLocator>();
 
   constructor(counter: RefCounter) {
     this.#counter = counter;
@@ -38,6 +52,11 @@ export class RefTable {
 
   get size(): number {
     return this.#byRef.size;
+  }
+
+  /** The newest ref number given out in this browser so far. */
+  get mark(): number {
+    return this.#counter.peek();
   }
 
   refFor(handle: NodeHandle): string {
@@ -48,6 +67,25 @@ export class RefTable {
     this.#byRef.set(ref, handle);
     this.#byNode.set(key, ref);
     return ref;
+  }
+
+  locate(ref: string, locator: RefLocator): void {
+    if (this.#byRef.has(ref)) this.#locators.set(ref, locator);
+  }
+
+  locator(ref: string): RefLocator | undefined {
+    return this.#locators.get(ref);
+  }
+
+  /** The page put a new element where the ref's was (a re-render): the ref names the new one from now on. */
+  move(ref: string, backendNodeId: number): NodeHandle & { ref: string } {
+    const handle = this.#byRef.get(ref);
+    if (!handle) throw staleRefError(ref);
+    const moved = { ...handle, backendNodeId };
+    if (this.#byNode.get(nodeKey(handle)) === ref) this.#byNode.delete(nodeKey(handle));
+    this.#byRef.set(ref, moved);
+    if (!this.#byNode.has(nodeKey(moved))) this.#byNode.set(nodeKey(moved), ref);
+    return { ...moved, ref };
   }
 
   /** Throws the stale-ref error for a ref this tab never gave out or has since revoked. */
@@ -62,13 +100,15 @@ export class RefTable {
     const handle = this.#byRef.get(ref);
     if (!handle) return;
     this.#byRef.delete(ref);
-    this.#byNode.delete(nodeKey(handle));
+    if (this.#byNode.get(nodeKey(handle)) === ref) this.#byNode.delete(nodeKey(handle));
+    this.#locators.delete(ref);
   }
 
   /** A main-frame navigation, a control change or a resolved dialog. */
   invalidateAll(): void {
     this.#byRef.clear();
     this.#byNode.clear();
+    this.#locators.clear();
   }
 
   invalidateFrames(frameIds: ReadonlySet<string>): void {

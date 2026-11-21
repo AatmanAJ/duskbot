@@ -16,7 +16,7 @@ describe("RecentTabs", () => {
       { title: "Invoice", url: "https://pay.example.com/new", image: Buffer.from("jpeg") },
       { title: "Docs", url: "https://example.com/docs", image: null },
     ] });
-    now += 30 * 60_000 - 1;
+    now += 60 * 60_000 - 1;
     expect(recent.get("bot-a")?.tabs).toHaveLength(2);
     now += 1;
     expect(recent.get("bot-a")).toBeNull();
