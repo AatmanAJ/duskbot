@@ -95,6 +95,10 @@ export const SCENARIOS_2: Scenario[] = [
     "Two deliverables that open: a packing checklist and a budget sheet that adds up to at most ₹40,000.", { long: true }),
   s("mt-five-quick", "multi-task", "five asks", ["quick ones: capital of Australia? 15% of 2,340? a synonym for 'happy'? how many days till Christmas? and a one-line joke about Mondays"],
     "Five short answers in one reply: Canberra, 351, a synonym, the right day count from today's date, a one-line joke."),
+  s("mt-parallel-parts", "multi-task", "independent parts at once", ["three separate things, none depends on another: 1) a packing checklist document for a 3 day Goa trip for 2 2) a separate budget sheet document for it, ₹25,000 total 3) remind me friday at 6pm to pack"],
+    "Two separate documents (a packing checklist and a budget sheet that adds up to ₹25,000 or less) and a real one-off reminder for Friday 6 pm, all from this one message, with one reply naming all three; nothing left for later."),
+  s("mt-parallel-jobs", "multi-task", "separate jobs at once", ["run these as three separate jobs at the same time so I can read each on its own: a 120 word blurb for my bakery 'Crumb & Co' for Instagram, one for its website, and one for a local newspaper ad"],
+    "Opens three separate jobs (one per blurb, each with full instructions) instead of writing all three in this chat, tells the person where each one is, and each job writes its blurb of about 120 words for its channel."),
 
   // long chats that pass compaction (run with --compact-at)
   s("lc-project-facts", "long chat", "long chat recall", ["I'm launching 'Kestrel', a reusable steel lunch box. Key facts: budget ₹12.5 lakh, launch date Feb 14, manufacturer Orbit Metalworks (contact Priya Nair), price ₹1,299. Remember these for this chat.", ...filler, "quick check: what's the Kestrel budget, launch date, manufacturer contact and price?"],

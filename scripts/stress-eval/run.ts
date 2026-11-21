@@ -20,6 +20,7 @@ import { SCENARIOS_2 } from "./scenarios2.ts";
 import { SCENARIOS_3 } from "./scenarios3.ts";
 import { startSite } from "./site.ts";
 import { listen, type Frame } from "./events.ts";
+import { parallelism } from "./parallel.ts";
 import { SCENARIOS, type Scenario } from "./scenarios.ts";
 import { hardChecks, type Checked } from "./checks.ts";
 import { judge, type Verdict } from "./judge.ts";
@@ -333,7 +334,7 @@ async function converse(srv: StressServer, frames: Frame[], job: { key: string; 
   return {
     key: job.key, id: scenario.id, run: job.run, persona: scenario.persona, shape: scenario.shape, model: values.model, at: new Date().toISOString(),
     wallMs: Date.now() - started, states, timings: timings.map(({ say, firstVisibleMs, firstTextMs, totalMs, state }) => ({ say: say.slice(0, 120), firstVisibleMs, firstTextMs, totalMs, state })),
-    engine, tools, runtimeErrors, ...(scenario.site ? { site: site.log(siteId) } : {}), routines, waits, jobs: jobFacts, webhooks, compactions, ...(liveCheck ? { liveCheck } : {}), checked, verdict, dataDir: srv.dataDir, memory: memory.slice(-1500), aboutMe: aboutMe.slice(-800),
+    engine, tools, parallel: parallelism(frames, threads), runtimeErrors, ...(scenario.site ? { site: site.log(siteId) } : {}), routines, waits, jobs: jobFacts, webhooks, compactions, ...(liveCheck ? { liveCheck } : {}), checked, verdict, dataDir: srv.dataDir, memory: memory.slice(-1500), aboutMe: aboutMe.slice(-800),
     transcript: threadLogs.map((t) => t.messages.filter((m) => m.kind === "text" || (m.role === "bot" && m.kind !== "activity" && m.kind !== "digest")).map((m) => ({
       role: m.role, kind: m.kind, text: (m.text ?? "").slice(0, 4_000), ...(m.card ? { card: m.card } : {}), ...(m.document ? { document: { title: m.document.title, kind: m.document.kind, bytes: m.document.bytes, status: m.documentRead?.status, text: m.documentRead?.text.slice(0, 2_500) } } : {}), attachments: (m.attachments ?? []).map((a) => ({ kind: a.kind, name: a.name ?? a.path.split("/").at(-1) })),
     }))),
