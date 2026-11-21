@@ -2,5 +2,17 @@
   "pr-22.before-after.png": { "crop": "0,0,336,200" },
   "pr-22.before.png": { "crop": "0,0,336,200" },
   "pr-22.after.png": { "crop": "0,0,336,200" },
-  "pr-22.gif": { "labels": ["composer clicked", "start dictation", "send message", "search", "new bot", "resize sidebar", "pepper", "actions for pepper", "actions for fixture starter", "give feedback", "you", "connect apps", "open pepper's profile", "conversation with pepper", "add reaction", "reply to message", "message actions"] }
+  "pr-22.gif": {
+    "frames": [
+      "pr-22.f04-search.raw.png",
+      "pr-22.f05-new-bot.raw.png",
+      "pr-22.f07-pepper.raw.png",
+      "pr-22.f08-actions-for-pepper.raw.png",
+      "pr-22.f09-actions-for-fixture-starter.raw.png"
+    ],
+    "labels": ["search", "new bot", "pepper", "actions for pepper", "actions for fixture starter"],
+    "crop": "0,0,352,200",
+    "hold": 1000,
+    "fade": 240
+  }
 }
