@@ -1,11 +1,14 @@
-import { createContext, useContext, useEffect, useId, useRef, type ReactNode, type RefObject } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
+import { phoneApp } from "@/lib/store-app";
+import { flushSystemControls, wakeSystemControls } from "@/lib/system-control";
+import { closesOnBack } from "@/mobile/Sheet";
 import { Icon, type IconName } from "../Icon";
 import { useIsPresent } from "motion/react";
-import { dialogMotion } from "@/lib/motion-presets";
+import { dialogMotion, phoneDialogMotion } from "@/lib/motion-presets";
 import { ScrimMotion, SheetMotion, useMotionReduced } from "./SheetMotion";
 
 const buttonBase = "dusk-press inline-flex shrink-0 cursor-pointer items-center justify-center gap-1 whitespace-nowrap rounded-[9999px] font-normal outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-default";
@@ -56,16 +59,16 @@ const FOCUSABLE = "button:not([disabled]), input:not([disabled]), textarea:not([
 /** Set by a sheet with a rail (the bot's settings): a dialog inside it draws as that sheet's pane instead of its own sheet. */
 export const DialogPane = createContext(false);
 
-/** Focus into the dialog on open and back to the opener on close, Escape to close, Tab kept inside. A nested dialog
- * handles its own keys. */
+/** Focus into the dialog on open, unless a field inside already took it with `autoFocus`, and back to the opener on
+ * close; Escape to close, Tab kept inside. A nested dialog handles its own keys. */
 export function useDialogKeys(sheet: RefObject<HTMLElement | null>, onClose: () => void) {
   const close = useRef(onClose);
   close.current = onClose;
+  const [opener] = useState(focusedElement);
 
   useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const root = sheet.current;
-    (root?.querySelector<HTMLElement>("[data-autofocus]") ?? root)?.focus({ preventScroll: true });
+    if (!root?.contains(document.activeElement)) (root?.querySelector<HTMLElement>("[data-autofocus]") ?? root)?.focus({ preventScroll: true });
     const onKey = (event: KeyboardEvent) => {
       const box = sheet.current;
       if (!box || (event.key !== "Escape" && event.key !== "Tab")) return;
@@ -92,9 +95,13 @@ export function useDialogKeys(sheet: RefObject<HTMLElement | null>, onClose: () 
       window.removeEventListener("keydown", onKey);
       if (opener?.isConnected) opener.focus({ preventScroll: true });
     };
-  }, [sheet]);
+  }, [sheet, opener]);
 
   return close;
+}
+
+function focusedElement(): HTMLElement | null {
+  return typeof document !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null;
 }
 
 /** On its own, Grok's form dialog (New login), easing in as bencho's modal does; inside a railed sheet, that sheet's pane. */
@@ -112,7 +119,7 @@ interface DialogProps {
   footer?: ReactNode;
   children: ReactNode;
   "data-panel-modal"?: string;
-  /** Eases in and out (the parent keeps it in an AnimatePresence) instead of opening and closing raw, sheet only. */
+  /** Eases in, and out when the parent keeps it in an AnimatePresence; false opens and closes it raw. Sheet only. */
   animated?: boolean;
   /** A short notice, a line or two under the title: the title sits centred on its close and the words follow close
    * under it, as a confirm's do, sheet only. */
@@ -139,21 +146,47 @@ function PaneView({ title, description: _description, art: _art, footer, childre
   );
 }
 
-function SheetView({ title, description, art, width = 440, onClose, footer, children, animated = false, notice = false, ...rest }: DialogProps) {
+function SheetView({ title, description, art, width = 440, onClose, footer, children, animated = true, notice = false, ...rest }: DialogProps) {
   const sheet = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descriptionId = useId();
   const close = useDialogKeys(sheet, onClose);
   const reduced = useMotionReduced();
-  const motion = animated ? dialogMotion(reduced) : null;
+  const phone = phoneApp();
+  const motion = animated ? (phone ? phoneDialogMotion(reduced) : dialogMotion(reduced)) : null;
   // motion animates it, so the css keyframe on [aria-modal] and the scrim's fade stand down
   const raw = motion ? "" : undefined;
   // on its way out (inside its parent's AnimatePresence) it takes no more presses or focus
   const leaving = !useIsPresent();
+  useEffect(() => (phone && !leaving ? closesOnBack(() => close.current()) : undefined), [phone, leaving, close]);
+  useEffect(() => {
+    if (!phone) return;
+    wakeSystemControls();
+    return () => { void flushSystemControls(); };
+  }, [phone]);
+  useEffect(() => {
+    if (phone && leaving) wakeSystemControls();
+  }, [phone, leaving]);
+
+  const portalRoot = phone ? (document.querySelector(".dusk-mobile") ?? document.body) : document.body;
 
   return createPortal(
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" inert={leaving || undefined} data-leaving={leaving ? "" : undefined}>
-      <ScrimMotion aria-hidden="true" data-modal-scrim data-raw-dialog={raw} className="ui-dialog-scrim absolute inset-0" onMouseDown={() => close.current()} {...motion?.scrim} />
+    <div
+      data-phone-modal-layer={phone ? "" : undefined}
+      className={cn("fixed inset-0 flex items-center justify-center p-4", phone ? "z-[80]" : "z-[60]")}
+      style={phone ? { paddingTop: "max(var(--m-safe-top, 0px), 16px)", paddingBottom: "max(calc(var(--m-kb, 0px) + 12px), var(--m-safe-bottom, 0px), 16px)" } : undefined}
+      inert={leaving || undefined}
+      data-leaving={leaving ? "" : undefined}
+    >
+      <ScrimMotion
+        aria-hidden="true"
+        data-modal-scrim
+        data-raw-dialog={raw}
+        className="ui-dialog-scrim absolute inset-0"
+        onMouseDown={() => close.current()}
+        onClick={() => { if (phone) close.current(); }}
+        {...motion?.scrim}
+      />
       <SheetMotion
         ref={sheet}
         {...rest}
@@ -165,7 +198,7 @@ function SheetView({ title, description, art, width = 440, onClose, footer, chil
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
         style={{ maxWidth: `min(${width}px, calc(100vw - 32px))` }}
-        className={formSheetCls}
+        className={cn(formSheetCls, phone && "max-h-full!")}
       >
         <header className={cn(formHeaderCls, notice && "items-center pb-1")}>
           {art
@@ -182,7 +215,7 @@ function SheetView({ title, description, art, width = 440, onClose, footer, chil
         {footer && <div className={formFooterCls}>{footer}</div>}
       </SheetMotion>
     </div>,
-    document.body,
+    portalRoot,
   );
 }
 

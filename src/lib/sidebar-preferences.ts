@@ -342,3 +342,82 @@ export function saveSimpleSectionOrder(
 ): void {
   saveStringList(SIMPLE_SIDEBAR_SECTION_ORDER_KEY, ids, storage);
 }
+
+/** How the sidebar lists bots: newest activity first, or the order the person dragged them into. */
+export type SidebarBotOrder = "recent" | "custom";
+export const SIDEBAR_BOT_ORDER_KEY = "duskbot.sidebarBotOrder";
+const BOT_ORDER_CHANGED = "dusk-sidebar-bot-order";
+
+export function parseSidebarBotOrder(value: string | null): SidebarBotOrder {
+  return value === "custom" ? "custom" : "recent";
+}
+
+function currentSidebarBotOrder(): SidebarBotOrder {
+  try { return parseSidebarBotOrder(globalThis.localStorage?.getItem(SIDEBAR_BOT_ORDER_KEY) ?? null); } catch { return "recent"; }
+}
+
+function subscribeSidebarBotOrder(listener: () => void): () => void {
+  if (typeof window === "undefined" || typeof window.addEventListener !== "function") return () => {};
+  const onStorage = (event: StorageEvent) => { if (event.key === SIDEBAR_BOT_ORDER_KEY || event.key === null) listener(); };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(BOT_ORDER_CHANGED, listener);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(BOT_ORDER_CHANGED, listener);
+  };
+}
+
+export function setSidebarBotOrder(order: SidebarBotOrder): void {
+  try {
+    globalThis.localStorage?.setItem(SIDEBAR_BOT_ORDER_KEY, order);
+    window.dispatchEvent(new Event(BOT_ORDER_CHANGED));
+  } catch { /* storage blocked */ }
+}
+
+export function useSidebarBotOrder(): SidebarBotOrder {
+  return useSyncExternalStore(subscribeSidebarBotOrder, currentSidebarBotOrder, () => "recent");
+}
+
+export const SIDEBAR_FEEDBACK_HIDDEN_KEY = "duskbot.sidebarFeedbackHidden";
+const FEEDBACK_HIDDEN_CHANGED = "dusk-sidebar-feedback-hidden";
+let feedbackHiddenFallback = false;
+
+export function loadSidebarFeedbackHidden(storage?: Pick<Storage, "getItem"> | null): boolean {
+  try {
+    const target = storage === undefined ? (globalThis.localStorage ?? null) : storage;
+    return target ? target.getItem(SIDEBAR_FEEDBACK_HIDDEN_KEY) === "1" : feedbackHiddenFallback;
+  } catch {
+    return feedbackHiddenFallback;
+  }
+}
+
+function currentSidebarFeedbackHidden(): boolean {
+  return loadSidebarFeedbackHidden();
+}
+
+function subscribeSidebarFeedbackHidden(listener: () => void): () => void {
+  if (typeof window === "undefined" || typeof window.addEventListener !== "function") return () => {};
+  const onStorage = (event: StorageEvent) => { if (event.key === SIDEBAR_FEEDBACK_HIDDEN_KEY || event.key === null) listener(); };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(FEEDBACK_HIDDEN_CHANGED, listener);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(FEEDBACK_HIDDEN_CHANGED, listener);
+  };
+}
+
+export function setSidebarFeedbackHidden(hidden: boolean): void {
+  feedbackHiddenFallback = hidden;
+  try {
+    if (hidden) globalThis.localStorage?.setItem(SIDEBAR_FEEDBACK_HIDDEN_KEY, "1");
+    else globalThis.localStorage?.removeItem(SIDEBAR_FEEDBACK_HIDDEN_KEY);
+  } catch {
+  }
+  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    window.dispatchEvent(new Event(FEEDBACK_HIDDEN_CHANGED));
+  }
+}
+
+export function useSidebarFeedbackHidden(): boolean {
+  return useSyncExternalStore(subscribeSidebarFeedbackHidden, currentSidebarFeedbackHidden, () => false);
+}

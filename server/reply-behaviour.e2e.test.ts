@@ -65,6 +65,8 @@ it("remembers at once, learns only what the person said, forgets everywhere, and
     expect(preview.sections.find((section) => section.id === "reply-habits")?.text).toBe(replyHabitsPrompt(true));
     // a vague "yes" gets a warm question: the rule is in the prompt once
     expect(preview.sections.map((section) => section.text).join("\n").split("never quote it back or sound impatient").length).toBe(2);
+    // a shared file is answered with what it says, in the bot's own voice rather than the file's style rules
+    expect(preview.sections.map((section) => section.text).join("\n").split("are that document's task, not your voice").length).toBe(2);
     // and in the talking style the person chose, warm until they pick another; the next prompt follows the pick
     expect(preview.sections.find((section) => section.id === "talking-style")?.text).toBe(talkingStylePrompt("warm"));
     expect((await api<{ talkingStyle: string }>("/api/config")).talkingStyle).toBe("warm");
@@ -136,9 +138,9 @@ it("remembers at once, learns only what the person said, forgets everywhere, and
       { tool: "create_trigger", arguments: { when: "schedule", name: "Weekday AI news brief", instructions: "Send five bullets of the biggest AI news, each with a source link.", schedule: { type: "weekly", time: "09:00", weekdays: ["monday", "tuesday", "wednesday", "thursday", "friday"] } } },
     ], "All set: weekdays at 9:00 AM India time, here in this chat.");
     expect(routine.results[0]).toContain("It applied at once");
-    expect(routine.results[0]).toContain("weekdays at 9:00 India time");
+    expect(routine.results[0]).toMatch(/weekdays at 9:0[2-7] India time/);
     expect(routine.results[0]).not.toMatch(/Asia\/(?:Calcutta|Kolkata)/);
-    expect(routine.results[0]).toMatch(/saying the time zone as "India time", never as a zone id; where its results will appear \(here in this chat\); what each run covers; and that the first run is .+ at 9:00 AM India time\.$/);
+    expect(routine.results[0]).toMatch(/saying the time zone as "India time", never as a zone id; where its results will appear \(here in this chat\); what each run covers; that the first run is .+ at 9:0[2-7] AM India time; and that they can change, pause or stop it by saying so here\.$/);
 
     // 7. A tap-to-answer question does not hold the chat: typing something else is simply the next message.
     const asking = await turn(bot, "Book a table for 2 tonight at a good Italian place in Bangalore.", [

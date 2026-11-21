@@ -41,8 +41,11 @@ const strip = process.env.DUSK_SIDEBAR_DRAG_STRIP;
     page = await openHeadlessChrome(profile);
     const { send, evaluate, until } = page;
     await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 800, deviceScaleFactor: 2, mobile: false });
+    // dragging is the person's own order; by recent activity the lists order themselves
     await send("Page.navigate", { url: `${ui.previewUrl}?skin=daylight` });
     await until(`document.querySelector('[data-sidebar-bot-row="${ids.Echo}"]')`);
+    await evaluate(`localStorage.setItem("duskbot.sidebarBotOrder", "custom"); window.dispatchEvent(new Event("dusk-sidebar-bot-order"))`);
+    await until(`document.querySelector('[data-bot-reorder-row="${ids.Echo}"]')`);
     await delay(800);
 
     const centre = async (name: string) => await evaluate(`(() => { const box = document.querySelector('[data-sidebar-bot-row="${ids[name]}"]').getBoundingClientRect(); return { x: box.left + box.width / 2, y: box.top + box.height / 2 }; })()`) as { x: number; y: number };
