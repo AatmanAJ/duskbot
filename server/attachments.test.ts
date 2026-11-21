@@ -316,8 +316,15 @@ describe("aggregate attachment storage", () => {
     expect(saved).toMatchObject({ name: "huge-photo.png", mime: "image/png", bytes: png.byteLength });
     expect(saved.path.endsWith(".png")).toBe(true);
 
-    await expect(saveFile((async function* () { yield Buffer.from("<html>not a picture</html>"); })(), "page.png", "image/png"))
-      .rejects.toMatchObject({ status: 400 });
+    let chunksRead = 0;
+    await expect(saveFile((async function* () {
+      chunksRead += 1;
+      yield Buffer.from("<html>not a picture</html>");
+      chunksRead += 1;
+      yield Buffer.alloc(1024);
+    })(), "page.png", "image/png")).rejects.toMatchObject({ status: 400 });
+    expect(chunksRead, "refused at the first bytes, before the rest is read").toBe(1);
+    await expect(saveFile((async function* () { yield Buffer.from("GIF8"); })(), "cut-short.gif", "image/gif")).rejects.toMatchObject({ status: 400 });
     expect(readdirSync(ATTACHMENTS_DIR).every((name) => !name.endsWith(".partial"))).toBe(true);
   });
 

@@ -817,9 +817,11 @@ export function Composer({
         dispatch({ type: "error", message: t("composer.error.clipboardImage") });
         return;
       }
-      const kept = imagesThatFit(imageFiles, imageSlotsLeft(attachments), setAttachmentNotice, imageBytesLeft(attachments));
+      const notices: string[] = [];
+      const kept = imagesThatFit(imageFiles, imageSlotsLeft(attachments), (notice) => notices.push(notice), imageBytesLeft(attachments));
       const asFiles = kept.filter(imageSentAsFile);
-      if (asFiles.length) setAttachmentNotice(imagesAsFilesNotice(asFiles.map((file) => file.name)));
+      if (asFiles.length) notices.push(imagesAsFilesNotice(asFiles.map((file) => file.name)));
+      if (notices.length) setAttachmentNotice(notices.join(" "));
       changeDraftAttachmentPending(draftId, true);
       void (async () => {
         try {

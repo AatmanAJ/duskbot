@@ -512,6 +512,11 @@ export async function saveFile(
     let file: Awaited<ReturnType<typeof open>> | undefined;
     let bytes = 0;
     let head = Buffer.alloc(0);
+    let headChecked = !IMAGE_MIMES[normalized];
+    const requireClaimedImage = () => {
+      if (imageMimeOf(head) !== normalized) throw statusError(400, `file bytes are not ${normalized}`);
+      headChecked = true;
+    };
     let closed = false;
     let partialCleanupFailed = false;
 
@@ -526,7 +531,10 @@ export async function saveFile(
           throw statusError(413, `file exceeds ${FILE_MAX_BYTES} bytes`);
         }
         reservation.ensure(bytes + chunk.byteLength);
-        if (head.byteLength < IMAGE_HEAD_BYTES) head = Buffer.concat([head, chunk.subarray(0, IMAGE_HEAD_BYTES - head.byteLength)]);
+        if (!headChecked) {
+          head = Buffer.concat([head, chunk.subarray(0, IMAGE_HEAD_BYTES - head.byteLength)]);
+          if (head.byteLength === IMAGE_HEAD_BYTES) requireClaimedImage();
+        }
         let offset = 0;
         while (offset < chunk.byteLength) {
           const result = await file.write(chunk, offset, chunk.byteLength - offset, null);
@@ -536,7 +544,7 @@ export async function saveFile(
         bytes += chunk.byteLength;
       }
       if (bytes === 0) throw statusError(400, "empty file");
-      if (IMAGE_MIMES[normalized] && imageMimeOf(head) !== normalized) throw statusError(400, `file bytes are not ${normalized}`);
+      if (!headChecked) requireClaimedImage();
       await file.close();
       closed = true;
       try {
