@@ -14,7 +14,8 @@ capture() { # NAME ROOT FILE
   load $1
   click $1 'button "Open bot list"'; sleep 1.5
   echo "$1: $(js $1 $GAPS)"
-  shot $1 $3
+  # the section of rows, from above its "Test bots" heading to under the last whole row
+  shot $1 $3 0 240 390 538
 }
 capture before $BASE pr-50.before.raw.png
 fx_stop before
