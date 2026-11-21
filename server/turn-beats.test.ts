@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeEvent } from "./contracts.ts";
 import { toolStep } from "./step-summary.ts";
 import {
-  ACK_IDLE_MS, RETRY_429_MS, beatPrompt, beatsNote, cleanBeat, createTurnBeats, looksLikeWork, MILESTONE_QUIET_MS, PLAN_MIN_MS, PLAN_WRITE_MS, type BeatKind,
+  ACK_IDLE_MS, RETRY_BUSY_MS, beatPrompt, beatsNote, cleanBeat, createTurnBeats, looksLikeWork, MILESTONE_QUIET_MS, PLAN_MIN_MS, PLAN_WRITE_MS, type BeatKind,
 } from "./turn-beats.ts";
 
 const THREAD = "th1";
@@ -83,12 +83,31 @@ describe("turn beats", () => {
     expect(posts.map((p) => p.kind)).toEqual(["ack"]);
   });
 
+  it("asks the writer once more when the model is overloaded, but not after other failures", async () => {
+    const busy = setup({ fails: ["upstream HTTP 503: auth_unavailable: no auth available (last upstream error: server_is_overloaded)"] });
+    busy.beats.start({ botId: "b", threadId: THREAD, text: "Research the best budget mechanical keyboards in India", attachments: 0, unattended: false });
+    busy.send(event({ type: "turn.started" }));
+    busy.send(toolStart("WebSearch", { query: "keyboards" }, "s1"));
+    await vi.advanceTimersByTimeAsync(RETRY_BUSY_MS + 2_100);
+    expect(busy.prompts.map((p) => p.kind)).toEqual(["ack", "ack"]);
+    expect(busy.posts.map((p) => p.kind)).toEqual(["ack"]);
+    vi.useRealTimers();
+
+    const broken = setup({ fails: ["upstream HTTP 400: bad request"] });
+    broken.beats.start({ botId: "b", threadId: THREAD, text: "Research the best budget mechanical keyboards in India", attachments: 0, unattended: false });
+    broken.send(event({ type: "turn.started" }));
+    broken.send(toolStart("WebSearch", { query: "keyboards" }, "s1"));
+    await vi.advanceTimersByTimeAsync(RETRY_BUSY_MS + 3_000);
+    expect(broken.prompts.map((p) => p.kind)).toEqual(["ack"]);
+    expect(broken.posts).toEqual([]);
+  });
+
   it("asks the writer once more after a rate limit, and gives up after a second one", async () => {
     const limited = setup({ fails: ["429 Too Many Requests"] });
     limited.beats.start({ botId: "b", threadId: THREAD, text: "Research the best budget mechanical keyboards in India", attachments: 0, unattended: false });
     limited.send(event({ type: "turn.started" }));
     limited.send(toolStart("WebSearch", { query: "keyboards" }, "s1"));
-    await vi.advanceTimersByTimeAsync(RETRY_429_MS + 2_100);
+    await vi.advanceTimersByTimeAsync(RETRY_BUSY_MS + 2_100);
     expect(limited.prompts.map((p) => p.kind)).toEqual(["ack", "ack"]);
     expect(limited.posts.map((p) => p.kind)).toEqual(["ack"]);
     vi.useRealTimers();
@@ -97,7 +116,7 @@ describe("turn beats", () => {
     twice.beats.start({ botId: "b", threadId: THREAD, text: "Research the best budget mechanical keyboards in India", attachments: 0, unattended: false });
     twice.send(event({ type: "turn.started" }));
     twice.send(toolStart("WebSearch", { query: "keyboards" }, "s1"));
-    await vi.advanceTimersByTimeAsync(RETRY_429_MS + 3_000);
+    await vi.advanceTimersByTimeAsync(RETRY_BUSY_MS + 3_000);
     expect(twice.prompts.map((p) => p.kind)).toEqual(["ack", "ack"]);
     expect(twice.posts).toEqual([]);
   });
@@ -271,6 +290,11 @@ describe("beat text", () => {
     expect(looksLikeWork("Research the best budget keyboards", 0)).toBe(true);
     expect(looksLikeWork("what's 18% of 2450?", 0)).toBe(false);
     expect(looksLikeWork("hi", 1)).toBe(true);
+    for (const setupAsk of ["remind me at 7 to call grandma", "tell me when the price of the Sony headphones drops below 20000",
+      "every monday 9am give me a summary of open brand deals", "make it 9:30 instead, and skip fridays", "wait, it's in Rust not Go", "cancel my daily standup reminder"]) {
+      expect(looksLikeWork(setupAsk, 0)).toBe(true);
+    }
+    for (const quick of ["what's the capital of Australia?", "thanks!", "how many days are in a leap year?"]) expect(looksLikeWork(quick, 0)).toBe(false);
   });
 
   it("is nothing for the engine when nothing was sent", () => {

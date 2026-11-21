@@ -17,9 +17,9 @@ export const ACK_MIN_MS = 1_500;
  * once the engine shows it is thinking (or at once, for an engine that shows none): an ack nothing follows is a promise
  * the turn did not keep. */
 export const ACK_IDLE_MS = 4_000;
-/** The pause before a beat's writer is asked once more after a rate limit. */
-export const RETRY_429_MS = 700;
-const RATE_LIMITED = /\b429\b|rate.?limit|too many requests/i;
+/** The pause before a beat's writer is asked once more after a rate limit or a busy model. */
+export const RETRY_BUSY_MS = 700;
+const BUSY = /\b(?:429|50[234])\b|rate.?limit|too many requests|overloaded|auth_unavailable/i;
 /** The second message is written from here, once a tool has run, and goes out from PLAN_MIN_MS: only a job that runs
  * past half a minute gets one, so a quick task reads as an ack and its result. */
 export const PLAN_WRITE_MS = 26_000;
@@ -106,9 +106,13 @@ interface Watch {
   timer: ReturnType<typeof setInterval>;
 }
 
+/** Asks that set something up or change it (a reminder, a watch, a routine, a correction): they run tools before any
+ * reply, so their ack is written as the turn starts rather than after the first tool. */
+const SETUP_ASK = /\b(?:remind|reminder|notify|alert|ping me|tell me (?:when|if|as soon)|let me know|keep an eye|watch|monitor|track|every (?:day|morning|evening|night|week|weekday|month|hour|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d)|each (?:day|morning|week|monday|tuesday|wednesday|thursday|friday)|daily|weekly|cancel|stop (?:the|my)|turn off|make it|change it|instead|skip|move it|set up|set an?|add (?:a|an|it)|wait,|actually,)/i;
+
 /** Whether a message asks for work that is worth an ack before any tool has run. */
 export function looksLikeWork(text: string, attachments: number): boolean {
-  return classifyTurn({ text, attachments, priorTurnUsedTools: false }) === "complex";
+  return classifyTurn({ text, attachments, priorTurnUsedTools: false }) === "complex" || SETUP_ASK.test(text);
 }
 
 function personaLines(bot: { name: string; soul?: string }): string {
@@ -214,10 +218,10 @@ export function createTurnBeats(deps: TurnBeatsDeps) {
     const prompt = beatPrompt(kind, { name: bot.name, soul: bot.soul, apps: bot.apps, ask: watch.ask, steps, said: watch.said.slice(-4), minutes: Math.round((now() - watch.startedAt) / 60_000) });
     const signal = beat.abort.signal;
     const once = () => writer(prompt, { signal, timeoutMs: WRITE_TIMEOUT_MS });
-    // a busy small model answers 429 at the busiest moment, the turn's start: one more try after a short pause
+    // a busy model answers 429 or a 5xx "overloaded" at the busiest moment, the turn's start: one more try after a short pause
     const written = once().catch(async (error: unknown) => {
-      if (!RATE_LIMITED.test(error instanceof Error ? error.message : String(error)) || signal.aborted) throw error;
-      await new Promise((done) => setTimeout(done, RETRY_429_MS));
+      if (!BUSY.test(error instanceof Error ? error.message : String(error)) || signal.aborted) throw error;
+      await new Promise((done) => setTimeout(done, RETRY_BUSY_MS));
       if (signal.aborted || beat.phase !== "writing") throw error;
       return once();
     });
