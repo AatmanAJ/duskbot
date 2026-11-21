@@ -1,6 +1,6 @@
 // A macOS app launched from Finder inherits a bare PATH (no ~/.local/bin, /opt/homebrew/bin or nvm/volta/asdf shims),
 // so every agent CLI spawn goes through augmentedPath().
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { closeSync, existsSync, openSync, readFileSync, readSync, realpathSync, statSync, readdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, delimiter, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
@@ -140,22 +140,40 @@ function mergePaths(parts: string[]): string {
 }
 
 function probeLoginShellPath(): void {
-  const shell = process.env.SHELL || "/bin/zsh";
-  // -l -i: nvm and friends live in .zshrc/.bashrc, which only interactive shells read; a marker isolates $PATH from rc noise.
-  execFile(
-    shell,
-    ["-l", "-i", "-c", 'printf "__DUSK_PATH__%s" "$PATH"'],
-    { timeout: 5000 },
-    (err, stdout) => {
-      if (err || !stdout) return;
-      const m = /__DUSK_PATH__([^\n]*)/.exec(stdout);
-      if (!m || !m[1]) return;
-      loginShellPath = m[1];
-      // Fallback dirs stay last, behind what the person's shell adds.
-      const fallback = [...bundledAppDirs(), ...fallbackDirs].filter((d) => existsSync(d));
-      cached = mergePaths([...(cached ?? "").split(delimiter).filter((d) => !fallback.includes(d)), ...m[1].split(delimiter), ...fallback]);
-    },
-  );
+  void readLoginShellPath(process.env.SHELL || "/bin/zsh").then((path) => {
+    if (!path) return;
+    loginShellPath = path;
+    // Fallback dirs stay last, behind what the person's shell adds.
+    const fallback = [...bundledAppDirs(), ...fallbackDirs].filter((d) => existsSync(d));
+    cached = mergePaths([...(cached ?? "").split(delimiter).filter((d) => !fallback.includes(d)), ...path.split(delimiter), ...fallback]);
+  });
+}
+
+/** The PATH an interactive login shell sets up, or null. Runs the shell in its own session, with no terminal: an
+ * interactive bash that finds a terminal whose foreground group is not its own sends SIGTTIN to its whole group, which
+ * stops the caller with it for good (`duskbot` run by the installer from an ssh session). Killed with SIGKILL at the
+ * deadline, since an interactive bash ignores SIGTERM. */
+export function readLoginShellPath(shell: string, timeoutMs = 5000): Promise<string | null> {
+  return new Promise((resolvePath) => {
+    let out = "";
+    let child: ReturnType<typeof spawn>;
+    try {
+      // -l -i: nvm and friends live in .zshrc/.bashrc, which only interactive shells read; a marker isolates $PATH from rc noise.
+      child = spawn(shell, ["-l", "-i", "-c", 'printf "__DUSK_PATH__%s" "$PATH"'], { detached: true, stdio: ["ignore", "pipe", "ignore"] });
+    } catch {
+      return resolvePath(null);
+    }
+    const timer = setTimeout(() => {
+      try { process.kill(-child.pid!, "SIGKILL"); } catch { child.kill("SIGKILL"); }
+    }, timeoutMs);
+    child.stdout!.on("data", (chunk: Buffer) => { if (out.length < 256 * 1024) out += chunk.toString("utf8"); });
+    child.on("error", () => { clearTimeout(timer); resolvePath(null); });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      const m = code === 0 ? /__DUSK_PATH__([^\n]*)/.exec(out) : null;
+      resolvePath(m?.[1] || null);
+    });
+  });
 }
 
 export function resetPathCacheForTests(): void {

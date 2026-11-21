@@ -44,7 +44,7 @@ export interface BoxSetup {
   seccompFd?: number;
   /** Security: on a host where engines must never reach the server's own files (a VPS install), no line may hold a
    * `whole` path (the server's HOME, the data folder) or lie inside an `inside` one (HOME's keys, settings and code), and a
-   * working folder inside the data folder must be a bot's own. Such a spawn is refused, never boxed with a hole. */
+   * working folder inside the data folder must be a bot's own (or the engine home its environment names, namedEngineHomes). Such a spawn is refused, never boxed with a hole. */
   fence?: BoxFence;
   /** Test knobs; production passes none. */
   mutate?: ReadonlySet<BoxMutation>;
@@ -130,12 +130,29 @@ export const PATH_ENV_NAMES = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HO
  * runtime) read `possible` at start and stop themselves (SIGABRT, exit 134) when it is missing. */
 export const CPU_LIST_FILES = ["/sys/devices/system/cpu/possible", "/sys/devices/system/cpu/online"] as const;
 
+/** Security: the message never names the path, since it reaches people; `path` is for the server's own log. */
 export class BoxFenceError extends Error {
   readonly path: string;
   constructor(path: string) {
-    super(`The bot box will not share ${path} with a bot: it holds this server's private files. Pick a working folder of the bot's own.`);
+    super("The bot box will not let a bot use that folder: it holds this server's private files. Pick a working folder of the bot's own.");
     this.path = path;
   }
+}
+
+/** The engine homes this spawn's environment names under `<data>/providers/<engine>/<id>` (an Antigravity account's
+ * GEMINI_HOME): that engine's own sign-in and state, which its own runs may also work in. Security: the server builds the
+ * environment per engine instance, so another engine's run, or a turn whose working folder is merely chosen there, never
+ * names this home and stays fenced out of it. */
+export function namedEngineHomes(env: Record<string, string | undefined>, dataDir: string): string[] {
+  const providers = join(resolve(dataDir), "providers");
+  const homes: string[] = [];
+  for (const name of PATH_ENV_NAMES) {
+    const value = env[name];
+    if (!value || !isAbsolute(value)) continue;
+    const rel = relative(providers, resolve(value)).split(sep);
+    if (rel.length >= 2 && rel.every((part) => ID.test(part))) homes.push(resolve(value));
+  }
+  return homes;
 }
 
 /** Whether `fence` keeps `path` out of every box. `cwd` adds the data folder rule. */
@@ -202,7 +219,8 @@ export function planBox(setup: BoxSetup, request: BoxRequest): BoxPlan {
 
   const cwd = request.cwd ? resolve(request.cwd) : null;
   const refuse = (path: string, isCwd = false) => { if (fencedPath(path, setup.fence, dataDir, isCwd)) throw new BoxFenceError(resolve(path)); };
-  if (cwd) refuse(cwd, true);
+  const engineHomes = namedEngineHomes(request.env, dataDir);
+  if (cwd) refuse(cwd, !engineHomes.some((root) => under(cwd, root)));
   for (const path of [...(request.rw ?? []), ...(request.ro ?? [])]) refuse(path);
   if (ownHome) refuse(ownHome);
   const ids = cwd ? taskWorkspaceIds(cwd, dataDir) : null;
@@ -240,8 +258,10 @@ export function planBox(setup: BoxSetup, request: BoxRequest): BoxPlan {
     const shown = boxUploadsDir(dataDir, ids.botId, ids.threadId);
     mounts.push({ kind: "ro", source: shown, target: shown, optional: true });
   }
+  const putBackWritable = (path: string) => writable.some((root) => under(root, dataDir) && under(path, root));
+  const named = argvPaths(request.args).filter((path) => !putBackWritable(path));
   const readOnly = new Set<string>();
-  for (const path of [...(request.ro ?? []), ...argvPaths(request.args), ...(botId && ID.test(botId) ? [join(dataDir, "bots", botId, "SOUL.md")] : [])]) {
+  for (const path of [...(request.ro ?? []), ...named, ...(botId && ID.test(botId) ? [join(dataDir, "bots", botId, "SOUL.md")] : [])]) {
     const full = resolve(path);
     // Code and the system are already there; a file under HOME or /tmp the command line names is put back read-only.
     if (covered(full) || readOnly.has(full) || fencedPath(full, setup.fence, dataDir)) continue;

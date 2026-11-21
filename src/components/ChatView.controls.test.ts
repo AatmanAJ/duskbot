@@ -98,17 +98,23 @@ describe("the header's right side", () => {
     }
   });
 
-  it("moves Stop out of the header into the composer's round button while a turn runs", () => {
+  it("shows no Stop in the header or the composer while a turn runs: only send and voice; Stop rides the working line", () => {
+    vi.stubEnv("VITE_DUSK_VOICE_CALL", "0");
     {
       const busy = { ...bot, busy: true, tasks: (bot.tasks ?? []).map((task) => ({ ...task, busy: true })) };
       const { markup, controls } = header(busy);
       expect(controls).not.toContain("Stop this turn");
-      const stop = markup.match(/<button[^>]*data-composer-stop="slot"[^>]*>/)?.[0] ?? "";
-      expect(stop).toContain('aria-label="Stop this turn"');
+      const composer = markup.slice(markup.indexOf('data-tour="composer"'));
+      expect(markup).not.toContain("data-composer-stop");
+      expect(composer).not.toContain("Stop this turn");
       expect(markup).not.toContain('data-call-button="composer"');
-      expect(header({ ...busy, waitingForTeammates: true, busy: false, tasks: (bot.tasks ?? []).map((task) => ({ ...task, busy: false, waitingForTeammates: true })) }).markup)
-        .toContain('data-composer-stop="slot"');
+      expect(markup).toMatch(/<button[^>]*data-turn-stop="true"[^>]*aria-label="Stop this turn"/);
+      const waiting = header({ ...busy, waitingForTeammates: true, busy: false, tasks: (bot.tasks ?? []).map((task) => ({ ...task, busy: false, waitingForTeammates: true })) }).markup;
+      expect(waiting).not.toContain("data-composer-stop");
+      expect(waiting).toContain("data-turn-stop");
+      expect(header({ ...bot, busy: false }).markup).not.toContain("data-turn-stop");
     }
+    vi.unstubAllEnvs();
   });
 
   it("keeps Stop in a remote client's header while a turn runs", () => {
@@ -194,9 +200,11 @@ describe("header name", () => {
       };
       expect(pillOf(busyMarkup)).not.toContain("animate-status-pulse");
       expect(pillOf(busyMarkup)).toBe(pillOf(idleMarkup));
-      expect(busyMarkup).toMatch(/<span role="status" class="sr-only" data-chathead-status="true">Working…<\/span>/);
+      expect(busyMarkup).toMatch(/<span role="status" class="sr-only" data-chathead-status="true">Working<\/span>/);
       expect(idleMarkup).toMatch(/<span role="status" class="sr-only" data-chathead-status="true"><\/span>/);
-      expect(busyMarkup).toContain(remote ? 'title="Stop this turn"' : 'aria-label="Stop this turn"');
+      const controls = busyMarkup.slice(busyMarkup.indexOf("data-chathead-controls"), busyMarkup.indexOf('role="log"'));
+      if (remote) expect(controls).toContain('title="Stop this turn"');
+      else expect(controls).not.toContain("Stop this turn");
     }
   });
 
@@ -264,10 +272,12 @@ describe("thread control placement", () => {
     expect(markup.includes('data-testid="chat-more"')).toBe(remote);
   });
 
-  it("with live calls off, offers no call anywhere and keeps the mic in the composer", () => {
+  it("with calls off, offers no call anywhere and keeps the mic in the composer", () => {
+    vi.stubEnv("VITE_DUSK_VOICE_CALL", "0");
     const markup = renderToStaticMarkup(createElement(ChatView, { bot }));
     expect(markup).not.toContain("data-call-button");
     expect(markup.slice(markup.indexOf("data-composer-actions"))).toContain('data-voice-mic="start"');
+    vi.unstubAllEnvs();
   });
 
   it("calls from the composer beside dictation, not the header", () => {
@@ -319,12 +329,13 @@ describe("thread control placement", () => {
     const codex = { instanceId: "codex", driverKind: "codex", displayName: "Codex", snapshot: { state: "available", authenticated: true } } as unknown as InstanceInfo;
     const limit = `${CODEX_USAGE_LIMIT_REACHED} This is OpenAI's limit, not your Dusk plan. It resets at 5:23 PM (UTC).`;
     const markup = renderToStaticMarkup(createElement(FailedTurnRow, { tool: failedTurnTool(limit), engine: codex, onRetry: () => {} }));
-    expect(markup).toContain(limit.replaceAll("'", "&#x27;"));
+    expect(markup).toContain(">OpenAI hit its limit</span>");
+    expect(markup, "the provider's words stay in the logs").not.toContain("resets at 5:23 PM");
     expect(markup).toContain(`href="${CODEX_USAGE_URL}"`);
     expect(markup).toContain("Manage usage");
     expect(markup).not.toContain("<button");
   });
-  it("opens a signed-out engine's failed turn with one sentence and the sign-in, the CLI's words behind Copy details", () => {
+  it("opens a signed-out engine's failed turn with one sentence and the sign-in, the CLI's words only in the logs", () => {
     const claude = {
       instanceId: "claude", driverKind: "claudeAgent", displayName: "Claude",
       snapshot: { state: "available", authenticated: false },
@@ -335,26 +346,29 @@ describe("thread control placement", () => {
     const markup = renderToStaticMarkup(createElement(FailedTurnRow, { tool: { name: "error: Not logged in · Please run /login", ok: false, setup: true }, engine: claude, onRetry: () => {} }));
     expect(markup).toContain(">Claude isn&#x27;t signed in yet. Sign in below, then send your message again.</span>");
     expect(markup).toContain("Sign in to Claude</button>");
-    expect(markup).toContain("data-error-details-copy");
+    expect(markup).not.toContain("data-error-details-copy");
     expect(markup).not.toContain("Please run /login");
     expect(markup).not.toContain(">Retry<");
     const update = { name: "error: Claude Code 2.1.268 does not support this model", ok: false, setup: true, claudeUpdate: true };
     for (const engine of [claude, { ...claude, readOnly: true }]) {
       const row = renderToStaticMarkup(createElement(FailedTurnRow, { tool: update, engine }));
-      expect(row).toContain(">Claude Code 2.1.268 does not support this model</span>");
+      expect(row).toContain(`>${activityPreview(update, engine).replaceAll("'", "&#x27;")}</span>`);
+      expect(row).not.toContain("2.1.268");
       expect(row).not.toContain("isn&#x27;t signed in");
-      expect(activityPreview(update, engine)).toBe("Claude Code 2.1.268 does not support this model");
+      expect(activityPreview(update, engine), "a list says the card's plain line").toBe("This model needs a newer Claude Code. I can update Claude for you.");
     }
   });
-  it("opens a failed turn with a technical cause on one plain line, the engine's words behind Copy details", () => {
+  it("opens a failed turn with a technical cause on one plain line, the engine's words only in the logs", () => {
     const raw = 'API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}';
     const markup = renderToStaticMarkup(createElement(FailedTurnRow, { tool: { name: `error: ${raw}`, ok: false }, engine: undefined, onRetry: () => {} }));
-    expect(markup).toContain(">The service is busy right now. Try again in a moment.</span>");
-    expect(markup).toContain("data-error-details-copy");
+    expect(markup).toContain(">Your AI is busy right now. Try again in a moment.</span>");
+    expect(markup).not.toContain("data-error-details-copy");
     expect(markup).not.toContain("API Error: 529");
     expect(markup).toContain(" Retry</button>");
-    const plain = renderToStaticMarkup(createElement(FailedTurnRow, { tool: { name: "error: no activity for 10 minutes: the turn was stopped", ok: false }, engine: undefined }));
-    expect(plain).toContain(">no activity for 10 minutes: the turn was stopped</span>");
+    const stalled = { name: "error: no activity for 10 minutes: the turn was stopped", ok: false };
+    const plain = renderToStaticMarkup(createElement(FailedTurnRow, { tool: stalled, engine: undefined }));
+    expect(plain).toContain(`>${activityPreview(stalled, undefined).replaceAll("'", "&#x27;")}</span>`);
+    expect(plain).not.toContain("no activity for 10 minutes");
     expect(plain).not.toContain(">details</summary>");
   });
   it("offers to update Claude Code for a too-old install, or hands over the command", () => {
