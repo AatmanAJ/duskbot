@@ -153,6 +153,7 @@ export function beatPrompt(kind: BeatKind, input: { name: string; soul?: string;
     return [...head, "",
       "Write the acknowledgement they see first.",
       "- One sentence, 6 to 20 words, present tense, naming the concrete action and object, like \"On it, pulling this week's Delhi to Goa fares.\" or \"Got it, comparing the three plans now.\" Write names and products exactly as the person did (EndNote, not \"the endnote\"). Say it in your own words, never their sentence back, and never a stock phrase like \"I'd be happy to help\".",
+      "- When the work needs their own inbox, files, computer, account or a booking, name the check, never the work as underway: \"Checking your support inbox.\", not \"Going through your inbox now.\"",
       `- Reply exactly SKIP only if the message is a greeting, thanks or small talk, or ${input.name}'s setup says it asks before using tools. Any other ask for work gets an ack: a correction or a change ("wait, it's in Rust") gets one naming the change, and setting up a watch or an automation names what is being set up.`,
       SHARED_RULES(input.name),
     ].join("\n");
