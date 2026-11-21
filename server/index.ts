@@ -30,6 +30,7 @@ import { assertRequestTarget, guardedRequestPath, requestConflict, requestNeedsI
 import { botAvatarUrlFromStoredPath } from "../shared/bot-avatar.ts";
 import { BOT_PROFILE_LIMITS } from "../shared/bot-profile.ts";
 import { failedTurnTool } from "../shared/failed-turn.ts";
+import { hasHiddenCharacters } from "../shared/hidden-characters.ts";
 import { routinePromptName } from "../shared/routine-run.ts";
 import { assistantTranscript, errorTranscript } from "../shared/client-cancel.ts"; import { PersonStops, stoppedTurnRow } from "./person-stops.ts"; import { LiveTurns } from "./live-turns.ts"; import { previousPersonMessageAt, quietGapNote } from "./turn-gap.ts";
 import { phonePairingLink } from "../shared/pairing-link.ts"; import { personTagNames, withoutPersonTags } from "../shared/person-mention.ts";
@@ -7348,8 +7349,8 @@ bus.subscribe((event: RuntimeEvent) => {
             : undefined,
           commandAllowlist: command ?? undefined,
           allowKey: toolAllowKey ?? undefined,
-          // Never on a guest's turn: an "always" would outlive it.
-          allowSession: permission && event.allowSession && !event.requiresExplicitApproval && !guestDriven ? true : undefined,
+          // Never on a guest's turn, whom an "always" would outlive, nor for a command a reviewer cannot fully see.
+          allowSession: permission && event.allowSession && !event.requiresExplicitApproval && !guestDriven && !hasHiddenCharacters(event.command?.command ?? "") ? true : undefined,
           held: approvalHeldReason(heldContext) ?? (permission && guestDriven && routineRun ? confinedWhy(event.threadId) : undefined),
           heldCode: approvalHeldNote(heldContext),
           approvalScope: event.approvalScope,
