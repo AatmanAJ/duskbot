@@ -19,7 +19,7 @@ export function AppEmptyMain({ loading, notice }: { loading: ReturnType<typeof l
       <div aria-hidden="true"><MausAvatar color="chrome" size={56} state={loading.busy ? "loading" : "idle"} /></div>
       <div className="flex flex-col gap-1" role={loading.busy ? "status" : loading.failed ? "alert" : undefined}>
         <p className="text-[14px] font-medium leading-5 text-ink">{t(loading.text)}</p>
-        {(empty || loading.failed) && <p className="text-[13px] leading-[18px] tracking-[0.015em] text-ink/[0.56]">{t(loading.failed ? "app.loading.unreachableHint" : "app.empty.hint")}</p>}
+        {!loading.busy && <p className="text-[13px] leading-[18px] tracking-[0.015em] text-ink/[0.56]">{t(loading.failed ? "app.loading.unreachableHint" : "app.empty.hint")}</p>}
         {loading.command && (
           <p className="text-[12px] leading-4 text-ink/[0.56]">
             {t("app.loading.startServer")} <code className="rounded bg-raised px-1.5 py-0.5">pnpm dev:server</code>
