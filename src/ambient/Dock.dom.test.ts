@@ -327,3 +327,41 @@ it("comes out for a rest at the edge even when the panel takes focus as the poin
   expect(hidden()).toBe(true);
   await unmount();
 });
+
+it("takes clicks only where it is drawn: the edge zone and the grace around the column still open and keep it, but clicks there reach the app underneath", async () => {
+  let feed: (snapshot: AmbientSnapshot) => void = () => {};
+  const pointer: boolean[] = [];
+  const bridge: AmbientBridge = {
+    surface: "dock", onState: (cb) => { feed = cb; return () => {}; }, onLayout: () => () => {}, pointer: (on) => pointer.push(on), open() {}, act() {}, order() {}, ready() {},
+    onSeen: () => () => {}, seen() {}, settled() {},
+  };
+  const host = document.body.appendChild(document.createElement("div"));
+  const root = createRoot(host);
+  await act(async () => root.render(createElement(Dock, { bridge })));
+  await act(async () => feed({ lang: "en", labels: LABELS, bots: [bot("Ada", {})] }));
+  const hidden = () => host.querySelector(".amb-dock")!.hasAttribute("data-hidden");
+  const move = (x: number, y: number) => act(async () => { document.dispatchEvent(new MouseEvent("mousemove", { clientX: x, clientY: y })); });
+  const solid = () => pointer.at(-1) === true;
+  // the stage is 408 wide with the screen's edge at 404: the sliver is the last 6px, the edge zone the last 14
+  await move(100, 360);
+  await move(394, 360);
+  expect(solid()).toBe(false);
+  await wait(REVEAL.dwellMs + 40);
+  expect(hidden()).toBe(false);
+  expect(solid()).toBe(false);
+  // out, the column (340 to 404) takes clicks; the grace left of it keeps it out but lets clicks through
+  await move(350, 360);
+  expect(solid()).toBe(true);
+  await move(330, 360);
+  expect(solid()).toBe(false);
+  await wait(HIDE_MS + 60);
+  expect(hidden()).toBe(false);
+  // gone past the grace, it goes away; the sliver itself still takes a click
+  await move(5000, 5000);
+  await wait(HIDE_MS + 60);
+  expect(hidden()).toBe(true);
+  await move(100, 360);
+  await move(400, 360);
+  expect(solid()).toBe(true);
+  await act(async () => root.unmount());
+});

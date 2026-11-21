@@ -5,12 +5,12 @@ import { useCallback, useState, useSyncExternalStore, useEffect } from "react";
 import type { ElsewherePlace } from "@/lib/bots-elsewhere";
 import { t } from "@/lib/i18n";
 import { usePlaces } from "@/lib/places";
-import { vpsLinkBridge, type VpsWhere } from "@/lib/vps-link";
+import { useVpsLink, type VpsWhere } from "@/lib/vps-link";
 import { GrokDialog, mdPrimaryCls, mdSecondaryCls, rowHintCls } from "./ui/GrokDialog";
 import { PlaceArt } from "./ui/PlaceArt";
 import { askConfirm } from "./ConfirmDialog";
 import { deviceWord, message } from "./vps-link/parts";
-import { moveBackAsk } from "./vps-link/TransferSettings";
+import { bringAsk, moveBackAsk, moveBackLine } from "./vps-link/TransferSettings";
 
 const SEEN = "dusk-mac-empty-seen";
 const watchers = new Set<() => void>();
@@ -36,7 +36,7 @@ export function useMacEmptyPrompt(from: ElsewherePlace | null): [boolean, () => 
 
 export function MacEmptyMain({ from, onClose }: { from: ElsewherePlace; onClose: () => void }) {
   const device = deviceWord();
-  const link = vpsLinkBridge();
+  const { bridge: link, view } = useVpsLink();
   const [where, setWhere] = useState<VpsWhere | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
@@ -46,13 +46,16 @@ export function MacEmptyMain({ from, onClose }: { from: ElsewherePlace; onClose:
     void link?.where().then((place) => { if (alive) setWhere(place); }, () => {});
     return () => { alive = false; };
   }, [link]);
-  // the bots come back only from the server this computer moved them to; anywhere else they are only switched to
-  const back = Boolean(link && where?.place === "vps" && where.server);
-  const name = back ? where!.server!.name : from.name;
+  // back from the server this computer moved them to, or from a saved server of the person's own while this one is empty
+  const movedBack = Boolean(link && where?.place === "vps" && where.server);
+  const bring = !movedBack && !where?.blocked && where?.bring?.some((place) => place.id === from.id) ? from.id : null;
+  const back = movedBack || bring !== null;
+  const name = movedBack ? where!.server!.name : from.name;
+  const progress = moveBackLine(view.back, device);
   const bringBack = async () => {
-    if (busy || !link || !await askConfirm({ ...moveBackAsk(name, device), layer: "z-[70]" })) return;
+    if (busy || !link || !await askConfirm({ ...(bring ? bringAsk(name, device) : moveBackAsk(name, device)), layer: "z-[70]" })) return;
     setBusy(true); setError("");
-    try { await link.moveBack(); setNote(t("macEmpty.bringing")); } catch (cause) { setError(message(cause)); } finally { setBusy(false); }
+    try { await (bring ? link.moveBack(bring) : link.moveBack()); setNote(t("macEmpty.bringing")); } catch (cause) { setError(message(cause)); } finally { setBusy(false); }
   };
   const rail = usePlaces();
   const switchThere = () => {
@@ -79,7 +82,7 @@ export function MacEmptyMain({ from, onClose }: { from: ElsewherePlace; onClose:
         </div>
       }
     >
-      {note && <p role="status" className={`${rowHintCls} m-0`}>{note}</p>}
+      {(progress ?? note) && <p role="status" className={`${rowHintCls} m-0`}>{progress ?? note}</p>}
       {error && <p role="alert" className="m-0 text-[13px] leading-[18px] text-danger [overflow-wrap:anywhere]">{error}</p>}
     </GrokDialog>
   );

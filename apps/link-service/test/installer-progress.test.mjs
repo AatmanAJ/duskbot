@@ -336,6 +336,31 @@ do_engines && echo engines-ok
     expect(out).toContain("engines-ok");
   });
 
+  it("cuts off a free backup install that never finishes, once, and keeps going", async () => {
+    const started = Date.now();
+    const { out, calls, sub } = await fixture(`
+SVC_HOME=$TMP/home
+mkdir -p "$SVC_HOME/.local/bin"
+for cli in claude codex; do touch "$SVC_HOME/.local/bin/$cli"; chmod +x "$SVC_HOME/.local/bin/$cli"; done
+printf '#!/bin/sh\necho run >> "$TMP/calls"\nexec sleep 60\n' > "$SVC_HOME/.local/bin/duskbot"
+chmod +x "$SVC_HOME/.local/bin/duskbot"
+export TMP
+FREE_BACKUP_SECS=1
+as_user() { "$@"; }
+do_engines && echo engines-ok
+`, async ({ dir, run: execute }) => ({
+      out: (await execute()).stdout,
+      calls: (await readFile(join(dir, "calls"), "utf8")).trim().split("\n"),
+      sub: await readFile(join(dir, "sub"), "utf8"),
+    }));
+    expect(Date.now() - started).toBeLessThan(25_000);
+    expect(calls).toEqual(["run"]);
+    expect(sub.trim()).toBe("Installing the free backup AI");
+    expect(out).toContain("installing the free backup ai (OpenCode)");
+    expect(out).toMatch(/skipped for now, the server installs it when it starts/);
+    expect(out).toContain("engines-ok");
+  }, 30_000);
+
   it("stops only installer-owned children after an explicit app cancellation", async () => {
     const unrelated = spawn("sleep", ["30"], { stdio: "ignore" });
     try {
