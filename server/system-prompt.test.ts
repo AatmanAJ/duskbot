@@ -4,6 +4,9 @@ import { availableTools } from "./drivers/agents-catalog.ts";
 import { soulSystemPrompt } from "./bot-folder.ts";
 import { BUILT_IN_BROWSER_SYSTEM_PROMPT } from "./browser-engine.ts";
 import {
+  AUTOMATION_REPLY_PROMPT,
+  ROUTINE_EXECUTION_PROMPT,
+  SANDBOX_ESCALATION_PROMPT,
   longCommandsPrompt,
   buildSystemPrompt,
   CONVERSATIONAL_STYLE_PROMPT,
@@ -545,4 +548,14 @@ describe("a shorter answer", () => {
   it("cuts words, never the facts the ask needs", () => {
     expect(talkingStylePrompt("warm")).toContain("never the facts the ask needs (every item, name and total it asked for)");
   });
+});
+
+it("an automation's report opens with the finding, and a scheduled run does its work instead of scheduling more", () => {
+  expect(AUTOMATION_REPLY_PROMPT).toContain("opening with the finding itself, never with the automation, the check or the run");
+  expect(AUTOMATION_REPLY_PROMPT).toContain("NOTHING NEW is the whole reply or nothing");
+  expect(ROUTINE_EXECUTION_PROMPT).toContain("never set up an automation because they mention a time or a repeat");
+});
+
+it("a sandboxed engine asks to run a blocked step outside its sandbox instead of working around it", () => {
+  expect(SANDBOX_ESCALATION_PROMPT).toContain("rerun that command asking for permission to run it outside the sandbox instead of working around it");
 });
