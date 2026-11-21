@@ -29,7 +29,7 @@ export const SHA = "a".repeat(64);
 export const BACKUP_SECRET = Buffer.alloc(32, 9);
 
 export async function homeFixture(options: { costProfile?: ProviderCostProfile; retentionDays?: number; setupPolls?: number; settings?: Partial<ManagedSettings>; releaseKeys?: ReleaseKey[]; edgeToken?: string;
-  entitlements?: { sign(cloud: StoredCloud): string }; release?: () => HomeRelease | null; updatePolicy?: PolicySource } = {}) {
+  entitlements?: { sign(cloud: StoredCloud): string }; linkGrant?: (cloud: StoredCloud) => string | null; release?: () => HomeRelease | null; updatePolicy?: PolicySource } = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), "dusk-home-")); cleanup.push(() => rmSync(dataDir, { recursive: true, force: true }));
   let at = Date.UTC(2026, 10, 9, 12);
   const now = () => at;
@@ -55,7 +55,7 @@ export async function homeFixture(options: { costProfile?: ProviderCostProfile; 
   const disk = { free: 1024 ** 4 };
   const backups = createBackupStore({ dir: join(dataDir, "managed-backups"), now, freeBytes: () => disk.free });
   const workspaces = { register: vi.fn(() => "workspace-1"), lastReportAt: vi.fn(() => null), remove: vi.fn() };
-  const service = createCloudsService({ dataDir, now, home, ...(options.entitlements ? { entitlements: options.entitlements } : {}), sealer: createSealer(Buffer.alloc(32, 7)), workspaces,
+  const service = createCloudsService({ dataDir, now, home, ...(options.entitlements ? { entitlements: options.entitlements } : {}), ...(options.linkGrant ? { linkGrant: options.linkGrant } : {}), sealer: createSealer(Buffer.alloc(32, 7)), workspaces,
     providers: { dedicated: createFakeCloudProvider(), pool: { ...createFakeCloudProvider(), suspend: async () => {}, resume: async () => {} } },
     config: { adminOrigin: "https://admin.example.test", dashboardUrl: "https://dash.example.test", image: "ghcr.io/example/home:1", poolQuota: (_k, spec, botComputers) => ({ ...spec, netMbps: 1, pids: 1, botComputers }) },
     managed: createManagedCloud({ provider, backups, audit, kinds: ["shared_s", "shared_m", "dedicated"], backupSecret: BACKUP_SECRET,
