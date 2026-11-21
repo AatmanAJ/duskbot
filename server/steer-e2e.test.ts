@@ -16,6 +16,9 @@ const FAKE_CODEX = join(SERVER_DIR, "testing", "fake-codex-app-server.ts");
 const PORT = workerPort(18800, 10_000);
 const BASE = `http://127.0.0.1:${PORT}`;
 const posixOnly = describe.skipIf(process.platform === "win32");
+const QUICK_ACK = "On it.";
+/** a stored picture is read only when its bytes start as one */
+const png = (text: string) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(text)]);
 
 posixOnly("mid-turn steering e2e", () => {
   let child: ChildProcess;
@@ -27,6 +30,7 @@ posixOnly("mid-turn steering e2e", () => {
   let lateSteerContinuationGate: string;
   let lateSteerDump: string;
   let codexSteerGate: string;
+  let quickFinishGate: string;
 
   const api = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> => {
     const res = await fetch(`${BASE}${path}`, {
@@ -82,6 +86,18 @@ posixOnly("mid-turn steering e2e", () => {
     lateSteerDump = join(home, "late-steer-dump.json");
     codexSteerGate = join(home, "codex-steer-refused.gate");
     writeFileSync(codexSteerGate, "refuse live steers until the queue test clears this gate");
+    quickFinishGate = join(home, "finish-quick-turn.gate");
+    const quickRoutes = join(home, "quick-routes.json");
+    writeFileSync(quickRoutes, JSON.stringify({
+      "<<<\nok please stop now, I'll book it myself": JSON.stringify({ kind: "stop", reply: "Okay, I've stopped." }),
+      "<<<\nonly direct flights please": JSON.stringify({ kind: "steer", reply: "Got it, direct flights only." }),
+      "<<<\nare you doing this yourself?": JSON.stringify({ kind: "answer", reply: "Yes, I'm doing this myself, comparing fares now." }),
+      "<<<\nalso find me a hotel in Panjim for those dates": JSON.stringify({ kind: "task", reply: "Sure, I'll find a hotel in Panjim too while the flights search runs." }),
+      "<<<\nand make me a packing list for the trip": JSON.stringify({ kind: "task", reply: "I'll put a packing list together alongside the rest." }),
+      "<<<\nhow is it going?": JSON.stringify({ kind: "answer", reply: "Flights, the hotel and the packing list are all still running." }),
+      "<<<\nmake the flights one-way": JSON.stringify({ kind: "steer", reply: "Got it, one-way flights." }),
+      "<<<\nfrom my phone: and the return train too": JSON.stringify({ kind: "task", reply: "Sure, I'll look at the return train as well." }),
+    }));
     writeFileSync(
       join(home, ".duskbot", "config.json"),
       JSON.stringify({
@@ -107,6 +123,18 @@ posixOnly("mid-turn steering e2e", () => {
               FAKE_CLAUDE_QUEUED_TURN_COUNT: "zero",
               FAKE_CLAUDE_DUMP: lateSteerDump,
             },
+            config: { cli: FAKE_CLAUDE, permissionMode: "bypassPermissions" },
+          },
+          // the side responder's one-shot answers come from FAKE_CLAUDE_TEXT_ROUTES, picked by the person's new message
+          claudeQuick: {
+            driver: "claudeAgent",
+            environment: { FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_SLOW_FINISH_GATE: quickFinishGate, FAKE_CLAUDE_TEXT_ROUTES: quickRoutes, FAKE_CLAUDE_SLOW_ACK: QUICK_ACK },
+            config: { cli: FAKE_CLAUDE, permissionMode: "bypassPermissions" },
+          },
+          // says nothing until it finishes, so a message sent meanwhile is the rest of a burst
+          claudeSilent: {
+            driver: "claudeAgent",
+            environment: { FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_SLOW_FINISH_GATE: quickFinishGate, FAKE_CLAUDE_TEXT_ROUTES: quickRoutes },
             config: { cli: FAKE_CLAUDE, permissionMode: "bypassPermissions" },
           },
           acp: { driver: "grokAgent", environment: { FAKE_ACP_MODE: "hang" }, config: { cli: FAKE_ACP, fullAuto: true } },
@@ -397,8 +425,8 @@ posixOnly("mid-turn steering e2e", () => {
       mkdirSync(attachments, { recursive: true });
       const firstImagePath = join(attachments, "123e4567-e89b-42d3-a456-426614174000.png");
       const secondImagePath = join(attachments, "123e4567-e89b-42d3-a456-426614174001.png");
-      writeFileSync(firstImagePath, "first png");
-      writeFileSync(secondImagePath, "second png");
+      writeFileSync(firstImagePath, png("first png"));
+      writeFileSync(secondImagePath, png("second png"));
       const firstAttachedText = `look at this\n\n<attached-image path="${firstImagePath}" name="first.png" />`;
       const secondAttachedText = `and this\n\n<attached-image path="${secondImagePath}" name="second.png" />`;
       try {
@@ -450,11 +478,11 @@ posixOnly("mid-turn steering e2e", () => {
       expect(followUp.message.content.map((block: any) => block.type === "text" ? { ...block, text: withoutTurnClock(block.text) } : block)).toEqual([
         {
           type: "image",
-          source: { type: "base64", media_type: "image/png", data: "[image data: 12 base64 chars]" },
+          source: { type: "base64", media_type: "image/png", data: "[image data: 24 base64 chars]" },
         },
         {
           type: "image",
-          source: { type: "base64", media_type: "image/png", data: "[image data: 16 base64 chars]" },
+          source: { type: "base64", media_type: "image/png", data: "[image data: 24 base64 chars]" },
         },
         { type: "text", text: "look at this\n\n\n\nand this\n\n" },
       ]);
@@ -475,7 +503,7 @@ posixOnly("mid-turn steering e2e", () => {
     const attachments = join(home, ".duskbot", "attachments");
     mkdirSync(attachments, { recursive: true });
     const imagePath = join(attachments, "123e4567-e89b-42d3-a456-426614174006.png");
-    writeFileSync(imagePath, "steered png");
+    writeFileSync(imagePath, png("steered png"));
     const imageText = `and look at this\n\n<attached-image path="${imagePath}" name="shot.png" />`;
     let second: Awaited<ReturnType<typeof api>>;
     try {
@@ -501,7 +529,7 @@ posixOnly("mid-turn steering e2e", () => {
     ).at(-1)?.msg;
     expect(steerRow.uuid).toEqual(expect.any(String));
     expect(steerRow.message.content).toEqual([
-      { type: "image", source: { type: "base64", media_type: "image/png", data: "[image data: 16 base64 chars]" } },
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "[image data: 28 base64 chars]" } },
       { type: "text", text: "and look at this\n\n" },
     ]);
   }, 40_000);
@@ -528,7 +556,7 @@ posixOnly("mid-turn steering e2e", () => {
     const attachments = join(home, ".duskbot", "attachments");
     mkdirSync(attachments, { recursive: true });
     const imagePath = join(attachments, "123e4567-e89b-42d3-a456-426614174004.png");
-    writeFileSync(imagePath, "room png");
+    writeFileSync(imagePath, png("room png"));
     const imageText = `look at the room screenshot\n\n<attached-image path="${imagePath}" name="shot.png" />`;
     const firstReceipt = await person("POST", `/api/groups/${room.id}/messages`, { text: imageText });
     expect((await getGroup())?.working).toBe(true);
@@ -559,7 +587,7 @@ posixOnly("mid-turn steering e2e", () => {
       .filter((row) => row.dir === "out" && row.source === "claude.sdk.message")
       .at(-1)?.msg;
     expect(followUp.message.content).toEqual([
-      { type: "image", source: { type: "base64", media_type: "image/png", data: "[image data: 12 base64 chars]" } },
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "[image data: 24 base64 chars]" } },
       expect.objectContaining({ type: "text" }),
     ]);
     const textBlock = followUp.message.content.find((block: any) => block.type === "text").text;
@@ -569,6 +597,8 @@ posixOnly("mid-turn steering e2e", () => {
   }, 40_000);
 
   it("rejects a delayed steer acknowledgement after the bot is deleted", async () => {
+    // the direct steer path: with replies while working on, the send returns at once and steers in the background
+    expect((await api("PATCH", "/api/config", { features: { quickUpdates: false } })).status).toBe(200);
     const created = (await api("POST", "/api/bots")).body.bot;
     await api("PATCH", `/api/bots/${created.id}`, {
       modelSelection: { instanceId: "claudeRace", model: "claude-fake" },
@@ -599,15 +629,19 @@ posixOnly("mid-turn steering e2e", () => {
     const rejected = await delayed;
     expect(rejected.status).toBe(404);
     expect(rejected.body.error).toMatch(/no such bot/i);
+    expect((await api("PATCH", "/api/config", { features: { quickUpdates: true } })).status).toBe(200);
   }, 40_000);
 
   it("an engine without a live session preserves the message in the server-side queue", async () => {
+    // with quick updates off a person's message takes the queue, as before replies while working
+    expect((await api("PATCH", "/api/config", { features: { quickUpdates: false } })).status).toBe(200);
     const created = (await api("POST", "/api/bots")).body.bot;
     await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "acp", model: "fake-model" } });
     expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "first" })).status).toBe(202);
     await waitFor(async () => (await getBot(created.id)).busy === true, "the hung turn to start");
     const person = await asPairedPerson();
     const queued = await person("POST", `/api/bots/${created.id}/messages`, { text: "second" });
+    expect((await api("PATCH", "/api/config", { features: { quickUpdates: true } })).status).toBe(200);
     expect(queued.status).toBe(202);
     expect(queued.body.queued).toBe(true);
     expect(typeof queued.body.queueId).toBe("string");
@@ -624,6 +658,171 @@ posixOnly("mid-turn steering e2e", () => {
     await api("POST", `/api/bots/${created.id}/interrupt`);
     await waitFor(async () => (await getBot(created.id)).busy === false, "the queued turn to settle");
   }, 30_000);
+
+  it("replies while working: a question is answered on the side, a steer is acknowledged and folded in, a stop ends the turn", async () => {
+    rmSync(quickFinishGate, { force: true });
+    const created = (await api("POST", "/api/bots")).body.bot;
+    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "claudeQuick", model: "claude-fake" } });
+    const person = await asPairedPerson();
+    const sideReplies = async () => (await getBot(created.id)).messages.filter((m: any) => m.sideReply);
+
+    expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "find me cheap flights to Goa" })).status).toBe(202);
+    await waitFor(async () => (await getBot(created.id)).busy === true, "the turn to start");
+    await waitFor(async () => (await getBot(created.id)).messages.some((m: any) => m.text === QUICK_ACK), "the turn's ack");
+    const asked = await person("POST", `/api/bots/${created.id}/messages`, { text: "are you doing this yourself?" });
+    expect(asked.status).toBe(202);
+    expect(asked.body.steered).toBe(true);
+    await waitFor(async () => (await sideReplies()).length === 1, "the quick answer", 15_000);
+    const answer = (await sideReplies())[0];
+    expect(answer).toMatchObject({ role: "bot", kind: "text", text: "Yes, I'm doing this myself, comparing fares now." });
+    expect(answer.turnId).toBeUndefined();
+    expect((await getBot(created.id)).busy).toBe(true);
+
+    expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "only direct flights please" })).status).toBe(202);
+    await waitFor(async () => (await sideReplies()).length === 2, "the steer's acknowledgement", 15_000);
+    expect((await sideReplies())[1].text).toBe("Got it, direct flights only.");
+    expect((await getBot(created.id)).busy).toBe(true);
+    writeFileSync(quickFinishGate, "finish");
+    await waitFor(async () => (await getBot(created.id)).busy === false, "the turn to finish");
+    // one result for the turn, never a quick reply; the steer reached the running turn with its note, the answered question never did
+    const finals = (await getBot(created.id)).messages.filter((m: any) => m.role === "bot" && m.kind === "text" && m.turnTerminal);
+    expect(finals).toHaveLength(1);
+    expect(finals[0].sideReply).toBeUndefined();
+    expect(finals[0].text).toContain("only direct flights please");
+    expect(finals[0].text).toContain("do not reply to it on its own");
+    expect(finals[0].text).not.toContain("are you doing this yourself");
+    expect(await sideReplies()).toHaveLength(2);
+
+    rmSync(quickFinishGate, { force: true });
+    expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "and hotels too" })).status).toBe(202);
+    await waitFor(async () => (await getBot(created.id)).busy === true, "the second turn to start");
+    await waitFor(async () => (await getBot(created.id)).messages.filter((m: any) => m.text === QUICK_ACK).length === 2, "the second turn's ack");
+    // a line made only of stop words ("ok please stop now") is the person's Stop itself and gets no side reply; one with
+    // more in it is the side writer's to read
+    expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "ok please stop now, I'll book it myself" })).status).toBe(202);
+    await waitFor(async () => (await getBot(created.id)).busy === false, "the stop", 15_000);
+    expect((await sideReplies()).at(-1).text).toBe("Okay, I've stopped.");
+    writeFileSync(quickFinishGate, "finish");
+  }, 60_000);
+
+  it("several things at once in one chat: new asks join the running task, a question is answered at once, a correction redirects it, nothing is lost", async () => {
+    rmSync(quickFinishGate, { force: true });
+    const created = (await api("POST", "/api/bots")).body.bot;
+    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "claudeQuick", model: "claude-fake" } });
+    const person = await asPairedPerson();
+    const sideReplies = async () => (await getBot(created.id)).messages.filter((m: any) => m.sideReply).map((m: any) => m.text);
+    const turnIds = async () => new Set((await getBot(created.id)).messages.filter((m: any) => m.turnId).map((m: any) => m.turnId));
+
+    expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "find me cheap flights to Goa" })).status).toBe(202);
+    await waitFor(async () => (await getBot(created.id)).busy === true, "task A to start");
+    await waitFor(async () => (await getBot(created.id)).messages.some((m: any) => m.text === QUICK_ACK), "task A's ack");
+    const sends = ["also find me a hotel in Panjim for those dates", "and make me a packing list for the trip", "how is it going?", "make the flights one-way"];
+    for (const [index, text] of sends.entries()) {
+      const sent = await person("POST", `/api/bots/${created.id}/messages`, { text });
+      expect(sent.status).toBe(202);
+      expect(sent.body.steered).toBe(true);
+      await waitFor(async () => (await sideReplies()).length === index + 1, `the quick reply to "${text}"`, 15_000);
+      expect((await getBot(created.id)).busy).toBe(true);
+    }
+    expect(await sideReplies()).toEqual([
+      "Sure, I'll find a hotel in Panjim too while the flights search runs.",
+      "I'll put a packing list together alongside the rest.",
+      "Flights, the hotel and the packing list are all still running.",
+      "Got it, one-way flights.",
+    ]);
+    expect(await turnIds()).toHaveProperty("size", 1);
+
+    writeFileSync(quickFinishGate, "finish");
+    await waitFor(async () => (await getBot(created.id)).busy === false, "the turn to finish");
+    const bot = await getBot(created.id);
+    const finals = bot.messages.filter((m: any) => m.role === "bot" && m.kind === "text" && m.turnTerminal);
+    // one turn did all of it: task A was never stopped, B and C reached it as separate tasks, the correction as a steer
+    expect(finals).toHaveLength(1);
+    const result = finals[0].text as string;
+    expect(result).toContain("reply to: ");
+    expect(result).toContain("find me cheap flights to Goa");
+    expect(result).toContain("also find me a hotel in Panjim for those dates");
+    expect(result).toContain("and make me a packing list for the trip");
+    expect(result.match(/separate new task/g)).toHaveLength(2);
+    expect(result).toContain("make the flights one-way");
+    expect(result).toContain("do not reply to it on its own");
+    expect(result).not.toContain("how is it going");
+    expect(bot.messages.some((m: any) => m.kind === "activity" && /stopped/i.test(m.tool?.name ?? ""))).toBe(false);
+    for (const text of ["find me cheap flights to Goa", ...sends]) expect(bot.messages.filter((m: any) => m.role === "user" && m.text === text)).toHaveLength(1);
+  }, 90_000);
+
+  it("the phone and the desktop sending at the same moment: one turn runs, both lines are kept, nothing is refused", async () => {
+    rmSync(quickFinishGate, { force: true });
+    const created = (await api("POST", "/api/bots")).body.bot;
+    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "claudeQuick", model: "claude-fake" } });
+    const phone = await asPairedPerson();
+    const desktop = await asPairedPerson();
+    const [first, second] = await Promise.all([
+      desktop("POST", `/api/bots/${created.id}/messages`, { text: "find me a train to Goa" }),
+      phone("POST", `/api/bots/${created.id}/messages`, { text: "from my phone: and the return train too" }),
+    ]);
+    expect([first.status, second.status]).toEqual([202, 202]);
+    await waitFor(async () => (await getBot(created.id)).busy === true, "a turn to start");
+    await waitFor(async () => {
+      const messages = (await getBot(created.id)).messages;
+      return ["find me a train to Goa", "from my phone: and the return train too"].every((text) => messages.some((m: any) => m.role === "user" && m.text === text));
+    }, "both lines in the chat", 15_000);
+    writeFileSync(quickFinishGate, "finish");
+    await waitFor(async () => (await getBot(created.id)).busy === false && !(await api("GET", "/api/bots")).body.queued?.[created.threadId]?.length, "everything to finish", 30_000);
+    const messages = (await getBot(created.id)).messages;
+    const finals = messages.filter((m: any) => m.role === "bot" && m.kind === "text" && m.turnTerminal).map((m: any) => m.text).join("\n");
+    // each line reached a turn exactly once: as its own turn, folded in, or queued after
+    for (const text of ["find me a train to Goa", "from my phone: and the return train too"]) {
+      expect(messages.filter((m: any) => m.role === "user" && m.text === text)).toHaveLength(1);
+      expect(finals).toContain(text);
+    }
+    expect(messages.some((m: any) => m.kind === "activity" && m.tool?.ok === false)).toBe(false);
+  }, 60_000);
+
+  it("a burst (hey, then the real ask a second later) gets one answer from one turn, with no quick reply in between", async () => {
+    rmSync(quickFinishGate, { force: true });
+    const created = (await api("POST", "/api/bots")).body.bot;
+    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "claudeSilent", model: "claude-fake" } });
+    const person = await asPairedPerson();
+    expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "hey" })).status).toBe(202);
+    await waitFor(async () => (await getBot(created.id)).busy === true, "the turn to start");
+    const ask = await person("POST", `/api/bots/${created.id}/messages`, { text: "are you doing this yourself?" });
+    expect(ask.status).toBe(202);
+    expect(ask.body.steered).toBe(true);
+    // the steer is in once the CLI echoes it; then the turn may finish
+    await new Promise((r) => setTimeout(r, 500));
+    writeFileSync(quickFinishGate, "finish");
+    await waitFor(async () => (await getBot(created.id)).busy === false, "the turn to finish");
+    const messages = (await getBot(created.id)).messages;
+    expect(messages.filter((m: any) => m.sideReply)).toEqual([]);
+    // the new bot's greeting comes before the burst; after it, one turn and one result
+    const replies = messages.filter((m: any) => m.role === "bot" && m.kind === "text" && m.turnTerminal);
+    expect(new Set(messages.filter((m: any) => m.turnId).map((m: any) => m.turnId)).size).toBe(1);
+    expect(replies).toHaveLength(1);
+    expect(replies[0].text).toContain("reply to: ");
+    expect(replies[0].text).toContain("are you doing this yourself?");
+    expect(replies[0].text).toContain("answer them together, once");
+    expect(stderr).not.toMatch(/side reply: \w+ in /);
+  }, 60_000);
+
+  it("on an engine that cannot steer, a burst pauses the silent turn and one turn takes both lines", async () => {
+    const created = (await api("POST", "/api/bots")).body.bot;
+    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "acp", model: "fake-model" } });
+    const person = await asPairedPerson();
+    expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "hey there" })).status).toBe(202);
+    await waitFor(async () => (await getBot(created.id)).busy === true, "the turn to start");
+    expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "find me a hotel in Panjim" })).status).toBe(202);
+    await waitFor(async () => (await getBot(created.id)).messages.some((m: any) => m.kind === "activity" && m.tool?.name === "Paused to take in your message"), "the pause", 15_000);
+    await waitFor(async () => {
+      const bot = await getBot(created.id);
+      return bot.busy === true && !(await api("GET", "/api/bots")).body.queued?.[created.threadId]?.length;
+    }, "the continuation to take the line", 15_000);
+    const messages = (await getBot(created.id)).messages;
+    expect(messages.filter((m: any) => m.sideReply)).toEqual([]);
+    for (const text of ["hey there", "find me a hotel in Panjim"]) expect(messages.filter((m: any) => m.role === "user" && m.text === text)).toHaveLength(1);
+    await api("POST", `/api/bots/${created.id}/interrupt`);
+    await waitFor(async () => (await getBot(created.id)).busy === false, "the turn to settle");
+  }, 60_000);
 
   it("a message waiting for a free slot still names the paired person once it runs", async () => {
     const created = (await api("POST", "/api/bots")).body.bot;
@@ -908,7 +1107,7 @@ posixOnly("mid-turn steering e2e", () => {
     const attachments = join(home, ".duskbot", "attachments");
     mkdirSync(attachments, { recursive: true });
     const imagePath = join(attachments, "123e4567-e89b-42d3-a456-426614174005.png");
-    writeFileSync(imagePath, "clip png");
+    writeFileSync(imagePath, png("clip png"));
     const imageText = `look at the clip\n\n<attached-image path="${imagePath}" name="clip.png" />`;
 
     const person = await asPairedPerson();
@@ -957,7 +1156,7 @@ posixOnly("mid-turn steering e2e", () => {
       const attachments = join(home, ".duskbot", "attachments");
       mkdirSync(attachments, { recursive: true });
       const imagePath = join(attachments, "123e4567-e89b-42d3-a456-426614174007.png");
-      writeFileSync(imagePath, "room steer png");
+      writeFileSync(imagePath, png("room steer png"));
       const imageText = `what about this one\n\n<attached-image path="${imagePath}" name="room.png" />`;
       const person = await asPairedPerson();
       const queued = await person("POST", `/api/groups/${room.id}/messages`, { text: imageText });
@@ -988,7 +1187,7 @@ posixOnly("mid-turn steering e2e", () => {
     ).at(-1)?.msg;
     expect(steerRow.uuid).toEqual(expect.any(String));
     expect(steerRow.message.content).toEqual([
-      { type: "image", source: { type: "base64", media_type: "image/png", data: "[image data: 20 base64 chars]" } },
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "[image data: 32 base64 chars]" } },
       { type: "text", text: "what about this one\n\n" },
     ]);
   }, 40_000);
@@ -1007,7 +1206,7 @@ posixOnly("mid-turn steering e2e", () => {
     const attachments = join(home, ".duskbot", "attachments");
     mkdirSync(attachments, { recursive: true });
     const imagePath = join(attachments, "123e4567-e89b-42d3-a456-426614174008.png");
-    writeFileSync(imagePath, "codex png");
+    writeFileSync(imagePath, png("codex png"));
     const imageText = `see this\n\n<attached-image path="${imagePath}" name="codex.png" />`;
     const queued = await api("POST", `/api/bots/${created.id}/messages`, { text: imageText });
     expect(queued.status).toBe(202);

@@ -1,5 +1,6 @@
 // The store is the only state: tick() is the only place work is admitted or dispatched, and no timer lives here.
 import { randomUUID } from "node:crypto";
+import { plainComputerFailure } from "../../shared/computer-unreachable.ts";
 
 import { composeEnvelope } from "./envelope.ts";
 import { assignmentLevel } from "./level.ts";
@@ -375,7 +376,7 @@ export class Runtime {
       input = {
         turn,
         resumed: turn !== "first",
-        restartNote: interruption ? "" : restartNote(n, children, child => this.names(child, n).assignee),
+        restartNote: interruption ? "" : restartNote(n, children, child => this.names(child, n).assignee, n.restart === "rerun" ? this.progressOf(n) : []),
         envelope: composeEnvelope(n, names, parent),
         ...(n.answer !== undefined ? { answer: n.answer } : {}),
         ...(n.continuation ? { continuation: { note: n.continuation.note, ...(n.continuation.handoffPath ? { handoffPath: n.continuation.handoffPath } : {}) } } : {}),
@@ -445,7 +446,7 @@ export class Runtime {
    * carried for its requester to decide, and left unanswered, goes on with its default. */
   private finishTurn(n: Assignment, result: RunResult, live?: LiveTurn): void {
     const carried = n.carrying ?? [];
-    this.settleTurn(n, result, live);
+    this.settleTurn(n, result.kind === "failed" ? { ...result, text: plainComputerFailure(result.text) } : result, live);
     this.decideCarried(carried);
   }
 
@@ -769,6 +770,13 @@ export class Runtime {
     if (!port) return [];
     const labels = this.safe("outward", () => port.call(this.runner, n));
     return Array.isArray(labels) ? labels.filter(label => typeof label === "string" && label.trim() !== "") : [];
+  }
+
+  private progressOf(n: Assignment): string[] {
+    const port = this.runner.progress;
+    if (!port) return [];
+    const lines = this.safe("progress", () => port.call(this.runner, n));
+    return Array.isArray(lines) ? lines.filter(line => typeof line === "string" && line.trim() !== "") : [];
   }
 
   private names(n: Assignment, parent: Assignment | undefined): EnvelopeNames {

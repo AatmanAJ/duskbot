@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StoredEvent } from "../analytics/sink.ts";
-import { appFirstRun, featureRows, productReport } from "./product.ts";
+import { identityOf } from "../analytics/web.ts";
+import { accountOfWho, appFirstRun, featureRows, productDigest, productReport, productReportOf, resolvePeople } from "./product.ts";
 
 const DAY = 86_400_000;
 const to = 30 * DAY;
@@ -40,6 +41,44 @@ describe("productReport", () => {
   });
 });
 
+describe("fix first, from what the site and apps show now", () => {
+  const app = (name: string, at: number, install: string, version: string, props: StoredEvent["props"] = {}): StoredEvent =>
+    ({ id: `e${seq++}`, name, at, accountId: null, props, ctx: { install, app: { platform: "darwin", version } } } as unknown as StoredEvent);
+  const site = (at: number, visitor: string, page: string, props: StoredEvent["props"]): StoredEvent =>
+    ({ id: `e${seq++}`, name: "site_goal", at, accountId: null, props, ctx: { visitor, page } } as unknown as StoredEvent);
+  const funnel = [{ id: "visit", label: "visited the site", count: 10 }, { id: "signup", label: "signed up", count: 10 }];
+
+  it("ranks an error the newest app still throws over a bigger one only older apps had, and says which", () => {
+    const events = [
+      ...Array.from({ length: 6 }, (_, i) => app("app_error", DAY, `old${i}`, "0.1.141", { kind: "window", code: "rejection" })),
+      ...Array.from({ length: 3 }, (_, i) => app("app_error", 2 * DAY, `new${i}`, "0.2.14", { kind: "window", code: "error" })),
+      app("app_open", 2 * DAY, "new0", "0.2.14"),
+    ];
+    const report = productReport({ from: 0, to, events, funnel });
+    const item = report.improve.find(row => row.area === "errors")!;
+    expect(item.title).toContain("window: error");
+    expect(item.detail).toContain("still seen on 0.2.14");
+    expect(report.errors.app.find(row => row.key === "window: rejection")).toMatchObject({ lastVersion: "0.1.141", latestVersion: "0.2.14" });
+  });
+
+  it("names rage clicks by what was clicked and where, and drops a section the site no longer shows", () => {
+    const events = [
+      ...Array.from({ length: 8 }, (_, i) => site(DAY, `w${i}`, "/", { goal: "rage_click", section: "wl" })),
+      site(20 * DAY, "h0", "/", { goal: "rage_click", section: "hero", label: "meet_dusk_bot" }),
+      site(20 * DAY, "h1", "/", { goal: "rage_click", section: "hero", label: "meet_dusk_bot" }),
+    ];
+    const report = productReport({ from: 0, to, events, funnel });
+    expect(report.site.rage).toEqual([{ key: "meet dusk bot in the hero section of /", count: 2, people: 2 }]);
+    expect(report.improve.find(row => row.area === "site")?.title).toBe('rage clicks on "meet dusk bot in the hero section of /"');
+  });
+
+  it("counts an account that set up in the desktop app as onboarded, not lost at the web welcome", () => {
+    const events = [ev("onboarding_step", DAY, "a", { step: "name" }), ev("app_paired", DAY + 60_000, "a"), ev("onboarding_step", DAY, "b", { step: "name" })];
+    const report = productReport({ from: 0, to, events, funnel });
+    expect(report.onboarding.find(row => row.step === "name")).toMatchObject({ reached: 2, leftHere: 1 });
+  });
+});
+
 describe("appFirstRun", () => {
   it("counts the desktop first run's screens per path, so the drop at each one shows", () => {
     const step = (who: string, name: string, extra: StoredEvent["props"] = {}) => ev("app_action", DAY, who, { name: "onboarding_step", step: name, ...extra });
@@ -58,5 +97,19 @@ describe("appFirstRun", () => {
     expect(at("cloud", "done")).toMatchObject({ reached: 0 });
     expect(at("mac", "done")).toMatchObject({ reached: 1 });
     expect(at("mac", "phone"), "the hidden phone step only once someone reaches it").toBeUndefined();
+  });
+});
+
+describe("people across sign-in", () => {
+  it("counts an install and the account it signed in to as one person", () => {
+    const install: StoredEvent = { id: "i1", name: "app_feature", at: 2 * DAY, accountId: null, props: { feature: "voice_used" }, ctx: { install: "inst1" } };
+    const identify: StoredEvent = { id: "id1", name: "identify", at: 2 * DAY, accountId: "acc1", props: { via: "app" }, ctx: { install: "inst1" } };
+    const digest = productDigest.empty();
+    for (const event of [install, ev("app_feature", 3 * DAY, "acc1", { feature: "voice_used" }), ev("app_feature", 3 * DAY, "acc2", { feature: "voice_used" })]) productDigest.add(digest, event);
+    expect(productReportOf(digest, 0, to, []).appPeople).toBe(3);
+    const merged = productReportOf(resolvePeople(digest, accountOfWho(identityOf([identify]))), 0, to, []);
+    expect(merged.appPeople).toBe(2);
+    expect(merged.features.find(row => row.feature === "voice_used")).toMatchObject({ people: 2, uses: 3 });
+    expect(productReportOf(digest, 0, to, []).appPeople, "the kept digest is left as it was").toBe(3);
   });
 });

@@ -2,6 +2,9 @@
 // memory layer a turn reads and writes, whose "About you" and profile a turn gets, who "you" is for a member session,
 // and what that session is told. On any server that is not a Team Cloud every answer here is the plain one (the bot's own
 // memory, the server's profile), so a My Cloud and a desktop behave exactly as before.
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
+
 import type { ThreadAudiences } from "../bot-visibility.ts";
 import { type Audience, baseBotId, layerAudience, layerId, mayRead, memberAudience, audienceMember, threadAudienceFrom } from "../audience.ts";
 import type { CloudTeam, TeamRole } from "../cloud-team.ts";
@@ -36,6 +39,14 @@ export interface MemberProfile { name: string; email: string; aboutMe: string; a
 export type MemberProfilePatch = Omit<PersonProfilePatch, "email" | "seeded"> & { aboutMe?: string };
 
 type MemberSession = { id: string; email?: string };
+
+function conversationFolders(chats: string): string[] {
+  try {
+    return readdirSync(chats, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+  } catch {
+    return [];
+  }
+}
 
 export function createCloudTeamHost(deps: CloudTeamHostDeps) {
   const team = deps.team;
@@ -96,10 +107,15 @@ export function createCloudTeamHost(deps: CloudTeamHostDeps) {
       const own = layer(botId, threadId);
       return own === botId ? [botId] : [own, botId];
     },
-    /** The folders a turn's box must put back besides the bot's own: its layer, when it has one. */
-    layerDirs(botId: string, threadId: string): string[] {
+    /** The folders a turn's box must put back besides the bot's own: its layer, when it has one, and the folders of the
+     * bot's other conversations with the same audience, so files it made in an earlier chat stay reachable. */
+    boxFolders(botId: string, threadId: string): string[] {
       const own = layer(botId, threadId);
-      return own === botId ? [] : [workspaceDir(own)];
+      const chats = join(deps.dataDir, "task-workspaces", botId);
+      if (!team) return [chats];
+      const siblings = conversationFolders(chats).filter((name) => name !== threadId && layerId(botId, audienceOf(name)) === own)
+        .map((name) => join(chats, name));
+      return own === botId ? siblings : [workspaceDir(own), ...siblings];
     },
     /** Captured facts about the person, into that person's own "About you"; nothing for the team's or a room's layer. */
     learnAbout(layerOrBotId: string, plan: (current: string) => { next: string; count: number } | null): number {
