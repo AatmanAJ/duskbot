@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { NEW_DIVIDER_AWAY_MS, forgetChatsInFront, noteChatInFront } from "./chat-in-front";
 import { firstUnreadMessageId, threadOpensUnread, unreadMessageIds } from "./unread-divider";
 import { initialState, reducer, type AppState, type Bot, type Group, type Message } from "@/state/store";
 
@@ -124,5 +125,80 @@ describe("the divider in the store", () => {
     const opened = reducer(base, { type: "select", id: "pepper" });
     expect(reducer(opened, { type: "unreadDividerDone", threadId: "elsewhere" })).toBe(opened);
     expect(reducer(opened, { type: "unreadDividerDone", threadId: "pepper-a" }).unreadDivider).toBeNull();
+  });
+
+  describe("after time away from the conversation", () => {
+    afterEach(forgetChatsInFront);
+    const now = Date.now();
+    const leftPepper = (msAgo: number) => {
+      noteChatInFront("pepper-a", now - msAgo - 1000, true);
+      noteChatInFront("other-a", now - msAgo, true);
+    };
+    const opened = (state: AppState) => reducer(state, { type: "select", id: "pepper" });
+
+    it("is not drawn when the person comes back within two minutes, and the flag still clears", () => {
+      leftPepper(NEW_DIVIDER_AWAY_MS - 1000);
+      const back = opened(base);
+      expect(back.unreadDivider).toBeNull();
+      expect(back.unreadDividerPending).toBeUndefined();
+      expect(back.bots.find((b) => b.id === "pepper")!.tasks![0]!.unread).toBe(false);
+    });
+
+    it("is drawn above the first line that came in when they were away two minutes or more", () => {
+      leftPepper(NEW_DIVIDER_AWAY_MS);
+      expect(opened(base).unreadDivider).toEqual({ threadId: "pepper-a", messageId: "b2" });
+    });
+
+    it("counts a blurred or hidden window as away, from the moment it lost focus", () => {
+      noteChatInFront("pepper-a", now - NEW_DIVIDER_AWAY_MS - 1000, true);
+      noteChatInFront("pepper-a", now - NEW_DIVIDER_AWAY_MS, false);
+      noteChatInFront("pepper-a", now - 1000, false);
+      noteChatInFront("other-a", now - 500, true);
+      expect(opened(base).unreadDivider).toEqual({ threadId: "pepper-a", messageId: "b2" });
+    });
+
+    describe("when the window comes back with the chat still open", () => {
+      const open = { ...base, selectedId: "pepper", activeView: "chat" as const };
+      const returnAfter = (ms: number) => {
+        expect(noteChatInFront("pepper-a", now - ms - 60_000, true)).toEqual({ threadId: "pepper-a", away: true });
+        expect(noteChatInFront("pepper-a", now - ms, false)).toBeNull();
+        const back = noteChatInFront("pepper-a", now, true)!;
+        expect(back.threadId).toBe("pepper-a");
+        return reducer(open, { type: "chatBackInFront", ...back });
+      };
+
+      it("draws the line above the first reply that came in, after two minutes or more", () => {
+        const back = returnAfter(NEW_DIVIDER_AWAY_MS);
+        expect(back.unreadDivider).toEqual({ threadId: "pepper-a", messageId: "b2" });
+        expect(back.bots.find((b) => b.id === "pepper")!.tasks![0]!.unread).toBe(false);
+      });
+
+      it("only marks the replies read when it was back within two minutes", () => {
+        const back = returnAfter(NEW_DIVIDER_AWAY_MS - 1000);
+        expect(back.unreadDivider).toBeNull();
+        expect(back.bots.find((b) => b.id === "pepper")!.tasks![0]!.unread).toBe(false);
+      });
+
+      it("does the same for a room", () => {
+        const room = reducer({ ...base, selectedId: "room", activeView: "chat" }, { type: "chatBackInFront", threadId: "room-t", away: true });
+        expect(room.unreadDivider).toEqual({ threadId: "room-t", messageId: "b2" });
+        expect(room.groups[0]!.unread).toBe(false);
+      });
+
+      it("leaves a chat that is not on screen alone", () => {
+        expect(reducer({ ...open, activeView: "files" }, { type: "chatBackInFront", threadId: "pepper-a", away: true }).unreadDivider).toBeNull();
+        expect(reducer(open, { type: "chatBackInFront", threadId: "other-a", away: true }).unreadDivider).toBeNull();
+      });
+    });
+
+    it("is never drawn for a line that lands while the person watches", () => {
+      noteChatInFront("pepper-a", now - NEW_DIVIDER_AWAY_MS * 10, true);
+      const watching = { ...base, selectedId: "pepper", activeView: "chat" as const,
+        bots: [bot("other"), bot("pepper", { tasks: [{ threadId: "pepper-a", title: "A", createdAt: 1 }] })] };
+      const landed = reducer(watching, { type: "messageAdded", threadId: "pepper-a", message: line("b9", "bot") });
+      expect(landed.unreadDivider).toBeNull();
+      const unreadWhileWatching = { ...watching, bots: [bot("other"), bot("pepper", { unread: true, tasks: [{ threadId: "pepper-a", title: "A", createdAt: 1, unread: true }] })] };
+      expect(opened(unreadWhileWatching).unreadDivider).toBeNull();
+    });
   });
 });

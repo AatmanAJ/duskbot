@@ -7,6 +7,8 @@ import type { GroupGoalRunStatus } from "../shared/group-goal-run.ts";
 import { isRoutineProblemRun } from "../shared/routines.ts";
 import { ROUTINE_SKIPPED_WHILE_WAITING, ROUTINE_SUPERSEDED } from "./routine-execution.ts";
 import { ranApart, runAnswersInItsChat } from "./routine-run-definition.ts";
+import { schedulerDueOf } from "./routine-due.ts";
+import { QUESTION_WAIT_MS } from "./routine-waits.ts";
 import {
   nextOccurrence,
   RoutineManager,
@@ -384,6 +386,42 @@ describe("a run left waiting for the person", () => {
     expect(h.manager.listRoutines()[0].skippedRuns).toBeUndefined();
     expect(JSON.parse(readFileSync(h.options.file!, "utf8")).runs.find((run: RoutineRun) => run.threadId === "thread-1"))
       .toMatchObject({ status: "cancelled", error: ROUTINE_SUPERSEDED });
+  });
+
+  it("stops waiting on a question once the person answers it in the chat, but not on an approval", () => {
+    const h = harness(monday);
+    const routine = h.manager.create({ ...daily, enabled: false });
+    h.manager.runNow(routine.id);
+    return h.manager.tick().then(() => {
+      h.manager.handleRuntimeEvent({ ...event("thread-1"), type: "request.opened", requestId: "approve", requestType: "permission", tool: "shell", summary: "ls" });
+      ask(h, "thread-1");
+      h.manager.handleRuntimeEvent({ ...event("thread-1"), type: "request.opened", requestId: "q", requestType: "question", tool: "ask", summary: "Which account?" });
+      h.manager.personWrote("thread-1");
+      expect(h.manager.listRuns()[0]).toMatchObject({ status: "waiting", asked: { approval: true }, attention: "Waiting for your approval to run “ls”" });
+      expect(h.manager.listRuns()[0]!.asked?.pending).toBeUndefined();
+      h.manager.handleRuntimeEvent({ ...event("thread-1"), type: "request.resolved", requestId: "approve", behavior: "allow", source: "user" });
+      expect(h.manager.listRuns()[0]).toMatchObject({ status: "running" });
+      ask(h, "thread-1");
+      h.manager.personWrote("thread-1");
+      expect(h.manager.listRuns()[0]).toMatchObject({ status: "running", attention: undefined });
+      expect(h.manager.listRuns()[0]!.asked).toBeUndefined();
+      h.manager.handleRuntimeEvent({ ...event("thread-1"), type: "turn.completed", ok: true });
+      expect(h.manager.listRuns()[0]).toMatchObject({ status: "completed" });
+    });
+  });
+
+  it("stops a run whose question nobody answered for a day, and wakes the scheduler for it", async () => {
+    const h = harness(monday);
+    const routine = h.manager.create({ ...daily, enabled: false });
+    h.manager.runNow(routine.id);
+    await h.manager.tick();
+    h.setNow(monday + minutes(5)); ask(h, "thread-1");
+    expect(schedulerDueOf([], h.manager.listRuns(), monday + minutes(5), 0)).toBe(monday + minutes(5) + QUESTION_WAIT_MS);
+    h.setNow(monday + minutes(5) + QUESTION_WAIT_MS - 1); await h.manager.tick();
+    expect(h.manager.listRuns()[0]).toMatchObject({ status: "waiting" });
+    h.setNow(monday + minutes(5) + QUESTION_WAIT_MS); await h.manager.tick();
+    expect(h.manager.listRuns()[0]).toMatchObject({ status: "failed", error: "Stopped: nobody answered the question “Which account should I use?”" });
+    expect(h.interruptedTurns).toEqual([{ botId: "maus-1", threadId: "thread-1" }]);
   });
 
   it("leaves a question asked shortly before the next occurrence alone, then replaces it at the one after", async () => {
@@ -1995,6 +2033,28 @@ describe("RoutineManager", () => {
     h.manager.handleRuntimeEvent({ ...base, type: "item.completed", itemType: "assistant_text", text: "Reviewed the teammate's result." });
     h.manager.handleRuntimeEvent({ ...base, type: "turn.completed", ok: true, cost: 0.03 });
     expect(h.manager.runForThread("thread-1")).toMatchObject({ status: "completed", output: "Reviewed the teammate's result.", cost: 0.05 });
+  });
+
+  it("gives a turn's events to the run working in that chat, not to an earlier one still waiting there", async () => {
+    const h = harness();
+    let pending = true;
+    h.options.hasPendingDelegations = () => pending;
+    h.options.joinConversation = () => "chat-1";
+    const make = (name: string) => h.manager.create({ name, prompt: name, botId: "maus-1", schedule: { type: "daily", time: "09:00", weekdays: [1] } });
+    const first = h.manager.runNow(make("Inbox review").id)!;
+    await h.manager.tick();
+    const base = { eventId: "e", provider: "fake", threadId: "chat-1", createdAt: new Date().toISOString() };
+    h.manager.handleRuntimeEvent({ ...base, type: "turn.completed", ok: true });
+    expect(h.manager.listRuns().find((run) => run.id === first.id)?.status).toBe("waiting");
+    pending = false;
+    const second = h.manager.runNow(make("Month-end totals").id, undefined, true)!;
+    await h.manager.tick();
+    expect(h.manager.listRuns().find((run) => run.id === second.id)?.status).toBe("running");
+    h.manager.handleRuntimeEvent({ ...base, type: "item.completed", itemType: "assistant_text", text: "Month-end preview: $478.48." });
+    h.manager.handleRuntimeEvent({ ...base, type: "turn.completed", ok: true });
+    const runs = h.manager.listRuns();
+    expect(runs.find((run) => run.id === second.id)).toMatchObject({ status: "completed", output: "Month-end preview: $478.48.", dryRun: true });
+    expect(runs.find((run) => run.id === first.id)?.output).toBeUndefined();
   });
 
   it("catches up at most the latest interval occurrence without a backlog", async () => {
@@ -3761,7 +3821,7 @@ describe("routine continuity", () => {
 
   const everyHour = (anchorAt: number): RoutineSchedule => ({ type: "interval", everyMinutes: 60, anchorAt });
 
-  it("starts every run cold when continuity is off", async () => {
+  it("starts every run without the previous session when continuity is off, knowing only what it already reported", async () => {
     const h = harness();
     const anchorAt = new Date(2026, 7, 17, 9, 0, 0).getTime();
     const routine = h.manager.create({
@@ -3775,8 +3835,9 @@ describe("routine continuity", () => {
     const second = await runOnce(h, routine.id, anchorAt + 60 * 60_000, "Still nothing.");
 
     expect(first).toBe(routineTurn(routine.id, "Morning brief", "Write the brief"));
-    expect(second).toBe(routineTurn(routine.id, "Morning brief", "Write the brief"));
+    expect(second.startsWith(routineTurn(routine.id, "Morning brief", "Write the brief"))).toBe(true);
     expect(second).not.toContain("previous-run");
+    expect(second).toMatch(/<earlier-report finished="[^"]+">\nNothing shipped yesterday\.\n<\/earlier-report>/);
   });
 
   it("carries the previous report into the next run when continuity is on", async () => {
@@ -3925,7 +3986,9 @@ describe("routine continuity", () => {
 
     const second = await runOnce(h, routine.id, anchorAt + 60 * 60_000);
 
-    expect(second).toBe(routineTurn(routine.id, "Morning brief", "Write the brief"));
+    expect(second.startsWith(routineTurn(routine.id, "Morning brief", "Write the brief"))).toBe(true);
+    expect(second).not.toContain("previous-run");
+    expect(second).toContain("<earlier-report");
   });
 
   it("refuses continuity on a room goal, which does not run the bot prompt path", () => {
@@ -3960,21 +4023,23 @@ describe("routine paths that cannot exist where the routine runs", () => {
 });
 
 describe("turning a schedule back on, and a deleted bot's schedules", () => {
-  const start = new Date(2026, 7, 17, 8, 0, 0).getTime();
+  const start = () => new Date(2026, 7, 17, 8, 0, 0).getTime();
   const once = (at: number) => ({ name: "Reminder", prompt: "Remind me", botId: "maus-1", schedule: { type: "once" as const, at } });
 
   it("turns a paused schedule back on with its next occurrence", () => {
-    const h = harness(start);
+    const s = start();
+    const h = harness(s);
     const routine = h.manager.create({ name: "Daily", prompt: "Summarize", botId: "maus-1", schedule: { type: "daily", time: "09:00", weekdays: [0, 1, 2, 3, 4, 5, 6] } });
     expect(h.manager.update(routine.id, { enabled: false })).toMatchObject({ enabled: false, nextRunAt: null });
-    h.setNow(start + 3 * 60 * 60_000);
+    h.setNow(s + 3 * 60 * 60_000);
     expect(h.manager.update(routine.id, { enabled: true })).toMatchObject({ enabled: true, nextRunAt: new Date(2026, 7, 18, 9, 0).getTime() });
   });
 
   it("refuses to turn a one-time schedule back on once its time has passed, instead of running it again and switching itself off", async () => {
-    const h = harness(start);
-    const ran = h.manager.create(once(start + 60_000));
-    h.setNow(start + 60_000);
+    const s = start();
+    const h = harness(s);
+    const ran = h.manager.create(once(s + 60_000));
+    h.setNow(s + 60_000);
     await h.manager.tick();
     expect(h.started).toHaveLength(1);
     expect(h.manager.listRoutines().find((routine) => routine.id === ran.id)).toMatchObject({ enabled: false });
@@ -3983,15 +4048,16 @@ describe("turning a schedule back on, and a deleted bot's schedules", () => {
     await h.manager.tick();
     expect(h.started).toHaveLength(1);
     // A new time turns it back on.
-    expect(h.manager.update(ran.id, { enabled: true, schedule: { type: "once", at: start + 60 * 60_000 } })).toMatchObject({ enabled: true, nextRunAt: start + 60 * 60_000 });
+    expect(h.manager.update(ran.id, { enabled: true, schedule: { type: "once", at: s + 60 * 60_000 } })).toMatchObject({ enabled: true, nextRunAt: s + 60 * 60_000 });
     // Paused before its time and turned on again before it: fine.
-    const later = h.manager.create(once(start + 2 * 60 * 60_000));
+    const later = h.manager.create(once(s + 2 * 60 * 60_000));
     h.manager.update(later.id, { enabled: false });
-    expect(h.manager.update(later.id, { enabled: true })).toMatchObject({ enabled: true, nextRunAt: start + 2 * 60 * 60_000 });
+    expect(h.manager.update(later.id, { enabled: true })).toMatchObject({ enabled: true, nextRunAt: s + 2 * 60 * 60_000 });
   });
 
   it("removes a deleted bot's schedules, stops its unfinished runs and drops its run history, leaving other bots' alone", async () => {
-    const h = harness(start);
+    const s = start();
+    const h = harness(s);
     const daily = { type: "daily" as const, time: "23:59", weekdays: [1] };
     const gone = h.manager.create({ name: "Gone", prompt: "Work", botId: "maus-1", schedule: daily });
     const goneToo = h.manager.create({ name: "Gone too", prompt: "Work", botId: "maus-1", enabled: false, schedule: daily });
@@ -4011,10 +4077,11 @@ describe("turning a schedule back on, and a deleted bot's schedules", () => {
   });
 
   it("never starts a due schedule whose bot no longer exists", async () => {
-    const h = harness(start);
-    h.manager.create(once(start + 60_000));
+    const s = start();
+    const h = harness(s);
+    h.manager.create(once(s + 60_000));
     h.setBot("missing");
-    h.setNow(start + 60_000);
+    h.setNow(s + 60_000);
     await h.manager.tick();
     expect(h.manager.listRuns()).toEqual([]);
     expect(h.started).toEqual([]);

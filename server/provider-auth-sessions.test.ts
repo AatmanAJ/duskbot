@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { BoxFenceError } from "./bot-box/plan.ts";
 import { ProviderAuthSessions } from "./provider-auth-sessions.ts";
 import type { ProviderAuthenticationStart } from "./contracts.ts";
 
@@ -262,5 +263,19 @@ describe("a sign-in in progress, as the move and a backup see it (active)", () =
       vi.setSystemTime(Date.now() + 60_000);
       expect(sessions.active).toBe(false);
     } finally { vi.useRealTimers(); }
+  });
+});
+
+describe("a sign-in the bot box refuses", () => {
+  it("tells the person in plain words, never with the server's folder", async () => {
+    const { sessions, instance } = fixture();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    instance.startAuthentication.mockRejectedValueOnce(new BoxFenceError("/home/dusk/.duskbot/providers/antigravity/ac0a"));
+    const refused = await sessions.start(instance, "owner").catch((error: Error & { status?: number }) => error);
+    expect(refused).toMatchObject({ status: 500 });
+    expect((refused as Error).message).toMatch(/sign-in could not start on this server/);
+    expect((refused as Error).message).not.toContain(".duskbot");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("/home/dusk/.duskbot/providers/antigravity/ac0a"));
+    warn.mockRestore();
   });
 });

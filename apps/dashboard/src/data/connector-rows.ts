@@ -39,6 +39,12 @@ export const FIXTURE_EXTRAS: ConnectorExtras = {
   figma: { status: "needs-auth" },
 };
 
+/** whether the workspace has this app (by any of `ids`) connected in the app itself, so only that app can change it */
+export function connectedInAppOn(inApp: Record<string, string[]>, workspaceId: string, ids: ReadonlyArray<string | null | undefined>): boolean {
+  const there = new Set((inApp[workspaceId] ?? []).map((id) => id.toLowerCase()));
+  return ids.some((id) => typeof id === "string" && there.has(id.toLowerCase()));
+}
+
 /** shows an app whose sign-in was started and not finished as needing sign-in on that workspace, next to the connected ones */
 export function withPending(connections: Record<string, string[]>, pending: Record<string, string[]>, base: ConnectorExtras = {}): { connections: Record<string, string[]>; extras: ConnectorExtras; pending: Record<string, string[]> } {
   // oxlint-disable-next-line no-unused-vars -- status is dropped from the rest
