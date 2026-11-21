@@ -8,8 +8,9 @@ import { shortPath } from "@/lib/short-path";
 import { useStore, type Bot } from "@/state/store";
 import { useDesktopCapabilities } from "../DesktopCapabilities";
 import { ServiceIcon } from "../ServiceIcon";
+import { ArtState } from "../ui/Art";
 import { useWorkingFolder } from "../bot-settings/AccessSection";
-import { SkillReviewDialog } from "../bot-settings/SkillsSection";
+import { SkillReviewSheet } from "../bot-settings/SkillsSection";
 import { useBotApps, type BotApp } from "../bot-settings/useBotApps";
 import type { useBotSettingsDerived } from "../bot-settings/useBotSettingsDerived";
 import { BotRoutines } from "../routines/BotRoutines";
@@ -17,6 +18,8 @@ import { BrowserLogins } from "./browser-logins";
 import { useOpenComputer, WherePage } from "./ComputerTab";
 import { ApiPage, BackupsPage, InstructionsPage, SettingsPage, ThreadsPage } from "./SettingsPage";
 import { LibraryPage } from "./LibraryTab";
+import { FilesPage } from "../documents/FilesSection";
+import { DocumentPage } from "../documents/DocumentPage";
 import type { SimplePageId } from "./page-registry";
 import { BotSwitch, buttonCls, Card, fieldCls, LinkRow, NoteRow, RadioRow, rowCls, SwitchRow, TextRow, TrashButton } from "./rows";
 import { ForgetUndoToast } from "./modals/MemoryModal";
@@ -47,14 +50,14 @@ export function AppsPage({ bot, derived }: PageContext) {
       ? t("botPanel.ui.commonChecking")
       : apps.phase === "unknown"
         ? t("botSettings.simple.appsUnknown")
-        : apps.apps.length === 0
-          ? t("botSettings.simple.appsNone")
-          : null;
+        : null;
+  const none = canUseConnectedApps && apps.phase !== "loading" && apps.phase !== "unknown" && apps.apps.length === 0;
 
   return (
     <>
       <Card>
         {note && <NoteRow>{note}</NoteRow>}
+        {none && <ArtState data-art-state="apps" art="plug" title={t("empty.apps.title")} className="py-6">{t("empty.apps.hint", { name: bot.name })}</ArtState>}
         {canUseConnectedApps && apps.apps.map((app) => (
           <div key={app.slug} data-simple-app={app.slug} className={rowCls}>
             <ServiceIcon key={`${app.card.logo}:${app.card.domain}`} card={app.card} className="size-7 shrink-0" />
@@ -103,7 +106,7 @@ export function MemoryPage({ bot }: PageContext) {
         ) : notes === null ? (
           <NoteRow>{t("botPanel.ui.commonChecking")}</NoteRow>
         ) : notes.length === 0 ? (
-          <NoteRow>{t("botPanel.memory.empty")}</NoteRow>
+          <ArtState data-art-state="memory" art="notebook" title={t("empty.memory.title")} className="py-6">{t("empty.memory.hint", { name: bot.name })}</ArtState>
         ) : notes.map((note) => (
           <div key={`${note.path}:${note.line}:${note.text}`} data-memory-note={note.line ?? note.path} className={rowCls}>
             <div className="min-w-0 flex-1 text-[13px] leading-[1.45] text-ink">{note.text}</div>
@@ -140,7 +143,7 @@ export function SkillsPage({ bot }: PageContext) {
         {skills.loading ? (
           <NoteRow>{t("botPanel.ui.skillsLoading")}</NoteRow>
         ) : skills.skills.length === 0 ? (
-          <NoteRow>{t("botSettings.simple.noSkills")}</NoteRow>
+          <ArtState data-art-state="skills" art="cap" title={t("empty.skills.title")} className="py-6">{t("empty.skills.hint", { name: bot.name })}</ArtState>
         ) : skills.skills.map((skill) => (
           <SwitchRow
             key={skill.name}
@@ -170,16 +173,13 @@ export function SkillsPage({ bot }: PageContext) {
         />
         <LinkRow data-panel-link="browse-skills" onClick={browse}>{t("botPanel.skills.browse")}</LinkRow>
       </Card>
-      {skills.reviewing && (
-        <SkillReviewDialog
-          skill={skills.reviewing.skill}
-          text={skills.reviewing.text}
-          error={skills.error}
-          working={skills.working === skills.reviewing.skill.name}
-          onCancel={() => skills.setReviewing(null)}
-          onEnable={() => void skills.enableReviewed()}
-        />
-      )}
+      <SkillReviewSheet
+        reviewing={skills.reviewing}
+        error={skills.error}
+        working={Boolean(skills.reviewing && skills.working === skills.reviewing.skill.name)}
+        onCancel={() => skills.setReviewing(null)}
+        onEnable={() => void skills.enableReviewed()}
+      />
     </>
   );
 }
@@ -266,7 +266,7 @@ export function BrowserPage({ bot, derived }: PageContext) {
   return <BrowserLogins bot={bot} browserEnabled={derived.browserEnabled} onOpenBrowser={() => openComputer("browser")} />;
 }
 
-export function PageBody({ page, onOpen: _onOpen, editingInstructions: _editing, onEditInstructions: _onEdit, ...context }: PageContext & {
+export function PageBody({ page, onOpen, editingInstructions: _editing, onEditInstructions: _onEdit, ...context }: PageContext & {
   page: SimplePageId;
   onOpen?: (page: SimplePageId) => void;
   editingInstructions?: boolean;
@@ -299,5 +299,9 @@ export function PageBody({ page, onOpen: _onOpen, editingInstructions: _editing,
       return <ApiPage {...context} />;
     case "library":
       return <LibraryPage bot={context.bot} />;
+    case "files":
+      return <FilesPage bot={context.bot} onOpen={onOpen ?? (() => {})} />;
+    case "document":
+      return <DocumentPage bot={context.bot} />;
   }
 }

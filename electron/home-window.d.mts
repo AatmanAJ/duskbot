@@ -15,7 +15,9 @@ export type HomeView = { name?: string } & (
   /** A Cloud the session's list says isn't running, so nothing looks up its address: it has ended (`deleteAt`: when its kept
    * files are deleted), its checkout wasn't finished, or its payment has a problem; `removable` while its owner may take it
    * off their list. */
-  | { screen: "ended" | "checkout" | "payment"; deleteAt?: number; removable?: true });
+  | { screen: "ended" | "checkout" | "payment"; deleteAt?: number; removable?: true; trial?: true }
+  /** The edge says the Cloud was deleted: nothing looks it up again. */
+  | { screen: "gone"; removable?: true });
 
 /** The window onto My Cloud once it is the person's home (preload `home`). */
 export interface HomeBridge {
@@ -62,6 +64,7 @@ export declare const HOME_SCREEN_PATH: string;
 export declare const LOOK_MS: number;
 export declare const OPEN_MS: number;
 export declare const RETRY_MS: readonly number[];
+export declare const CONNECT_GRACE_MS: number;
 export declare const QUIET_MS: number;
 export declare const VERSION_EVERY_MS: number;
 export declare const SPLASH_HANDOFF_MS: number;
@@ -99,6 +102,8 @@ export interface HomeWindow {
   current(): Home;
   shown(): HomePlace | null;
   retry(): Promise<unknown>;
+  openHere(): Promise<void>;
+  here(): boolean;
   signIn(): Promise<void>;
   repair(): Promise<void>;
   changed(): Promise<void>;

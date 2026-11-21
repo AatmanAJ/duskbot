@@ -69,6 +69,28 @@ it("keeps it for another try when the Cloud can't take it yet", async () => {
   expect(await f.store.pending()).toEqual([]);
 });
 
+it("hands a Cloud on an older image the ChatGPT login alone when it refuses the kinds it doesn't know", async () => {
+  const f = fixture(), c = f.order();
+  f.service.activate(c.id, "sub1", plan);
+  const grok = { kind: "grok-auth" as const, auth };
+  await f.service.holdSignIns!("a", c.id, [{ kind: "codex-auth", auth }, grok]);
+  f.home.signIns.mockRejectedValueOnce(Object.assign(new Error("refused"), { status: 400 }));
+  for (let n = 0; n < 20 && c.status === "provisioning"; n++) await f.service.reconcile();
+  await f.service.reconcile();
+  expect(f.home.signIns.mock.calls.map(call => (call as unknown[])[2])).toEqual([[{ kind: "codex-auth", auth }, grok], [{ kind: "codex-auth", auth }]]);
+  expect(await f.store.pending()).toEqual([]);
+});
+
+it("keeps a refused batch for another try when the refusal wasn't about the kinds", async () => {
+  const f = fixture(), c = f.order();
+  f.service.activate(c.id, "sub1", plan);
+  await f.service.holdSignIns!("a", c.id, [{ kind: "codex-auth", auth }, { kind: "grok-auth", auth }]);
+  f.home.signIns.mockRejectedValueOnce(Object.assign(new Error("down"), { status: 503 }));
+  for (let n = 0; n < 20 && c.status === "provisioning"; n++) await f.service.reconcile();
+  expect(f.home.signIns).toHaveBeenCalledOnce();
+  expect(await f.store.pending()).toEqual([c.id]);
+});
+
 it("is refused for another account's Cloud, an ended one, or without a seal key, and expires after a day", async () => {
   const f = fixture(), c = f.order();
   await expect(f.service.holdSignIns!("b", c.id, [{ kind: "codex-auth", auth }])).rejects.toBeInstanceOf(CloudError);

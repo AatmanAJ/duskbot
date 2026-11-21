@@ -7,6 +7,7 @@ import { t, tFromServer } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
 import { SkillRequestPreview } from "@/components/SkillRequestPreview";
 import { composioActionPhrase, outboundSummary } from "@/lib/approval-summary";
+import { ReviewRecord, showsReviewRecord } from "./ReviewCards";
 import { niceDate, niceTime, scheduleLabel } from "@/lib/schedule-label";
 import { cronScheduleLabel } from "../../shared/cron-label";
 import { PROFILE_REQUEST_FIELDS, type ProfileRequestField } from "../../shared/profile-request";
@@ -19,7 +20,6 @@ import { ASK_CARD_LIFT, ASK_CARD_RING } from "./AskCard";
 import { EventChip, EventLabel, EventLine } from "./EventLine";
 import { Icon, type IconName } from "./Icon";
 import { BotAvatar } from "./Avatar";
-import { openBotSettings } from "./bot-panel/panel-link";
 import { CardHint } from "./CardHint";
 import { lowerFirst } from "../lib/lower-first";
 import { appActionLine } from "@/lib/app-action";
@@ -119,6 +119,12 @@ export function toolLabel(tool?: string): string {
     stage_skill: "approval.tool.enableSkill",
     update_skill: "approval.tool.updateSkill",
     update_profile: "approval.tool.updateProfile",
+    mac_exec: "approval.tool.macExec",
+    mac_read_file: "approval.tool.macReadFile",
+    mac_send_file: "approval.tool.macReadFile",
+    mac_write_file: "approval.tool.macWriteFile",
+    mac_open: "approval.tool.macOpen",
+    mac_download: "approval.tool.macDownload",
     // ACP drivers may send the protocol's toolCall kind as the tool, so every kind maps to a phrase ("shell" is
     // execute; "tool" is no kind at all).
     shell: "approval.tool.runCommand",
@@ -229,7 +235,7 @@ const WAIT_EVENT = {
 
 interface AppliedEvent {
   label: string;
-  chip?: { icon: IconName; name: string; title?: string; routinesOf?: string | null };
+  chip?: { icon: IconName; name: string; title?: string };
   /** Bots the change made or changed, each drawn as its mascot. */
   bots?: Array<{ name: string; botId?: string }>;
   forBot?: { name: string; botId?: string };
@@ -245,7 +251,7 @@ export function appliedEvent(card: OptionCardData): AppliedEvent | undefined {
       ? plainWhen(routine.undo.schedule) : "";
     return {
       label: t(ROUTINE_EVENT[operation.action]),
-      ...(name ? { chip: { icon: "clock" as const, name, title: when ? `${name}, ${when}` : name, routinesOf: operation.action === "delete" ? null : operation.forBot?.botId ?? "" } } : {}),
+      ...(name ? { chip: { icon: "clock" as const, name, title: when ? `${name}, ${when}` : name } } : {}),
       ...(operation.forBot ? { forBot: { name: operation.forBot.name, botId: operation.forBot.botId } } : {}),
     };
   }
@@ -256,11 +262,12 @@ export function appliedEvent(card: OptionCardData): AppliedEvent | undefined {
     const name = webhook.undo?.name ?? "";
     return {
       label: t(ROUTINE_EVENT[webhook.operation.action]),
-      ...(name ? { chip: { icon: "lightning" as const, name, routinesOf: webhook.operation.action === "delete" ? null : webhook.operation.forBot?.botId ?? "" } } : {}),
+      ...(name ? { chip: { icon: "lightning" as const, name } } : {}),
       ...(webhook.operation.forBot ? { forBot: { name: webhook.operation.forBot.name, botId: webhook.operation.forBot.botId } } : {}),
     };
   }
   const skill = card.skillRequest;
+  if (skill?.learnedBy === "review") return { label: t(skill.action === "create" ? "chat.event.skillLearned" : "chat.event.skillImproved"), chip: { icon: "skills", name: skill.name } };
   if (skill) return { label: t(skill.action === "create" ? "chat.event.skillAdded" : "chat.event.skillUpdated"), chip: { icon: "skills", name: skill.name } };
   const profile = card.profileRequest;
   if (profile) {
@@ -310,7 +317,6 @@ function AppliedEventLine({ event, bots }: { event: AppliedEvent; bots: readonly
 
 function AppliedEventParts({ event, bots }: { event: AppliedEvent; bots: readonly Bot[] | undefined }) {
   const chip = event.chip;
-  const store = useContext(StoreContext);
   const many = event.bots && event.bots.length > 2;
   return (
     <>
@@ -319,12 +325,6 @@ function AppliedEventParts({ event, bots }: { event: AppliedEvent; bots: readonl
         <EventChip
           leading={<Icon name={chip.icon} size={12} />}
           title={chip.title ?? chip.name}
-          {...(chip.routinesOf !== undefined && chip.routinesOf !== null && store
-            ? {
-                onClick: () => openBotSettings(store.dispatch, "routines", chip.routinesOf ? { botId: chip.routinesOf } : {}),
-                "aria-label": t("chat.event.openRoutine", { name: chip.name }),
-              }
-            : {})}
         >
           {chip.name}
         </EventChip>
@@ -351,6 +351,7 @@ function AppliedChangeLine({
 }) {
   const [error, setError] = useState<string>();
   const [sharing, setSharing] = useState(false);
+  const [undoing, setUndoing] = useState(false);
   // Kept until the card's own patch arrives, so the Share button cannot come back in between.
   const [sharedNow, setSharedNow] = useState<{ requestId: string; shared: SkillShareRecord }>();
   const store = useContext(StoreContext);
@@ -372,6 +373,15 @@ function AppliedChangeLine({
       })
       .finally(() => setSharing(false));
   };
+  const canUndo = Boolean(skill?.learnedBy === "review" && !undone && threadId && card.requestId && appliedChange(card, "")?.canUndo);
+  const undo = () => {
+    if (!threadId || !card.requestId || undoing) return;
+    setUndoing(true);
+    setError(undefined);
+    api(`/api/threads/${threadId}/undo`, { method: "POST", body: JSON.stringify({ requestId: card.requestId }) })
+      .catch((failure: unknown) => setError(friendlyError(failure)))
+      .finally(() => setUndoing(false));
+  };
   const sharedNames = shared?.assigned.filter((bot) => bot.botId !== skill?.botId).map((bot) => bot.name) ?? [];
   const skippedNames = shared?.skipped.map((bot) => bot.name) ?? [];
   const setup = card.teamSetupRequest?.result && !card.teamSetupRequest.deletion ? setupEvents(card.teamSetupRequest.result) : null;
@@ -387,6 +397,11 @@ function AppliedChangeLine({
             <EventLabel tone="tertiary">· {sharedNames.length ? t("approval.applied.sharedSkill", { names: sharedNames.join(", ") }) : t("approval.applied.sharedSkillNobody")}</EventLabel>
           )}
           {undone && !card.waitRequest && <EventLabel tone="tertiary">· {t("approval.applied.undone")}</EventLabel>}
+          {canUndo && (
+            <EventChip onClick={undo} disabled={undoing} className="disabled:opacity-60">
+              {undoing ? t("automations.card.undoing") : t("automations.card.undo")}
+            </EventChip>
+          )}
           {canShare && (
             <EventChip onClick={share} disabled={sharing} className="disabled:opacity-60">
               {sharing ? t("approval.applied.sharingSkill") : t("approval.applied.shareSkill")}
@@ -585,6 +600,7 @@ export function ApprovalCard({
 }) {
   const card = message.card;
   if (!card) return null;
+  if (showsReviewRecord(card)) return <ReviewRecord card={card} />;
   if (cardAutomation(card)) return <TriggerCard card={card} threadId={threadId} />;
   const applied = card.autoApplied === true && card.answered === "allow" && !card.held
     ? appliedChange(card, bot?.name ?? t("approval.someone"))
