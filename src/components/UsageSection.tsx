@@ -4,7 +4,7 @@ import { cn } from "@/lib/cn";
 import { activeLocale, documentLanguage, t } from "@/lib/i18n";
 import { listenLiveFrames } from "@/lib/live-events";
 import { formatTokens, hasFiniteCost, headlineTokens } from "@/lib/usage";
-import { fetchTraces, formatCost, formatDuration, USAGE_PERIODS, usageExportHref, usagePeriodRange, type UsagePeriod } from "@/lib/usage-trace";
+import { fetchTraces, formatCost, formatDuration, traceRootTitle, USAGE_PERIODS, usageExportHref, usagePeriodRange, type UsagePeriod } from "@/lib/usage-trace";
 import { api, useStore } from "@/state/store";
 import type { LocaleKey } from "@/locales";
 import type { TraceList, TraceRootSummary } from "../../shared/usage-trace";
@@ -15,6 +15,7 @@ import { Card as RowsCard, ItemRow, NavRow, NoteRow, RowText, rowCls } from "./L
 import { TraceView } from "./usage/TraceView";
 import { LiveBadge, modelName, totalsStats } from "./usage/TraceWaterfall";
 import { friendlyError } from "@/lib/plain-error";
+import { ArtState } from "./ui/Art";
 
 export type UsageGroupBy = "bot" | "model" | "user" | "day" | "engine" | "routine" | "department";
 const OTHER_GROUPINGS: readonly UsageGroupBy[] = ["model", "user", "department", "day", "engine", "routine"];
@@ -60,6 +61,7 @@ export function usageGroupLabel(groupBy: UsageGroupBy, group: Pick<UsageGroup, "
   if (groupBy !== "user") return group.label;
   if (group.key === "owner") return t("usage.history.owner");
   if (group.key === "bot") return t("usage.history.botToBot");
+  if (group.key === "upkeep") return t("usage.history.upkeep");
   if (group.key.startsWith("routine:")) return t("usage.history.routine", { name: group.label.replace(/^Routine: /, "") });
   return group.label;
 }
@@ -80,7 +82,7 @@ export function GroupBars({ groupBy, groups }: { groupBy: UsageGroupBy; groups: 
   const { state } = useStore();
   const top = [...groups].sort((a, b) => headlineTokens(b) - headlineTokens(a)).slice(0, 6);
   const max = Math.max(...top.map(headlineTokens), 0);
-  if (!top.length || max <= 0) return <NoteRow>{t("usage.page.whereEmpty")}</NoteRow>;
+  if (!top.length || max <= 0) return <ArtState data-art-state="where" art="coins" title={t("empty.where.title")} className="py-6">{t("empty.where.hint")}</ArtState>;
   return (
     <ul className="contents">
       {top.map((group) => {
@@ -136,7 +138,7 @@ function startedLabel(at: number): string {
 
 export function RunRow({ root, onOpen }: { root: TraceRootSummary; onOpen: () => void }) {
   const { state } = useStore();
-  const title = root.title || t(`trace.source.${root.source}`, { bot: root.bots[0]?.name ?? "" });
+  const title = traceRootTitle(root);
   return (
     <li>
       <button type="button" onClick={onOpen} className={cn(rowCls, "grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] text-start hover:bg-ink/[0.035] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus")} data-testid="usage-run">
@@ -230,7 +232,7 @@ export function UsageSection() {
           <WhereItWent range={range} version={version} />
           <section aria-label={t("usage.page.runs")} className="contents">
             <RowsCard label={t("usage.page.runs")} footnote={untimed ? t("usage.page.untimedNote") : undefined}>
-              {list && !list.roots.length && <NoteRow>{t("usage.page.runsEmpty")}</NoteRow>}
+              {list && !list.roots.length && <ArtState data-art-state="runs" art="receipt" title={t("empty.runs.title")} className="py-6">{t("empty.runs.hint")}</ArtState>}
               <ul className="contents">
                 {list?.roots.map((root) => <RunRow key={root.id} root={root} onOpen={() => setOpen({ id: root.id, at: root.startedAt })} />)}
               </ul>

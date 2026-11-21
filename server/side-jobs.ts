@@ -38,7 +38,10 @@ export function helperSelection(cfg: HelperConfig, env: Record<string, string | 
 /** "room-routing": Dusk deciding who answers a group message, on the engine's quick model. */
 /** "turn-beat": the short ack and progress lines sent while a turn works (turn-beats.ts), on the engine's quick model. */
 /** "frustration-summary": an abstract line about a chat that went badly, for usage-signals.ts; scrubbed before it leaves. */
-export type SideJob = "compaction" | "memory" | "skill-review" | "setup-suggestions" | "representative" | "status-reply" | "room-routing" | "turn-beat" | "frustration-summary";
+/** "side-reply": the quick reply to the person's message sent while a turn works (host/side-replies.ts), on the engine's
+ * quick model; with neither an engine call nor a helper, OpenCode's free backup writes it. */
+/** "deliverable-check": one fresh look at a finished document, page or file against the person's ask (host/deliverable-check.ts). */
+export type SideJob = "compaction" | "memory" | "skill-review" | "setup-suggestions" | "representative" | "status-reply" | "room-routing" | "turn-beat" | "frustration-summary" | "side-reply" | "suggestions" | "deliverable-check";
 
 export type SideJobInstance = Pick<ProviderInstance, "instanceId" | "driverKind" | "enabled" | "generateText" | "generateMemoryText" | "models" | "quickModelsUsable"> & {
   adapter: { capabilities: Pick<ProviderAdapter["capabilities"], "agentsMcp"> };
@@ -67,6 +70,8 @@ export interface SideJobsDeps {
   /** Hosted workspaces only. */
   modelAllowed?: (selection: { instanceId: string; model: string }) => boolean;
   book: (row: Omit<UsageRow, "at" | "costSource">, tokensReported: boolean) => void;
+  /** OpenCode's free backup, when it is installed and ready: the last writer of a side reply. */
+  freeBackup?: () => SideJobInstance | null;
   log?: (line: string) => void;
 }
 
@@ -181,6 +186,13 @@ export function createSideJobs(deps: SideJobsDeps): SideJobs {
     return { instance, call: instance.generateText.bind(instance), ...(helper.model ? { model: helper.model } : {}) };
   }
 
+  function freeBackupText(bot: SideJobBot): SideJobText | null {
+    const free = deps.freeBackup?.();
+    const call = free && !deps.refusal(free) ? ownCall("side-reply", free) : undefined;
+    if (!free || !call) return null;
+    return { via: "helper", generateText: booked("side-reply", bot, free, call, { kind: "helper", botId: bot.id, job: "side-reply" }, () => ({})) };
+  }
+
   return {
     text(job, botId, at = {}) {
       const bot = deps.bot(botId);
@@ -191,16 +203,16 @@ export function createSideJobs(deps: SideJobsDeps): SideJobs {
       const call = ownCall(job, own);
       if (call) {
         if (job === "compaction") return { via: "engine", generateText: call };
-        if (job === "setup-suggestions" || job === "room-routing" || job === "turn-beat" || job === "frustration-summary") {
+        if (job === "setup-suggestions" || job === "skill-review" || job === "room-routing" || job === "turn-beat" || job === "frustration-summary" || job === "side-reply") {
           const quick = quickModel(bot, own);
-          const write = booked(job, bot, own, call, { kind: "bot", botId: bot.id }, () => ({ fallback: ownFallback(bot, own), ...quick }));
+          const write = booked(job, bot, own, call, { kind: "upkeep", botId: bot.id, job }, () => ({ fallback: ownFallback(bot, own), ...quick }));
           return { via: "engine", generateText: quick.model ? rememberRefusal(write, own, quick.model) : write };
         }
-        return { via: "engine", generateText: booked(job, bot, own, call, { kind: "bot", botId: bot.id }, () => ({ fallback: ownFallback(bot, own) })) };
+        return { via: "engine", generateText: booked(job, bot, own, call, { kind: "upkeep", botId: bot.id, job }, () => ({ fallback: ownFallback(bot, own) })) };
       }
       if (!helperModelAllowed(bot)) return null;
       const helper = usableHelper();
-      if (!helper) return null;
+      if (!helper) return job === "side-reply" ? freeBackupText(bot) : null;
       return { via: "helper", generateText: booked(job, bot, helper.instance, helper.call, { kind: "helper", botId: bot.id, job }, () => (helper.model ? { model: helper.model } : {})) };
     },
   };

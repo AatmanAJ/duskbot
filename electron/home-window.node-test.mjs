@@ -9,7 +9,7 @@ import { cloudPageSenderAllowed, myCloudOrigin } from "./cloud-home.mjs";
 import { otherOwnClouds } from "./cloud-list.mjs";
 import environments from "./environments.cjs";
 import localOrigin from "./local-origin.cjs";
-import { HOME_SCREEN_PATH, homeOf, installHomeWindowIpc, LOOK_MS, placeOf, QUIET_MS, routeOf, SPLASH_TEXT, splashText, TEAM_RENEW_EARLY_MS, TEAM_RENEW_MS, TEAM_RENEW_RETRY_MS, UPDATING_MS } from "./home-window.mjs";
+import { CONNECT_GRACE_MS, HOME_SCREEN_PATH, homeOf, installHomeWindowIpc, LOOK_MS, placeOf, QUIET_MS, routeOf, SPLASH_TEXT, splashText, TEAM_RENEW_EARLY_MS, TEAM_RENEW_MS, TEAM_RENEW_RETRY_MS, UPDATING_MS } from "./home-window.mjs";
 import { ACCOUNT, ACME, CLIENT, CLIENT_A, CLOUD, connected, done, LOCAL, TEAM, world } from "./fixtures/home-window-world.mjs";
 
 test("home is My Cloud only once the move switched and the same account is signed in; anything else is this computer or the sign-in screen", () => {
@@ -120,7 +120,23 @@ test("a lapsed cookie: a new session from the Admin's one-time code, so the page
   const w = world({ cloud: { signedIn: false } });
   await w.home.show();
   assert.equal(w.pairs, 1);
-  assert.deepEqual(w.went, [[`${CLOUD}/pair#code=AAAA-BBBB-CCCC`, CLOUD]]);
+  assert.deepEqual(w.redeemed, [["cloud", { code: "AAAA-BBBB-CCCC", cookie: true, label: "dusk bot app" }]]);
+  assert.deepEqual(w.went, [[CLOUD, CLOUD]], "signed in into the cookie first: one load, no sign-in page between");
+  const refused = world({ cloud: { signedIn: false, redeems: false } });
+  await refused.home.show();
+  assert.deepEqual(refused.went, [[`${CLOUD}/pair#code=AAAA-BBBB-CCCC`, CLOUD]], "a code the cookie can't take goes through the page as before");
+});
+
+test("My Cloud gets what this computer carries before the window moves there, once its session is in the cookie", async () => {
+  const w = world({ cloud: { signedIn: false } });
+  await w.home.show();
+  const before = w.calls.findIndex((call) => call.startsWith(`before-open ${CLOUD}`));
+  assert.ok(before >= 0, "beforeOpen ran for My Cloud");
+  assert.ok(w.redeemed.length === 1, "after the sign-in");
+  assert.equal(w.went.length, 1);
+  const refused = world({ cloud: { signedIn: false, redeems: false } });
+  await refused.home.show();
+  assert.ok(!refused.calls.some((call) => call.startsWith("before-open")), "no session in the cookie: nothing is carried before the load");
 });
 
 test("a session that ends while the page is open is renewed by itself, back on the same page", async () => {
@@ -182,18 +198,22 @@ test("another account: the sign-in screen says so, and My Cloud is never opened 
   assert.deepEqual([w.fetched, w.pairs], [[], 0]);
 });
 
-test("with the network down the offline screen shows at once, with the Admin's reason, and goes away by itself", async () => {
+test("with the network down the opening screen stays while it may still be connecting, then the offline screen with the Admin's reason, and it goes away by itself", async () => {
   const w = world({ state: connected({ unreachable: { cause: "host", since: 1 } }), cloud: { down: true } });
   const started = Date.now();
   await w.home.show();
   assert.ok(Date.now() - started < LOOK_MS);
   assert.deepEqual(w.went, [[`${LOCAL}${HOME_SCREEN_PATH}`, null]]);
+  assert.deepEqual(w.home.view(), { screen: "opening" }, "a launch that hasn't connected yet is the loader, never \"can't reach\"");
+  w.url = `${LOCAL}${HOME_SCREEN_PATH}`;
+  w.fetched.length = 0;
+  await w.later(CONNECT_GRACE_MS);
+  assert.deepEqual(w.went, [[`${LOCAL}${HOME_SCREEN_PATH}`, null]], "the screen stays where it is");
   const view = w.home.view();
   assert.equal(view.screen, "offline");
   assert.match(view.reason, /being restarted by our hosting provider/);
   assert.deepEqual([w.fetched, w.pairs], [[["/api/health", "1"]], 0], "a My Cloud that fails the look is asked nothing else, and never paired");
   assert.deepEqual(w.published.at(-1), view, "the screen is told");
-  w.url = `${LOCAL}${HOME_SCREEN_PATH}`;
   await w.later(2_000);
   assert.equal(w.went.length, 1, "still down: it stays, and looks again later");
   w.cloud.down = false;
@@ -207,6 +227,23 @@ test("with the network down the offline screen shows at once, with the Admin's r
   w.home.failed(`${CLOUD}/chats`);
   assert.equal(w.home.view().screen, "offline", "My Cloud's page failing to load is the same screen");
   assert.deepEqual(w.went.at(-1), [`${LOCAL}${HOME_SCREEN_PATH}`, null]);
+});
+
+test("a launch while My Cloud is still connecting shows the loader until it answers, and never says it can't be reached", async () => {
+  const w = world({ cloud: { down: true } });
+  await w.home.show();
+  w.url = `${LOCAL}${HOME_SCREEN_PATH}`;
+  await w.later(2_000);
+  await w.later(4_000);
+  w.cloud.down = false;
+  await w.later(8_000);
+  assert.deepEqual(w.went.at(-1), [CLOUD, CLOUD], "it opened by itself");
+  assert.equal(w.published.some((view) => view.screen === "offline"), false, "no can't-reach screen on the way");
+  assert.ok(w.published.some((view) => view.screen === "opening"));
+  w.cloud.down = true;
+  w.url = `${CLOUD}/`;
+  w.home.failed(`${CLOUD}/`);
+  assert.equal(w.home.view().screen, "offline", "once open, a page that fails to load is a real failure: said at once");
 });
 
 test("a plan problem shows the Admin's state and never knocks on My Cloud", async () => {
@@ -398,14 +435,14 @@ test("the window's IPC: the screen reads and retries, My Cloud's page renews its
 });
 
 const PRELOAD = readFileSync(new URL("./preload.cjs", import.meta.url), "utf8");
-function preload(origin, { home = false, activation = false, pairedElsewhere = false } = {}) {
+function preload(origin, { home = false, place = false, activation = false, pairedElsewhere = false } = {}) {
   let bridge; const invoked = [], synced = [], listeners = new Map();
   vm.runInNewContext(PRELOAD, {
     process: { platform: "darwin", argv: [`--dusk-local-origin=${LOCAL}`, ...(pairedElsewhere ? ["--duskbot-remote-client"] : ["--dusk-company-desktop=1"])] },
     location: { origin }, navigator: { userActivation: { isActive: activation } }, TextEncoder, localStorage: { getItem: () => null },
     queueMicrotask,
     require: () => ({ webUtils: {}, contextBridge: { exposeInMainWorld: (_name, value) => { bridge = value; } },
-      ipcRenderer: { on: (channel, listener) => listeners.set(channel, listener), removeListener() {}, send() {}, sendSync: (channel) => { synced.push(channel); return channel === "home:page" ? home : null; },
+      ipcRenderer: { on: (channel, listener) => listeners.set(channel, listener), removeListener() {}, send() {}, sendSync: (channel) => { synced.push(channel); return channel === "home:page" ? home : channel === "place:page" ? place : null; },
         invoke: (...args) => { invoked.push(args); return Promise.resolve(); } } }),
   });
   const tell = (channel, ...args) => listeners.get(channel)?.({}, ...args);
@@ -505,13 +542,13 @@ test("no page gets a control over lending this computer: not My Cloud's, another
 
 test("Settings on the person's own Cloud shows the plan read only, says when it is home, and can open the Plan page or sign in again; never switch away", async () => {
   const page = preload(CLOUD);
-  assert.deepEqual(Object.keys(page.bridge.cloudPlan), ["state", "manage", "signIn", "noticeSeen", "openPage", "upgradePreview", "upgrade", "cancel", "keep", "roomNotNow", "restartNow"]);
+  assert.deepEqual(Object.keys(page.bridge.cloudPlan), ["state", "manage", "signIn", "noticeSeen", "phoneSignIn", "signedIn", "openPage", "upgradePreview", "upgrade", "cancel", "keep", "roomNotNow", "restartNow"]);
   assert.equal(page.bridge.cloudAccount, undefined, "no account, credential or address reaches the Cloud's page");
   await page.bridge.cloudPlan.state({ origin: "https://evil.example.test" });
   await assert.rejects(page.bridge.cloudPlan.manage(), /Choose Manage/);
   const ipc = pageIpc();
   const event = { sender: ipc.cloudContents, senderFrame: ipc.cloudFrame };
-  assert.deepEqual(Object.keys(Object.fromEntries(ipc.handlers)), ["cloud-plan:state", "cloud-plan:notice-seen", "cloud-plan:manage", "cloud-plan:open-page",
+  assert.deepEqual(Object.keys(Object.fromEntries(ipc.handlers)), ["cloud-plan:phone-sign-in", "cloud-plan:signed-in", "cloud-plan:state", "cloud-plan:notice-seen", "cloud-plan:manage", "cloud-plan:open-page",
     "cloud-plan:upgrade-preview", "cloud-plan:upgrade", "cloud-plan:cancel", "cloud-plan:keep", "cloud-plan:room-not-now", "cloud-plan:restart-now"]);
   assert.deepEqual(plain(await ipc.handlers.get("cloud-plan:state")(event, { tier: "personal" })), { status: "paid", tier: "max" });
   ipc.context.homeWindow = { homePage: (asked) => asked === event };
@@ -545,6 +582,17 @@ test("main shows the switcher at home only with somewhere else to go: My Cloud a
   assert.equal(context.homeAlone(), true, "a named folder of this computer is not a place once home is My Cloud");
   context.homeWindow = { cloudOrigin: () => null };
   assert.equal(context.homeAlone(), false, "no home: the switcher as before");
+});
+
+test("My Cloud as home with nothing else still opens the list of places, My Cloud ticked: the place button never goes dead", () => {
+  const start = MAIN.indexOf('ipcMain.handle("workspaces:menu"'), end = MAIN.indexOf("}));", start);
+  assert.ok(start > 0 && end > start);
+  assert.equal(MAIN.slice(start, end).includes("homeAlone()"), false, "home alone does not refuse the menu");
+  const cloud = { id: "c", kind: "remote", name: "My Cloud", origin: CLOUD, home: true };
+  const rows = environments.workspaceMenuTemplate({ environments: [cloud], activeId: "c" }, { onSwitch() {}, onConnect() {}, onForget() {}, homeOrigin: CLOUD });
+  assert.deepEqual(rows.map((row) => [row.label, row.checked]), [["dusk cloud", true]]);
+  const withAdd = environments.workspaceMenuTemplate({ environments: [cloud], activeId: "c" }, { onSwitch() {}, onConnect() {}, onForget() {}, onAddCloud() {}, homeOrigin: CLOUD });
+  assert.deepEqual(withAdd.map((row) => row.label ?? row.type), ["dusk cloud"], "home is dusk cloud: no Add dusk cloud…");
 });
 
 test("the place asked for: My Cloud unless a team is asked or remembered; a team is the session's, one the connected session no longer lists is gone, and one the Admin can't vouch for opens as saved", () => {
@@ -607,6 +655,8 @@ test("a team's Cloud that can't be reached shows this computer's screen with the
   const w = world({ state: { ...connected(), teams: [ACME] }, team: { down: true }, url: `${CLOUD}/` });
   await w.home.show({ place: { team: "team-acme" } });
   assert.deepEqual(w.went, [[`${LOCAL}${HOME_SCREEN_PATH}`, null]]);
+  assert.deepEqual(w.home.view(), { screen: "opening", name: "Acme" }, "still connecting: the loader");
+  await w.later(CONNECT_GRACE_MS);
   assert.deepEqual(w.home.view(), { screen: "offline", name: "Acme" }, "named, with no reason of My Cloud's");
   assert.equal(w.fetched.some(([route]) => !route.startsWith("team:")), false, "nothing asks My Cloud");
   w.team.down = false;
@@ -616,6 +666,7 @@ test("a team's Cloud that can't be reached shows this computer's screen with the
   // The team's Cloud answering asleep is simply not reachable yet: no wake through the Admin.
   w.team.health = 503; w.url = `${LOCAL}/`;
   await w.home.show({ place: { team: "team-acme" } });
+  await w.later(CONNECT_GRACE_MS);
   assert.deepEqual(w.home.view(), { screen: "offline", name: "Acme" });
   assert.equal(w.wakes, 0);
 });
@@ -762,7 +813,7 @@ test("while the window is on the place's own sign-in page, its 401s start no sec
   w.home.responded({ url: `${TEAM}/api/bots`, statusCode: 401, webContentsId: 7 });
   await w.home.repair();
   assert.deepEqual(w.teamPairs, ["team-acme", "team-acme"], "once on its page, a 401 signs in again as before");
-  const mine = world({ cloud: { signedIn: false } });
+  const mine = world({ cloud: { signedIn: false, redeems: false } });
   await mine.home.show();
   mine.home.responded({ url: `${CLOUD}/api/auth/session`, statusCode: 401, webContentsId: 7 });
   await mine.later(0);
@@ -913,6 +964,10 @@ test("an account leaving: nothing under way for it goes on, and the next show ta
   here.home.accountLeaving();
   await here.home.show();
   assert.deepEqual(here.local, [false], "already on this computer's page: nothing moves");
+  const own = world({ journal: null, state: { status: "signed-out" }, url: "https://garage.example.test/" });
+  own.home.accountLeaving({ keep: true });
+  await own.home.show();
+  assert.deepEqual(own.local, [false], "the person's own server their bots live on is no account's: the window stays on it");
 });
 
 const B_CLOUD = "https://dusk-b.fly.dev";
@@ -924,4 +979,50 @@ test("moved to A's Cloud, B signed in with a Cloud of its own: B's Cloud opens, 
   assert.deepEqual(homeOf({ journal: done(), state: accountB({ status: "stopped", hold: { until: 9 } }) }), { kind: "signin", other: true }, "B's Cloud ended: never this computer's frozen copy");
   assert.deepEqual(homeOf({ journal: done(), state: { status: "unavailable", account: { id: "acct-2" } } }), { kind: "signin", other: true }, "before the Admin answers");
   assert.deepEqual(homeOf({ journal: done(), state: { status: "reauth-required", account: { id: "acct-2" } } }), { kind: "signin", other: true });
+});
+
+test("My Cloud opened from this computer before the move: the move ending re-homes the window without loading the page again", async () => {
+  const w = world({ journal: null, state: connected(), url: `${LOCAL}/` });
+  await w.home.openCloud();
+  assert.equal(w.went.length, 1, "opened once");
+  assert.equal(new URL(w.url).origin, CLOUD);
+  w.url = `${CLOUD}/chats/b1`;
+  w.journal = done();
+  await w.home.changed();
+  assert.equal(w.went.length, 1, "the move ending loads nothing again");
+  assert.deepEqual(w.home.current(), { kind: "cloud", origin: CLOUD });
+});
+
+test("My Cloud opened from this computer's page loads under that page's picture until it has drawn; not drawn in time, this computer's page comes back", async () => {
+  const held = [];
+  const w = world({ journal: null, state: connected(), url: `${LOCAL}/`, deps: { holdPaint: async (load) => { held.push("hold"); await load(); return true; } } });
+  await w.home.openCloud();
+  assert.deepEqual(held, ["hold"], "the load ran under the hold");
+  assert.equal(new URL(w.url).origin, CLOUD);
+  assert.deepEqual(w.local, []);
+
+  const slow = world({ journal: null, state: connected(), url: `${LOCAL}/`, deps: { holdPaint: async (load) => { await load(); return false; } } });
+  await slow.home.openCloud();
+  assert.deepEqual(slow.local, [true], "this computer's page is back, never a blank window");
+  assert.equal(slow.url, `${LOCAL}/`);
+  assert.equal(slow.home.current().kind, "computer");
+
+  const moved = world({ state: connected(), url: `${CLOUD}/`, deps: { holdPaint: async () => { throw new Error("never asked"); } } });
+  moved.window.webContents.getURL = () => "about:blank";
+  await moved.home.show();
+  assert.equal(new URL(moved.url).origin, CLOUD, "a window not on this computer's page loads as before");
+});
+
+test("a server the person chose listens and reports its call through this app, without the home page's other keys", async () => {
+  const speech = ["speechStart", "speechStop", "speechFinish", "onSpeechTranscript", "onSpeechEnd", "onSpeechLevel", "callActive"];
+  const place = preload("https://bots.example.test", { place: true });
+  for (const key of speech) assert.equal(typeof place.bridge[key], "function", key);
+  for (const key of ["home", "onChatLink", "exportDiagnostics", "openLogsFolder"]) assert.equal(place.bridge[key], undefined, key);
+  await place.bridge.speechStart({ endpointMs: 850 });
+  assert.deepEqual(place.invoked.at(-1), ["speech:start", { endpointMs: 850 }]);
+  const stranger = preload("https://bots.example.test");
+  for (const key of speech) assert.equal(stranger.bridge[key], undefined, key);
+  const home = preload(CLOUD, { home: true });
+  for (const key of speech) assert.equal(typeof home.bridge[key], "function", key);
+  assert.equal(home.synced.includes("place:page"), false, "the home page needs no second ask");
 });

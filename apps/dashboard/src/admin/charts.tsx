@@ -13,7 +13,10 @@ const Globe = lazy(() => import("./globe/Globe"));
 const DAY = 86_400_000;
 
 export interface Insights { previousVisitors: number[]; visitors: { new: number[]; returning: number[] }; hours: number[][] }
-export interface ChartShow { visitors: boolean; revenue: boolean; signups: boolean }
+export interface ChartShow { visitors: boolean; main: boolean; signups: boolean }
+/** the bars under the visitors line: revenue as new and renewal money, or one figure per bucket (`values`, null when it
+ *  cannot be told for this view) in cents, a count or a share */
+export interface MainSeries { label: string; kind: "revenue" | "money" | "count" | "share"; values: number[] | null }
 /** the series colours; the KPI checkboxes use the same ones */
 export const SERIES = { visitors: "var(--viz-visitors)", revenue: "var(--viz-new)", renewal: "var(--viz-renewal)", signups: "var(--coral)" } as const;
 const SPRING = { type: "spring", visualDuration: 0.36, bounce: 0 } as const;
@@ -70,7 +73,7 @@ export function sampled(points: Array<[number, number]>, floor: number, x0: numb
 const H = 300, PAD = { top: 16, right: 56, bottom: 28, left: 44 };
 /** the main chart, like datafast: visitors as a line over money as bars, each on its own axis, signups as coral dots on the
  * line, the window before as a faint dashed line, notes on the baseline, and a tooltip with what each day earned per visitor */
-export function MainChart({ data, previous, notes, show, onNote, emptyMoney }: { data: SeriesData; previous: number[]; notes: Note[]; show: ChartShow; onNote(note: Note | { at: number }): void; emptyMoney?: string | null }) {
+export function MainChart({ data, previous, notes, show, main, onNote, emptyMoney }: { data: SeriesData; previous: number[]; notes: Note[]; show: ChartShow; main: MainSeries | null; onNote(note: Note | { at: number }): void; emptyMoney?: string | null }) {
   const [box, width] = useWidth(280);
   const [hover, setHover] = useState<number | null>(null);
   const gradient = useId().replace(/:/g, "");
@@ -82,7 +85,11 @@ export function MainChart({ data, previous, notes, show, onNote, emptyMoney }: {
   const vMax = niceMax(Math.max(1, ...data.visitors, ...(show.visitors ? previous : [])));
   const yV = (v: number) => base - (v / vMax) * tall;
   const up = money.new.map((v, i) => v + money.renewal[i]!);
-  const rMax = niceMax(Math.max(1, ...up) / 100) * 100;
+  const bars = show.main && main !== null, stacked = main?.kind === "revenue";
+  const single = main?.values ?? data.starts.map(() => 0);
+  const peak = Math.max(0, ...(stacked ? up : single));
+  const rMax = main?.kind === "count" ? niceMax(Math.max(1, peak)) : main?.kind === "share" ? niceMax(Math.max(0.001, peak) * 1000) / 1000 : niceMax(Math.max(1, peak) / 100) * 100;
+  const fmtMain = (v: number) => main?.kind === "count" ? n(Math.round(v)) : main?.kind === "share" ? percent(v) : usd(Math.round(v), true);
   const yR = (cents: number) => base - (cents / rMax) * tall * 0.86;
   const span: [number, number] = [x(0), x(Math.max(0, count - 1))];
   const line = sampled(data.visitors.map((v, i) => [x(i), yV(v)]), base, ...span), flat = sampled([], base, ...span);
@@ -95,21 +102,24 @@ export function MainChart({ data, previous, notes, show, onNote, emptyMoney }: {
   const bw = Math.max(2, Math.min(22, step * 0.62));
   const stagger = (i: number) => reduced ? 0 : Math.min(0.2, (i / Math.max(1, count)) * 0.2);
   const totals = { visitors: data.visitors.reduce((a, b) => a + b, 0), revenue: up.reduce((a, b) => a + b, 0) + money.refund.reduce((a, b) => a + b, 0), signups: data.signups.reduce((a, b) => a + b, 0) };
+  const empty = stacked ? totals.revenue === 0 : !main?.values || main.values.every((v) => v === 0);
+  const extra = main && !stacked ? main : null;
   const at = hover;
   const draw = reduced ? { duration: 0 } : { d: SPRING, pathLength: { duration: 0.7, ease: [0.22, 1, 0.36, 1] as const } };
   return (
     <div className="relative" ref={box}>
-      <svg width="100%" height={H} viewBox={`0 0 ${width} ${H}`} role="img" aria-label={`chart: ${n(totals.visitors)} visitors, ${usd(totals.revenue)} revenue, ${n(totals.signups)} signups`}
+      <svg width="100%" height={H} viewBox={`0 0 ${width} ${H}`} role="img" aria-label={`chart: ${n(totals.visitors)} visitors, ${usd(totals.revenue)} revenue, ${n(totals.signups)} signups${extra?.values?.length ? `, ${extra.label} ${fmtMain(extra.values.at(-1)!)} at the end` : ""}`}
         onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); const i = Math.floor((e.clientX - r.left - PAD.left) / step); setHover(i >= 0 && i < count ? i : null); }} onMouseLeave={() => setHover(null)}>
         <defs><linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--viz-visitors)" stopOpacity={0.22} /><stop offset="100%" stopColor="var(--viz-visitors-wash)" stopOpacity={0.4} /></linearGradient></defs>
         {gridFracs(vMax).map((f) => <g key={f}>
           <line x1={PAD.left} x2={width - PAD.right} y1={base - tall * f} y2={base - tall * f} stroke="var(--line)" strokeDasharray={f ? "3 5" : undefined} />
           {show.visitors && <text x={PAD.left - 8} y={base - tall * f + 4} textAnchor="end" className="fill-ink-4 font-mono text-[11px]">{n(Math.round(vMax * f))}</text>}
         </g>)}
-        {show.revenue && [0.5, 1].map((f) => <text key={f} x={width - PAD.right + 8} y={yR(rMax * f) + 4} className="fill-money font-mono text-[11px]">{usd(Math.round(rMax * f), true)}</text>)}
+        {bars && [0.5, 1].map((f) => <text key={f} x={width - PAD.right + 8} y={yR(rMax * f) + 4} className="fill-money font-mono text-[11px]">{fmtMain(rMax * f)}</text>)}
         <g>
-          {show.revenue && data.starts.map((_, i) => {
+          {bars && data.starts.map((_, i) => {
             const left = x(i) - bw / 2, mid = yR(money.new[i]!), gap = money.new[i]! > 0 && money.renewal[i]! > 0 ? 2 : 0, fade = hover === null || hover === i ? 0.92 : 0.45;
+            if (!stacked) return <g key={i} opacity={fade}><Morph d={bar(left, base, yR(single[i] ?? 0), bw)} flat={bar(left, base, base, bw)} fill={SERIES.revenue} delay={stagger(i)} reduced={reduced} /></g>;
             return <g key={i} opacity={fade}>
               <Morph d={bar(left, base, mid, bw)} flat={bar(left, base, base, bw)} fill={SERIES.revenue} delay={stagger(i)} reduced={reduced} />
               <Morph d={bar(left, mid - gap, Math.min(mid - gap, yR(up[i]!) - gap), bw)} flat={bar(left, base, base, bw)} fill={SERIES.renewal} delay={stagger(i)} reduced={reduced} />
@@ -129,7 +139,7 @@ export function MainChart({ data, previous, notes, show, onNote, emptyMoney }: {
         {at !== null && show.visitors && <circle cx={x(at)} cy={yV(data.visitors[at]!)} r={4.5} fill="var(--pop)" stroke={SERIES.visitors} strokeWidth={2} />}
         {ticks.map((i) => <text key={i} x={x(i)} y={H - 8} textAnchor="middle" className="fill-ink-4 font-mono text-[11px]">{dayLabel(data.starts[i]!, hourly)}</text>)}
       </svg>
-      {show.revenue && emptyMoney && totals.revenue === 0 && <p className="pointer-events-none absolute right-16 top-2 rounded-full bg-wash-lime px-2.5 py-1 text-12 text-ink-2">{emptyMoney}</p>}
+      {bars && emptyMoney && empty &&<p className="pointer-events-none absolute right-16 top-2 rounded-full bg-wash-lime px-2.5 py-1 text-12 text-ink-2">{emptyMoney}</p>}
       <div className="absolute inset-x-0" style={{ top: base - 12 }} aria-label="chart notes">
         {visibleNotes.map((note) => (
           <button key={note.id} type="button" onClick={() => onNote(note)} title={note.text} aria-label={`note: ${note.text}. edit`} className="group absolute grid size-6 -translate-x-1/2 place-items-center" style={{ left: x(noteIndex(note.at)) }}>
@@ -147,11 +157,12 @@ export function MainChart({ data, previous, notes, show, onNote, emptyMoney }: {
               <div className="font-mono text-12 text-ink-3">{longLabel(data.starts[at]!, hourly)}</div>
               <Row dot={SERIES.visitors} label="visitors" value={n(v)} />
               <Row label="window before" value={n(prev)} />
-              <Row dot={SERIES.revenue} label="revenue" value={usd(rev)} strong />
-              <Row label="per visitor" value={v ? usd(Math.round(rev / v)) : "-"} />
+              {extra && <Row dot={bars ? SERIES.revenue : undefined} label={extra.label} value={extra.values ? fmtMain(extra.values[at] ?? 0) : "-"} strong />}
+              <Row dot={stacked && bars ? SERIES.revenue : undefined} label="revenue" value={usd(rev)} strong={!extra} />
+              {extra?.label !== "per visitor" && <Row label="per visitor" value={v ? usd(Math.round(rev / v)) : "-"} />}
               <Row dot={SERIES.signups} label="signups" value={n(data.signups[at]!)} />
-              <Row label="conversion" value={v ? percent(data.signups[at]! / v) : "-"} />
-              {data.paid[at]! > 0 && <Row label="new customers" value={n(data.paid[at]!)} />}
+              {extra?.label !== "conversion" && <Row label="conversion" value={v ? percent(data.signups[at]! / v) : "-"} />}
+              {extra?.label !== "new customers" && data.paid[at]! > 0 && <Row label="new customers" value={n(data.paid[at]!)} />}
               {visibleNotes.filter((note) => noteIndex(note.at) === at).map((note) => <div key={note.id} className="mt-1.5 rounded-[10px] bg-wash-lemon px-2 py-1 text-12 text-ink-2">{note.text}</div>)}
             </m.div>
           );
@@ -160,8 +171,8 @@ export function MainChart({ data, previous, notes, show, onNote, emptyMoney }: {
       {/* a table ignores overflow, so the sr-only box wraps it or it widens the page on phones */}
       <div className="sr-only"><table>
         <caption>visitors, revenue and signups per {hourly ? "hour" : "day"}</caption>
-        <thead><tr><th scope="col">{hourly ? "hour" : "day"}</th><th scope="col">visitors</th><th scope="col">window before</th><th scope="col">revenue</th><th scope="col">signups</th></tr></thead>
-        <tbody>{data.starts.map((t, i) => <tr key={t}><th scope="row">{longLabel(t, hourly)}</th><td>{data.visitors[i]}</td><td>{previous[i] ?? 0}</td><td>{usd(net(i))}</td><td>{data.signups[i]}</td></tr>)}</tbody>
+        <thead><tr><th scope="col">{hourly ? "hour" : "day"}</th><th scope="col">visitors</th><th scope="col">window before</th><th scope="col">revenue</th><th scope="col">signups</th>{extra && <th scope="col">{extra.label}</th>}</tr></thead>
+        <tbody>{data.starts.map((t, i) => <tr key={t}><th scope="row">{longLabel(t, hourly)}</th><td>{data.visitors[i]}</td><td>{previous[i] ?? 0}</td><td>{usd(net(i))}</td><td>{data.signups[i]}</td>{extra && <td>{extra.values ? fmtMain(extra.values[i] ?? 0) : "-"}</td>}</tr>)}</tbody>
       </table></div>
     </div>
   );

@@ -3,7 +3,7 @@ import { TOOL_NAMESPACE, toolSurfaceKind } from "./tool-surface.ts";
 import { isConnectedAppsServer, OWN_APPS_SERVER } from "./own-apps.ts";
 
 /** Who or what started a root. */
-export type TraceSource = "person" | "owner" | "routine" | "bot" | "helper";
+export type TraceSource = "person" | "owner" | "routine" | "bot" | "helper" | "upkeep";
 
 /** `ended`: the tool was still open when its turn ended. */
 export type TraceStatus = "ok" | "error" | "interrupted" | "ended";
@@ -122,6 +122,8 @@ export interface TraceRootSummary extends TraceTotals {
   id: string;
   title: string;
   source: TraceSource;
+  /** The background job a "helper" or "upkeep" root was, such as "memory" or "skill-review". */
+  job?: string;
   startedAt: number;
   endedAt: number;
   running: boolean;
@@ -152,6 +154,20 @@ export function traceRootId(threadId: string, turnId: string): string {
 const SERVER_ICONS: Readonly<Record<string, TraceToolIcon>> = { phone: "phone", data: "data", dweb: "web", browser: "browser", computer: "computer" };
 const OWN_SERVERS = new Set(["agents", "dusk", "composio", OWN_APPS_SERVER, ...Object.keys(SERVER_ICONS)]);
 const COMPOSIO_ACTION = /^([A-Z][A-Z0-9]+)_[A-Z0-9_]+$/;
+// the connected-apps meta tools that run another tool named in their arguments (`tool_slug`)
+const COMPOSIO_RUNNER = /(?:^|__|_)COMPOSIO_(?:MULTI_)?EXECUTE_TOOL$/;
+const SLUG_FIELD = /"tool_slug"\s*:\s*"([A-Z][A-Z0-9]+(?:_[A-Z0-9]+){1,10})"/g;
+
+/** the app actions (like GMAIL_SEND_EMAIL) a connected-apps runner call was asked to run, read from its arguments as an
+ * object or as JSON text (a preview may be cut short); [] for any other tool */
+export function runnerActions(name: string, input: unknown): string[] {
+  if (!COMPOSIO_RUNNER.test(name.replace(TOOL_NAMESPACE, "")) && !COMPOSIO_RUNNER.test(name)) return [];
+  let text: string;
+  try { text = typeof input === "string" ? input : JSON.stringify(input) ?? ""; } catch { return []; }
+  const slugs = new Set<string>();
+  for (const match of text.slice(0, 20_000).matchAll(SLUG_FIELD)) { if (slugs.size >= 10) break; if (match[1]!.split("_")[0] !== "COMPOSIO") slugs.add(match[1]!); }
+  return [...slugs];
+}
 const BUILT_IN_ICONS: ReadonlyArray<[RegExp, TraceToolIcon]> = [
   [/^(?:websearch|web_search|search_web|google_search|x_search|research)$/, "search"],
   [/^(?:webfetch|web_fetch|fetch|open_url|read_url|fetch_url)$/, "web"],

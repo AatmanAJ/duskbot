@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { TraceParent, TraceStatus, TraceUsageStatus } from "../shared/usage-trace.ts";
+import type { UsageFailure } from "../shared/usage-signals.ts";
 import type { ResolvedSender } from "../shared/wire.ts";
 import type { CostSource } from "./model-prices.ts";
 import { billableFor, type PriceList } from "./prices.ts";
@@ -17,7 +18,9 @@ export type UsageTrigger =
   | { kind: "owner"; email?: string }
   | { kind: "routine"; routineId?: string; label?: string; runId?: string; email?: string }
   | { kind: "bot"; botId?: string; email?: string }
-  | { kind: "helper"; botId?: string; job?: string; email?: string };
+  | { kind: "helper"; botId?: string; job?: string; email?: string }
+  /** A bot's own background work on its own engine, outside any turn: memory upkeep, skill review and the like. */
+  | { kind: "upkeep"; botId?: string; job?: string; email?: string };
 
 export interface UsageRow {
   at: string;
@@ -40,7 +43,7 @@ export interface UsageRow {
   endedAt?: string;
   /** The turn that delegated, handed off or resumed into this one. */
   parent?: TraceParent;
-  outcome?: { status: TraceStatus; reason?: string };
+  outcome?: { status: TraceStatus; reason?: string; failure?: UsageFailure };
   steps?: number;
   tools?: number;
   toolErrors?: number;
@@ -225,6 +228,8 @@ export function triggerKey(trigger: UsageTrigger): string {
       return `routine:${trigger.routineId ?? trigger.label ?? "unknown"}`;
     case "helper":
       return "helper";
+    case "upkeep":
+      return "upkeep";
     default:
       return "bot";
   }
@@ -240,6 +245,8 @@ export function triggerLabel(trigger: UsageTrigger): string {
       return `Routine: ${trigger.label ?? trigger.routineId ?? "unknown"}`;
     case "helper":
       return "Helper model";
+    case "upkeep":
+      return "Background work";
     default:
       return "Bot to bot";
   }

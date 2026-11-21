@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { investedBy, type InvestedFacts, type UpsellStep } from "../../shared/cloud-upsell";
 import { upsellClock } from "../../shared/seen-clock";
 import { track } from "./analytics";
@@ -48,6 +49,17 @@ export function trackUpsell(step: Exclude<UpsellStep, "ignored">, source: Upsell
 }
 /** while the upsell is on screen, as an effect after the one that reports it shown; its cleanup reports it ignored */
 export const watchUpsell = (source: UpsellSource): (() => void) => upsells.watch(source);
+
+/** a card that is an upsell: shown once per mount, then ignored if it goes without a click or a dismiss */
+export function useUpsellShown(source: UpsellSource): void {
+  const shown = useRef(false);
+  useEffect(() => {
+    if (shown.current) return;
+    shown.current = true;
+    trackUpsell("shown", source);
+  }, [source]);
+  useEffect(() => watchUpsell(source), [source]);
+}
 
 /** may this page offer dusk cloud: only this computer's own page, to someone who could buy it (signed out or free) and is not
  * in an organization; null while the plan or the organization is still loading */
