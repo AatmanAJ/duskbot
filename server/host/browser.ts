@@ -39,6 +39,7 @@ import { LAUNCHER_SECCOMP_FD, type LauncherBox } from "../browser/chrome/wrapper
 import type { HostKind } from "../browser/chrome/flags.ts";
 import { browserEngineKind, type BrowserEngineKind } from "../browser/config.ts";
 import { ChromeEngine, chromeTarget, LiveRouter, profileKey, RuntimeRouter } from "../browser/engines.ts";
+import type { BrowserTarget } from "../browser/service.ts";
 import { CHROME_BROWSER_SYSTEM_PROMPT } from "../browser/prompt.ts";
 import { refusedSignInNote } from "../browser/agent-browser-args.ts";
 import { passkeyAnnotation } from "../browser/passkey-notice.ts";
@@ -298,6 +299,16 @@ export function createBrowserHost(deps: BrowserHostDeps) {
     const target = profile && profile !== "guest" ? browserProfilePartitionTarget(cfg, profile) : null;
     return { session, spec: chromeEngine.spec(session, profileKey(botId + suffix, session, { guest: profile === "guest", partitionId: target ? target.partitionId + suffix : null })) };
   }
+  /** The kept browser profile x_search may read X through for this bot (server/x-providers/session.ts): dusk bot's own
+   * Chrome engine on this host, never a temporary browser or a bot's own box. */
+  async function xSessionTarget(botId: string, threadId?: string): Promise<BrowserTarget | null> {
+    const bot = store.bot(botId);
+    if (!bot || bot.browser === false || bot.computer === "off" || !builtInBrowserEnabled(cfg) || bot.browserProfile === "guest") return null;
+    if (!onChrome(bot.browserProfile) || chromeEngine.summary().kind !== "engine") return null;
+    if ((await boxChromeOf(botId)) !== null) return null;
+    const { session, spec } = chromeSpec(botId, bot.browserProfile, browserAudience(threadId));
+    return chromeTarget(session, spec);
+  }
   /** Chrome for the new engine, the installed agent-browser otherwise. */
   function browserReady(profile: string | undefined): boolean {
     return onChrome(profile) ? chromeEngine.summary().kind === "engine" : browserEngineStatus().kind === "ready";
@@ -537,7 +548,7 @@ export function createBrowserHost(deps: BrowserHostDeps) {
   return {
     browserRuntime, browserLive, usedBrowserSessions, browserSweep, temporaryBrowserSessions, browserIdleMs: idleMs,
     currentBrowserSession, forgetTemporaryBrowser, myChromeAvailable, usesMyChrome, browserSessionSpec, browserIntegration,
-    browserReady, hostBrowserUsable, currentBrowserSpec, browserRunning, loginInput, browserSystemPrompt, signedInSitesRefusal, closeBrowser, browserEngineSwitched,
+    browserReady, hostBrowserUsable, currentBrowserSpec, xSessionTarget, xSessionRead: chromeEngine.service.readResponses.bind(chromeEngine.service), browserRunning, loginInput, browserSystemPrompt, signedInSitesRefusal, closeBrowser, browserEngineSwitched,
     eraseDeletedBrowser, engineSummary, engineBrowsers, browserAudience, browserSessionsOf, signedInSitesTarget, uploadPaths,
     eraseAudienceBrowsers, flushBrowsers,
   };
