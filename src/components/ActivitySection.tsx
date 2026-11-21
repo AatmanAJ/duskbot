@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { AnimatePresence } from "motion/react";
 
 import { api } from "@/state/store";
 import { t } from "@/lib/i18n";
@@ -9,6 +10,7 @@ import { SettingRow } from "./SettingsPrimitives";
 import { SettingsSelect } from "./SettingsSelect";
 import { textFieldCls } from "./ui/GrokDialog";
 import { friendlyError } from "@/lib/plain-error";
+import { ArtState } from "./ui/Art";
 
 /** One entry: who did what as the row, when (and what was approved) as its quiet line; an admin change opens its
  * before and after under it, one path a line. */
@@ -85,18 +87,18 @@ export function ActivitySection() {
           <a href={`/api/admin-activity.csv${query}`} download className="ui-button">{t("activity.export")}</a>
         </ItemRow>
         {error && <NoteRow tone="danger">{t("activity.error", { message: error })}</NoteRow>}
-        {!error && entries.length === 0 && !loading && <NoteRow>{t("activity.empty")}</NoteRow>}
+        {!error && entries.length === 0 && !loading && <ArtState data-art-state="activity" art="binoculars" title={t("empty.activity.title")} className="py-6">{t("empty.activity.hint")}</ArtState>}
         {entries.length > 0 && <ul className="contents">{entries.map((entry, index) => <ActivityRow key={`${entry.at}-${index}`} entry={entry} />)}</ul>}
       </RowsCard>
-      {editing === "who" && (
-        <FormDialog data-panel-modal="activity-who" title={t("activity.who")} onClose={() => setEditing(null)}>
+      <AnimatePresence>{editing === "who" && (
+        <FormDialog key="activity-who" data-panel-modal="activity-who" title={t("activity.who")} onClose={() => setEditing(null)}>
           <FormField label={t("activity.who")}>
             <input autoFocus value={filters.who} onChange={(e) => set({ who: e.target.value })} placeholder={t("activity.whoPlaceholder")} className={textFieldCls} />
           </FormField>
         </FormDialog>
-      )}
-      {editing === "dates" && (
-        <FormDialog data-panel-modal="activity-dates" title={t("settings.s2.activity.dates")} onClose={() => setEditing(null)}>
+      )}</AnimatePresence>
+      <AnimatePresence>{editing === "dates" && (
+        <FormDialog key="activity-dates" data-panel-modal="activity-dates" title={t("settings.s2.activity.dates")} onClose={() => setEditing(null)}>
           <FormField label={t("activity.from")}>
             <input type="date" value={filters.from} max={filters.to || undefined} onChange={(e) => set({ from: e.target.value })} className={textFieldCls} />
           </FormField>
@@ -104,7 +106,7 @@ export function ActivitySection() {
             <input type="date" value={filters.to} min={filters.from || undefined} onChange={(e) => set({ to: e.target.value })} className={textFieldCls} />
           </FormField>
         </FormDialog>
-      )}
+      )}</AnimatePresence>
     </>
   );
 }

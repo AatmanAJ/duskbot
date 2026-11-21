@@ -46,6 +46,7 @@ import type { TotpKey } from "../totp.ts";
 import type { BotRecord, GroupRecord, Message, Store } from "../store.ts";
 import { serverLine } from "../server-lines.ts";
 import { classifyApiFailure } from "../secret-failure.ts";
+import { pastedSecret, sameSecretName } from "./pasted-secret.ts";
 
 export const phoneSecretEnvelopeSchema = z.object({
   version: z.literal(PHONE_SECRET_PROTOCOL_VERSION),
@@ -639,6 +640,10 @@ export function createSecretCards(deps: SecretCardsDeps) {
       (!room || message.from?.botId === from.id));
     const kept = earlier ? vault.savedFor(earlier.id) : null;
     if (earlier && kept && earlier.secret!.delivery === asked.delivery) return { status: 200, body: { label: asked.label, text: savedSecretText(asked.label, kept) } };
+    const pastedAs = typeof body.pastedAs === "string" ? body.pastedAs.trim().slice(0, CUSTOM_SECRET_LABEL_MAX) : "";
+    const pasted = failed ? null : pastedSecret(path, pastedAs ? [pastedAs, asked.label] : [asked.label]);
+    const fromMessage = pasted ? keepPasted(from, threadId, asked, pasted) : null;
+    if (fromMessage) return fromMessage;
     const fromVault = failed ? null : issueFromVault(from, threadId, asked);
     if (fromVault) return fromVault;
     const mismatch = earlier && kept ? earlier.secret!.delivery : undefined;
@@ -676,7 +681,7 @@ export function createSecretCards(deps: SecretCardsDeps) {
   function savedSecretFailed(from: BotRecord, threadId: string, label: string, failed: string): VaultFailure {
     if (!savedSecrets?.ready()) return {};
     try {
-      const found = savedSecrets.find(label, from.id);
+      const found = savedSecrets.find(label, from.id) ?? savedSecrets.find(savedSecrets.labelsFor(from.id).find((saved) => sameSecretName(saved, label)) ?? label, from.id);
       if (!found) return {};
       let verdict = classifyApiFailure({ message: failed });
       if (verdict === "transient") {
@@ -701,12 +706,44 @@ export function createSecretCards(deps: SecretCardsDeps) {
     }
   }
 
+  /** A value the person wrote in their own message: saved to their Vault when there is one, handed over as a ref or
+   * private file like a card's, and no card. */
+  function keepPasted(from: BotRecord, threadId: string, asked: { label: string; delivery: SecretDelivery }, value: string): { status: number; body: Record<string, unknown> } | null {
+    let vaulted = false;
+    try {
+      if (savedSecrets) {
+        const kept = savedSecrets.save({ label: asked.label, botId: from.id, value });
+        issued.set(issuedKey(threadId, from.id, kept.id), Date.now());
+        vaulted = true;
+      }
+    } catch (error) {
+      console.warn(`saved secrets: could not keep a pasted secret: ${error instanceof Error ? error.name : "error"}`);
+    }
+    const owner = { botId: from.id, threadId };
+    const issue = `pasted-${randomUUID().slice(0, 8)}`;
+    let saved: SavedSecret;
+    try {
+      if (asked.delivery === "file") {
+        const vm = deps.turnVm(threadId);
+        const home = (vm ? vmFileHome(from.id, vm) : null) ?? { host: deps.layerFolder(from.id, threadId), shown: deps.layerFolder(from.id, threadId) };
+        saved = { file: vault.saveFile(owner, issue, value, home) };
+      } else saved = { ref: vault.saveRef(owner, issue, asked.label, value) };
+    } catch (error) {
+      console.warn(`secret card: could not hand over a pasted secret: ${error instanceof Error ? error.name : "error"}`);
+      return null;
+    }
+    const lead = `dusk bot took ${asked.label} from the person's own message, so no card was needed${vaulted ? ", and saved it to their Vault" : ""}. Never repeat, quote or confirm the value in a reply.`;
+    return { status: 200, body: { label: asked.label, fromMessage: true, ...(vaulted ? { vault: "saved" } : {}), text: `${lead} ${savedSecretText(asked.label, saved)}` } };
+  }
+
   /** A secret the person saved to the Vault for this bot: a fresh one-use ref or private file, and no card. */
   function issueFromVault(from: BotRecord, threadId: string, asked: { label: string; delivery: SecretDelivery }): { status: number; body: Record<string, unknown> } | null {
     if (!savedSecrets?.ready()) return null;
     let found: ReturnType<SavedSecretStore["find"]>;
     try {
       found = savedSecrets.find(asked.label, from.id);
+      const alike = found ? undefined : savedSecrets.labelsFor(from.id).find((label) => sameSecretName(label, asked.label));
+      if (alike) found = savedSecrets.find(alike, from.id);
     } catch {
       return null;
     }

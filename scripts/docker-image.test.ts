@@ -129,6 +129,29 @@ describe("container images", () => {
     expect(grokRun(chain("server"))).toBe(-1);
   });
 
+  // A boxed shell cannot write /usr, so what a bot needs to make a PDF, a deck, a sheet, a chart or a video must be in
+  // the image; each was missing in a live run of the cloud home's box.
+  it("gives the Cloud home's bots their file, media and document tools, beneath the engines and the app", () => {
+    const home = chain("cloud-home");
+    const tools = home.findIndex(step => step.op === "RUN" && step.args.includes("$BOT_PYTHON_PACKAGES"));
+    expect(tools).toBeGreaterThan(-1);
+    const { args } = home[tools];
+    for (const pkg of ["python3-pip", "python3-venv", "python-is-python3", "ffmpeg", "imagemagick", "librsvg2-bin", "zip", "libreoffice-writer-nogui", "libreoffice-calc-nogui", "libreoffice-impress-nogui", "fonts-liberation2"]) {
+      expect(args, pkg).toMatch(new RegExp(`\\s${pkg}\\s`));
+    }
+    const pinned = home.find(step => step.op === "ARG" && step.args.startsWith("BOT_PYTHON_PACKAGES="))!.args;
+    for (const name of ["reportlab", "python-docx", "python-pptx", "openpyxl", "matplotlib", "pandas", "pillow", "requests", "beautifulsoup4"]) {
+      expect(pinned, name).toMatch(new RegExp(`\\b${name}==\\d`));
+    }
+    expect(args).toContain("pip install --no-cache-dir --break-system-packages $BOT_PYTHON_PACKAGES");
+    expect(args).toContain("break-system-packages = true");
+    expect(args).toContain('insteadOf "git@github.com:"');
+    expect(args).toContain("rm -rf /var/lib/apt/lists/*");
+    expect(tools).toBeLessThan(home.findLastIndex(npmInstall));
+    expect(tools).toBeLessThan(home.findIndex(step => step.args.includes("--from=build")));
+    expect(chain("server").some(step => step.args.includes("$BOT_PYTHON_PACKAGES"))).toBe(false);
+  });
+
   it("keeps each image's runtime contract", () => {
     const last = (steps: Step[], op: string) => steps.filter(step => step.op === op).at(-1)?.args;
     const server = chain("server");
@@ -253,6 +276,27 @@ describe("container images", () => {
     // the engines' install, not the tools layer's pinned pnpm beneath it
     const engines = home.find(step => npmInstall(step) && step.args.includes("$CLOUD_HOME_ENGINES"));
     expect(engines?.args).toContain("${ENGINES_CACHE_TAG");
+  });
+
+  it("publishes the image compose pulls: the server target, both CPUs, in the namespace the repository's token pushes to", () => {
+    const service = parse(readFileSync(new URL("../deploy/docker-compose.yml", import.meta.url), "utf8")).services.dusk;
+    expect(service.image).toBe("${DUSK_IMAGE:-ghcr.io/duskbotai/duskbot:latest}");
+    // compose builds only when asked to (--build), so `pull` gets the published image
+    expect(service.pull_policy).toBeUndefined();
+    expect(service.build.dockerfile).toBe("deploy/docker/Dockerfile");
+    const workflow = readFileSync(new URL("../.github/workflows/server-image.yml", import.meta.url), "utf8");
+    expect(workflow).toContain('image="ghcr.io/$owner/duskbot"');
+    expect(workflow).toContain("-f deploy/docker/Dockerfile --target server ");
+    expect(workflow).toContain("runner: ubuntu-24.04-arm");
+    expect(workflow).toContain('imagetools create -t "$IMAGE:$TAG" "$IMAGE:$TAG-amd64" "$IMAGE:$TAG-arm64"');
+    expect(workflow).toContain('node scripts/check-bot-desktop-published.mjs --image "$IMAGE:$TAG"');
+    // a plain `docker run` of the image wants the same init and shared memory compose gives it
+    expect(workflow).toContain("docker run -d --name server --init --shm-size=512m ");
+    for (const doc of ["../docs/self-hosting.md", "../deploy/.env.example"]) {
+      const text = readFileSync(new URL(doc, import.meta.url), "utf8");
+      expect(text, doc).toContain("ghcr.io/duskbotai/duskbot");
+      expect(text, doc).not.toMatch(/ghcr\.io\/(?!duskbotai\/)[\w-]+\/duskbot\b/);
+    }
   });
 
   // An init collects browser processes whose parents exit, and Chrome gets the

@@ -5,10 +5,9 @@
 export interface CatalogProfile {
   skillAuthoring: boolean;
   voiceNotes: boolean;
-  /** A treg key or a Cloud plan's research credential is held and this bot's research switch is on: x_search is mounted.
-   * Absent means off. */
+  /** This bot's research switch is on: x_search is mounted (its free routes need no key). Absent means off. */
   xResearch?: boolean;
-  /** As xResearch, and research works for that credential (the person's treg key, or a plan whose relay has research
+  /** As xResearch, and research works for a held credential (the person's treg key, or a plan whose relay has research
    * on): research_search, research_endpoint and research_call are mounted too. Absent means off. */
   research?: boolean;
   /** This bot holds its own Slack app with a bot token: the slack_* tools are mounted. Absent means off. */
@@ -26,6 +25,8 @@ export interface CatalogProfile {
   /** A direct chat whose bot may pick where it works (Works on is not Off and no team computer is its own): select_computer
    * is mounted, and the harness refuses a pick on any turn but a person's own message. */
   computerSelection?: boolean;
+  /** The bot works on this Mac while macOS keeps dusk bot off its screen: request_screen_access is mounted. */
+  screenAccess?: boolean;
   /** A room's thread: the widget and page tools, which rooms refuse, and the wait tools, since a room holds no wait,
    * are not mounted. */
   room?: boolean;
@@ -34,6 +35,8 @@ export interface CatalogProfile {
   nativeWeb?: boolean;
   /** The engine has no fetch of its own: read_pages is mounted. Absent means off. */
   pageReader?: boolean;
+  /** The engine has no file tools (an OpenAI-compatible API engine): read_skill is mounted. Absent means off. */
+  skillReader?: boolean;
 }
 
 /** Everything is off unless the harness says "1". */
@@ -51,8 +54,10 @@ export function catalogProfileFromEnv(env: NodeJS.ProcessEnv): CatalogProfile {
     team: env.DUSK_TEAM_PEOPLE === "1",
     dusk: env.DUSK_DEFAULT_BOT === "1",
     computerSelection: env.DUSK_COMPUTER_SELECTION === "1",
+    screenAccess: env.DUSK_SCREEN_ACCESS === "1",
     room: env.DUSK_ROOM === "1",
     nativeWeb: env.DUSK_NATIVE_WEB === "1",
     pageReader: env.DUSK_PAGE_READER === "1",
+    skillReader: env.DUSK_SKILL_READER === "1",
   };
 }
