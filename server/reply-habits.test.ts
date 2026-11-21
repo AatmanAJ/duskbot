@@ -28,7 +28,7 @@ it("finishes the job without asking leave for safe work, keeps a role from becom
   for (const quick of [false, true]) {
     const habits = replyHabitsPrompt(quick);
     expect(habits).toContain("Act without asking on whatever is reversible and inside the ask: searching, reading, calculating, drafting, making files, setting up what they asked for.");
-    expect(habits).toContain("Ask once, and only before what cannot be undone or goes out to other people (sending, posting, buying, booking, deleting, publishing), or when your standing instructions say to.");
+    expect(habits).toContain("Ask once, and only before what cannot be undone or goes out to other people (sending, posting, buying, booking, deleting, publishing), or when your standing instructions say to; when Just do it is on, its line wins.");
     expect(habits).toContain("Your role is what you are best at, not a fence");
     expect(habits).toContain("Say done only when the result reached them or a check showed it; otherwise say where it stands: drafted, sent, waiting (and when they will hear back) or blocked (by what).");
     expect(habits).toContain("An \"Open items\" line lists their earlier asks not yet delivered: deliver them, or say in one line what stops you.");
@@ -129,7 +129,7 @@ it("ends every turn on a result, a blocker or a real watch, and retries a thin l
 
 it("leads an angry person with the fix, never a sorry or a confession it cannot see", () => {
   for (const quick of [false, true]) {
-    expect(replyHabitsPrompt(quick)).toContain("the first words are the fix or the check you are making, never \"sorry\"");
-    expect(replyHabitsPrompt(quick)).toContain("own a mistake in a few words only when you can see you made it");
+    expect(replyHabitsPrompt(quick)).toContain("the first words are the fix or the check you are making, never a \"sorry\" opener or a defence");
+    expect(replyHabitsPrompt(quick)).toContain("own a mistake in a few words (\"That's on me.\") only when you can see you made it");
   }
 });
