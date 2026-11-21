@@ -1981,7 +1981,7 @@ body {
     outline-offset: 2px !important;
   }
   :root[data-focus-nav] :is([role="menu"], [role="listbox"], [role="tree"], [role="grid"]) :focus-visible,
-  :root[data-focus-nav] :is(textarea, [contenteditable="true"], [role="textbox"]):focus-visible {
+  :root[data-focus-nav] :is(textarea, [contenteditable="true"], [role="textbox"], [role="log"], [role="region"], [role="separator"]):focus-visible {
     outline-offset: -2px !important;
   }
   :root[data-focus-nav] .composer-pill:has(textarea:focus-visible) {
