@@ -1,0 +1,86 @@
+{
+  "about": "The bot asks for a Stripe secret key (the fake engine calls request_credential on every turn), then the person types an invented key into the composer and presses Enter. The key is made up. Before is the base of the pull request, after is its branch.",
+  "entry": "threads",
+  "color": "orange",
+  "reducedMotion": false,
+  "width": 1440,
+  "height": 840,
+  "scale": 2,
+  "toolCalls": [
+    {
+      "name": "request_credential",
+      "server": "agents",
+      "input": {
+        "label": "Stripe secret key",
+        "reason": "To create test charges.",
+        "delivery": "ref"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "click": "Close question"
+    },
+    {
+      "waitMs": 400
+    },
+    {
+      "click": "Message Pepper"
+    },
+    {
+      "type": {
+        "name": "Message Pepper",
+        "text": "Set up the Stripe charges"
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "settle": 60
+    },
+    {
+      "waitMs": 800
+    },
+    {
+      "type": {
+        "name": "Message Pepper",
+        "text": "here is the key sk-ant-ZZtestFAKE0123456789"
+      }
+    },
+    {
+      "waitMs": 400
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "waitMs": 1200
+    },
+    {
+      "settle": 60
+    },
+    {
+      "waitMs": 1000
+    },
+    {
+      "shot": true
+    },
+    {
+      "shot": "f01-held",
+      "only": "after"
+    },
+    {
+      "click": "Put it in the card",
+      "only": "after"
+    },
+    {
+      "waitMs": 1200,
+      "only": "after"
+    },
+    {
+      "shot": "f02-in-the-card",
+      "only": "after"
+    }
+  ]
+}
