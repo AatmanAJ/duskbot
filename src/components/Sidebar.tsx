@@ -535,7 +535,7 @@ export const BotListItem = memo(function BotListItem(props: BotRowProps) {
   const markState = useBotMarkState(bot);
   const workingLabel = useWorkingLabel(bot, simpleRow && working);
   // grok: hold ⌘ (⌃ elsewhere) and each row shows the number that opens it, where its dot sits
-  const preview = waiting ? simpleRow ? grokWaiting(waitingLine(bot, visible, instances)) : t("sidebar.preview.waiting") : teammateWait ? t("sidebar.preview.waitingOnTeammate") : queued ? t("task.queued") : simpleRow && working ? workingLabel ?? lastLine(bot, visible, instances) : botPreview(bot, visible, instances);
+  const preview = waiting ? simpleRow ? grokWaiting(waitingLine(bot, visible, instances)) : t("sidebar.preview.waiting") : teammateWait ? t("sidebar.preview.waitingOnTeammate") : simpleRow && working ? workingLabel ?? lastLine(bot, visible, instances) : queued ? t("task.queued") : botPreview(bot, visible, instances);
   // grok names a row with what it is doing: "Manager, Main Bot, Needs attention", "Koder, Working", "Content, Unread activity"
   const grokName = [bot.name, main ? t("sidebar.grok.mainBot") : "", waiting ? t("sidebar.grok.needsAttention") : working ? t("sidebar.grok.working") : unread ? t("sidebar.grok.unreadActivity") : ""].filter(Boolean).join(", ");
   const onLiveCall = liveBadgeFor(bot.id, liveMedia, liveCall);

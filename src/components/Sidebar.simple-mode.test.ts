@@ -191,6 +191,18 @@ describe("bot-first sidebar", () => {
     resetTurnLive();
   });
 
+  it("keeps a working bot's line when a follow-up is queued, and says Queued once it is idle", () => {
+    const said: Bot["messages"] = [{ id: "hi", role: "bot", kind: "text", at: 1, text: "Running long_job.py" }];
+    const leads = { threadId: "leads", title: "Leads", createdAt: 1 };
+    fixture.state = { ...fixture.state, pendingQueued: { leads: [{ queueId: "q", text: "then summarize it" }] } };
+    const candidate: Bot = { ...bot, threadId: "leads", messages: said, unread: false, projects: [], tasks: [{ ...leads, busy: true, activity: "working" }], busy: true };
+    const working = renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", candidate)));
+    expect(working).toContain("Running long_job.py");
+    expect(working).not.toContain(">Queued<");
+    const idle = renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", { ...candidate, busy: false, tasks: [{ ...leads, busy: false, activity: "idle" }] })));
+    expect(idle).toContain(">Queued<");
+  });
+
   it("rings a focused row or group chat inside its edge in both modes", () => {
     const group: Group = { id: "room", threadId: "room-thread", name: "Launch", memberIds: [bot.id], messages: [], defaultResponder: { kind: "mentions" }, bulletin: "", unread: false, createdAt: 1 };
     const simple = renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", { ...bot, tasks: [], projects: [] }))) + renderToStaticMarkup(createElement(GroupListItem, { group, density: "comfortable", onMenu: vi.fn() }));
