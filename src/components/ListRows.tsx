@@ -1,14 +1,18 @@
-import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type ReactElement, type ReactNode, type Ref } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type MouseEventHandler, type ReactElement, type ReactNode, type Ref } from "react";
 import { Check, ChevronRight, Copy, type GlyphIcon } from "../icons";
 
 import { cn } from "@/lib/cn";
 import { useCopyFeedback } from "@/lib/copy-text";
 import { t } from "@/lib/i18n";
+import { flushSystemControls, wakeSystemControls } from "@/lib/system-control";
+import { BAR_RANK, frames, sheetStep, sheetsUp, useChrome, useNativeBar, useSheetPushDepth } from "@/mobile/chrome";
+import type { MobileChrome } from "@/mobile/platform";
+import { createPushToken, registerNativePop } from "@/mobile/SheetPush";
 import { Icon } from "./Icon";
 import { DialogPane, GrokDialog, mdPrimaryCls, mdSecondaryCls, rowButtonCls } from "./ui/GrokDialog";
 import { SelectPill, type SelectPillOption } from "./ui/SelectPill";
 import { Toggle } from "./ui/Toggle";
-import { HeadArt, type ArtName } from "./ui/Art";
+import { ArtState, HeadArt, type ArtName } from "./ui/Art";
 import { SettingGlyph, type SettingGlyphName } from "./ui/SettingGlyph";
 
 /* The one row list the side panel, Settings and the settings sheets all draw: a small grey label over a white 12px card,
@@ -93,7 +97,9 @@ export function Card({ label, art, action, anchor, footnote, className, children
 }
 
 /** Grok's empty tab: centred 13/18 copy at 56% ink, right under the tabs and 16px in from each side. */
-export function PanelEmpty({ children, ...rest }: { children: ReactNode; "data-panel-empty"?: string }) {
+/** A list with nothing in it yet. Given art and a title, the pixel drawing, the title and this line as its hint. */
+export function PanelEmpty({ children, art, title, ...rest }: { children: ReactNode; art?: ArtName; title?: ReactNode; "data-panel-empty"?: string }) {
+  if (art && title) return <ArtState {...rest} data-art-state={rest["data-panel-empty"]} art={art} title={title}>{children}</ArtState>;
   return (
     <div {...rest} className="flex flex-col gap-2.5 px-4 py-4">
       <p className="text-pretty text-center text-[13px] leading-[18px] tracking-[0.015em] text-ink/[0.56]">{children}</p>
@@ -182,6 +188,7 @@ export function ItemRow({ title, hint, value, icon, pixel, tone, children, ...re
   pixel?: SettingGlyphName | ReactElement;
   tone?: "danger" | "warn";
   children?: ReactNode;
+  onClick?: MouseEventHandler<HTMLDivElement>;
   "data-panel-row"?: string;
   "data-sheet-row"?: string;
 }) {
@@ -343,20 +350,33 @@ export function useSubPage(): SubPageNav {
   return useContext(SubPageContext);
 }
 
-const WIPE_MS = 200;
-const reducedMotion = () => document.documentElement.dataset.reducedMotion === "true" || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+export const WIPE_MS = 200;
+export const reducedMotion = () => document.documentElement.dataset.reducedMotion === "true" || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+
+/** The page on screen as it is drawn now, without ids: the outgoing layer of a wipe shows this copy, so leaving a page never
+ * mounts it a second time (its effects, reads and prompts would all run again for a 200ms slide). */
+export function snapshotLayer(layer: HTMLElement | null): DocumentFragment | null {
+  if (!layer) return null;
+  const copy = document.createDocumentFragment();
+  for (const child of layer.childNodes) copy.append(child.cloneNode(true));
+  copy.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
+  return copy;
+}
 
 /** Grok's in-dialog push between a list and a page of it (200ms, the app "out" curve): the incoming layer slides over the
  * outgoing one on push, the outgoing slides off it on pop. A change of `group` (another pane) swaps without motion. The
- * outgoing copy is drawn by `layer(at, false)`, inert and without ids. */
+ * outgoing layer is a still copy of what was on screen, inert; `layer(at, false)` draws it only when there is none. */
 export function WipeStack({ at, depth, group, layer }: { at: string; depth: number; group: string; layer: (at: string, live: boolean) => ReactNode }) {
   const [shown, setShown] = useState({ at, depth, group });
   const [wipe, setWipe] = useState<{ direction: "push" | "pop" | "fade"; from: string; scrollTop: number; id: number } | null>(null);
   const live = useRef<HTMLDivElement>(null);
+  const still = useRef<{ id: number; copy: DocumentFragment } | null>(null);
   if (at !== shown.at) {
     setShown({ at, depth, group });
     const within = group === shown.group && depth !== shown.depth;
     const scroller = live.current?.querySelector<HTMLElement>("[data-wipe-scroll]");
+    const copy = within ? snapshotLayer(live.current) : null;
+    still.current = copy ? { id: (wipe?.id ?? 0) + 1, copy } : null;
     // with reduced motion the page only fades in, no slide
     setWipe(within ? { direction: reducedMotion() ? "fade" : depth > shown.depth ? "push" : "pop", from: shown.at, scrollTop: scroller?.scrollTop ?? 0, id: (wipe?.id ?? 0) + 1 } : null);
   }
@@ -389,12 +409,13 @@ export function WipeStack({ at, depth, group, layer }: { at: string; depth: numb
           data-wipe={wipe.direction}
           data-wipe-out=""
           ref={(element) => {
+            if (element && still.current?.id === wipe.id && !element.childNodes.length) element.append(still.current.copy);
             const scroller = element?.querySelector<HTMLElement>("[data-wipe-scroll]");
             if (scroller) scroller.scrollTop = wipe.scrollTop;
           }}
           onAnimationEnd={(event) => { if (event.target === event.currentTarget) setWipe((current) => (current?.id === wipe.id ? null : current)); }}
         >
-          {layer(wipe.from, false)}
+          {still.current?.id === wipe.id ? null : layer(wipe.from, false)}
         </div>
       )}
     </div>
@@ -455,6 +476,141 @@ export function SheetPane({ title, footer, children, ...rest }: { title: string;
 }
 
 function OwnSheetPane({ title, footer, children, ...rest }: { title: string; footer?: ReactNode; children: ReactNode; "data-panel-modal"?: string }) {
+  const chrome = useChrome();
+  if (chrome?.beginPush && chrome.commitPush && chrome.popPage) {
+    return <NativeOwnSheetPane chrome={chrome} title={title} footer={footer} {...rest}>{children}</NativeOwnSheetPane>;
+  }
+  return <WebOwnSheetPane title={title} footer={footer} {...rest}>{children}</WebOwnSheetPane>;
+}
+
+function NativeOwnSheetPane({ chrome, title, footer, children, ...rest }: {
+  chrome: MobileChrome;
+  title: string;
+  footer?: ReactNode;
+  children: ReactNode;
+  "data-panel-modal"?: string;
+}) {
+  const pushDepth = useSheetPushDepth();
+  const [committed, setCommitted] = useState<SubPage[]>([]);
+  const entriesRef = useRef<Array<{ page: SubPage; token: string; unreg: () => void }>>([]);
+  const mountedRef = useRef(true);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+
+  const open = useCallback((id: string, pageTitle: string) => {
+    sheetStep(async () => {
+      if (!mountedRef.current) return;
+      const ok = await chrome.beginPush!();
+      if (!mountedRef.current) {
+        if (ok) await chrome.cancelPush?.();
+        return;
+      }
+      const nextPage: SubPage = { id, title: pageTitle };
+      if (!ok) {
+        setCommitted((current) => [...current, nextPage]);
+        scrollerRef.current?.scrollTo({ top: 0 });
+        await frames(1);
+        await flushSystemControls();
+        return;
+      }
+      const token = createPushToken();
+      const entry = { page: nextPage, token, unreg: () => {} };
+      entry.unreg = registerNativePop(chrome, token, () => {
+        const at = entriesRef.current.findIndex((item) => item.token === token);
+        if (at < 0) return;
+        for (const removed of entriesRef.current.splice(at)) removed.unreg();
+        setCommitted(entriesRef.current.map((item) => item.page));
+      });
+      entriesRef.current.push(entry);
+      setCommitted(entriesRef.current.map((item) => item.page));
+      scrollerRef.current?.scrollTo({ top: 0 });
+      await frames(1);
+      await flushSystemControls();
+      await frames(2);
+      if (!mountedRef.current) {
+        const at = entriesRef.current.findIndex((item) => item.token === token);
+        if (at >= 0) {
+          for (const removed of entriesRef.current.splice(at)) removed.unreg();
+        }
+        await chrome.cancelPush?.();
+        return;
+      }
+      const okCommit = await chrome.commitPush!(token);
+      if (!okCommit) {
+        const at = entriesRef.current.findIndex((item) => item.token === token);
+        if (at >= 0) {
+          for (const removed of entriesRef.current.splice(at)) removed.unreg();
+          if (mountedRef.current) setCommitted(entriesRef.current.map((item) => item.page));
+        }
+      }
+    });
+  }, [chrome]);
+
+  const back = useCallback(() => {
+    const top = entriesRef.current.at(-1);
+    if (!top) {
+      setCommitted((current) => current.slice(0, -1));
+      return;
+    }
+    entriesRef.current.pop();
+    top.unreg();
+    sheetStep(async () => {
+      const popped = await chrome.popPage!(top.token);
+      if (mountedRef.current) setCommitted(entriesRef.current.map((item) => item.page));
+      await frames(1);
+      await flushSystemControls();
+      await frames(1);
+      if (popped) await chrome.finishPop?.();
+    });
+  }, [chrome]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      const remaining = entriesRef.current.splice(0);
+      for (const entry of remaining) entry.unreg();
+      const oldest = remaining[0];
+      if (oldest && sheetsUp.system) {
+        sheetStep(async () => {
+          await chrome.popPage?.(oldest.token, { animated: false });
+          wakeSystemControls();
+        });
+      }
+    };
+  }, [chrome]);
+
+  const top = committed.at(-1);
+  const rank = BAR_RANK.sheetPushed + (pushDepth + committed.length) * 0.01;
+  useNativeBar(rank, top ? {
+    title: top.title,
+    leading: [{ id: "back", symbol: "chevron.backward", label: t("mobile.sheet.back") }],
+    trailing: [],
+  } : null, { back });
+
+  const nav = useMemo<SubPageNav>(() => ({
+    at: top?.id,
+    open,
+    back,
+    stack: committed,
+  }), [top?.id, open, back, committed]);
+
+  return (
+    <section {...rest} aria-labelledby={titleId} className="flex min-h-0 flex-1 flex-col">
+      <PaneHeader title={top?.title ?? title} headingId={titleId} />
+      <div ref={scrollerRef} data-wipe-scroll="" className="settings-scroll">
+        <div className="settings-pane">
+          <SubPageContext.Provider value={nav}>
+            <PanelSections>{children}</PanelSections>
+          </SubPageContext.Provider>
+          {footer && !top && <div className="flex shrink-0 items-center justify-end gap-2">{footer}</div>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function WebOwnSheetPane({ title, footer, children, ...rest }: { title: string; footer?: ReactNode; children: ReactNode; "data-panel-modal"?: string }) {
   const [stack, setStack] = useState<SubPage[]>([]);
   const titleId = useId();
   const at = JSON.stringify(stack);

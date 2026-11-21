@@ -60,6 +60,9 @@ const REPLIES = [
   "Booked the dentist for Tuesday at 9:30 and added it to your calendar with a 30 minute reminder.",
   "Found 3 flats under budget near the station. The second one has the balcony you wanted.",
   "Here is the plan for Friday: demo at 10, retro at 2, and I will collect everyone's notes before then.",
+  "Here's the launch plan, step by step:\n\n1. **Thursday evening**: freeze the build and run the full test pass.\n2. **Friday 9:00**: I post the launch note to the team channel and the changelog.\n3. **Friday 10:00**: demo, then the phone app goes live in both stores.\n4. **Friday afternoon**: I watch sign-ups and crash reports and ping you if anything looks off.\n\nWant me to block the time in everyone's calendar?",
+  "Done. Calendars are blocked for Friday 9:00 to 11:00, and I added the demo link to the invite. I'll send a short reminder on Thursday at 5pm so nobody forgets to freeze their branches.",
+  "Three things stood out this week: sign-ups are up 18%, the onboarding drop-off moved from step two to step four, and support tickets about pairing halved after the new code screen. I'd look at step four first; most people who leave there never opened the camera.",
 ];
 
 /** A believable team for the preview: bots with chats, two pinned, and one room. Nothing here runs outside the fixture. */

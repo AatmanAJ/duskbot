@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 // Start fresh in a real DOM: the button shows only where main says it may, nothing runs until the confirm words are typed,
-// and a step that failed is listed with a retry while the dialog can't just be closed.
+// a step that failed is listed with a retry while the dialog can't just be closed, and it only ever resets this computer:
+// the account, its plan and its clouds stay, and deleting the account is a separate link to the account page.
 import { createElement } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -10,14 +11,12 @@ import type { StartFreshView } from "../../../electron/start-fresh.mjs";
 const { StartFreshHost, StartFreshDialog, openStartFresh, startFreshTyped } = await import("./StartFresh");
 
 const pending: StartFreshView = { phase: "idle", steps: [
-  { id: "server:s1", kind: "server", label: "Box", status: "pending" },
-  { id: "plan:c1", kind: "plan", label: "My cloud", status: "pending" },
-  { id: "account", kind: "account", label: "tester@qa.dusk.test", clouds: 1, status: "pending" },
+  { id: "signout", kind: "signout", label: "tester@qa.dusk.test", status: "pending" },
   { id: "ai", kind: "ai", label: "", status: "pending" },
   { id: "local", kind: "local", label: "", status: "pending" },
 ] };
-const partial: StartFreshView = { phase: "partial", steps: pending.steps.map((step) => step.id === "server:s1"
-  ? { ...step, status: "failed", error: "The server answered 502.", uninstall: "curl -fsSL https://link.dusk.bot/uninstall | sh" }
+const partial: StartFreshView = { phase: "partial", steps: pending.steps.map((step) => step.id === "signout"
+  ? { ...step, status: "failed", error: "The account service answered 502." }
   : { ...step, status: "done" }) };
 const done: StartFreshView = { phase: "done", steps: pending.steps.map((step) => ({ ...step, status: "done" })) };
 
@@ -60,9 +59,9 @@ function type(text: string) {
 
 describe("Start fresh", () => {
   it("accepts only the confirm words, any case or spacing around them", () => {
-    expect(startFreshTyped("delete everything")).toBe(true);
-    expect(startFreshTyped("  DELETE everything ")).toBe(true);
-    for (const typed of ["", "delete", "delete everything!", "delete  everything", "everything"]) expect(startFreshTyped(typed)).toBe(false);
+    expect(startFreshTyped("start fresh")).toBe(true);
+    expect(startFreshTyped("  START fresh ")).toBe(true);
+    for (const typed of ["", "start", "start fresh!", "start  fresh", "delete everything"]) expect(startFreshTyped(typed)).toBe(false);
   });
 
   it("opens the reset dialog from the dev menu's event, and only in the desktop app", async () => {
@@ -72,7 +71,7 @@ describe("Start fresh", () => {
     expect($("[role=alertdialog]")).toBeNull();
     act(() => openStartFresh());
     await settle();
-    expect($("[role=alertdialog]")?.textContent).toContain("This deletes everything and cannot be undone");
+    expect($("[role=alertdialog]")?.textContent).toContain("This resets dusk bot on this computer and can't be undone");
     act(() => root.unmount());
     root = createRoot(host);
     (window as { duskDesktop?: unknown }).duskDesktop = {};
@@ -86,34 +85,45 @@ describe("Start fresh", () => {
     const bridge = fakeBridge();
     act(() => root.render(createElement(StartFreshDialog, { bridge: bridge as never, onClose: vi.fn() })));
     await settle();
-    expect($("[role=alertdialog]")?.textContent).toContain("This deletes everything and cannot be undone");
+    expect($("[role=alertdialog]")?.textContent).toContain("This resets dusk bot on this computer and can't be undone");
     const confirm = () => $<HTMLButtonElement>("[data-start-fresh-confirm]")!;
     expect(confirm().disabled).toBe(true);
-    type("delete everythin");
+    type("start fres");
     expect(confirm().disabled).toBe(true);
     act(() => confirm().click());
     expect(bridge.run).not.toHaveBeenCalled();
-    type("Delete everything");
+    type("Start fresh");
     expect(confirm().disabled).toBe(false);
     await act(async () => { confirm().click(); });
     await settle();
-    expect(bridge.run).toHaveBeenCalledWith("Delete everything");
+    expect(bridge.run).toHaveBeenCalledWith("Start fresh");
   });
 
-  it("lists what failed with a retry and the server's uninstall line, and can't be closed halfway", async () => {
+  it("says the account, plan and dusk cloud stay, and sends account deletion to the account page instead", async () => {
+    const openPage = vi.fn(async () => ({ outcome: "opened" }));
+    (window as { duskDesktop?: unknown }).duskDesktop = { cloudAccount: { openPage } };
+    act(() => root.render(createElement(StartFreshDialog, { bridge: fakeBridge() as never, onClose: vi.fn() })));
+    await settle();
+    const text = $("[role=alertdialog]")!.textContent!;
+    expect(text).toContain("Your dusk bot account, your plan or trial, your dusk cloud and your servers stay as they are");
+    expect(text).not.toMatch(/cancel(s|led)? (your|the|its) plan|destroy/i);
+    act(() => $<HTMLButtonElement>("[data-start-fresh-delete-account]")!.click());
+    expect(openPage).toHaveBeenCalledWith("account");
+  });
+
+  it("lists what failed with a retry, and can't be closed halfway", async () => {
     const bridge = fakeBridge();
     const onClose = vi.fn();
     act(() => root.render(createElement(StartFreshDialog, { bridge: bridge as never, onClose })));
     await settle();
-    type("delete everything");
+    type("start fresh");
     await act(async () => { $<HTMLButtonElement>("[data-start-fresh-confirm]")!.click(); });
     await settle();
     expect($("[data-start-fresh-dialog]")?.getAttribute("data-start-fresh-dialog")).toBe("partial");
-    const failed = $("[data-start-fresh-step='server:s1']")!;
+    const failed = $("[data-start-fresh-step=signout]")!;
     expect(failed.dataset.status).toBe("failed");
-    expect(failed.textContent).toContain("The server answered 502.");
-    expect(failed.textContent).toContain("curl -fsSL https://link.dusk.bot/uninstall | sh");
-    expect($("[data-start-fresh-step=account]")?.dataset.status).toBe("done");
+    expect(failed.textContent).toContain("The account service answered 502.");
+    expect($("[data-start-fresh-step=ai]")?.dataset.status).toBe("done");
     // no close button, Escape and the scrim do nothing
     expect($("[aria-label=Close]")).toBeNull();
     act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
@@ -134,8 +144,8 @@ describe("Start fresh", () => {
     await settle();
     act(() => bridge.emit({ phase: "running", steps: pending.steps.map((step, index) => ({ ...step, status: index === 0 ? "done" : index === 1 ? "running" : "pending" })) }));
     expect($("[data-start-fresh-dialog]")?.getAttribute("data-start-fresh-dialog")).toBe("running");
-    expect($("[data-start-fresh-step='plan:c1']")?.dataset.status).toBe("running");
-    expect($("[data-start-fresh-step=account]")?.textContent).toContain("Your account and dusk cloud computers");
+    expect($("[data-start-fresh-step=ai]")?.dataset.status).toBe("running");
+    expect($("[data-start-fresh-step=signout]")?.textContent).toContain("Sign out of tester@qa.dusk.test");
   });
 
   it("closes from Cancel before anything is deleted", async () => {

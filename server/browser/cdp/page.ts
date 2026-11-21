@@ -5,6 +5,7 @@ import { AuthChallenges, type AuthChallenge } from "./auth.ts";
 import { Dialogs, type PendingDialog } from "./dialogs.ts";
 import { DriverError, parseNetError } from "./errors.ts";
 import { evaluate, valueInWorld, type EvaluateOptions } from "./evaluate.ts";
+import { innerField } from "./fields.ts";
 import { FileChoosers, setInputFiles } from "./files.ts";
 import { FrameTree, type FrameTreeNode } from "./frames.ts";
 import { PageHealth, type HealthReport } from "./health.ts";
@@ -13,6 +14,7 @@ import { Navigations } from "./navigations.ts";
 import { Keyboard } from "./keyboard.ts";
 import { RefTable, type RefCounter } from "./refs.ts";
 import { captureScreenshot, type Screenshot, type ScreenshotOptions } from "./screencast.ts";
+import { scrollUntil, type ScrollFound } from "./scroll-find.ts";
 import { SecretGuard } from "./secrets.ts";
 import { resolveElement } from "./selectors.ts";
 import { takeSnapshot, visibleText, type Snapshot } from "./snapshot.ts";
@@ -401,11 +403,21 @@ export class CdpPage implements ActionContext, WaitContext {
     return actions.scroll(this, target, deltaX, deltaY, options);
   }
 
+  /** Scrolls until `text` shows, as a person scans a long list or a feed. */
+  async scrollUntil(target: Target | null, deltaX: number, deltaY: number, text: string, deadline: number): Promise<ScrollFound> {
+    this.#ready();
+    return scrollUntil(this, target, deltaX, deltaY, text, deadline);
+  }
+
   /** Files for a named file input, or else for the picker the page opened. */
   async upload(paths: readonly string[], target?: Exclude<Target, Point>): Promise<void> {
     this.#ready();
-    if (target) await setInputFiles(this.frames, await resolveElement(this.frames, this.refs, target), paths);
-    else await this.fileChoosers.answer(paths);
+    if (target) {
+      const named = await resolveElement(this.frames, this.refs, target);
+      await setInputFiles(this.frames, (await innerField(this.frames, named, "file")) ?? named, paths);
+    } else {
+      await this.fileChoosers.answer(paths);
+    }
   }
 
   async answerDialog(answer: { accept: boolean; promptText?: string }): Promise<PendingDialog> {
