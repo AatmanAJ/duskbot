@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { listTriggers, parseTriggerRequest, triggerTarget } from "./trigger-tools.ts";
+import { listTriggers, parseTriggerRequest, timelessName, triggerTarget } from "./trigger-tools.ts";
 import type { Routine, RoutineRun } from "./routines.ts";
 import type { WebhookTrigger } from "./webhooks.ts";
 
@@ -62,6 +62,24 @@ describe("parseTriggerRequest", () => {
       .toMatchObject({ ok: true, kind: "app", operation: { action: "update", triggerId: "a1", changes: { filter: { from: "acme" } } } });
   });
 
+  it("carries a test run to a schedule, and sends an app event or webhook its usual test event", () => {
+    expect(parseTriggerRequest({ ...source, action: "run_now", triggerId: "r1", test: true }, isSchedule))
+      .toEqual({ ok: true, kind: "schedule", forBotId: undefined, proposal: { action: "run_now", routineId: "r1", test: true } });
+    expect(parseTriggerRequest({ ...source, action: "run_now", triggerId: "w1", test: true }, isSchedule))
+      .toEqual({ ok: true, kind: "webhook", forBotId: undefined, operation: { action: "run_now", webhookId: "w1" } });
+    expect(parseTriggerRequest({ ...source, action: "pause", triggerId: "r1", test: true }, isSchedule)).toMatchObject({ ok: false });
+  });
+
+  it("hands a webhook's run_now the bot's sample body, and refuses one elsewhere", () => {
+    const lead = { data: { fields: [{ label: "Email", value: "maya@loomware.co" }] } };
+    expect(parseTriggerRequest({ ...source, action: "run_now", triggerId: "w1", payload: lead }, isSchedule))
+      .toEqual({ ok: true, kind: "webhook", forBotId: undefined, operation: { action: "run_now", webhookId: "w1" }, payload: lead });
+    expect(parseTriggerRequest({ ...source, action: "run_now", triggerId: "r1", payload: lead }, isSchedule)).toMatchObject({ ok: false, error: expect.stringContaining("webhook") });
+    expect(parseTriggerRequest({ ...source, action: "run_now", triggerId: "w1", payload: "hi" }, isSchedule)).toMatchObject({ ok: false });
+    expect(parseTriggerRequest({ ...source, action: "run_now", triggerId: "w1", payload: lead, test: true }, isSchedule)).toMatchObject({ ok: false });
+    expect(parseTriggerRequest({ ...source, action: "run_now", triggerId: "w1", payload: { big: "x".repeat(40_000) } }, isSchedule)).toMatchObject({ ok: false });
+  });
+
   it("refuses a field the trigger's kind does not have, and unknown shapes", () => {
     expect(parseTriggerRequest({ ...source, action: "update", triggerId: "w1", changes: { schedule: {} } }, isSchedule))
       .toMatchObject({ ok: false, error: expect.stringContaining("has no schedule") });
@@ -96,3 +114,21 @@ describe("triggerTarget", () => {
     expect(triggerTarget(bots.a, "Nobody", lookup, Object.values(bots))).toMatchObject({ status: 404 });
   });
 });
+
+describe("automation names", () => {
+  it("drop a day said relative to now, so the name stays true", () => {
+    expect(timelessName("Calculus midterm tomorrow")).toBe("Calculus midterm");
+    expect(timelessName("Call the dentist tomorrow morning")).toBe("Call the dentist");
+    expect(timelessName("Rent reminder (next week)")).toBe("Rent reminder");
+    expect(timelessName("History essay due December 2")).toBe("History essay due December 2");
+    expect(timelessName("Weekly review")).toBe("Weekly review");
+    expect(timelessName("Tomorrow")).toBe("Tomorrow");
+  });
+  it("are cleaned when an automation is made or renamed", () => {
+    const made = parseTriggerRequest({ fromBotId: "b", fromThreadId: "t", action: "create", kind: "schedule", routine: { name: "Calculus midterm tomorrow", instructions: "x" } }, () => "schedule");
+    expect(made).toMatchObject({ ok: true, proposal: { routine: { name: "Calculus midterm" } } });
+    const renamed = parseTriggerRequest({ fromBotId: "b", fromThreadId: "t", action: "update", triggerId: "r1", changes: { name: "Standup today" } }, () => "schedule");
+    expect(renamed).toMatchObject({ ok: true, proposal: { changes: { name: "Standup" } } });
+  });
+});
+

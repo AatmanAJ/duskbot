@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, ApiError } from "@/state/store";
-import { chatgptPlanLink, codexDeviceLink, deviceFlowUnavailable, DeviceSignInProgress, deviceSignInProvider, type DeviceSignInStatus } from "./DeviceSignIn";
+import { chatgptPlanLink, codexDeviceLink, deviceFlowUnavailable, DeviceSignInProgress, deviceSignInProvider, startDeviceSignIn, type DeviceSignInStatus } from "./DeviceSignIn";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -155,5 +155,34 @@ describe("Grok Build device sign-in UI", () => {
     expect(html).toContain(line);
     expect(html).not.toContain(grok.userCode);
     expect(html).not.toContain("href=");
+  });
+});
+
+describe("Codex sign-in from a chat or Settings", () => {
+  const authorizationUrl = "https://auth.openai.com/oauth/authorize?client_id=app_x&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&state=s";
+  const browser: DeviceSignInStatus = { phase: "waiting", flowId: "browser-flow", authorizationUrl, expiresAt: "2030-01-01T12:00:00.000Z",
+    loopback: { authorizationUrl, port: 1455, path: "/auth/callback" } };
+
+  // device-code sign-in fails unless the person enabled it in ChatGPT's security settings; onboarding uses the browser
+  it("asks for the CLI's browser sign-in and keeps it when the browser is on the server's machine", async () => {
+    const call = vi.fn(async () => ({ auth: browser, sameMachine: true }));
+    expect(await startDeviceSignIn(call, "/api/instances/codex/auth")).toEqual(browser);
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(call).toHaveBeenCalledWith("/api/instances/codex/auth/start", { method: "POST", body: JSON.stringify({ browser: true }) });
+  });
+
+  it("falls back to the device code when the browser could not reach the CLI's loopback", async () => {
+    const call = vi.fn(async (path: string, init: { body?: string }) => path.endsWith("/cancel") ? { auth: browser }
+      : init.body ? { auth: browser, sameMachine: false } : { auth: waiting });
+    expect(await startDeviceSignIn(call, "/a")).toEqual(waiting);
+    expect(call.mock.calls.map(([path, init]) => [path, init.body ?? null])).toEqual([
+      ["/a/start", JSON.stringify({ browser: true })], ["/a/cancel", JSON.stringify({ flowId: "browser-flow" })], ["/a/start", null]]);
+  });
+
+  it("shows the browser sign-in as a link to OpenAI's page, without a code", () => {
+    const html = render(browser);
+    expect(html).not.toContain('role="alert"');
+    expect(html).toContain(`href="${authorizationUrl.replaceAll("&", "&amp;")}"`);
+    expect(html).not.toContain("Copy sign-in code");
   });
 });

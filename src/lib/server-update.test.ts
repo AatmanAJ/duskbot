@@ -45,6 +45,11 @@ describe("self-hosted update row", () => {
     });
   });
 
+  it("never asks a page newer than its server to reload, since a reload brings back the same page", () => {
+    expect(serverCheckPhase(check({ current: "0.2.12" }), "0.2.15")).toBe("up-to-date");
+    expect(serverCheckPhase(check({ current: "unknown" }), "0.2.15")).toBe("up-to-date");
+  });
+
   it("keeps the other check results when the page matches or can't tell", () => {
     expect(serverCheckPhase(check({ current: "0.1.114" }), "0.1.114")).toBe("up-to-date");
     expect(serverCheckPhase(check({ current: "0.1.114" }), "dev")).toBe("up-to-date");

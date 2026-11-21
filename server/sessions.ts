@@ -10,7 +10,8 @@ import { hasTokenPrefix } from "../electron/legacy-names.mjs";
 export type Scope = "admin" | "client";
 export const SCOPES: readonly Scope[] = ["admin", "client"];
 
-export const PAIRING_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+// letters only (no I or O), so a phone types it on one keyboard without switching to numbers
+export const PAIRING_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 export const PAIRING_CODE_LENGTH = 12;
 export const PAIRING_CODE_TTL_MS = 5 * 60_000;
 /** Not clamped: an invalid value falls back to the default, so a typo never becomes a policy. */
@@ -24,6 +25,7 @@ export const SESSION_TTL_MS = daysMs(process.env.DUSK_SESSION_TTL_DAYS, 30);
 /** DUSK_SESSION_MAX_DAYS (default 180): renewal never passes this, so a stolen cookie has a bounded life. */
 export const SESSION_MAX_AGE_MS = daysMs(process.env.DUSK_SESSION_MAX_DAYS, 180);
 export const SESSION_RENEW_WHEN_LEFT_MS = SESSION_TTL_MS / 2;
+export const PAIRED_DEVICE_SESSION_MS = 10 * 365 * 24 * 60 * 60_000;
 
 export function cookieMaxAgeSeconds(session: { expiresAt: number }, now = Date.now()): number {
   return Math.max(1, Math.floor((session.expiresAt - now) / 1000));
@@ -120,15 +122,15 @@ function sameDigest(a: string, b: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-/** 12 symbols, rejection-sampled so every symbol is equally likely. */
-export function generatePairingCode(): string {
+/** 12 symbols (or `length`), rejection-sampled so every symbol is equally likely. */
+export function generatePairingCode(length = PAIRING_CODE_LENGTH): string {
   const limit = Math.floor(256 / PAIRING_CODE_ALPHABET.length) * PAIRING_CODE_ALPHABET.length;
   let code = "";
-  while (code.length < PAIRING_CODE_LENGTH) {
-    for (const byte of randomBytes(PAIRING_CODE_LENGTH)) {
+  while (code.length < length) {
+    for (const byte of randomBytes(length)) {
       if (byte >= limit) continue;
       code += PAIRING_CODE_ALPHABET[byte % PAIRING_CODE_ALPHABET.length];
-      if (code.length === PAIRING_CODE_LENGTH) break;
+      if (code.length === length) break;
     }
   }
   return code;
@@ -579,6 +581,18 @@ export class SessionRegistry {
     this.lastSeenWrites.set(record.id, now);
     this.persist();
     return true;
+  }
+
+  /** A paired phone's session lasts until the phone is removed: phones are listed and removed on their own, and one
+   * left unused while its computer was off must still connect when it is back. Never a team member's. */
+  holdForPairedDevice(sessionId: string): void {
+    const record = this.sessions.find((s) => s.id === sessionId);
+    const now = this.now();
+    if (!record || record.expiresAt <= now || record.membershipAuthority === "team" || record.cookieOnly) return;
+    const held = now + PAIRED_DEVICE_SESSION_MS;
+    if (record.expiresAt - now > PAIRED_DEVICE_SESSION_MS / 2) return;
+    record.expiresAt = held;
+    this.persist();
   }
 
   isLive(sessionId: string): boolean {

@@ -13,14 +13,14 @@ import { arrivedRoute, automationsOffRoute, homeRoute } from "../cloud-send-arri
 import { moveFilesRoute } from "../cloud-send-files.ts";
 import { automatedBot, moveBotParts, moveItems, moveKindsRoute, type MoveKindsDeps } from "../cloud-send-kinds.ts";
 import { cloudSendManifest } from "../cloud-send-manifest.ts";
-import { moveMemoryRoute, type MoveMemoryDeps } from "../cloud-send-memory.ts";
+import { memoryFiles, moveMemoryRoute, type MoveMemoryDeps } from "../cloud-send-memory.ts";
 import { cloudSendSummary, partHash, type CloudSendSources } from "../cloud-send.ts";
 import { cloudSendChatsRoute, type CloudSendChatsDeps } from "../cloud-send-chats.ts";
 import { loginFingerprints, VERIFY_NONCE } from "../cloud-send-verify.ts";
 import type { AppConfig } from "../config.ts";
 import type { LoginStore } from "../login-store.ts";
 import type { MoveAutomations } from "../move-freeze.ts";
-import { threadHeads } from "../message-db.ts";
+import { threadHeads, threadsWithPersonMessage } from "../message-db.ts";
 import type { LineLanguage } from "../server-lines.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import type { BotRecord } from "../store.ts";
@@ -65,6 +65,8 @@ export function createCloudSendRoutes(deps: CloudSendRouteDeps): RouteHandler {
     },
     inRoom: (botId) => (deps.chats?.store.groups ?? []).some((group) => !group.dm && group.memberIds.includes(botId)),
     automated: (botId) => Boolean(deps.move && automatedBot(deps.move, botId)),
+    remembers: (botId) => memoryFiles(botId).length > 0,
+    talked: (bot) => threadsWithPersonMessage([...new Set([bot.threadId, ...(bot.tasks ?? []).map((task) => task.threadId)])]).size > 0,
     skills: deps.skills,
     picture: (avatarUrl) => botAvatarUrlSchema.safeParse(avatarUrl).success ? readAttachment(avatarUrl.slice("/api/attachments/".length))?.bytes ?? null : null,
     logins: () => deps.logins.changes(),
