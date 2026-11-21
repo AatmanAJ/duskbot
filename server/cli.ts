@@ -21,7 +21,7 @@ import { explainTailscaleFailure, tailscaleServe, tailscaleServeOff, tailscaleSt
 import { defaultSetupIo, SetupCancelled, type SetupIo } from "./cli-prompts.ts";
 import { HEADLESS_VERB_NAMES, USAGE } from "./cli-usage.ts";
 import { normalizePhoneOrigin, phonePairingInstructions, runPhoneSetup } from "./cli-phone-setup.ts";
-import { browserSignInLines, pairingBlock } from "./cli-pairing.ts";
+import { browserSignInLines, pairingBlock, phoneAppPairing } from "./cli-pairing.ts";
 import type { AppConfig } from "./config.ts";
 import {
   cleanupTunnelOrigin,
@@ -62,8 +62,8 @@ export interface CliOptions {
   serviceAction?: "install" | "uninstall";
   sentinel?: boolean;
   email?: string;
-  /** `browser install [--with-deps]` */
-  browserAction?: "install" | "status";
+  /** `browser install [--with-deps]`, `browser status`, `browser setup` (root: libraries and the sandbox's AppArmor profile) */
+  browserAction?: "install" | "status" | "setup";
   withDeps?: boolean;
   json: boolean;
   /** Explicitly ignore saved remote access for this launch. */
@@ -132,7 +132,7 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
       } else if (options.command === "access" && arg === "--chat-only") options.chatOnly = true;
       else if (options.command === "service" && !options.serviceAction && (arg === "install" || arg === "uninstall")) options.serviceAction = arg;
       else if (options.command === "service" && arg === "--sentinel") options.sentinel = true;
-      else if (options.command === "browser" && (arg === "install" || arg === "status")) options.browserAction = arg;
+      else if (options.command === "browser" && (arg === "install" || arg === "status" || arg === "setup")) options.browserAction = arg;
       else if (options.command === "browser" && arg === "--with-deps") options.withDeps = true;
       else return { error: `unknown argument "${arg}"` };
     } catch (error) {
@@ -146,7 +146,7 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
   if (options.command === "service" && !options.serviceAction) return { error: "service needs one of: install [the same options as serve], uninstall" };
   if (options.domain && (options.tailscale || options.tunnel || options.publicUrl)) return { error: "--domain already gives the server its address; drop --tailscale, --tunnel and --public-url" };
   if (options.local && (options.tailscale || options.tunnel || options.publicUrl)) return { error: "--local cannot be combined with a remote-access option" };
-  if (options.command === "browser" && !options.browserAction) return { error: "browser needs an action: install or status" };
+  if (options.command === "browser" && !options.browserAction) return { error: "browser needs an action: install, status or setup" };
   return options;
 }
 
@@ -186,10 +186,10 @@ const message = (error: unknown) => (error instanceof Error ? error.message : St
 /** On a service-trust server: the secret `serve` handed the server it started, which opens its pairing route. */
 let serveOwnerToken: string | undefined;
 
-async function api(port: number, path: string, init: { method?: string; body?: string } = {}): Promise<{ status: number; body: any }> {
+async function api(port: number, path: string, init: { method?: string; body?: string; timeoutMs?: number } = {}): Promise<{ status: number; body: any }> {
   // x-dusk-cli names the tool in the activity log; on loopback it grants nothing.
   const headers: Record<string, string> = { "content-type": "application/json", "x-dusk-cli": "1", ...(serveOwnerToken ? { "x-dusk-cli-owner": serveOwnerToken } : {}) };
-  const res = await fetch(`http://127.0.0.1:${port}${path}`, { method: init.method, body: init.body, headers, signal: AbortSignal.timeout(3000) });
+  const res = await fetch(`http://127.0.0.1:${port}${path}`, { method: init.method, body: init.body, headers, signal: AbortSignal.timeout(init.timeoutMs ?? 3000) });
   const body: unknown = await res.json().catch(() => ({}));
   return { status: res.status, body };
 }
@@ -321,8 +321,9 @@ export async function runPair(options: CliOptions): Promise<number> {
       }
     }
     if (!origin || !normalizePhoneOrigin(origin)) {
-      console.log("Your workspace is running only on this computer. A phone cannot use its localhost address.");
-      console.log("Stop the server, run duskbot setup and choose phone access, then start duskbot again.");
+      const relayed = await phoneAppPairing((path, init) => api(options.port, path, init));
+      if (relayed) { console.log(relayed); return 0; }
+      console.log("Your workspace is running only on this computer. A phone cannot use its localhost address.\nStop the server, run duskbot setup and choose phone access, then start duskbot again.");
       return 1;
     }
     const ui = defaultSetupIo();
@@ -337,7 +338,7 @@ export async function runPair(options: CliOptions): Promise<number> {
       return 130;
     }
   }
-  console.log(await mintPairing(options.port, { label: options.label, client: options.client, publicUrl: options.publicUrl, phone: options.phone }));
+  console.log((options.client || options.publicUrl ? null : await phoneAppPairing((path, init) => api(options.port, path, init), options.label)) ?? await mintPairing(options.port, { label: options.label, client: options.client, publicUrl: options.publicUrl, phone: options.phone }));
   if (options.client) console.log("(client scope: chat and approvals only; cannot change settings or pair others)");
   return 0;
 }
@@ -542,6 +543,7 @@ export async function runLogout(options: CliOptions, io: CliIo = defaultIo()): P
 }
 
 export async function runBrowser(options: CliOptions, io: CliIo = defaultIo()): Promise<number> {
+  if (options.browserAction === "setup") return (await import("./browser/chrome/host-setup.ts")).setUpThisHost(() => runBrowser({ ...options, browserAction: "install", withDeps: true }, io), io);
   const { browserEngineStatus, describeBrowserEngine, ensureChrome, installAgentBrowserBinary, resolveAgentBrowserBinary } = await import("./browser-engine.ts");
   const status = browserEngineStatus({ dataDir: options.dataDir });
   if (options.browserAction === "status") {

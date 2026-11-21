@@ -12,6 +12,7 @@ import {
   pinSource,
   placeUnavailable,
   resolveSurface,
+  screenAccessMissingNote,
   surfaceOfComputerKind,
   surfacePrompt,
 } from "./surface.ts";
@@ -127,9 +128,21 @@ describe("resolveSurface", () => {
     const plan = resolveSurface({ destination: "off", browserOn: true });
     expect(plan).toMatchObject({ computer: "off", browser: false, pinned: null });
     expect(plan.note).toMatch(/"Works on" setting is Off/);
-    expect(plan.note).toMatch(/no computer and no built-in browser/);
+    expect(plan.note).toMatch(/no computer or built-in browser is mounted/);
+    expect(plan.note).toContain("Everything else works (automations, waits, memory, connected apps, teammates, files you make here): do the job with those.");
+    expect(plan.note).toContain("give the person that step's exact command or clicks");
+    expect(plan.note).not.toContain("tell them Works on is Off");
     expect(resolveSurface({ destination: "off", browserOn: false })).toEqual(plan);
     expect(surfacePrompt({ computer: null, browser: false }, { note: plan.note })).toBe(plan.note);
+  });
+
+  it("Off on an engine with its own shell keeps that shell and says so", () => {
+    const plan = resolveSurface({ destination: "off", browserOn: true, engineShell: true });
+    expect(plan).toMatchObject({ computer: "off", browser: false, pinned: null });
+    expect(plan.note).toMatch(/"Works on" setting is Off/);
+    expect(plan.note).toContain("Your own shell and files in your working folder still work");
+    expect(plan.note).not.toContain("needs a screen or a shell is out");
+    expect(resolveSurface({ destination: "off", browserOn: true }).note).toContain("needs a screen or a shell is out");
   });
 
   it("a Problems to look at turn that lost its computer is told why and that it has none", () => {
@@ -210,6 +223,14 @@ describe("surfacePrompt", () => {
     expect(alone).not.toMatch(/web pages included/);
     expect(alone).toContain("use, in this order: a connected app that does it, web search and fetching pages, a cloud computer if select_computer offers one.");
     expect(alone).toContain("Use their own browser or screen only when the task needs their own signed-in session");
+    for (const text of [beside, alone]) {
+      expect(text).toContain("Your own shell and file tools, when you have them, already run on this computer");
+      expect(text).toContain("Never open Terminal, Command Prompt or PowerShell on the person's screen to type a command your own shell tool can run.");
+      expect(text).toContain("Only without a shell tool of your own do commands and files go through this computer tools.");
+    }
+    expect(beside).toContain("Desktop apps → this computer tools.");
+    expect(beside).not.toContain("files and shell → this computer tools");
+    expect(surfacePrompt({ computer: "vm", browser: true })).not.toContain("Your own shell and file tools, when you have them");
     // Other computers are the bot's own: their wording is unchanged.
     expect(surfacePrompt({ computer: "vm", browser: false })).not.toContain("the person's own");
     expect(surfacePrompt({ computer: "cloud", browser: true })).not.toContain("the person's own");
@@ -332,6 +353,19 @@ describe("surface parsing", () => {
   });
 });
 
+it("says the browser is in the Computer tab only where that tab shows it, and never on a server or a cloud", () => {
+  const desktop = surfacePrompt({ computer: null, browser: true }, { browserInComputerTab: true });
+  expect(desktop).toContain("the Computer tab of your panel");
+  expect(desktop).toContain("The iPhone app has no view of your browser");
+  for (const opts of [{ browserInComputerTab: false }, { cloudHome: true }] as const) {
+    const text = surfacePrompt({ computer: null, browser: true }, opts);
+    expect(text).not.toContain("Computer tab");
+    expect(text).toContain("cannot watch this browser live");
+    expect(text).toContain("call request_sign_in");
+  }
+  expect(surfacePrompt({ computer: "cloud", browser: false }, { browserInComputerTab: true })).not.toContain("Computer tab");
+});
+
 it("does not instruct use of a selected browser when no surface is mounted", () => {
   expect(surfacePrompt({ computer: null, browser: false }, { canSelect: true })).not.toContain("For online research");
   expect(surfacePrompt({ computer: null, browser: true })).toContain("For online research");
@@ -421,5 +455,14 @@ describe("a connected app before any screen", () => {
   });
   it("is not said where nothing on a screen can be done", () => {
     expect(surfacePrompt({ computer: null, browser: false })).not.toContain(RULE);
+  });
+});
+
+describe("screenAccessMissingNote", () => {
+  it("tells a bot with a shell that files and commands on this computer need no screen control", () => {
+    const shell = screenAccessMissingNote(false, ["Accessibility"], false, true);
+    expect(shell).toContain("Files and commands on this computer need no screen control");
+    expect(shell).not.toContain("files outside the browser");
+    expect(screenAccessMissingNote(false, ["Accessibility"])).toContain("or files outside the browser, needs screen control");
   });
 });

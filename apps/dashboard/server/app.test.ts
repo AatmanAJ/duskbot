@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createServer, request as httpRequest } from "node:http";
 import type { Server } from "node:http";
 import type { KeyObject } from "node:crypto";
@@ -39,8 +41,8 @@ describe("hosted dashboard service", () => {
   let keys: { publicKey: KeyObject; privateKey: KeyObject };
 
   beforeEach(async () => {
-    dataDir = mkdtempSync("/private/tmp/dusk-dashboard-test-");
-    staticDir = mkdtempSync("/private/tmp/dusk-dashboard-static-");
+    dataDir = mkdtempSync(join(tmpdir(), "dusk-dashboard-test-"));
+    staticDir = mkdtempSync(join(tmpdir(), "dusk-dashboard-static-"));
     writeFileSync(`${staticDir}/index.html`, "<!doctype html><title>dashboard fixture</title>");
     writeFileSync(`${staticDir}/.env`, "fixture-only");
     time = Date.now();
@@ -112,7 +114,7 @@ describe("hosted dashboard service", () => {
     expect(saved).not.toContain(cookie.split("=")[1]);
     expect(saved).not.toContain("omc_");
     expect(JSON.parse(saved).sessions[0].tokenHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(statSync(`${dataDir}/auth.json`).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(statSync(`${dataDir}/auth.json`).mode & 0o777).toBe(0o600);
     app = createDashboardApp({ dataDir, publicUrl: origin, mailer, staticDir });
     server.removeAllListeners("request");
     server.on("request", app.handle);
@@ -404,12 +406,12 @@ describe("hosted dashboard service", () => {
     const asleep = await connect({ kind: "app.connect", target: "gmail" });
     expect(asleep.status).toBe(409);
     expect(await readJson(asleep)).toMatchObject({ code: "workspace_offline", error: expect.stringContaining("not answering") });
-    await signed("/v1/report", id, { ...report(), apps: { available: true, complete: true, services: [{ slug: "github", connected: true, pending: false }, { slug: "linear", connected: false, pending: true }] } }).send();
-    expect(await readJson(page("/v1/connectors", undefined, cookie))).toEqual({ byWorkspace: { [id]: ["github"] }, pending: { [id]: ["linear"] }, available: { [id]: true }, at: { [id]: time } });
+    await signed("/v1/report", id, { ...report(), apps: { available: true, complete: true, services: [{ slug: "github", connected: true, pending: false }, { slug: "linear", connected: false, pending: true }, { slug: "notion", connected: true, pending: false, via: "app" }] } }).send();
+    expect(await readJson(page("/v1/connectors", undefined, cookie))).toEqual({ byWorkspace: { [id]: ["github", "notion"] }, inApp: { [id]: ["notion"] }, pending: { [id]: ["linear"] }, available: { [id]: true }, at: { [id]: time } });
     expect((await connect({ kind: "app.connect", target: "../admin" })).status).toBe(400);
     const stranger = await login("stranger@example.com");
     expect((await connect({ kind: "app.connect", target: "gmail" }, stranger)).status).toBe(404);
-    expect(await readJson(page("/v1/connectors", undefined, stranger))).toEqual({ byWorkspace: {}, pending: {}, available: {}, at: {} });
+    expect(await readJson(page("/v1/connectors", undefined, stranger))).toEqual({ byWorkspace: {}, inApp: {}, pending: {}, available: {}, at: {} });
     const forged = await fetch(`${url}/v1/workspaces/${id}/commands`, { method: "POST", headers: { "content-type": "application/json", cookie, origin }, body: JSON.stringify({ kind: "app.connect", target: "gmail" }) });
     expect(forged.status).toBe(403);
     const queued = await readJson<{ command: CommandView }>(connect({ kind: "app.connect", target: "Gmail" }));
@@ -427,6 +429,40 @@ describe("hosted dashboard service", () => {
     expect((await readJson<WorkspaceDetail>(page(`/v1/workspaces/${id}`, undefined, cookie))).commands.find(command => command.id === unsafe.command.id)?.url).toBeUndefined();
     time += 46_000;
     expect((await connect({ kind: "app.disconnect", target: "gmail" })).status).toBe(409);
+  });
+
+  it("sends a website sign-in back to the apps page with a one-time state only its account can take", async () => {
+    const cookie = await login();
+    const id = await claim(cookie);
+    await signed("/v1/report", id, report()).send();
+    const queued = await readJson<{ command: CommandView }>(page(`/v1/workspaces/${id}/commands`, { kind: "app.connect", target: "gmail", returnHere: true }, cookie));
+    const delivered = await readJson<ReportAnswer>(signed("/v1/report", id, report(2)).send());
+    const callback = new URL(delivered.commands[0]!.callback!);
+    expect(`${callback.origin}${callback.pathname}`).toBe(`${origin}/connectors`);
+    const state = callback.searchParams.get("connect")!;
+    expect(state).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    // a plain connect carries no callback
+    await readJson(page(`/v1/workspaces/${id}/commands`, { kind: "app.connect", target: "slack" }, cookie));
+    expect((await readJson<ReportAnswer>(signed("/v1/report", id, report(3)).send())).commands.map((command) => command.callback)).toEqual([undefined]);
+    await signed("/v1/report", id, { ...report(4), results: [{ id: queued.command.id, ok: true, message: "Sign-in is ready.", at: time, url: "https://connect.composio.dev/link/x", returnsHere: true }] }).send();
+    expect((await readJson<WorkspaceDetail>(page(`/v1/workspaces/${id}`, undefined, cookie))).commands.find((command) => command.id === queued.command.id))
+      .toMatchObject({ status: "done", url: "https://connect.composio.dev/link/x", returnsHere: true });
+
+    const stranger = await login("stranger@example.com");
+    expect((await page("/v1/connect/finish", { state, status: "success" }, stranger)).status).toBe(404);
+    expect(await readJson(page("/v1/connect/finish", { state, status: "success" }, cookie))).toEqual({ workspaceId: id, slug: "gmail", outcome: "signed-in" });
+    expect((await page("/v1/connect/finish", { state, status: "success" }, cookie)).status).toBe(404);
+    const forged = await fetch(`${url}/v1/connect/finish`, { method: "POST", headers: { "content-type": "application/json", cookie, origin: "https://evil.example" }, body: JSON.stringify({ state }) });
+    expect(forged.status).toBe(403);
+
+    const cancelled = await readJson<{ command: CommandView }>(page(`/v1/workspaces/${id}/commands`, { kind: "app.connect", target: "notion", returnHere: true }, cookie));
+    const later = (await readJson<ReportAnswer>(signed("/v1/report", id, report(5)).send())).commands.find((command) => command.id === cancelled.command.id)!;
+    const laterState = new URL(later.callback!).searchParams.get("connect");
+    expect(await readJson(page("/v1/connect/finish", { state: laterState, status: "failed" }, cookie))).toMatchObject({ slug: "notion", outcome: "cancelled" });
+    const stale = await readJson<{ command: CommandView }>(page(`/v1/workspaces/${id}/commands`, { kind: "app.connect", target: "linear", returnHere: true }, cookie));
+    const staleState = new URL((await readJson<ReportAnswer>(signed("/v1/report", id, report(6)).send())).commands.find((command) => command.id === stale.command.id)!.callback!).searchParams.get("connect");
+    time += 10 * 60_000 + 1;
+    expect(await readJson(page("/v1/connect/finish", { state: staleState, status: "success" }, cookie))).toMatchObject({ code: "connect_expired" });
   });
 
   it("wakes a pending signed wait immediately for a command and for watching", async () => {

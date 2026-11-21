@@ -20,6 +20,7 @@
   "cloudAccount.begin",
   "cloudAccount.cancel",
   "cloudAccount.cancelPlan",
+  "cloudAccount.carriedAis",
   "cloudAccount.checkout",
   "cloudAccount.connectHome",
   "cloudAccount.connectHomeForPhone",
@@ -207,6 +208,7 @@
   "revealInFolder",
   "routines",
   "routines.keepAwake",
+  "routines.keepAwakePluggedIn",
   "routines.wakeState",
   "saveFile",
   "screenFrame",
@@ -282,6 +284,7 @@
   "workspaces"
  ],
  "homePage": [
+  "appUpdate",
   "callActive",
   "exportDiagnostics",
   "home",

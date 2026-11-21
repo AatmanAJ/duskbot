@@ -6,10 +6,14 @@ export interface ChatToolCall {
 }
 
 /** Calls one model reply may carry (its index bound). */
-const MAX_REPLY_TOOL_CALLS = 32;
+const MAX_REPLY_TOOL_CALLS = 128;
 const MAX_ARGUMENT_CHARS = 256_000;
 
-export class ChatProtocolError extends Error {}
+export class ChatProtocolError extends Error {
+  /** a bare code for usage reasons ("stream_cut", "no_reply:empty_reply"); the message stays the person's words */
+  readonly code?: string;
+  constructor(message: string, code?: string) { super(message); this.code = code; }
+}
 
 export function object(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -85,15 +89,15 @@ export class ChatToolCalls {
     const calls = [...this.calls.entries()].sort(([a], [b]) => a - b).map(([, call]) => call);
     if (malformedFrame) throw new ChatProtocolError("provider stream contained a malformed completion frame");
     if (reason === "function_call") throw new ChatProtocolError("legacy function_call is unsupported; use structured tool_calls");
-    if (reason === "tool_calls" && !calls.length) throw new ChatProtocolError("provider ended for tool calls without a complete call");
+    if (reason === "tool_calls" && !calls.length) throw new ChatProtocolError("provider ended for tool calls without a complete call", "tool_call_malformed");
     if (!calls.length) return calls;
     if (reason !== null && reason !== "tool_calls" && reason !== "stop") {
-      throw new ChatProtocolError("provider tool calls were truncated or malformed");
+      throw new ChatProtocolError("provider tool calls were truncated or malformed", "tool_call_malformed");
     }
     const ids = new Set<string>();
     for (const call of calls) {
       if (!call.id || ids.has(call.id) || !/^[A-Za-z0-9_-]{1,64}$/.test(call.function.name)) {
-        throw new ChatProtocolError("provider returned an incomplete or duplicate tool call");
+        throw new ChatProtocolError("provider returned an incomplete or duplicate tool call", "tool_call_malformed");
       }
       ids.add(call.id);
     }
