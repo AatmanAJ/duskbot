@@ -3179,7 +3179,7 @@ function previewSystemPrompt(bot: BotRecord) {
   const agentsMounted = caps?.agentsMcp === true;
   const previewPlan = resolveSurface({
     destination: previewComputer,
-    browserOn: caps?.browserMcp === true && builtInBrowserEnabled(cfg) && bot.browser !== false,
+    browserOn: caps?.browserMcp === true && builtInBrowserEnabled(cfg) && bot.browser !== false, engineShell: Boolean(instance && supportsWorkspaceFiles(instance.driverKind)),
   });
   const privateWorkspace = instance && supportsWorkspaceFiles(instance.driverKind);
   const built = buildSystemPrompt(persona, bot.soul ?? "", [
@@ -6616,7 +6616,7 @@ function turnSurfacePlan(bot: BotRecord, runOn?: RoutineRunOn, threadId?: string
   return resolveSurface({
     destination: threadId && (proactive.fence.confines(threadId) || botApiThread(threadId)) ? "off" : forcedRemote ? "cloud" : bot.computer,
     pinnedSurface: chosen ? chosenPin(task) : followedPin(task, bot.computer, Boolean(vpsSshAliasForBot(cfg, bot))), botOpened: Boolean(task?.openedBy),
-    browserOn: builtInBrowserEnabled(cfg) && bot.browser !== false && instance?.adapter.capabilities.browserMcp === true,
+    browserOn: builtInBrowserEnabled(cfg) && bot.browser !== false && instance?.adapter.capabilities.browserMcp === true, engineShell: Boolean(instance && supportsWorkspaceFiles(instance.driverKind)),
   });
 }
 
@@ -11093,7 +11093,7 @@ async function runClaimedGroupMemberTurn(
     browserOn:
       builtInBrowserEnabled(cfg) &&
       readyBot.browser !== false &&
-      instance.adapter.capabilities.browserMcp === true,
+      instance.adapter.capabilities.browserMcp === true, engineShell: supportsWorkspaceFiles(instance.driverKind),
   });
   const roomKind = roomTeamComputer ? "vps" : roomPlan.computer === "local" ? "thisComputer" : readyBot.computer === "vm" ? "localVm"
     : roomPlan.computer === "cloud" ? "vps" : undefined;

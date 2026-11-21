@@ -42,6 +42,10 @@ const NO_BROWSER_NOTE =
 const OFF_NOTE =
   " This bot's \"Works on\" setting is Off, so no computer or built-in browser is mounted this turn. Everything else works (automations, waits, memory, connected apps, teammates, files you make here): do the job with those. Only a step that needs a screen or a shell is out: do the rest, give the person that step's exact command or clicks, and say in one line that turning on Works on in this bot's settings lets you do it yourself.";
 
+/** Off for an engine that has its own shell in the bot's working folder: that shell stays, only places are off. */
+const OFF_NOTE_ENGINE_SHELL =
+  " This bot's \"Works on\" setting is Off, so no computer or built-in browser is mounted this turn. Your own shell and files in your working folder still work: write, run and test code there and show the real output, never say you cannot run code. Everything else works too (automations, waits, memory, connected apps, teammates, files you make here). Only a step that needs a screen, a website or the person's own files outside your folder is out: do the rest, give the person that step's exact command or clicks, and say in one line that turning on Works on in this bot's settings lets you do it yourself.";
+
 const NO_PERMISSION_TALK = " Never explain permissions or System Settings yourself, and never claim to have used this computer's screen.";
 
 /** A bot on this computer whose screen control the OS has not granted yet: it chats and works in its browser as usual.
@@ -77,15 +81,17 @@ export function resolveSurface(input: {
   pinnedSurface?: Surface | null;
   browserOn: boolean;
   botOpened?: boolean;
+  /** The engine has its own shell in the bot's working folder (supportsWorkspaceFiles), whatever Works on says. */
+  engineShell?: boolean;
 }): SurfacePlan {
   const plan = placeOf(input);
   return input.botOpened ? { ...plan, botOpened: true } : plan;
 }
 
-function placeOf(input: { destination: Destination; pinnedSurface?: Surface | null; browserOn: boolean; botOpened?: boolean }): SurfacePlan {
+function placeOf(input: { destination: Destination; pinnedSurface?: Surface | null; browserOn: boolean; botOpened?: boolean; engineShell?: boolean }): SurfacePlan {
   const { destination, browserOn } = input;
   if (destination === "off") {
-    return { computer: "off", browser: false, pinned: null, note: OFF_NOTE };
+    return { computer: "off", browser: false, pinned: null, note: input.engineShell ? OFF_NOTE_ENGINE_SHELL : OFF_NOTE };
   }
   const beside = input.botOpened === true && browserOn;
   const pin = input.pinnedSurface ?? null;
