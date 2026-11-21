@@ -935,6 +935,10 @@
             "type": "boolean",
             "description": "run_now: a test run that sends nothing and reports what it would do."
           },
+          "payload": {
+            "type": "object",
+            "description": "run_now on a webhook: a sample body as the sending app posts it, with the person's own name and email, so its real steps run once end to end."
+          },
           "email_alias": {
             "type": "string",
             "description": "email: e.g. receipts"

@@ -39,6 +39,8 @@ export interface MessengerHostDeps extends Pick<MessengerBridgeDeps, "createThre
   arrived?(): void;
   /** Why this conversation may not manage the bot's chat apps (a guest's, an automation's), or null. */
   toolRefusal?(botId: string, threadId: string): string | null;
+  /** Why this conversation may not message the bot's owner on a chat app (a guest's), or null; an automation's may. */
+  sendRefusal?(botId: string, threadId: string): string | null;
   env?: NodeJS.ProcessEnv;
   telegramApi?: TelegramApi;
   discordApi?: DiscordApi;
@@ -373,11 +375,40 @@ export function createMessengerHost(deps: MessengerHostDeps) {
   };
 
   const toolBody = z.strictObject({
-    action: z.enum(["status", "connect", "allow", "remove_access", "disconnect"]),
+    action: z.enum(["status", "connect", "allow", "remove_access", "disconnect", "send"]),
     platform: z.string().optional(),
     token: z.string().max(400).optional(),
     who: z.string().max(200).optional(),
+    text: z.string().max(4000).optional(),
   });
+
+  /** The owner's own direct chat with this chat-app bot. */
+  async function ownerChat(platform: MessengerPlatform, one: MessengerLink & { owner: NonNullable<MessengerLink["owner"]> }): Promise<string> {
+    if (platform === "telegram") return one.owner.id;
+    const channel = await discord.call<{ id?: string }>(one.token, "POST", "/users/@me/channels", { recipient_id: one.owner.id });
+    if (!channel?.id) throw new DiscordError(502, "Discord did not open a direct message with the owner.");
+    return channel.id;
+  }
+
+  async function sendToOwner(ctx: { res: ServerResponse; json: typeof sendJson; botId: string; threadId: string }, platform: string | undefined, text: string | undefined): Promise<void> {
+    const refused = state.isMessengerThread(ctx.threadId)
+      ? "This conversation already is a chat-app chat: answer here and it reaches them."
+      : deps.sendRefusal?.(ctx.botId, ctx.threadId) ?? null;
+    if (refused) return ctx.json(ctx.res, 403, { error: refused });
+    if (!isMessengerPlatform(platform)) return ctx.json(ctx.res, 400, { error: "platform is telegram or discord." });
+    if (!text?.trim()) return ctx.json(ctx.res, 400, { error: "send needs text: the message for the person." });
+    const label = MESSENGER_LABELS[platform];
+    const one = link(ctx.botId, platform);
+    if (!one) return ctx.json(ctx.res, 409, { error: `No ${label} bot is connected. Ask the person for its token, then connect it.` });
+    if (!one.owner) return ctx.json(ctx.res, 409, { error: `Not sent: the person has not claimed the ${label} bot yet, so it has no chat with them. ${describe(ctx.botId)}` });
+    try {
+      await transports[platform].sendText(ctx.botId, await ownerChat(platform, { ...one, owner: one.owner }), text.trim());
+    } catch (error) {
+      const answer = platformError(platform, error);
+      return ctx.json(ctx.res, answer.status, { error: `Not sent: ${answer.message}` });
+    }
+    return ctx.json(ctx.res, 200, { text: `Sent to ${one.owner.name ?? "the person"} on ${label}.` });
+  }
 
   /** The newest token of the platform's shape in the person's own lines of this conversation. */
   function pastedToken(threadId: string, platform: MessengerPlatform): string | null {
@@ -409,8 +440,9 @@ export function createMessengerHost(deps: MessengerHostDeps) {
     if (ctx.method !== "POST") return ctx.json(ctx.res, 405, { error: "method not allowed" });
     const parsed = toolBody.safeParse(await ctx.readBody());
     if (!parsed.success) return ctx.json(ctx.res, 400, { error: "Use chat_app_bots with action and the fields it lists." });
-    const { action, platform, token: raw, who } = parsed.data;
+    const { action, platform, token: raw, who, text } = parsed.data;
     if (action === "status") return ctx.json(ctx.res, 200, { text: describe(ctx.botId) });
+    if (action === "send") return sendToOwner(ctx, platform, text);
     const refused = state.isMessengerThread(ctx.threadId)
       ? "A conversation that came in from a chat app can't change the bot's chat apps. The owner does it in dusk bot."
       : deps.toolRefusal?.(ctx.botId, ctx.threadId) ?? null;

@@ -1540,7 +1540,7 @@
     },
     {
       "name": "chat_app_bots",
-      "description": "Telegram and Discord bot accounts for this bot, set up from a BotFather or Discord bot token the person pasted. status: what is connected, who may reach it, who was turned away. connect: link that token (leave token out; dusk bot takes it from what the person pasted). allow / remove_access: a person or group by name from status, or by id. disconnect: stop using that Telegram or Discord bot.",
+      "description": "Telegram and Discord bot accounts for this bot, set up from a BotFather or Discord bot token the person pasted. status: what is connected, who may reach it, who was turned away. connect: link that token (leave token out; dusk bot takes it from what the person pasted). allow / remove_access: a person or group by name from status, or by id. disconnect: stop using that Telegram or Discord bot. send: text to the person's own chat with it once claimed, also from automations and job wake-ups.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -1552,7 +1552,8 @@
               "connect",
               "allow",
               "remove_access",
-              "disconnect"
+              "disconnect",
+              "send"
             ]
           },
           "platform": {
@@ -1565,6 +1566,10 @@
           "who": {
             "type": "string",
             "description": "allow / remove_access: a name from status, or a numeric id."
+          },
+          "text": {
+            "type": "string",
+            "description": "send: the message."
           }
         },
         "required": [
@@ -2038,6 +2043,10 @@
           "test": {
             "type": "boolean",
             "description": "run_now: a test run that sends nothing and reports what it would do."
+          },
+          "payload": {
+            "type": "object",
+            "description": "run_now on a webhook: a sample body as the sending app posts it, with the person's own name and email, so its real steps run once end to end."
           },
           "email_alias": {
             "type": "string",

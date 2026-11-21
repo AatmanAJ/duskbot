@@ -679,6 +679,7 @@ const TOOL_DEFINITIONS = [
         repeat: { type: "string", enum: ["once", "every_reset"], description: "limit_reset: once (default) or every_reset." },
         for_bot_id: { type: "string", description: "Only for ANOTHER bot's trigger: that bot's id, from list_bots." },
         test: { type: "boolean", description: "run_now: a test run that sends nothing and reports what it would do." },
+        payload: { type: "object", description: "run_now on a webhook: a sample body as the sending app posts it, with the person's own name and email, so its real steps run once end to end." },
         email_alias: { type: "string", description: "email: e.g. receipts" },
         email_from: { type: "array", items: { type: "string" }, description: "email: addresses or @domain; empty removes the route." },
       },
