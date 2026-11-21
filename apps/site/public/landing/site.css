@@ -39,18 +39,29 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: none; ba
 svg.bot, .sb[data-px], .cat img { -webkit-user-select: none; user-select: none; }
 .bar nav { display: flex; align-items: center; gap: 4px; }
 .bar nav a { color: var(--ink); text-decoration: none; font-size: 15px; padding: 8px 12px; border-radius: 999px; font-weight: 500; }
-.bar nav a:hover, .bar nav a[aria-current="page"], .bar nav a.is-here { color: var(--ink); background: var(--wash); }
+.bar nav a[aria-current="page"], .bar nav a.is-here { color: var(--ink); background: var(--wash); }
+/* hover only where there is a real pointer, so a tap on a phone never leaves a link stuck lit */
+@media (hover: hover) { .bar nav a:hover { color: var(--ink); background: var(--wash); } .bar nav a.cta:hover { background: #2a2a30; color: #fff; } }
 .bar nav a.cta { color: #fff; background: var(--ink); margin-left: 8px; padding: 8px 16px; }
-.bar nav a.cta:hover { background: #2a2a30; color: #fff; }
 /* phones get one menu with every page in it; it is a details element, so it opens without script */
 .menu { display: none; }
-.menu summary { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--wash); cursor: pointer; list-style: none; }
+.menu summary { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--wash); cursor: pointer; list-style: none; -webkit-tap-highlight-color: transparent; }
 .menu summary::-webkit-details-marker { display: none; }
-.menu summary svg { grid-area: 1 / 1; width: 20px; height: 20px; transition: opacity 0.16s ease, rotate 0.3s cubic-bezier(0.3, 1.6, 0.5, 1); }
-.menu summary svg + svg, .menu[open] summary svg:first-of-type { opacity: 0; rotate: -45deg; }
-.menu[open] summary svg + svg { opacity: 1; rotate: 0deg; }
+/* three lines that fold into an x when the menu opens, and back when it shuts */
+.burger { position: relative; width: 16px; height: 13px; }
+.burger i { position: absolute; left: 0; top: 5.6px; width: 100%; height: 1.75px; border-radius: 1px; background: currentColor; transition: transform 0.22s cubic-bezier(0.23, 1, 0.32, 1), opacity 0.16s ease; }
+.burger i:first-child { transform: translateY(-5.6px); }
+.burger i:last-child { transform: translateY(5.6px); }
+.menu[open] .burger i:first-child { transform: rotate(45deg); }
+.menu[open] .burger i:nth-child(2) { opacity: 0; transform: scaleX(0.4); }
+.menu[open] .burger i:last-child { transform: rotate(-45deg); }
 .menu > nav { position: absolute; left: 12px; right: 12px; top: calc(100% - 4px); display: grid; gap: 2px; padding: 8px; border-radius: 22px; background: #fff; box-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.25); transform-origin: 100% 0; animation: menu-in 0.18s cubic-bezier(0.23, 1, 0.32, 1); }
-.menu > nav a { display: flex; align-items: center; min-height: 48px; padding: 0 16px; border-radius: 14px; font-size: 17px; color: var(--ink); }
+.menu > nav a { display: flex; align-items: center; min-height: 48px; padding: 0 16px; border-radius: 14px; font-size: 17px; color: var(--ink); -webkit-tap-highlight-color: transparent; }
+/* with script, one tint slides to the link you point at, press or tab to, and rests on this page's link otherwise */
+.js .menu > nav a:not(.cta) { position: relative; z-index: 1; background: none; }
+.menu-pill { position: absolute; left: 8px; right: 8px; top: 0; border-radius: 14px; background: var(--wash); opacity: 0; pointer-events: none; transition: transform 0.22s cubic-bezier(0.23, 1, 0.32, 1), opacity 0.16s ease; }
+.menu-pill.on { opacity: 1; }
+.menu-pill.focus { background: color-mix(in oklab, var(--ink) 10%, var(--wash)); }
 .menu > nav a.cta { justify-content: center; margin: 6px 0 0; padding: 0 16px; }
 @keyframes menu-in { from { opacity: 0; scale: 0.97; translate: 0 -6px; } }
 
@@ -102,4 +113,4 @@ th { color: var(--ink); font-weight: 550; }
   .foot-mail { display: inline-flex; align-items: center; min-height: 44px; margin-top: 8px; padding: 0; }
   .skip { padding: 11px 16px; }
 }
-@media (prefers-reduced-motion: reduce) { .menu > nav { animation: none; } .menu summary svg { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .menu > nav { animation: none; } .burger i, .menu-pill { transition: opacity 0.16s ease; } }

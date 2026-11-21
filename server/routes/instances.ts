@@ -46,6 +46,8 @@ export interface InstanceRouteDeps {
   checkInstance?(instance: ProviderInstance): Promise<EngineCheck>;
   /** This server is a dusk cloud: an address on the person's own computer or network is out of its reach. */
   cloudHome?: boolean;
+  /** Moves every bot, backup, conversation and default off a provider being disconnected; without it one in use stays. */
+  releaseProvider?(instanceId: string): Promise<void>;
 }
 
 export function createInstanceRoutes(deps: InstanceRouteDeps): RouteHandler {
@@ -346,12 +348,19 @@ export function createInstanceRoutes(deps: InstanceRouteDeps): RouteHandler {
           return json(res, 400, { error: "Account settings are available for Claude and ChatGPT accounts only." });
         }
         if (body.hidden === true && providerInUse(instanceId)) {
-          return json(res, 409, { error: "Choose another model for the bots and default model using this provider before hiding it." });
+          if (!deps.releaseProvider) return json(res, 409, { error: "Choose another model for the bots and default model using this provider before hiding it." });
+          await deps.releaseProvider(instanceId);
         }
-        if (body.hidden !== undefined) {
-          if (body.hidden) entry.hidden = true;
-          else delete entry.hidden;
+        // disconnecting forgets the choice; reconnecting is one
+        if (body.hidden === true) {
+          entry.hidden = true;
+          delete entry.chosen;
+        } else if (body.hidden === false) {
+          delete entry.hidden;
+          entry.chosen = true;
         }
+        if (body.chosen === true) entry.chosen = true;
+        else if (body.chosen === false) delete entry.chosen;
         if (body.tools !== undefined) {
           if (!["openai-compat", "grok", "minimax", "mistral", "cerebras", "groq", "greenference", "meta"].includes(entry.driver)) {
             return json(res, 400, { error: "The tools setting is available for OpenAI-compatible, Grok API, MiniMax API, Mistral API, Cerebras API, Groq API, Greenference API and Meta API instances only." });
@@ -396,12 +405,14 @@ export function createInstanceRoutes(deps: InstanceRouteDeps): RouteHandler {
       if (providerInUse(instanceId)) {
         return json(res, 409, { error: "Choose another account for the bots and default model using this account before removing it." });
       }
-      // dusk bot keeps a ChatGPT account's sign-in in its own data folder: removing the account clears it.
-      const live = addedChatgpt ? registry.get(instanceId) : undefined;
+      // dusk bot keeps a ChatGPT or Antigravity account's sign-in in its own data folder: removing the account clears it.
+      const live = addedChatgpt || addedAntigravity ? registry.get(instanceId) : undefined;
       if (live?.signOut) {
         try { await providerAuthSessions.signOut(live, auth.kind === "session" ? auth.session.id : "loopback"); }
         catch (error) {
-          if ((error as { code?: unknown }).code !== "chatgpt_revocation_unconfirmed") {
+          if (addedAntigravity) {
+            console.warn(`antigravity: could not run ACP logout before removing ${instanceId}: ${error instanceof Error ? error.message : String(error)}`);
+          } else if ((error as { code?: unknown }).code !== "chatgpt_revocation_unconfirmed") {
             return json(res, 409, { error: error instanceof Error ? error.message : String(error) });
           }
         }
