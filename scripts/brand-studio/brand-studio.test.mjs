@@ -4,8 +4,8 @@ import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { changedRect, encodeGif } from "./gif.mjs";
-import { parseRawName, planReframe } from "./jobs.mjs";
-import { BACKGROUNDS, planLayout, planTimeline } from "./layout.mjs";
+import { parsePrName, parseRawName, planReframe } from "./jobs.mjs";
+import { BACKGROUNDS, cropPixels, parseCrop, planLayout, planTimeline } from "./layout.mjs";
 
 /** A plain GIF89a reader: every frame composited onto the canvas, as palette colours. */
 function decodeGif(bytes) {
@@ -144,16 +144,55 @@ describe("the layout", () => {
   });
 
   it("puts a before and after pair side by side with a label under each", () => {
-    const layout = planLayout({ shots: [{ width: 800, height: 600 }, { width: 800, height: 600 }], density: 1, labelled: true });
+    const layout = planLayout({ shots: [{ width: 800, height: 600 }, { width: 800, height: 600 }], density: 2, labelled: true });
     const [before, after] = layout.shots;
     expect(after.rect.x).toBeGreaterThan(before.rect.x + before.rect.width);
     expect(before.rect.y).toBe(after.rect.y);
     expect(before.label.y).toBeGreaterThan(before.rect.y + before.rect.height);
-    expect(before.label.centerX).toBe(before.rect.x + 400);
+    expect(before.label).toMatchObject({ anchor: "center", x: before.rect.x + 400 });
+    expect(layout).toMatchObject({ arrange: "row", columnScale: 0.91 });
+  });
+
+  it("stacks a pair one above the other, each under its own label, on a canvas no wider than it needs", () => {
+    const layout = planLayout({ shots: [{ width: 2560, height: 1600 }, { width: 2000, height: 1200 }], density: 2, arrange: "stack", labelled: true });
+    const [before, after] = layout.shots;
+    expect(before.label).toMatchObject({ anchor: "start", x: before.rect.x });
+    expect(before.rect.y).toBeGreaterThan(before.label.y + before.label.height);
+    expect(after.label.y).toBeGreaterThan(before.rect.y + before.rect.height);
+    expect(after.rect.y).toBeGreaterThan(after.label.y + after.label.height);
+    expect(after.rect.x + after.rect.width / 2).toBe(before.rect.x + before.rect.width / 2);
+    expect(layout.width).toBe(2560 + before.rect.x * 2);
+    expect(layout.height).toBe(after.rect.y + after.rect.height + before.label.y);
+  });
+
+  it("chooses the row while a pull request's column keeps it readable, and the stack once it does not", () => {
+    const pair = (width, height) => planLayout({ shots: [{ width, height }, { width, height }], density: 2, labelled: true });
+    expect(pair(960, 1320)).toMatchObject({ arrange: "row" });
+    expect(pair(960, 1320).columnScale).toBeGreaterThanOrEqual(0.66);
+    expect(pair(1100, 700)).toMatchObject({ arrange: "row" });
+    expect(pair(1440, 900)).toMatchObject({ arrange: "stack", columnScale: 1 });
+    expect(pair(2880, 1800)).toMatchObject({ arrange: "stack" });
+    expect(pair(2880, 1800).columnScale).toBeGreaterThan(planLayout({ shots: [{ width: 2880, height: 1800 }, { width: 2880, height: 1800 }], arrange: "row" }).columnScale);
+    expect(planLayout({ shots: [{ width: 2880, height: 1800 }] })).toMatchObject({ arrange: "row" });
+  });
+
+  it("never widens a tall pair past what the column keeps readable", () => {
+    const layout = planLayout({ shots: [{ width: 576, height: 1800 }, { width: 576, height: 1800 }], density: 2, labelled: true });
+    expect(layout).toMatchObject({ arrange: "row", columnScale: 0.66 });
+  });
+
+  it("reads a crop in points and keeps exactly those pixels", () => {
+    expect(parseCrop("40, 120,560,360")).toEqual({ x: 40, y: 120, width: 560, height: 360 });
+    for (const bad of ["", "40,120,560", "40,120,560,0", "-1,0,10,10", "a,b,c,d", "1,2,3,4,5", "1,,3,4"]) expect(parseCrop(bad)).toBeNull();
+    const shot = { width: 2880, height: 1800 };
+    expect(cropPixels(parseCrop("40,120,560,360"), shot, 2)).toEqual({ x: 80, y: 240, width: 1120, height: 720 });
+    expect(cropPixels(null, shot, 2)).toEqual({ x: 0, y: 0, width: 2880, height: 1800 });
+    expect(cropPixels(parseCrop("0,0,1440,900"), shot, 2)).toEqual({ x: 0, y: 0, width: 2880, height: 1800 });
+    expect(() => cropPixels(parseCrop("1000,0,560,360"), shot, 2)).toThrow(/reaches outside a 1440 × 900 point capture/);
   });
 
   it("gives every animation frame the same slot", () => {
-    const layout = planLayout({ shots: [{ width: 800, height: 600 }, { width: 800, height: 600 }, { width: 800, height: 600 }], arrange: "stack" });
+    const layout = planLayout({ shots: [{ width: 800, height: 600 }, { width: 800, height: 600 }, { width: 800, height: 600 }], arrange: "overlay" });
     expect(new Set(layout.shots.map((shot) => JSON.stringify(shot.rect))).size).toBe(1);
   });
 
@@ -194,5 +233,55 @@ describe("the naming convention", () => {
     ]);
     expect(jobs[0].shots.map((shot) => basename(shot))).toEqual(["demo.f01-open.raw.png", "demo.f02-ask.raw.png", "demo.f10-reply.raw.png"]);
     expect(jobs[3].shots.map((shot) => basename(shot))).toEqual(["stop.before.raw.png", "stop.after.raw.png"]);
+  });
+
+  it("reads the pr-<n> naming and leaves the framed files it yields alone", () => {
+    expect(parsePrName("pr-12-before.png")).toEqual({ slug: "pr-12", state: "before", variant: "" });
+    expect(parsePrName("pr-13-after-2599.png")).toEqual({ slug: "pr-13", state: "after", variant: "2599" });
+    expect(parsePrName("pr-11-after-two-bots.png")).toEqual({ slug: "pr-11", state: "after", variant: "two-bots" });
+    for (const framed of ["pr-12-before-framed.png", "pr-13-after-2599-framed.png", "pr-12-before-after.png", "pr-13-before-after-2599.png", "pr-12.gif", "pr-12-before.gif", "before-after.png"]) {
+      expect(parsePrName(framed)).toBeNull();
+    }
+  });
+
+  it("reframes a pr-<n> folder into the names its pull request already links", () => {
+    const jobs = planReframe("/a", [
+      "pr-13-before.png", "pr-13-after.png", "pr-13-before-2599.png", "pr-13-after-2599.png", "pr-13-after-phone.png",
+      "pr-13-before-framed.png", "pr-13-before-after.png", "pr-13-before-after-2599.png", "pr-13.gif", "before-after.png",
+    ]);
+    const made = Object.fromEntries(jobs.map((job) => [basename(job.out), [job.shots.map((shot) => basename(shot)), job.labels]]));
+    expect(made).toEqual({
+      "pr-13-after-framed.png": [["pr-13-after.png"], []],
+      "pr-13-before-framed.png": [["pr-13-before.png"], []],
+      "pr-13-before-after.png": [["pr-13-before.png", "pr-13-after.png"], ["before", "after"]],
+      "pr-13-after-2599-framed.png": [["pr-13-after-2599.png"], []],
+      "pr-13-before-2599-framed.png": [["pr-13-before-2599.png"], []],
+      "pr-13-before-after-2599.png": [["pr-13-before-2599.png", "pr-13-after-2599.png"], ["before", "after"]],
+      "pr-13-after-phone-framed.png": [["pr-13-after-phone.png"], []],
+    });
+  });
+
+  it("gives each framed file the crop, arrangement and labels frame.json names for it", () => {
+    const names = ["stop.before.raw.png", "stop.after.raw.png"];
+    const jobs = planReframe("/a", names, {
+      "stop.before-after.png": { crop: ["0,0,400,300", null], arrange: "stack", labels: ["main", "this branch"] },
+      "stop.after.png": { crop: "10,20,30,40" },
+    });
+    const job = (out) => jobs.find((candidate) => basename(candidate.out) === out);
+    expect(job("stop.before-after.png")).toMatchObject({
+      crops: [{ x: 0, y: 0, width: 400, height: 300 }, null], arrange: "stack", labels: ["main", "this branch"],
+    });
+    expect(job("stop.after.png").crops).toEqual([{ x: 10, y: 20, width: 30, height: 40 }]);
+    expect(job("stop.before.png")).toMatchObject({ crops: [null], labels: [] });
+    expect(job("stop.before.png")).not.toHaveProperty("arrange");
+    const [closer] = planReframe("/a", names, { "stop.closer.png": { shots: names, crop: "5,5,50,50", labels: ["before", "after"] } }).slice(-1);
+    expect(closer).toMatchObject({ kind: "still", out: "/a/stop.closer.png", shots: ["/a/stop.before.raw.png", "/a/stop.after.raw.png"], labels: ["before", "after"] });
+    expect(() => planReframe("/a", names, { "stop.closer.png": { shots: ["gone.raw.png"] } })).toThrow(/has no gone\.raw\.png/);
+    expect(() => planReframe("/a", names, { "stop.after.png": { shots: names } })).toThrow(/takes no shots/);
+    expect(() => planReframe("/a", names, { "stop.gif": {} })).toThrow(/does not yield: stop\.gif/);
+    expect(() => planReframe("/a", names, { "stop.after.png": { crop: "wide" } })).toThrow(/not "x,y,width,height"/);
+    expect(() => planReframe("/a", names, { "stop.before-after.png": { crop: ["0,0,1,1", "0,0,1,1", "0,0,1,1"] } })).toThrow(/one per shot \(2\)/);
+    expect(() => planReframe("/a", names, { "stop.after.png": { arrange: "pile" } })).toThrow(/arrange/);
+    expect(() => planReframe("/a", names, { "stop.after.png": { zoom: 2 } })).toThrow(/unknown option zoom/);
   });
 });

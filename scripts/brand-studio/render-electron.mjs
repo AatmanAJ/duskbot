@@ -47,6 +47,8 @@ async function run() {
         shotUrls: job.shots.map((_, index) => `studio://app/file/${index + 1}`),
         fontUrl: "studio://app/label-font",
         labels: job.labels,
+        crops: job.crops,
+        arrange: job.arrange,
         density: job.density,
         pad: job.pad,
         gifWidth: job.gifWidth,
