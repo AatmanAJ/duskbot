@@ -1,0 +1,6 @@
+{
+  "pr-13-before-after.png": { "crop": "460,200,520,500" },
+  "pr-13-before-after-2599.png": { "crop": "460,200,520,500" },
+  "pr-13-steps-before.gif": { "crop": "460,200,520,500", "labels": ["24:00 typed", "saved as 02:00", "25:99 typed", "saved anyway"] },
+  "pr-13-steps-after.gif": { "crop": "460,200,520,500", "labels": ["24:00 typed", "saved as 00:00", "25:99 typed", "refused"] }
+}
