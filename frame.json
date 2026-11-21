@@ -1,3 +1,4 @@
 {
-  "pr-41.before-after.png": { "arrange": "auto" }
+  "pr-41.before-after.png": { "arrange": "auto", "crop": "720,0,320,512" },
+  "pr-41.gif": { "crop": "288,0,752,640", "labels": ["details", "conversations", "new conversation"], "hold": 1700 }
 }

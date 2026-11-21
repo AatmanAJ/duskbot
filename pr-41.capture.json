@@ -1,0 +1,22 @@
+{
+  "about": "Pepper's panel on its Details tab, then (after only) the Conversations page and a new conversation. Before is the base of the pull request, after is its branch.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1040,
+  "height": 640,
+  "scale": 2,
+  "steps": [
+    { "click": "Open Pepper's profile" },
+    { "waitFor": "!!document.querySelector('[role=tab]')" },
+    { "waitMs": 500 },
+    { "shot": true },
+    { "shot": "f01-details", "only": "after" },
+    { "click": "Conversations", "only": "after" },
+    { "waitFor": "!!document.querySelector('[aria-label=\"Back to Details\"]')", "only": "after" },
+    { "waitMs": 500, "only": "after" },
+    { "shot": "f02-conversations", "only": "after" },
+    { "click": "New conversation", "only": "after" },
+    { "waitMs": 1500, "only": "after" },
+    { "shot": "f03-new-conversation", "only": "after" }
+  ]
+}
