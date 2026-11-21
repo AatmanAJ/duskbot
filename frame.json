@@ -1,0 +1,6 @@
+{
+  "pr-40.before-after.png": { "arrange": "auto", "crop": ["0,36,984,589", "0,52,984,573"] },
+  "pr-40.before.png": { "crop": "0,36,984,589" },
+  "pr-40.after.png": { "crop": "0,52,984,573" },
+  "pr-40.gif": { "crop": "0,26,984,599" }
+}
