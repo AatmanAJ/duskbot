@@ -1,4 +1,5 @@
 import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { hasHiddenCharacters } from "../../shared/hidden-characters";
 import { ArrowUp, Check, Clock3, LoaderCircle, Square, X } from "../icons";
 import { botButton, type BotButton } from "@/lib/bot-button";
 import { cn } from "@/lib/cn";
@@ -6,6 +7,7 @@ import { t } from "@/lib/i18n";
 import type { MausColor } from "@/lib/mascot";
 import type { Bot } from "@/state/store";
 import { BotAvatar } from "./Avatar";
+import { HiddenCharactersNote, RevealedText } from "./RevealedText";
 
 /** The bot a card asks for: its face and name lead the card. */
 export type Asker = Pick<Bot, "name" | "color"> & Partial<Pick<Bot, "avatarUrl" | "avatarCrop" | "avatarZoom" | "avatarFocusX" | "avatarFocusY" | "mascotBody" | "mascotFaceColor">>;
@@ -194,7 +196,7 @@ export function CardSettledRow({ icon, label, summary, tone = "done", title, det
 
 /** A command, a link or a quoted message beside the question: a quiet block that folds after three lines. */
 export function AskDetail({ text, mono = false, label }: { text: string; mono?: boolean; label?: string }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => mono && hasHiddenCharacters(text));
   const long = text.length > 180 || text.split("\n").length > 3;
   return (
     <div className="mt-2">
@@ -205,8 +207,9 @@ export function AskDetail({ text, mono = false, label }: { text: string; mono?: 
           mono ? "font-mono text-[13px] leading-[18px] whitespace-pre-wrap text-ink" : "whitespace-pre-wrap text-[13px] leading-5 text-ink-secondary",
           long && !open && "line-clamp-3")}
       >
-        {text}
+        {mono ? <RevealedText text={text} /> : text}
       </div>
+      {mono && <HiddenCharactersNote text={text} />}
       {long && (
         <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)} className={cn(ASK_QUIET_BUTTON, "mt-1 -ms-2")}>
           {open ? t("question.showLess") : t("ask.detail.more")}

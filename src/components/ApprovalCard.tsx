@@ -10,6 +10,7 @@ import { composioActionPhrase, outboundSummary } from "@/lib/approval-summary";
 import { ReviewRecord, showsReviewRecord } from "./ReviewCards";
 import { niceDate, niceTime, scheduleLabel } from "@/lib/schedule-label";
 import { cronScheduleLabel } from "../../shared/cron-label";
+import { spellOutHiddenCharacters } from "../../shared/hidden-characters";
 import { PROFILE_REQUEST_FIELDS, type ProfileRequestField } from "../../shared/profile-request";
 import type { RoutineRequestSchedule } from "../../shared/routine-request";
 import type { SkillShareRecord } from "../../shared/skill-request";
@@ -23,6 +24,7 @@ import { BotAvatar } from "./Avatar";
 import { CardHint } from "./CardHint";
 import { lowerFirst } from "../lib/lower-first";
 import { appActionLine } from "@/lib/app-action";
+import { RevealedText } from "./RevealedText";
 import { ServiceTile } from "./ServiceIcon";
 import { appLogo } from "./connect-apps/logos";
 import { friendlyError } from "@/lib/plain-error";
@@ -501,7 +503,7 @@ function CompactApprovalRow({
   if (waiting && answeredBelow) {
     return (
       <div data-approval-row="pending" className="sr-only">
-        {header}{summary ? ` ${summary}` : ""}{detail && showDetailInline ? ` ${firstLineOf(detail)}` : ""}. {t("approval.status.waitingAnswer")}
+        {header}{summary ? ` ${summary}` : ""}{detail && showDetailInline && <> <RevealedText text={firstLineOf(detail)} /></>}. {t("approval.status.waitingAnswer")}
       </div>
     );
   }
@@ -526,7 +528,7 @@ function CompactApprovalRow({
         {open && (
           <pre tabIndex={0} aria-label={t("approval.aria.details")}
             className="mt-1.5 max-h-40 w-full max-w-[560px] overflow-auto whitespace-pre-wrap break-words rounded-[12px] border border-transparent bg-(--card-code-fill) px-3 py-2 text-start font-mono text-[13px] leading-[18px] text-ink">
-            {detail}
+            <RevealedText text={detail} />
           </pre>
         )}
       </div>
@@ -553,11 +555,11 @@ function CompactApprovalRow({
             <button
               type="button"
               aria-expanded={open}
-              title={detail}
+              title={spellOutHiddenCharacters(detail)}
               onClick={toggle}
               className={cn(APPROVAL_CODE_CHIP, "text-left hover:bg-control focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus")}
             >
-              <span className="truncate">{detail}</span>
+              <span className="truncate"><RevealedText text={detail} /></span>
             </button>
           </span>
         )}
@@ -582,7 +584,7 @@ function CompactApprovalRow({
           aria-label={t("approval.aria.details")}
           className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-inset px-4 py-3 font-mono text-[12px] leading-relaxed text-ink"
         >
-          {detail}
+          <RevealedText text={detail} />
         </pre>
       )}
     </div>
@@ -696,7 +698,7 @@ export function ApprovalCard({
         }
         className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-[12px] border border-transparent bg-(--card-code-fill) px-3 py-2 font-mono text-[13px] leading-[18px] text-ink"
       >
-        {card.subtitle}
+        <RevealedText text={card.subtitle} />
       </pre>
 
       {card.skillRequest && <SkillRequestPreview request={card.skillRequest} />}

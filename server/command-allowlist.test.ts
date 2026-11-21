@@ -114,6 +114,28 @@ describe("command allowlist", () => {
     expect(validateCommandAllowlistCandidate({ ...candidate(), command: "curl -H \"Authorization: Bearer $TOKEN\" https://example.test" }).command).toContain("$TOKEN");
   });
 
+  it("never saves or matches a command with characters a reviewer cannot see", () => {
+    const store = new CommandAllowlistStore(filename);
+    for (const command of ["git status\u200b --short", "git status --short\u202e", "git\u00a0status --short", "ls\u{e0072}\u{e006d}"]) {
+      expect(commandAllowlistCandidate({ ...candidate(), command })).toBeNull();
+      expect(() => store.add("bot-a", { ...candidate(), command })).toThrow(/hidden characters/);
+    }
+    expect(store.list("bot-a")).toEqual([]);
+    expect(commandAllowlistCandidate({ ...candidate(), command: "git commit -m '\u{1f468}\u200d\u{1f469}\u200d\u{1f467}'" })).not.toBeNull();
+  });
+
+  it("keeps an older saved rule with hidden characters listed but never lets it allow, while other rules still do", () => {
+    const store = new CommandAllowlistStore(filename);
+    store.add("bot-a", candidate());
+    const saved = JSON.parse(readFileSync(filename, "utf8"));
+    const disguised = { ...candidate(), command: "git status\u200b --short" };
+    writeFileSync(filename, JSON.stringify({ ...saved, rules: [...saved.rules, { ...saved.rules[0], id: "6f1e2d3c-4b5a-4968-8776-655443322110", command: disguised.command }] }));
+    const restarted = new CommandAllowlistStore(filename);
+    expect(restarted.list("bot-a").map((rule) => rule.command)).toEqual([candidate().command, disguised.command]);
+    expect(restarted.matches("bot-a", disguised)).toBe(false);
+    expect(restarted.matches("bot-a", candidate())).toBe(true);
+  });
+
   it("fails closed for corrupt, malformed or unreadable stores without replacing them", () => {
     const store = new CommandAllowlistStore(filename);
     store.add("bot-a", candidate());
