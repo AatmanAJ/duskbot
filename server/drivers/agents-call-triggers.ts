@@ -343,7 +343,7 @@ function addressText(r: Json): string {
   if (typeof r.addressRefused === "string") return `\n\nIts address: ${r.addressRefused}`;
   if (!jsonRecord(r.address)) return "";
   if (typeof r.address.unavailable === "string") return `\n\nIts address: ${r.address.unavailable}`;
-  return `\n\nIts private address: ${JSON.stringify(r.address, null, 2)}\n\nIt is on now and waits for calls. Test it once before you say it works: trigger action=run_now with this trigger_id and payload, a sample shaped as that app posts it, with the person's own name and email, so its real steps run end to end (the row lands, the email reaches them).`;
+  return `\n\nIts private address, for you to paste into that app's setup yourself: ${JSON.stringify(r.address, null, 2)}\n\nNever write it in your reply: when the person pastes it into the app, tell them to use Copy address on this automation's card. It is on now and waits for calls. Test it once before you say it works: trigger action=run_now with this trigger_id and payload, a sample shaped as that app posts it, with the person's own name and email, so its real steps run end to end (the row lands, the email reaches them); then tell them it is live and what the test did.`;
 }
 
 /** What the bot should say about a schedule it just set: what it assumed, with the time zone and the next run in words. */
