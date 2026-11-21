@@ -458,9 +458,9 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
     ];
     return names.length ? names.join(", ") : entry.description;
   };
+  const openEntry = (entry: AppEntry) => go({ kind: "detail", id: entry.kind === "custom" ? CUSTOM_MCP : entry.id });
   const row = (entry: AppEntry) => (
-    <AppRow key={entry.id} entry={entry} subtitle={subtitleOf(entry)} action={rowAction(entry)}
-      onOpen={() => go({ kind: "detail", id: entry.kind === "custom" ? CUSTOM_MCP : entry.id })} />
+    <AppRow key={entry.id} entry={entry} subtitle={subtitleOf(entry)} action={rowAction(entry)} onOpen={() => openEntry(entry)} />
   );
 
   const label = (category: Category) => t(CATEGORY_LABEL[category]);
@@ -681,20 +681,18 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
       return <AppPage model={model} />;
     }
     if (page.kind === "yours") {
-      const servers = entries.filter((entry) => entry.kind === "custom" && !isConnected.has(entry.id));
+      const offServers = entries.filter((entry) => entry.kind === "custom" && !isConnected.has(entry.id));
       return (
         <div className="ca-yours @container">
           <h1 className="ca-title ps-2" data-detail-hero-title="">{t("connectApps.manage")}</h1>
             <Group title={t("connectApps.installed")}>
-              {connected.length || servers.length
+              {connected.length || offServers.length
                 ? <div className="grid grid-cols-1 gap-x-2 gap-y-0.5 @xl:grid-cols-2">
                   {connected.map((entry) => (
-                    <AppRow key={entry.id} entry={entry} subtitle={entry.description} action={{ kind: "status", label: t("apps.connected"), tone: "connected" }} onOpen={() => go({ kind: "detail", id: entry.id })} />
+                    <AppRow key={entry.id} entry={entry} subtitle={entry.description} action={{ kind: "status", label: t("apps.connected"), tone: "connected" }} onOpen={() => openEntry(entry)} />
                   ))}
-                  {servers.map((entry) => (
-                    <AppRow key={entry.id} entry={entry} subtitle={entry.description}
-                      action={{ kind: "status", label: t("connectApps.off"), tone: "quiet" }}
-                      onOpen={() => go({ kind: "detail", id: CUSTOM_MCP })} />
+                  {offServers.map((entry) => (
+                    <AppRow key={entry.id} entry={entry} subtitle={entry.description} action={{ kind: "status", label: t("connectApps.off"), tone: "quiet" }} onOpen={() => openEntry(entry)} />
                   ))}
                 </div>
                 : <p className="ca-note">{t("connectApps.nothingInstalled")}</p>}
