@@ -134,6 +134,7 @@
   "html.reload": "Reload",
   "filePreview.open": "Preview file: {name}",
   "filePreview.loading": "Opening file…",
+  "filePreview.close": "Close preview",
   "pdf.page": "Page {number} of {count}",
   "pdf.tooLarge": "This PDF is too large to preview here (30 MB). Save it to read it.",
   "pdf.loadFailed": "Couldn't show this PDF. Try again, or save it to read it.",
