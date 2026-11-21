@@ -31,7 +31,7 @@ export class GroupContext {
   }
 
   drop(prefix: string): void {
-    for (const key of [...this.rings.keys()]) if (key.startsWith(prefix)) this.rings.delete(key);
+    for (const key of this.rings.keys()) if (key.startsWith(prefix)) this.rings.delete(key);
   }
 }
 
