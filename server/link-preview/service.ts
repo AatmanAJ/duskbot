@@ -80,7 +80,6 @@ export function createLinkPreviews({ dir, net = {}, now = Date.now }: { dir: str
   const imagesRunning = new Map<string, Promise<{ type: string; body: Buffer } | null>>();
   const pagesDir = join(dir, "pages"), imagesDir = join(dir, "images");
   let lastPrune = 0;
-  // One message can carry many fresh links: build them a few at a time, so a burst cannot fan out unbounded.
   const MAX_BUILDING = 6;
   let building = 0;
   const waiting: Array<() => void> = [];
@@ -237,11 +236,11 @@ export function createLinkPreviews({ dir, net = {}, now = Date.now }: { dir: str
 
   function image(id: string) {
     if (!IMAGE_ID.test(id)) return Promise.resolve(null);
-      let pending = imagesRunning.get(id);
-      if (!pending) {
-        pending = gated(() => loadImage(id)).finally(() => imagesRunning.delete(id));
-        imagesRunning.set(id, pending);
-      }
+    let pending = imagesRunning.get(id);
+    if (!pending) {
+      pending = gated(() => loadImage(id)).finally(() => imagesRunning.delete(id));
+      imagesRunning.set(id, pending);
+    }
     return pending;
   }
 

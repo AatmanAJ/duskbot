@@ -16736,7 +16736,7 @@ if (CLOUD_HOME) registerCloudPower(cloudPower = createCloudPower({ dataDir: DATA
 
 server.on("error", (error: NodeJS.ErrnoException) => {
   console.error(error.code === "EADDRINUSE"
-    ? `dusk bot cannot listen on 127.0.0.1:${PORT}: the port is already in use, often by another dusk bot or an OpenMausBot server on the same host. Stop that program, or set DUSK_PORT to another port.`
+    ? `dusk bot cannot listen on 127.0.0.1:${PORT}: the port is already in use, often by another dusk bot server on the same host. Stop that program, or set DUSK_PORT to another port.`
     : `dusk bot's server failed to listen on 127.0.0.1:${PORT}: ${error.message}`);
   process.exit(1);
 });
