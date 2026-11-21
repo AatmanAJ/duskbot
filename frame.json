@@ -1,0 +1,8 @@
+{
+  "pr-24.before-after.png": { "crop": ["0,0,640,650", "0,100,640,449"] },
+  "pr-24.after.png": { "crop": "0,100,640,449" },
+  "pr-24.settings.before-after.png": { "shots": ["pr-24.settings.before.raw.png", "pr-24.settings.after.raw.png"], "crop": ["205,10,685,425", "205,10,685,370"], "labels": ["before", "after"] },
+  "pr-24.settings.before.png": { "shots": ["pr-24.settings.before.raw.png"], "crop": "205,10,685,425" },
+  "pr-24.settings.after.png": { "shots": ["pr-24.settings.after.raw.png"], "crop": "205,10,685,370" },
+  "pr-24.settings-list.after.png": { "shots": ["pr-24.settings-list.after.raw.png"], "crop": "205,10,685,662", "arrange": "stack" }
+}
