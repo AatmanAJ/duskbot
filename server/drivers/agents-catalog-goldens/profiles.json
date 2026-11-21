@@ -1,7 +1,7 @@
 {
   "default": {
-    "bytes": 73377,
-    "sha256": "4ea86e07f4ced2cb53d347cc9c98977a2f3266bd1ff8d7bbe971a1e50dbe3250",
+    "bytes": 73495,
+    "sha256": "aa17415ee6ec2429cf3c093dbf3b05d44335731223c9b5d97a36a2da91a4d66c",
     "tools": [
       "set_status",
       "send_message",
@@ -62,8 +62,8 @@
     ]
   },
   "voice": {
-    "bytes": 74155,
-    "sha256": "5c9cbc618b94b7634e5fec735ebd027c10bc692f34bb4814acc98d22c4bab18c",
+    "bytes": 74273,
+    "sha256": "1168cb381f6c2307bc20b65ae5b07b415560538d86145a549cbe7aecbf92a17f",
     "tools": [
       "set_status",
       "send_message",
@@ -125,8 +125,8 @@
     ]
   },
   "skills": {
-    "bytes": 76196,
-    "sha256": "6c76c87b12c6c45de31575d8824e889755c0ded14e53cf690650937c09fc6e3c",
+    "bytes": 76314,
+    "sha256": "fb04c3c359d8bf0d210f99afa6f745ba82dd42d4b30c49d4ed1185b7789aa127",
     "tools": [
       "set_status",
       "send_message",
@@ -189,8 +189,8 @@
     ]
   },
   "skills+voice": {
-    "bytes": 76974,
-    "sha256": "9840e5fe99d99469b5af1960dd3ce659797e7bb6281e903f8b08027be98feef5",
+    "bytes": 77092,
+    "sha256": "9d5c7d3d16e1edd96d3b5a311bbf95ea14d6233813edf40342dfa993d5919187",
     "tools": [
       "set_status",
       "send_message",
@@ -254,8 +254,8 @@
     ]
   },
   "non-chief": {
-    "bytes": 65359,
-    "sha256": "cdb24f43b952fa719f18bc00ef431ae8cfab7277957ee878c86cf5e82b4731c3",
+    "bytes": 65477,
+    "sha256": "4650cb88fea002033dee80d3c43cb1e19f551b14c826fde6270fffeb3fd77a74",
     "tools": [
       "set_status",
       "send_message",
@@ -311,8 +311,8 @@
     ]
   },
   "voice+non-chief": {
-    "bytes": 66137,
-    "sha256": "c7a1e82bf68708b0d70d52a658dec414366631b9a2f2af580fa7c1606920f97b",
+    "bytes": 66255,
+    "sha256": "20680ecadaca6a14a8ff46c4872b3e55154143054e71ec6efd2bbfbd317132e8",
     "tools": [
       "set_status",
       "send_message",
@@ -369,8 +369,8 @@
     ]
   },
   "skills+non-chief": {
-    "bytes": 68178,
-    "sha256": "0387f16de25674822131c7a5448c1c3326be8d34fc7d7b8a49e8e9fea32145f1",
+    "bytes": 68296,
+    "sha256": "7bd17d42c4971896bc3c8c8b210a491085bbc14f6afdf461096d9812b3df95a4",
     "tools": [
       "set_status",
       "send_message",
@@ -428,8 +428,8 @@
     ]
   },
   "skills+voice+non-chief": {
-    "bytes": 68956,
-    "sha256": "60e48030cc0d2fa82c38437cb5c2be72578fdcaf623439b1a27ec694b24c58ad",
+    "bytes": 69074,
+    "sha256": "51bcce8dcf38ffde13d3ce08c960df3b9ff4dc15013bf484759e439f980e288a",
     "tools": [
       "set_status",
       "send_message",
@@ -488,8 +488,8 @@
     ]
   },
   "skills+voice+cloud-home": {
-    "bytes": 75995,
-    "sha256": "42ff541d574a4000bfb02f37e4d4c8d1705bd96c4e30eab3186e8f009a23188c",
+    "bytes": 76113,
+    "sha256": "03bcdf969a1d3496872192b13997647dd9183b9d4d4a54e9b0bb0457acf21150",
     "tools": [
       "set_status",
       "send_message",
@@ -552,8 +552,8 @@
     ]
   },
   "skills+voice+non-chief+cloud-home": {
-    "bytes": 67977,
-    "sha256": "2557fef9aff904316070771dddf7e5e41a3877656567d8f5a10cec8c875f4a05",
+    "bytes": 68095,
+    "sha256": "3873ca2694619b47a96eaceba8ff6fe78c57512801ff409cb58fc31ca43c3562",
     "tools": [
       "set_status",
       "send_message",
@@ -611,8 +611,8 @@
     ]
   },
   "skills+voice+x": {
-    "bytes": 82408,
-    "sha256": "555db7b64768124bcfc796cae0023a72d9b59bb59fee3f9f2f6769b421899b0e",
+    "bytes": 82526,
+    "sha256": "f357b7192e1115f8f609b1efc8fbab2468416a65878f949cf012ccf490b451c1",
     "tools": [
       "set_status",
       "send_message",
@@ -681,8 +681,8 @@
     ]
   },
   "skills+voice+x+team": {
-    "bytes": 82824,
-    "sha256": "ecd8ad951a78460c0f16c8df3eea689fd0ea6436b068ccca7c225f6c46453eb4",
+    "bytes": 82942,
+    "sha256": "5d4badde6104f46ab905484ac2d6a0f613898140700c0563bc000b671497ff4b",
     "tools": [
       "set_status",
       "send_message",
@@ -752,8 +752,8 @@
     ]
   },
   "skills+skill-reader": {
-    "bytes": 76612,
-    "sha256": "26f4d6f4e29cd74d3bf3f300dea9f798d9c4007e20e81ddf419b66ea13c74661",
+    "bytes": 76730,
+    "sha256": "b3573698b35f4bd23d290aa8fef81f1a117a2f589ee0d4fac6ecdc054a5eba5c",
     "tools": [
       "set_status",
       "send_message",
@@ -817,8 +817,8 @@
     ]
   },
   "default+legacy-switches": {
-    "bytes": 73377,
-    "sha256": "4ea86e07f4ced2cb53d347cc9c98977a2f3266bd1ff8d7bbe971a1e50dbe3250",
+    "bytes": 73495,
+    "sha256": "aa17415ee6ec2429cf3c093dbf3b05d44335731223c9b5d97a36a2da91a4d66c",
     "tools": [
       "set_status",
       "send_message",
@@ -879,8 +879,8 @@
     ]
   },
   "default+dusk": {
-    "bytes": 74028,
-    "sha256": "2c8a165c67ffd40ef6f2f7e6d8f99e0893d6469846383e4983026d9ab8c566dd",
+    "bytes": 74146,
+    "sha256": "3cfc84fa09ff42d33c2f96ffe12bf87ff64f0aa601cfb869797e1e0c4ead07d0",
     "tools": [
       "set_status",
       "send_message",
@@ -943,8 +943,8 @@
     ]
   },
   "skills+voice+dusk": {
-    "bytes": 77625,
-    "sha256": "4aeb5dae1c1c61536de62684a83c395528b5b6a78865ce8eaf06306d89aee7fc",
+    "bytes": 77743,
+    "sha256": "e80ad0d7e4fffeecdf6cd2b20becbd2df5b224485ccb8ef3b0628d96509b4084",
     "tools": [
       "set_status",
       "send_message",
@@ -1010,8 +1010,8 @@
     ]
   },
   "default+no-computer-pick": {
-    "bytes": 72170,
-    "sha256": "63e60966683b6f3eb1c89d681b405d6c7998c84995f6d078015c4c80e5c0c90a",
+    "bytes": 72288,
+    "sha256": "b693b1b9271545616415019ccbe2a2fc095b9dee67531b44c4fc63fbb09b8504",
     "tools": [
       "set_status",
       "send_message",
@@ -1071,8 +1071,8 @@
     ]
   },
   "default+room": {
-    "bytes": 62480,
-    "sha256": "2aa44d3a165551089c962c467a8c0002ab09a68868db9f176d64dc563cc4bd01",
+    "bytes": 62598,
+    "sha256": "cf66c0f697ba0acf6f02d7ade44fab6ec8ac43685066575c16e4d9b7f84c6103",
     "tools": [
       "set_status",
       "send_message",
@@ -1124,8 +1124,8 @@
     ]
   },
   "non-chief+room": {
-    "bytes": 54462,
-    "sha256": "e5af3aefab83c99c081445612b6e842a6ec035a191dd510f1efabd209f9c0467",
+    "bytes": 54580,
+    "sha256": "7521f6c407dc3c2c6838a3b3cf5bdf35aa529ba6d4fe5f87addcccbcce1ca944",
     "tools": [
       "set_status",
       "send_message",

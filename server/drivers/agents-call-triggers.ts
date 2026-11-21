@@ -416,7 +416,7 @@ export async function callTriggerTool(name: string, args: Json, context: ToolCal
   if (error) return { text: error, isError: true };
   if (args.test === true && action !== "run_now") return { text: "test applies only to action=run_now.", isError: true };
   const test = action === "run_now" && args.test === true;
-  if (args.payload !== undefined && action !== "run_now") return { text: "payload applies only to action=run_now on a webhook.", isError: true };
+  if (args.payload !== undefined && action !== "run_now") return { text: "payload applies only to action=run_now on a webhook or app event.", isError: true };
   const payload = action === "run_now" && args.payload !== undefined ? { payload: args.payload } : {};
   const body: Json = { action, triggerId, ...(forBotId ? { forBotId } : {}), ...(test ? { test: true } : {}), ...payload };
   if (action === "update") {
