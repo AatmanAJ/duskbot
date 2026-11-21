@@ -1,7 +1,8 @@
 // What a bot's new routine gets before the person sees its card: a time on the hour or half hour moves a few minutes
 // (no stampede of every bot at 9:00), work that reads as the person's job runs on weekdays, a watch for something that
 // happens once ends 30 days on at the latest, and a second routine with the same instructions or check is refused with
-// the one already there. The person's own words win: "every day", "sharp", "every time" keep what the bot asked for.
+// the one already there. The person's own words win: "every day", "sharp", "every time" keep what the bot asked for,
+// and a reminder keeps the time it was asked for.
 import { createHash } from "node:crypto";
 
 import type { RoutineRequestDefinition } from "../shared/routine-request.ts";
@@ -12,7 +13,7 @@ export const WATCH_MAX_DAYS = 30;
 const DAY_MS = 24 * 60 * 60_000;
 const WEEKDAYS = [1, 2, 3, 4, 5];
 
-const PINNED = /\b(?:sharp|exactly|on the dot|precisely|no later than|not a minute)\b/i;
+const PINNED = /\b(?:sharp|exactly|on the dot|precisely|no later than|not a minute|remind(?:s|ers?|ing)?)\b/i;
 const EVERY_DAY = /\b(?:every ?day|each day|daily|7 days|seven days|weekends?|saturdays?|sundays?|including weekends)\b/i;
 const WORK = /\b(?:work|job|office|inbox|e-?mails?|slack|stand-?ups?|meetings?|calendar|clients?|customers?|sales|leads?|pipeline|crm|deals?|jira|linear|github|pull requests?|prs?|deploys?|tickets?|support|team|invoices?|revenue|metrics|kpis?|analytics|competitors?|hiring|candidates?|recruit\w*|standup|sprint|okrs?|reports?)\b/i;
 const PERSONAL = /\b(?:family|kids?|gym|workout|run(?:ning)?|health|medication|pills?|meds|garden|plants?|groceries|grocery|personal|home|weather|sports?|scores?|game|match|birthday|pets?|dog|cat|bills?|rent|church|prayer|meditat\w*|journal\w*|sleep|diet|water)\b/i;
@@ -58,7 +59,7 @@ function weekdaysCron(expression: string): string {
 const allWeek = (weekdays: readonly number[] | undefined) => weekdays === undefined || weekdays.length === 7;
 const workOnly = (text: string) => WORK.test(text) && !PERSONAL.test(text) && !EVERY_DAY.test(text);
 
-/** A daily or cron time a bot asked for, moved off the hour or half hour unless the person pinned it. Applies to a
+/** A daily or cron time a bot asked for, moved off the hour or half hour unless the person pinned it or it is a reminder. Applies to a
  * bot's changes too, so a bot that "fixes" the moved minute gets it moved again. */
 export function jitter<T extends { type: string; time?: string; expression?: string }>(schedule: T, name: string, instructions: string): T {
   if (PINNED.test(`${name}\n${instructions}`)) return schedule;
