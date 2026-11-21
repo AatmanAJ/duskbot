@@ -860,7 +860,7 @@ describe("the Connect Apps window", () => {
     expect(dialog().querySelector("[data-detail-hero-title]")?.textContent).toBe("Custom MCP");
   });
 
-  it("lists every custom MCP server on Your plugins, the ones that are off too, and opens Custom MCP from one", async () => {
+  it.each(["notes", "broken"])("lists every custom MCP server on Your plugins, the ones that are off too, and opens Custom MCP from %s", async (opened) => {
     act(() => root.unmount());
     fixture.mcpServers = [{ name: "notes", enabled: true }, { name: "broken", enabled: false }];
     root = createRoot(document.body.appendChild(document.createElement("div")));
@@ -869,7 +869,7 @@ describe("the Connect Apps window", () => {
     expect(dialog().querySelector('[data-app-row="mcp:notes"]')?.textContent).toContain("Connected");
     const off = dialog().querySelector('[data-app-row="mcp:broken"]');
     expect(off?.textContent, "a server that failed its test is still listed, as off").toContain("Off");
-    await act(async () => { off!.querySelector<HTMLElement>("button, [role=button]")!.click(); });
+    await act(async () => { dialog().querySelector<HTMLElement>(`[data-app-row="mcp:${opened}"] :is(button, [role=button])`)!.click(); });
     expect(dialog().querySelector("[data-detail-hero-title]")?.textContent).toBe("Custom MCP");
   });
 
