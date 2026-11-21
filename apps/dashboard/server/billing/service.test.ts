@@ -1162,6 +1162,49 @@ describe("payment problems", () => {
     expect(clouds.end).toHaveBeenLastCalledWith(sub.cloudId, time + config.graceDays * day);
   });
 
+  it("charges a failed renewal again on days 1, 3 and 6 on the saved card, and stops when it is fixed or the provider can't", async () => {
+    const { sub } = await buy(); time += day;
+    const failedCharge = (id: string) => deliver([signed("payment.failed", { payment_id: id, subscription_id: sub.providerSubscriptionId, customer: { customer_id: provider.subscriptions.get(sub.providerSubscriptionId!)!.customerId },
+      metadata: { checkoutId: sub.checkoutId, accountId: owner.id }, total_amount: sub.totalCents, currency: "USD" })]);
+    failedCharge("pay_renewal"); deliver(provider.fail(sub.providerSubscriptionId!));
+    const since = sub.paymentProblem!.since;
+    expect(await service.retryPayments()).toEqual({ sent: 0 });
+    time = since + day; expect(await service.retryPayments()).toEqual({ sent: 1 }); expect(await service.retryPayments()).toEqual({ sent: 0 });
+    expect(provider.retryCalls).toEqual(["pay_renewal"]);
+    provider.retryAnswer = "later"; time = since + 3 * day; await service.retryPayments();
+    expect(sub.paymentProblem!.retries).toBe(1);
+    provider.retryAnswer = "sent"; failedCharge("pay_retry_1"); await service.retryPayments();
+    expect(provider.retryCalls.at(-1)).toBe("pay_retry_1"); expect(sub.paymentProblem!.retries).toBe(2);
+    provider.retryAnswer = "refused"; time = since + 6 * day; await service.retryPayments();
+    expect(sub.paymentProblem!.retries).toBe(3); time = since + 9 * day; await service.retryPayments();
+    expect(provider.retryCalls).toHaveLength(4);
+  });
+
+  it("never retries a plan set to end, and a charge that goes through restores it like a fixed card", async () => {
+    const { sub } = await buy(); time += day;
+    deliver([signed("payment.failed", { payment_id: "pay_r", subscription_id: sub.providerSubscriptionId, customer: { customer_id: provider.subscriptions.get(sub.providerSubscriptionId!)!.customerId }, metadata: { checkoutId: sub.checkoutId, accountId: owner.id }, total_amount: sub.totalCents, currency: "USD" })]);
+    deliver(provider.fail(sub.providerSubscriptionId!));
+    sub.cancelAtPeriodEnd = true; time += day; await service.retryPayments(); expect(provider.retryCalls).toEqual([]);
+    sub.cancelAtPeriodEnd = false; await service.retryPayments(); expect(provider.retryCalls).toEqual(["pay_r"]);
+    deliver(provider.renew(sub.providerSubscriptionId!));
+    expect(sub.status).toBe("active"); expect(sub.paymentProblem).toBeUndefined();
+    time += 5 * day; await service.retryPayments(); expect(provider.retryCalls).toHaveLength(1);
+  });
+
+  it("a trial's failed first charge is retried before its data goes on day 7", async () => {
+    config.trial = { days: 3 }; withNotices();
+    const answer = await service.checkout(owner, { kind: "cart", cart: desktopOnly() });
+    const checkout = store.state.checkouts.find(row => row.id === answer.checkoutId)!;
+    deliver(provider.complete(checkout.providerSessionId!));
+    const sub = store.state.subscriptions[0]!;
+    time = sub.trialEndsAt! + 60_000;
+    deliver([signed("payment.failed", { payment_id: "pay_trial", subscription_id: sub.providerSubscriptionId, customer: { customer_id: provider.subscriptions.get(sub.providerSubscriptionId!)!.customerId }, metadata: { checkoutId: sub.checkoutId, accountId: owner.id }, total_amount: sub.totalCents, currency: "USD" })]);
+    deliver(provider.fail(sub.providerSubscriptionId!));
+    for (const at of [1, 3, 6]) { time = sub.paymentProblem!.since + at * day; await service.retryPayments(); }
+    expect(provider.retryCalls).toEqual(["pay_trial", "pay_trial", "pay_trial"]);
+    expect(time).toBeLessThan(sub.paymentProblem!.fixBy);
+  });
+
   it("a trial's unpaid first charge gets one email and no reminders, and its plan ends 7 days after the trial", async () => {
     config.trial = { days: 3 }; const notices = withNotices();
     const answer = await service.checkout(owner, { kind: "cart", cart: desktopOnly() });
