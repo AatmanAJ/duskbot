@@ -46,6 +46,7 @@ export function useTurnNow(bot: Pick<Bot, "id" | "name" | "threadId">, messages:
   const tail = status?.activity === "command" && "tail" in status ? status.tail : undefined;
   return {
     phrases: shown?.phrases,
+    fun: shown?.fun,
     phase: shown?.phase,
     size: shown?.size,
     detail: exact?.phrases[0],

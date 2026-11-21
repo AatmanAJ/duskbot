@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Cart } from "../../../../shared/billing-api.ts";
 import { BILLING_CONFIG as config, catalogView, DODO_PRODUCT_KEYS, dodoProducts, managedRegionConfig, missingDodoProducts } from "./plans.ts";
 import { DEFAULT_RETENTION_DAYS } from "../../../cloud-service/src/retention.ts";
-import { changeCharge, dedicatedMonthlyCents, dodoCart, dodoCartKeys, parseCart, quote } from "./pricing.ts";
+import { changeTiming, dedicatedMonthlyCents, dodoCart, dodoCartKeys, parseCart, quote } from "./pricing.ts";
 
 const preset = (index: number, interval: Cart["interval"] = "month"): Cart => ({ ...structuredClone(config.bundles[index].cart), interval });
 const products = Object.fromEntries(["month", "year"].flatMap(interval => ["plan_pro", "plan_team", "license_solo", "license_team", "desktop_shared_s", "desktop_shared_m", "desktop_dedicated", "addon_member", "addon_shared_s", "addon_shared_m", "addon_dedicated", "addon_vcpu", "addon_ram_gb", "addon_disk_20gb"].map(key => [`${key}:${interval}`, `${key}_${interval}`])));
@@ -100,8 +100,20 @@ describe("billing pricing", () => {
     expect(missingDodoProducts(Object.fromEntries(DODO_PRODUCT_KEYS.map(key => [key, "id"])))).toEqual([]);
     expect(missingDodoProducts({ "license_solo:month": "id" })).toHaveLength(DODO_PRODUCT_KEYS.length - 1);
   });
-  it("charges the difference on upgrades, nothing on downgrades, and validates product configuration", () => {
-    expect(changeCharge(2000, 5000)).toBe(3000); expect(changeCharge(5000, 2000)).toBe(0);
+  it("times plan changes: a trial is free, bigger starts now, smaller and yearly to monthly wait; and validates product configuration", () => {
+    const [, plus, pro, team] = config.bundles.map(bundle => ({ ...structuredClone(bundle.cart), interval: "month" as const }));
+    const year = <T extends { interval: string }>(cart: T) => ({ ...cart, interval: "year" as const });
+    expect(changeTiming(plus!, pro!, true)).toEqual({ timing: "trial", mode: "trial" });
+    expect(changeTiming(pro!, plus!, true)).toEqual({ timing: "trial", mode: "trial" });
+    expect(changeTiming(plus!, pro!, false)).toEqual({ timing: "now", mode: "keep_cycle" });
+    expect(changeTiming(plus!, team!, false)).toEqual({ timing: "now", mode: "keep_cycle" });
+    expect(changeTiming(pro!, plus!, false)).toEqual({ timing: "scheduled", mode: "scheduled" });
+    expect(changeTiming(team!, pro!, false)).toEqual({ timing: "scheduled", mode: "scheduled" });
+    expect(changeTiming(pro!, year(pro!), false)).toEqual({ timing: "now", mode: "new_cycle" });
+    expect(changeTiming(plus!, year(pro!), false)).toEqual({ timing: "now", mode: "new_cycle" });
+    expect(changeTiming(year(pro!), pro!, false)).toEqual({ timing: "scheduled", mode: "scheduled" });
+    expect(changeTiming(year(plus!), pro!, false)).toEqual({ timing: "now", mode: "new_cycle" });
+    expect(changeTiming(pro!, year(plus!), false)).toEqual({ timing: "scheduled", mode: "scheduled" });
     expect(dodoProducts({ DUSK_DODO_PRODUCTS: '{"license_solo:month":"p1"}' })).toEqual({ "license_solo:month": "p1" });
     expect(() => dodoProducts({ DUSK_DODO_PRODUCTS: '{"bad":1}' })).toThrow();
   });

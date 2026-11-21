@@ -75,9 +75,8 @@ describe("a first reply with no AI connected", () => {
     }
   });
 
-  it("is an ordinary failure once an AI of the person's own is ready", async () => {
-    const card = await show([free, claude]);
-    expect(card?.textContent).not.toContain("Connect your AI to keep chatting");
-    expect(card?.textContent).toContain("failed to respond");
+  it("closes once an AI of the person's own is ready, since connecting one was the fix", async () => {
+    expect(await show([free])).toBeTruthy();
+    expect(await show([free, claude])).toBeNull();
   });
 });

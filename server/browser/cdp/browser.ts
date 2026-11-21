@@ -59,6 +59,8 @@ export class CdpBrowser implements PageHost {
   /** Targets a viewer is attaching its own session to: that session is not a new tab. */
   readonly #viewerAttaches = new Map<string, number>();
   #active: CdpPage | null = null;
+  /** The tab a person holds: it stays in front while the bot works in other tabs. */
+  #pinned: CdpPage | null = null;
   #viewport: { width: number; height: number } | null;
 
   private constructor(connection: CdpConnection, options: BrowserOptions) {
@@ -127,7 +129,7 @@ export class CdpBrowser implements PageHost {
     }
     const page = new CdpPage(this, session, info);
     this.#pages.set(info.targetId, page);
-    this.#active = page;
+    if (!this.#holdsFront()) this.#active = page;
     const running = page.ready.then(async () => { await this.#fitWindow(page); });
     this.#running.set(page, running);
     void running.then(
@@ -240,6 +242,7 @@ export class CdpBrowser implements PageHost {
     if (!page) return;
     this.#pages.delete(targetId);
     if (this.#active === page) this.#active = null;
+    if (this.#pinned === page) this.#pinned = null;
     for (const listener of this.#closeListeners) {
       try { listener(page); } catch {}
     }
@@ -306,10 +309,10 @@ export class CdpBrowser implements PageHost {
   }
 
   async newPage(url = "about:blank", { timeoutMs = 15_000 }: { timeoutMs?: number } = {}): Promise<CdpPage> {
-    const { targetId } = await this.connection.root.send<{ targetId: string }>("Target.createTarget", { url: "about:blank" });
+    const { targetId } = await this.connection.root.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", ...(this.#holdsFront() ? { background: true } : {}) });
     if (this.#options.ownTabsOnly) await this.connection.root.send("Target.attachToTarget", { targetId, flatten: true });
     const page = await this.waitForPage((candidate) => candidate.targetId === targetId, timeoutMs);
-    this.#active = page;
+    if (!this.#holdsFront()) this.#active = page;
     if (url !== "about:blank") await page.navigate(url, { timeoutMs });
     return page;
   }
@@ -317,9 +320,20 @@ export class CdpBrowser implements PageHost {
   /** Input reaches only the tab in front: a person switching tabs does the same. */
   async bringToFront(page: CdpPage): Promise<void> {
     if (this.#active === page) return;
+    // headless Chrome 153 delivers input, reads and captures to a tab behind another (measured), so a held tab keeps the front
+    if (this.#holdsFront() && page !== this.#pinned) return;
     await page.session.send("Page.bringToFront");
     this.#active = page;
     await this.#fitWindow(page);
+  }
+
+  /** Keeps `page` in front until unpinned: other tabs' work no longer brings them forward. */
+  pin(page: CdpPage | null): void {
+    this.#pinned = page && !page.closed ? page : null;
+  }
+
+  #holdsFront(): boolean {
+    return this.#pinned !== null && !this.#pinned.closed;
   }
 
   async closePage(page: CdpPage): Promise<void> {

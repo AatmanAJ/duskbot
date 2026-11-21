@@ -40,7 +40,10 @@ export function botPreview(bot: Bot, visible: Message[], instances: InstanceInfo
 
 function plainStep(message: Message): boolean {
   const tool = message.kind === "activity" ? message.tool : undefined;
-  return Boolean(tool) && !message.dataResult && failedTurnCause(tool!.name) === null && !isStoppedTurnName(tool!.name) && !STATUS_MARKER.test(tool!.name);
+  if (!tool || message.dataResult) return false;
+  // a partly done turn whose reply says what failed shows no card, so the preview quotes that reply too
+  if (tool.partial && tool.owned) return true;
+  return failedTurnCause(tool.name) === null && !isStoppedTurnName(tool.name) && !STATUS_MARKER.test(tool.name);
 }
 
 /** A preview quotes the bot: a step that went fine gives way to the newest thing said since the person last wrote. */

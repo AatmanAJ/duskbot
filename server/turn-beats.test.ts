@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeEvent } from "./contracts.ts";
 import { toolStep } from "./step-summary.ts";
 import {
-  ACK_IDLE_MS, beatsNote, cleanBeat, createTurnBeats, looksLikeWork, MILESTONE_QUIET_MS, PLAN_MIN_MS, PLAN_WRITE_MS, type BeatKind,
+  ACK_IDLE_MS, beatPrompt, beatsNote, cleanBeat, createTurnBeats, looksLikeWork, MILESTONE_QUIET_MS, PLAN_MIN_MS, PLAN_WRITE_MS, type BeatKind,
 } from "./turn-beats.ts";
 
 const THREAD = "th1";
@@ -101,14 +101,23 @@ describe("turn beats", () => {
     expect(tool.posts.map((p) => p.kind)).toEqual(["ack"]);
   });
 
-  it("waits for the engine before acking work that has run no tool yet", async () => {
+  it("waits for the engine before acking work that has run no tool yet, and acks only once it is thinking", async () => {
     const { beats, posts, send } = setup();
     beats.start({ botId: "b", threadId: THREAD, text: "Write a launch plan for the spring candle line", attachments: 0, unattended: false });
     send(event({ type: "turn.started" }));
+    send(event({ type: "content.delta", streamKind: "reasoning_text", delta: "Planning the sections." }));
     await vi.advanceTimersByTimeAsync(ACK_IDLE_MS - 500);
     expect(posts).toEqual([]);
     await vi.advanceTimersByTimeAsync(600);
     expect(posts.map((p) => p.kind)).toEqual(["ack"]);
+  });
+
+  it("never acks a silent turn that runs no tool, so no ack is left with nothing after it", async () => {
+    const { beats, posts, send } = setup();
+    beats.start({ botId: "b", threadId: THREAD, text: "Write three posts for X announcing dark mode", attachments: 0, unattended: false });
+    send(event({ type: "turn.started" }));
+    await vi.advanceTimersByTimeAsync(ACK_IDLE_MS * 3);
+    expect(posts).toEqual([]);
   });
 
   it("holds the ack for a bot set up to ask before it uses tools until a tool runs", async () => {
@@ -221,6 +230,8 @@ describe("beat text", () => {
     expect(cleanBeat("ack", "Want me to check prices too?")).toBeNull();
     expect(cleanBeat("ack", "word ".repeat(40))).toBeNull();
     expect(cleanBeat("plan", "one\ntwo\nthree")).toBeNull();
+    expect(cleanBeat("plan", "I'll give you a brief confirmation, leaving the other details unchanged. Before sending, I'll check that both corrections match your message.")).toBeNull();
+    expect(cleanBeat("plan", "You'll get a short table of the three plans with prices, and I'll check each price is current.")).not.toBeNull();
     expect(cleanBeat("ack", "On it, testing sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789 now")).not.toContain("abcdefghijklmnopqrstuvwxyz0123456789");
   });
 
@@ -232,6 +243,18 @@ describe("beat text", () => {
 
   it("is nothing for the engine when nothing was sent", () => {
     expect(beatsNote([])).toBe("");
+  });
+});
+
+describe("what a beat may promise", () => {
+  const input = { name: "Forge", ask: "make a node cli todo app with tests, run them", steps: ["Writing index.js"], said: ["On it, writing the todo app."] };
+  it("never asks the writer for a check before sending, and forbids promising one the steps do not show", () => {
+    const plan = beatPrompt("plan", input);
+    expect(plan).not.toContain("the one check that will happen before sending");
+    expect(plan).toContain("Never promise a check, a test, a price lookup or anything else that is not already among the steps");
+  });
+  it("keeps product names as the person wrote them in the ack", () => {
+    expect(beatPrompt("ack", input)).toContain("Write names and products exactly as the person did");
   });
 });
 

@@ -33,6 +33,8 @@ const paidModels = new Set<string>();
 const DISCOVERY_TIMEOUT_MS = 20_000;
 const EFFORT_SURVEY_MS = 8_000;
 const DISCOVERY_PROBE_TTL_MS = 30_000;
+/** A ready OpenCode whose model list read empty is read again no sooner than this. */
+const EMPTY_LIST_RETRY_MS = 30_000;
 const discoveryProbeCache = new Map<string, { expiresAt: number; result: Promise<boolean> }>();
 
 export type OpenCodeCatalogLoader = (
@@ -644,11 +646,12 @@ export function openCodeFreeFallback(ownAccess: boolean, models: ModelCatalog): 
 }
 
 /** The free models a turn on `model` falls back through when one hangs, OpenCode's own first; null when `model` is no
- * free model. With no access of the person's own every Zen model offered is free. */
+ * free model. Only models the catalog marks free are rungs: the V2 CLI lists its paid models without a login too, and
+ * those answer 402. A catalog that marks none (an older CLI listing only free models) is all free without a login. */
 export function openCodeFreeModelOrder(model: string, ownAccess: boolean, models: ModelCatalog): string[] | null {
-  const keyless = openCodeFreeFallback(ownAccess, models);
-  const free = models.options.filter((option) => option.custom !== true && (keyless || isFreeOpenCodeModel(option.id)))
-    .map((option) => option.id);
+  const offered = models.options.filter((option) => option.custom !== true).map((option) => option.id);
+  const marked = offered.filter(isFreeOpenCodeModel);
+  const free = marked.length === 0 && openCodeFreeFallback(ownAccess, models) ? offered : marked;
   if (!free.includes(model) && !isFreeOpenCodeModel(model)) return null;
   return [...free.filter((id) => id.startsWith("opencode/")), ...free.filter((id) => !id.startsWith("opencode/"))];
 }
@@ -945,8 +948,21 @@ export function createOpenCodeDriver(loadCatalog: OpenCodeCatalogLoader = discov
     async create(input) {
       const instance = await driver.create(input);
       const read = instance.snapshot.bind(instance);
+      // the list read when the instance opened is empty when OpenCode was not installed yet (the free backup downloads after
+      // start) or its first read in a fresh home failed: a read that finds it ready loads the list before it answers
+      let filling: Promise<void> | null = null;
+      let emptyUntil = 0;
+      const fillEmptyList = () => {
+        if (instance.models.options.length || !instance.refreshModels || Date.now() < emptyUntil) return Promise.resolve();
+        filling ??= instance.refreshModels().catch(() => {}).finally(() => {
+          filling = null;
+          if (!instance.models.options.length) emptyUntil = Date.now() + EMPTY_LIST_RETRY_MS;
+        });
+        return filling;
+      };
       instance.snapshot = async () => {
         const snapshot = await read();
+        if (snapshot.state === "available" && snapshot.authenticated === true) await fillEmptyList();
         const own = ownAccess.get(input.instanceId);
         return snapshot.state === "available" && snapshot.authenticated === true && own !== undefined
           && openCodeFreeFallback(own, instance.models) ? { ...snapshot, freeFallback: true } : snapshot;
