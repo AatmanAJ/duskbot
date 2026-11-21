@@ -8,7 +8,7 @@ it("tells a failure in plain words, never as pasted error text, paths or a list 
 });
 
 it("prefers batches for independent searches and keeps a native batching fallback", () => {
-  expect(TOOL_HABITS_PROMPT).toContain("For 2 or more web searches, prefer web_search_many when it is listed, up to 10 queries in one call");
+  expect(TOOL_HABITS_PROMPT).toContain("For 2 or more web searches, use web_search_many when it is listed, up to 10 queries in one call");
   expect(TOOL_HABITS_PROMPT).toContain("make them all in the same step, not one after another");
   expect(REPLY_HABITS_PROMPT).toContain(TOOL_HABITS_PROMPT);
 });
@@ -115,7 +115,9 @@ it("names each change a tool confirmed in the result, and none it did not", () =
 it("runs independent parts at once and keeps a first ask going when a second one arrives", () => {
   for (const quick of [false, true]) {
     const prompt = replyHabitsPrompt(quick);
-    expect(prompt).toContain("runs its parts at once, each in its own subagent where you can start them (start_thread or coordinate_bots when they should be jobs the person sees), then merge; clicks and typing in a browser go one at a time");
+    expect(prompt).toContain("runs its parts at once, each in its own subagent where you can start them, then merge;");
+    expect(prompt).toContain("separate jobs they want to read on their own run here with start_thread (a long process with background_job), and the reply names each thread; coordinate_bots only for a teammate they named or work needing another bot's tools; clicks and typing in a browser go one at a time");
+    expect(prompt).toContain("Stop researching once what you read supports the answer: no extra round to be thorough");
     expect(prompt).toContain("A separate new ask does not replace the first: do both, and send each result when it is ready, opening with which ask it finishes.");
   }
 });
