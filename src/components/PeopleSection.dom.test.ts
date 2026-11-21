@@ -6,10 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const calls: Array<{ path: string; body?: unknown }> = [];
 let signIn = { admins: [] as string[], members: ["qa-person@example.com"] };
 let publicUrl: string | null = null;
+let saveFails = false;
 
 vi.mock("@/state/store", () => ({
   api: vi.fn(async (path: string, init?: { method?: string; body?: string }) => {
     if (init?.method === "PUT") {
+      if (saveFails) throw new Error("save failed");
       const body = JSON.parse(init.body ?? "{}");
       calls.push({ path, body });
       signIn = body.signIn;
@@ -42,6 +44,7 @@ beforeEach(() => {
   calls.length = 0;
   signIn = { admins: [], members: ["qa-person@example.com"] };
   publicUrl = null;
+  saveFails = false;
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ capabilities: { emailSignIn: false } }), { status: 200 })));
   host = document.createElement("div");
   document.body.append(host);
@@ -89,6 +92,18 @@ describe("people actions", () => {
     await settle();
     expect(calls).toEqual([{ path: "/api/config", body: { signIn: { admins: [], members: [] } } }]);
     expect(host.textContent).not.toContain("/pair?email=");
+  });
+
+  it("keeps the person and their invite link when the removal does not save", async () => {
+    saveFails = true;
+    await mount();
+    act(() => (host.querySelector('[aria-label="Invite link"]') as HTMLButtonElement).click());
+    act(() => button("Remove").click());
+    await settle();
+    act(() => button("Remove", confirmDialog()!).click());
+    await settle();
+    expect(host.textContent).toContain("qa-person@example.com");
+    expect(host.textContent).toContain("/pair?email=qa-person%40example.com");
   });
 
   it("asks before making someone an admin", async () => {

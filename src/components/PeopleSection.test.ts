@@ -11,7 +11,7 @@ describe("people helpers", () => {
 
   it("knows a link on a loopback address opens only on this computer", () => {
     for (const base of ["http://127.0.0.1:5178", "http://localhost:8799", "http://[::1]:8799", "http://app.localhost"]) expect(linkStaysOnThisComputer(base), base).toBe(true);
-    for (const base of ["https://acme.agentada.cc", "http://192.168.1.20:8799", "https://my-mac.tail1234.ts.net", "not a url"]) expect(linkStaysOnThisComputer(base), base).toBe(false);
+    for (const base of ["https://acme.agentada.cc", "http://192.168.1.20:8799", "https://my-mac.tail1234.ts.net", "https://127.example.com", "not a url"]) expect(linkStaysOnThisComputer(base), base).toBe(false);
   });
 
   it("joins the sign-in list with devices and this month's usage, by address", () => {

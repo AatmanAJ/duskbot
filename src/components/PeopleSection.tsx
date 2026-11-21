@@ -68,7 +68,7 @@ export function mergePeople(
 export function linkStaysOnThisComputer(base: string): boolean {
   try {
     const host = new URL(base).hostname.replace(/^\[|\]$/g, "");
-    return host === "localhost" || host.endsWith(".localhost") || host === "::1" || host.startsWith("127.");
+    return host === "localhost" || host.endsWith(".localhost") || host === "::1" || /^127(\.\d{1,3}){3}$/.test(host);
   } catch {
     return false;
   }
@@ -173,14 +173,16 @@ export function PeopleSection() {
     });
   }, [load]);
 
-  const save = async (next: SignInLists) => {
+  const save = async (next: SignInLists): Promise<boolean> => {
     setBusy(true);
     setError(null);
     try {
       await api("/api/config", { method: "PUT", body: JSON.stringify({ signIn: next }) });
       await load();
+      return true;
     } catch (cause) {
       setError(friendlyError(cause));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -194,7 +196,7 @@ export function PeopleSection() {
       setError(t("remote.signInAccess.invalid"));
       return false;
     }
-    await save(withEntry(lists, entry, role));
+    if (!await save(withEntry(lists, entry, role))) return false;
     setDraft("");
     setLink(inviteLink(base, entry));
     return true;
@@ -212,9 +214,9 @@ export function PeopleSection() {
     if (!lists || !await askConfirm({
       title: t("people.removeTitle", { who: personName(person) }), body: t("people.removeBody"), confirmLabel: t("people.remove"), tone: "danger",
     })) return;
+    if (!await save(withoutEntry(lists, person.entry))) return;
     const removedLink = inviteLink(base, person.entry);
     setLink((shown) => (shown === removedLink ? null : shown));
-    await save(withoutEntry(lists, person.entry));
   };
 
   if (!canPairDevices(session)) return null;
