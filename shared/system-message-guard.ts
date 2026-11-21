@@ -26,3 +26,17 @@ export function isPureLeakedSystemHarnessMessage(text: string | null | undefined
   if (!hasMarkers) return false;
   return stripLeakedSystemHarnessMessages(text).length === 0;
 }
+
+// the one-line recap server/digest.ts gives a bot of its earlier turns; a model may copy it into its reply
+const TURN_RECAP_REGEX = /[ \t]*\[What [^\]\n]{1,80} did in an earlier turn:(?:[^\n]*\](?=\s|$)|[^\n]*$)[ \t]*\n?/gm;
+
+/** A bot's reply as a person sees it: no leaked harness messages and no copied earlier-turn recaps. */
+export function botTextForDisplay(text: string | null | undefined): string {
+  return stripLeakedSystemHarnessMessages(text).replace(TURN_RECAP_REGEX, "").trim();
+}
+
+/** True when nothing of a bot's reply is left to show once leaked harness messages and recaps are taken out. */
+export function isPureLeakedBotText(text: string | null | undefined): boolean {
+  if (!text || typeof text !== "string") return false;
+  return (isPureLeakedSystemHarnessMessage(text) || / did in an earlier turn:/.test(text)) && botTextForDisplay(text).length === 0;
+}
