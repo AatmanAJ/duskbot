@@ -1,5 +1,6 @@
 // Security: local browse only, with no registry and no network fetch, so an import is exactly the bytes pasted here.
 import { ModalLayer } from "./ui/ModalLayer";
+import { AnimatePresence } from "motion/react";
 import { Search, X } from "../icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { t } from "@/lib/i18n";
@@ -12,6 +13,7 @@ import { SettingsSelect } from "./SettingsSelect";
 import { cn } from "@/lib/cn";
 import type { SkillsLibrarySkillWire } from "../../shared/wire";
 import { friendlyError } from "@/lib/plain-error";
+import { ArtState } from "./ui/Art";
 
 export function filterLibrarySkills(
   skills: readonly SkillsLibrarySkillWire[],
@@ -236,7 +238,8 @@ export function SkillsSection() {
 
       <RowsCard label={t("skills.library.title")} footnote={t("skills.library.subtitle")} data-settings-block="skills-library">
         {loading ? <NoteRow>{t("skills.library.loading")}</NoteRow>
-          : visible.length === 0 ? <NoteRow>{skills.length === 0 ? t("skills.library.empty") : t("skills.library.noMatches")}</NoteRow>
+          : skills.length === 0 ? <ArtState data-art-state="skills-library" art="cap" title={t("empty.skills.title")} className="py-6">{t("empty.skillsLibrary.hint")}</ArtState>
+          : visible.length === 0 ? <NoteRow>{t("skills.library.noMatches")}</NoteRow>
           : visible.map((skill) => (
             <div key={skill.name} className="contents">
               <div className={cn(rowCls, "items-start hover:bg-ink/[0.035]")}>
@@ -293,8 +296,8 @@ export function SkillsSection() {
         <NavRow data-settings-open="skill-import" title={t("skills.library.importTitle")} hint={t("settings.s2.skills.importHint")} onClick={() => setImportOpen(true)} />
         {importMessage && !importOpen && <NoteRow>{importMessage}</NoteRow>}
       </RowsCard>
-      {importOpen && (
-        <FormDialog data-panel-modal="skill-import" title={t("skills.library.importTitle")} description={t("skills.library.importHint")} width={520}
+      <AnimatePresence>{importOpen && (
+        <FormDialog key="skill-import" data-panel-modal="skill-import" title={t("skills.library.importTitle")} description={t("skills.library.importHint")} width={520}
           saveLabel={importing ? t("skills.library.importing") : t("skills.library.importButton")} canSave={!importing && !working && Boolean(importText.trim())} busy={importing}
           error={error || undefined} onSave={async () => { await importSkill(); }} onClose={() => setImportOpen(false)}>
           <textarea
@@ -305,7 +308,7 @@ export function SkillsSection() {
             onChange={(e) => setImportText(e.target.value)}
           />
         </FormDialog>
-      )}
+      )}</AnimatePresence>
 
       {viewing && <SkillSourceDialog viewing={viewing} error={error} working={Boolean(working)} onClose={() => { if (!working) setViewing(null); }} onEnable={() => void toggle(viewing.skill, true)} />}
     </div>
@@ -332,7 +335,7 @@ function SkillSourceDialog({ viewing, error, working, onClose, onEnable }: {
         >
           <div className="ui-dialog flex max-h-[min(760px,90vh)] w-full max-w-2xl flex-col p-5">
             <div className="flex items-center justify-between gap-3">
-              <div id="skills-library-view-title" className="text-[15px] font-medium leading-[22px] text-ink">{viewing.review ? `review ${viewing.skill.name} before enabling` : viewing.skill.name}</div>
+              <div id="skills-library-view-title" className="text-[15px] font-medium leading-[22px] text-ink">{viewing.review ? `Review ${viewing.skill.name} before enabling` : viewing.skill.name}</div>
               <button
                 type="button"
                 disabled={working}

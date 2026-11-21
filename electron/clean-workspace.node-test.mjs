@@ -268,3 +268,13 @@ test("nothing pops up to bring bots here beside a line saying they're safe in th
   assert.ok(popup);
   assert.equal(cleanWorkspaceConfig().onboarding.hintsSeen.includes(popup), true);
 });
+
+test("this computer's view is offered only when it can take a send: never the frozen copy, always the clean workspace", async (t) => {
+  const w = computer(t);
+  assert.equal(w.clean.showable(), false, "the frozen copy refuses every send, so This Mac never opens onto it");
+  await w.clean.enter();
+  assert.equal(w.clean.showable(), true);
+  await w.clean.leave();
+  assert.equal(w.clean.showable(), false);
+  assert.equal(computer(t, { frozen: null }).clean.showable(), true, "a computer that never moved is its own workspace");
+});

@@ -79,8 +79,8 @@ describe("bot-first sidebar", () => {
   });
 
   it.each([
-    { advanced: false, enabled: false, density: "comfortable", size: 36, spacing: ["gap-2.5", "rounded-[12px]", "p-2", "md:h-[54px]"] },
-    { advanced: false, enabled: false, density: "icons", size: 36, spacing: ["h-[54px]", "justify-center"] },
+    { advanced: false, enabled: false, density: "comfortable", size: 40, spacing: ["gap-2.5", "rounded-[12px]", "p-2", "md:h-[58px]"] },
+    { advanced: false, enabled: false, density: "icons", size: 36, spacing: ["h-[52px]", "justify-center"] },
   ] as const)("sizes bot portraits and row spacing in $density density with threads $enabled (advanced $advanced)", ({ advanced, density, size, spacing }) => {
     fixture.advanced = advanced;
     for (const avatar of [{}, { avatarUrl: "/api/attachments/portrait.png", avatarCrop: "circle" as const }]) {
@@ -142,7 +142,7 @@ describe("bot-first sidebar", () => {
   });
 
   it("keeps Simple mode's collapsed rail to the avatar and fades the Advanced rail's engine badge", () => {
-    fixture.state = { ...fixture.state, instances: [{ instanceId: "fake", driverKind: "claudeAgent", displayName: "Claude" }] as unknown as AppState["instances"] };
+    fixture.state = { ...fixture.state, instances: [{ instanceId: "fake", driverKind: "claudeAgent", displayName: "Claude", snapshot: { state: "available" }, models: { default: "", options: [] } }] as unknown as AppState["instances"] };
     const candidate = { ...bot, tasks: [], projects: [] };
     const rail = renderToStaticMarkup(createElement(BotListItem, rowProps("icons", candidate)));
     expect(rail).not.toContain('data-testid="model-badge"');
@@ -151,7 +151,7 @@ describe("bot-first sidebar", () => {
   it("shows a waiting Simple row as grok's amber dot and preview, and a working one with no dot at all, with no badge or live region", () => {
     const quiet = { ...bot, tasks: [], projects: [], unread: false, messages: [] };
     const waiting = renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", { ...quiet, activity: "waiting-on-you" })));
-    expect(waiting).toContain('data-testid="waiting-dot" title="Waiting for you…" class="size-2 shrink-0 rounded-full bg-[#da830e]"');
+    expect(waiting).toContain('data-testid="waiting-dot" title="Needs you" class="size-2 shrink-0 rounded-full bg-[#da830e]"');
     expect(waiting).toContain("text-[#aa6300]");
     const asked = renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", { ...quiet, activity: "waiting-on-you", messages: [{ id: "q", role: "bot", kind: "text", text: "send the reply to vitaliu?", at: 1 }] } as Bot)));
     expect(asked).toContain(">Waiting for you: send the reply to vitaliu?</span>");
@@ -251,8 +251,8 @@ describe("bot-first sidebar", () => {
   });
 
   it.each([
-    { advanced: false, density: "comfortable", face: 36, spacing: ["gap-2.5", "rounded-[12px]", "p-2", "md:h-[54px]"], name: "font-medium", preview: "text-[13px]" },
-    { advanced: false, density: "icons", face: 36, spacing: ["h-[54px]", "justify-center"], name: "font-semibold", preview: "text-[11px]" },
+    { advanced: false, density: "comfortable", face: 40, spacing: ["gap-2.5", "rounded-[12px]", "p-2", "md:h-[58px]"], name: "font-medium", preview: "text-[13px]" },
+    { advanced: false, density: "icons", face: 36, spacing: ["h-[52px]", "justify-center"], name: "font-semibold", preview: "text-[11px]" },
   ] as const)("sizes group chat rows in $density density (advanced $advanced)", ({ advanced, density, face, spacing, name, preview }) => {
     fixture.advanced = advanced;
     const group: Group = { id: "room", threadId: "room-thread", name: "Launch", memberIds: [bot.id], messages: [], defaultResponder: { kind: "mentions" }, bulletin: "", unread: false, createdAt: 1 };

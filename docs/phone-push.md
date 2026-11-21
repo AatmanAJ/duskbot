@@ -1,25 +1,32 @@
 # Phone push
 
-A paired phone gets a push for a notification (a reply, a question, an approval) when the app is in the background or
-closed. While the app is open it shows the notification itself, so nothing buzzes twice.
+A paired phone gets a push for a notification (a reply, a question, an approval) the person has not already seen. A
+message they are looking at, or already read on any device, never pushes.
 
 ## How the workspace decides
 
 The workspace (your computer or server) decides, per phone:
 
-- The app tells the workspace when it opens and when it goes to the background (`PUT /api/mobile/presence`), and keeps
-  saying it is open every 25 seconds. An app that stops saying so for 60 seconds (killed, suspended, out of signal)
-  counts as away.
-- A phone that is away gets the push at once. A phone that never reported (an older app, or a workspace that just
-  restarted) counts as away.
-- An event that lands while the app is open is held for 5 minutes. If the phone goes away and stays away for 3 seconds,
-  the held events it has not read yet go out as pushes, the newest per conversation. If it comes back within those 3
-  seconds, nothing is sent.
-- A push the service could not take is tried again after 10 seconds and after 60 seconds, while the phone is still away
-  and the notification is unread. A token APNs or FCM calls dead is dropped; the app registers again next time it opens.
+- The app tells the workspace when it opens, which conversation is on screen (none on the chat list), and when it goes
+  to the background (`PUT /api/mobile/presence` with `away` and `threadId`). It keeps saying it is open every 25 seconds;
+  an app that stops for 60 seconds (killed, suspended, out of signal) counts as away. A phone that never reported counts
+  as away.
+- A notification for the conversation the open app shows is never pushed to that phone.
+- Every other push waits 4 seconds first. It is dropped if, by then, the notification was read anywhere (the desktop
+  window open on that chat, the phone, "mark all read") or the phone opened that conversation. Several in one
+  conversation within those seconds send once, the newest.
+- A push the service could not take is tried again after 10 seconds and after 60 seconds, while it is still unread and
+  not on screen. A token APNs or FCM calls dead is dropped; the app registers again next time it opens.
 
-The code is in `server/mobile/presence.ts` (the rule), `server/mobile/link.ts` (wiring) and `server/mobile/push.ts`
-(sending).
+On the iPhone, a push that lands while the app is open shows as the system's own banner, unless it is about the
+conversation on screen, which shows nothing. Pushes already in Notification Center are removed once read: when that
+conversation opens, when a read arrives from another device while the app is open, and each time the app comes back.
+A phone that stays locked keeps a push read elsewhere until the app next opens.
+
+The desktop app on a Mac never posts system notifications; its dock, island and unread dots carry them.
+
+The code is in `server/mobile/presence.ts` (where each phone is), `server/mobile/link.ts` (the grace and wiring) and
+`server/mobile/push.ts` (sending).
 
 ## Where pushes leave from
 

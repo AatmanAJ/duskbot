@@ -1,10 +1,11 @@
 import type { DeletionBlocker, DeleteAccountOptions } from "../../../../shared/billing-api";
-import type { CommandKind, CommandView, ConnectorsAnswer, WorkspaceDetail, WorkspaceSummary } from "../../../../shared/dashboard-protocol";
+import type { WebsiteHome } from "../../../../shared/account-api";
+import type { CommandKind, CommandView, ConnectFinishAnswer as FinishAnswer, ConnectorsAnswer, WorkspaceDetail, WorkspaceSummary } from "../../../../shared/dashboard-protocol";
 import type { PulseAnswer } from "../../../../shared/machine-pulse";
-import type { AccountDevice, AccountProfile, AuthProviders, BillingOverview, CheckoutAnswer, CheckoutRequest, CloudDesktop, DesktopId, EmailCodeStart, Identity, IdentityProvider, MachineSpec, NotificationPrefs, PlanCatalog, Selection, SlackWake } from "../data/contracts";
+import type { AccountDevice, AccountProfile, AuthProviders, BillingOverview, ChangeOffer, CheckoutAnswer, CheckoutRequest, CloudDesktop, DesktopId, EmailCodeStart, Identity, IdentityProvider, MachineSpec, NotificationPrefs, PlanCatalog, Selection, SlackWake } from "../data/contracts";
 import { trackOnboardingDone } from "./analytics";
 import { accountFromWire, billingFromWire, cartFromQuote, cartFromSelection, catalogFromWire, cloudFromWire, providersFromWire } from "../data/live";
-import { CSRF_HEADER, EMAIL_CODE_DIGITS, readCsrfCookie, type AccountAnswer, type AccountView, type BillingOverview as WireBillingOverview, type CancelAnswer, type Catalog, type ChangePreview, type CheckoutAnswer as WireCheckoutAnswer, type CloudDesktopView, type DeviceLookupAnswer, type EmailStartAnswer, type HandoffAnswer, type MeAnswer, type ProvidersAnswer, type Quote, type RetentionInput, type WebSignInAnswer } from "../data/wire";
+import { CSRF_HEADER, EMAIL_CODE_DIGITS, readCsrfCookie, type AccountAnswer, type AccountView, type BillingOverview as WireBillingOverview, type CancelAnswer, type CancelSurvey, type Catalog, type ChangePreview, type CheckoutAnswer as WireCheckoutAnswer, type CloudDesktopView, type DeviceLookupAnswer, type EmailStartAnswer, type HandoffAnswer, type MeAnswer, type ProvidersAnswer, type Quote, type RetentionInput, type WebSignInAnswer } from "../data/wire";
 
 export type Scenario = "signedout" | "new" | "mac" | "cloud" | "provisioning" | "managed";
 export interface Account { id: string; email: string; name?: string | null }
@@ -79,8 +80,13 @@ async function call<T>(path: string, init?: { method?: string; body?: unknown; s
     if ((error as Error).name === "AbortError") throw error;
     throw new ApiError("can't reach dusk bot. check your connection.", 0, "offline");
   }
-  const data = (await res.json().catch(() => null)) as (T & { error?: string; code?: string; blockers?: DeletionBlocker[] }) | null;
+  let unread: unknown = null;
+  const data = (await res.json().catch((error: unknown) => { unread = error; return null; })) as (T & { error?: string; code?: string; blockers?: DeletionBlocker[] }) | null;
   if (!res.ok) throw new ApiError(lowercase(data?.error) ?? "something went wrong on our side. try again.", res.status, data?.code ?? null, data?.blockers);
+  if (data === null && res.status !== 204) {
+    if ((unread as Error | null)?.name === "AbortError") throw unread;
+    throw new ApiError("something went wrong on our side. try again.", 502, "bad_response");
+  }
   return data as T;
 }
 
@@ -103,6 +109,9 @@ async function overview(): Promise<{ billing: BillingOverview; clouds: CloudDesk
   subscriptionId = billing.subscription?.id ?? null;
   return { billing, clouds: answer.clouds.map(cloudFromWire).filter((cloud) => cloud !== null) };
 }
+
+const offerFromWire = (preview: ChangePreview): ChangeOffer => ({ timing: preview.timing, todayUsd: preview.chargeNowCents / 100, taxUsd: preview.taxCents / 100,
+  effectiveAt: preview.effectiveAt, nextUsd: preview.nextChargeCents / 100, nextAt: preview.nextChargeAt });
 
 function subscriptionPath(): string {
   if (!subscriptionId) throw new ApiError("there is no plan to change.", 409, "not_subscribed");
@@ -162,11 +171,13 @@ export const api = {
     if (FIXTURE) return send<AccountData>("/v1/account", "PATCH", profile);
     return accountFromWire(await send<AccountAnswer>("/v1/account", "PATCH", profile));
   },
-  finishOnboarding: async () => {
-    if (FIXTURE) return send("/v1/account/onboarded", "POST");
+  /** `home`: where the first steps put the bots, which the desktop app that sent the person here carries on from */
+  finishOnboarding: async (home?: WebsiteHome) => {
+    const body = home ? { home } : {};
+    if (FIXTURE) return send("/v1/account/onboarded", "POST", body);
     if (!accountId) await api.me();
     try { localStorage.setItem(`dusk-dash-onboarded:${accountId}`, "1"); } catch {}
-    await send("/v1/account/onboarded", "POST").catch(() => {});
+    await send("/v1/account/onboarded", "POST", body).catch(() => {});
     trackOnboardingDone();
   },
   setNotifications: (prefs: NotificationPrefs) => send<NotificationPrefs>("/v1/account/notifications", "PUT", prefs),
@@ -197,25 +208,29 @@ export const api = {
   },
   /** a card-only page for the plan's payment method; dusk bot never opens the provider's customer portal */
   updateCard: () => send<{ url: string }>(`${subscriptionPath()}/card`, "POST"),
-  /** what a plan change charges now, in dollars, before anything is applied */
-  changeCharge: async (selection: Selection): Promise<number> => {
-    if (FIXTURE) return 0;
-    const preview = await send<ChangePreview>(`${subscriptionPath()}/preview`, "POST", { cart: cartFromSelection(selection, await catalog()) });
-    return preview.chargeNowCents / 100;
+  /** what a plan change does, before anything is applied: today's charge, the next one and when */
+  changeCharge: async (selection: Selection): Promise<ChangeOffer> => {
+    if (FIXTURE) return { timing: "now", todayUsd: 0, taxUsd: 0, effectiveAt: Date.now(), nextUsd: 0, nextAt: null };
+    return offerFromWire(await send<ChangePreview>(`${subscriptionPath()}/preview`, "POST", { cart: cartFromSelection(selection, await catalog()) }));
   },
-  /** applies a plan change only while it charges no more than the person was shown (`approvedUsd`) */
+  /** applies a plan change only while it charges no more than the person was shown (`approvedUsd`); a card that needs a
+   * check goes to the provider's payment page */
   changePlan: async (selection: Selection, approvedUsd = 0) => {
     if (FIXTURE) return send("/v1/billing/change", "POST", { selection });
     const path = subscriptionPath();
     const preview = await send<ChangePreview>(`${path}/preview`, "POST", { cart: cartFromSelection(selection, await catalog()) });
     if (preview.chargeNowCents > Math.round(approvedUsd * 100)) throw new ApiError("the price changed. check it and confirm again.", 409, "price_changed");
-    return send(`${path}/change`, "POST", { confirmation: preview.confirmation });
+    const answer = await send<{ paymentUrl?: string }>(`${path}/change`, "POST", { confirmation: preview.confirmation });
+    if (answer.paymentUrl) window.location.assign(answer.paymentUrl);
+    return answer;
   },
   /** a cancel flow step, for the owner's cancel reasons and saves */
   retention: (input: RetentionInput) => send(FIXTURE ? "/v1/billing/retention" : `${subscriptionPath()}/retention`, "POST", input),
   /** the one-time stay-on discount on the plan's coming renewals */
   discount: (reason: CancelAnswer) => send(FIXTURE ? "/v1/billing/discount" : `${subscriptionPath()}/discount`, "POST", { reason }),
-  cancel: (answer: CancelAnswer | "") => send(FIXTURE ? "/v1/billing/cancel" : `${subscriptionPath()}/cancel`, "POST", answer === "" ? {} : { survey: { answer } }),
+  cancel: (survey: CancelSurvey | null) => send(FIXTURE ? "/v1/billing/cancel" : `${subscriptionPath()}/cancel`, "POST", survey ? { survey } : {}),
+  /** a plan set to end renews again */
+  keep: () => send(FIXTURE ? "/v1/billing/keep" : `${subscriptionPath()}/keep`, "POST", {}),
   clouds: async (): Promise<{ clouds: CloudDesktop[] }> => {
     if (FIXTURE) return call("/v1/clouds");
     const answer = await call<{ clouds: CloudDesktopView[] }>("/v1/clouds");
@@ -237,7 +252,9 @@ export const api = {
   workspaces: (signal?: AbortSignal) => call<{ workspaces: WorkspaceSummary[] }>("/v1/workspaces", { signal }),
   workspace: (id: string, signal?: AbortSignal) => call<WorkspaceDetail>(workspacePath(id), { signal }),
   pulse: (id: string, after: number, signal?: AbortSignal) => call<PulseAnswer>(`${workspacePath(id)}/pulse?after=${Math.max(0, Math.floor(after))}`, { signal }),
-  command: (id: string, kind: CommandKind, target: string) => send<{ command: CommandView }>(`${workspacePath(id)}/commands`, "POST", { kind, target }),
+  command: (id: string, kind: CommandKind, target: string, options?: { returnHere?: boolean }) => send<{ command: CommandView }>(`${workspacePath(id)}/commands`, "POST", { kind, target, ...(options?.returnHere ? { returnHere: true } : {}) }),
+  /** back on the apps page from a sign-in it started: the one-time state, and the app's word on how it ended */
+  finishConnect: (state: string, status: string | null) => send<FinishAnswer>("/v1/connect/finish", "POST", { state, ...(status ? { status } : {}) }),
   rename: (id: string, name: string) => send(workspacePath(id), "PATCH", { name }),
   forget: (id: string) => send(workspacePath(id), "DELETE"),
   claim: (token: string) => send<{ workspace: WorkspaceSummary }>("/v1/claim", "POST", { token }),
