@@ -125,11 +125,14 @@ const sections = ["machine", "computers", "bots", "activity", "devices", "plans"
 const COMMAND_REDELIVER_MS = 10_000;
 const MUTATIONS = ["POST", "PUT", "PATCH", "DELETE"];
 
-/** the page's content security policy: its own scripts plus the hashes of its inline ones (the theme bootstrap) */
+/** cloudflare's edge injects its web analytics beacon into every page it serves; only that script and where it reports */
+const BEACON_SCRIPT = "https://static.cloudflareinsights.com", BEACON_REPORT = "https://cloudflareinsights.com";
+
+/** the page's content security policy: its own scripts, the hashes of its inline ones (the theme bootstrap) and the analytics beacon */
 export function pagePolicy(html: string): string {
   const inline = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map(match => `'sha256-${createHash("sha256").update(match[1]!).digest("base64")}'`);
-  return ["default-src 'self'", `script-src 'self'${inline.length ? ` ${inline.join(" ")}` : ""}`, "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob: https:",
-    "font-src 'self' data:", "connect-src 'self'", "frame-src 'none'", "object-src 'none'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'"].join("; ");
+  return ["default-src 'self'", `script-src 'self'${inline.length ? ` ${inline.join(" ")}` : ""} ${BEACON_SCRIPT}`, "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob: https:",
+    "font-src 'self' data:", `connect-src 'self' ${BEACON_REPORT}`, "frame-src 'none'", "object-src 'none'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'"].join("; ");
 }
 
 /** the page's own top-level routes (apps/dashboard/src/main.tsx): on a shared origin a link to one without the page base,
