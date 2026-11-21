@@ -1,0 +1,4 @@
+{
+  "pr-10-before-after.png": { "crop": ["10,16,1420,848", "10,16,1420,580"] },
+  "pr-10-before-after-close-label.png": { "shots": ["pr-10-before.png", "pr-10-after.png"], "crop": ["1130,62,280,104", "1130,335,280,104"], "labels": ["before", "after"] }
+}
