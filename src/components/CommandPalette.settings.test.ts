@@ -86,4 +86,11 @@ describe("Command palette and Settings", () => {
     expect(search("contraseñas").some((row) => row.startsWith("Ajustes: "))).toBe(true);
     expect(document.querySelector<HTMLInputElement>('[role="dialog"] input')!.placeholder).toBe("Buscar");
   });
+
+  it("still finds a setting by its English name and words in another language", async () => {
+    await loadLocale("es");
+    expect(search("vault").some((row) => row.startsWith("Ajustes: "))).toBe(true);
+    expect(search("language").some((row) => row.startsWith("Idioma"))).toBe(true);
+    expect(search("settings").filter((row) => row.startsWith("Ajustes: ")).length).toBeGreaterThan(5);
+  });
 });

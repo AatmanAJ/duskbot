@@ -1,6 +1,6 @@
 import type { AppSettingsSection } from "@/state/store";
-import type { LocaleKey } from "@/locales";
-import { t, tOptional } from "@/lib/i18n";
+import { en, type LocaleKey } from "@/locales";
+import { activeLocale, t, tOptional } from "@/lib/i18n";
 import { SETTINGS_PANES, type AdvancedPage, type SettingsPane } from "@/lib/open-settings";
 import type { IconName } from "./Icon";
 
@@ -21,9 +21,13 @@ const SETTING_ROWS: readonly SettingRow[] = [
   { id: "archived", titleKey: "settings.advanced.bots.archived", paneKey: "settings.pane.advanced", icon: "archive", target: "advanced" },
 ];
 
-/** Other words people search for a pane or setting with, in the active language. */
-function synonyms(id: string): string | undefined {
-  return tOptional(`palette.also.${id}` as LocaleKey);
+/** Other words people search for a pane or setting with: the active language's, and in another language the English
+ * name and words as well, since people type either. */
+function searchWords(id: string, englishName: string): string | undefined {
+  const key = `palette.also.${id}` as LocaleKey;
+  const local = tOptional(key);
+  if (activeLocale() === "en") return local;
+  return [local, englishName, en[key]].filter(Boolean).join(" ");
 }
 
 export function settingsCommands(): SettingsCommand[] {
@@ -31,7 +35,7 @@ export function settingsCommands(): SettingsCommand[] {
     id: `settings-${pane.id}`,
     name: t("palette.settingsPane", { pane: t(pane.labelKey) }),
     detail: t("settings.title"),
-    also: synonyms(pane.id),
+    also: searchWords(pane.id, `${en["settings.title"]} ${en[pane.labelKey]}`),
     icon: pane.icon,
     target: pane.id,
   }));
@@ -39,7 +43,7 @@ export function settingsCommands(): SettingsCommand[] {
     id: `setting-${row.id}`,
     name: t(row.titleKey),
     detail: t("palette.inSettings", { pane: t(row.paneKey) }),
-    also: synonyms(row.id),
+    also: searchWords(row.id, en[row.titleKey]),
     icon: row.icon,
     target: row.target,
   }));
