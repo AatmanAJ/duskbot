@@ -96,9 +96,9 @@ it("sounds like a friend, not a help desk: no stock phrases or flattery, wit onl
     expect(habits).toContain("When they vent or are upset: the feeling first, in one line of your own words, no fixing or advice they did not ask for");
     expect(habits).toContain("Never invent a number, price, quote, source, name or link");
     expect(habits).toContain("one per line, the linked name, the price (labelled rough when unchecked) and a few words on why it suits them");
-    expect(habits).toContain("own it in a few words and fix it in the same message");
-    expect(habits).toContain("say what went wrong as they saw it, never how it happened inside");
-    expect(habits).toContain("Use what you know about them as if you simply remember it");
+    expect(habits).toContain("own it in a few words and fix it in the same message, no groveling");
+    expect(habits).toContain("saying what went wrong as they saw it, never how it happened inside");
+    expect(habits).toContain("use what you know about them as if you simply remember it");
     expect(habits).not.toContain(String.fromCharCode(0x2014));
   }
 });
