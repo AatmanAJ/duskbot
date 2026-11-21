@@ -52,10 +52,11 @@ import { commandSummary, toolDetailPreview } from "../tool-summary.ts";
 import { codexDeveloperInstructions, syncCodexInstructions } from "./codex-instructions.ts";
 import { volatileContextNote, withContextNote } from "./prompt-split.ts";
 import type { ApprovalMode } from "../../shared/approval-mode.ts";
+import { cliExitCode, rpcCode } from "../../shared/usage-signals.ts";
 import { CodexDeviceAuthController } from "./codex-device-auth.ts";
 import { codexAccountEmail, codexHome } from "./codex-identity.ts";
 import { boundedLabel, containsControlCharacter, mcpAppApprovalForm, plainRecord } from "./codex-app-approval.ts";
-import { archivedNativeCodexThread, CODEX_MISSING_CREDENTIALS, CODEX_SIGN_IN_EXPIRED, codexLimitFacts, codexNotSignedIn, CodexRpcError, codexSignInExpired, codexPlanModelRefused, codexSignInRefused, codexUserError, missingNativeCodexThread, type CodexRoute } from "./codex-errors.ts";
+import { archivedNativeCodexThread, CODEX_MISSING_CREDENTIALS, CODEX_SIGN_IN_EXPIRED, codexLimitFacts, codexNotSignedIn, CodexRpcError, codexSignInExpired, codexPlanModelRefused, codexSignInRefused, codexErrorCode, codexUserError, missingNativeCodexThread, type CodexRoute } from "./codex-errors.ts";
 import { codexLoginCheck, codexLoginStatus, storedCodexLogin } from "./codex-login.ts";
 import { keyRejected, noteKeyAccepted, noteKeyRejected } from "../key-rejections.ts";
 import { classifyResumeFailure, mayReplay, rebuiltSessionNotice, recoveryPromptFor } from "../resume-recovery.ts";
@@ -604,7 +605,8 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
           mountSelected("computer", "computer", turn.integrations.localComputer); if (selectedMcp.has("computer")) appServerArgs.push("-c", `mcp_servers.computer.tool_timeout_sec=${COMPUTER_TOOL_TIMEOUT_SECONDS}`);
         }
         if (turn.integrations?.browser) {
-          mountSelected("browser", "browser", turn.integrations.browser);
+          // OpenAI's Responses API refuses a tool namespace named "browser" (400 "reserved namespace 'browser'", 2026-11)
+          mountSelected("browser", "duskbot_browser", turn.integrations.browser);
         }
         for (const name of ["data", "email", "device"] as const) if (turn.integrations?.[name]) mountSelected(name, name, turn.integrations[name]);
         // A `-c` override merges with a same-named server in config.toml, and stdio over url is
@@ -831,7 +833,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         && codexTurnId === null && earlyNotifications.length === 0 && !state.sawStreamDelta;
 
       // Retires this process before anything async, so a late rpc timer rejection cannot relaunch again.
-      const relaunch = async (reason: string, failure: string, failedStop: string) => {
+      const relaunch = async (reason: string, failure: string, failedStop: string, errorCode?: string) => {
         const delayMs = computeBackoff(attempt);
         attempt++;
         emit({ ...base(threadId, turnId), type: "turn.retrying", attempt, delayMs, reason });
@@ -839,7 +841,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         releaseSlot();
         const exited = child.exitCode !== null || child.signalCode !== null;
         if (!exited && !(await terminate()) && !(await waitForExit(child, RELAUNCH_EXIT_WAIT_MS))) {
-          emit({ ...base(threadId, turnId), type: "runtime.error", message: failure });
+          emit({ ...base(threadId, turnId), type: "runtime.error", message: failure, ...(errorCode ? { errorCode } : {}) });
           return settle(false, failedStop);
         }
         await interruptibleDelay(Math.max(1, Math.round(delayMs * retryScale)), stopSignal.signal).promise;
@@ -1049,7 +1051,8 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         state.lastError = message;
         state.lastErrorSetup ||= setup;
         hideRefusedModel(raw);
-        emit({ ...base(threadId, turnId), type: "runtime.error", message, ...(setup ? { setup: true } : {}), ...codexLimitFacts(raw, route, error.codexErrorInfo) });
+        const errorCode = codexErrorCode(error.codexErrorInfo);
+        emit({ ...base(threadId, turnId), type: "runtime.error", message, ...(setup ? { setup: true } : {}), ...(errorCode ? { errorCode } : {}), ...codexLimitFacts(raw, route, error.codexErrorInfo) });
       };
       const handleNotification = (msg: any) => {
         const p = msg.params ?? {};
@@ -1324,10 +1327,10 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         }`;
         // Relaunch only when turn/start was never acknowledged: a replay could re-run tools the user saw.
         if (!stopRequested && codexTurnId === null && earlyNotifications.length === 0 && verdict.transient && attempt < RETRY_MAX_ATTEMPTS - 1) {
-          void relaunch(verdict.reason, exitMessage, "exit_before_result").catch(() => {});
+          void relaunch(verdict.reason, exitMessage, "exit_before_result", cliExitCode({ code, signal, output: hadStreamedOutput, version: cliVersionSeen })).catch(() => {});
           return;
         }
-        emit({ ...base(threadId, turnId), type: "runtime.error", message: exitMessage });
+        emit({ ...base(threadId, turnId), type: "runtime.error", message: exitMessage, errorCode: cliExitCode({ code, signal, output: hadStreamedOutput, version: cliVersionSeen }) });
         void settle(false, "exit_before_result");
       };
       const sink = { message: onMessage, stderr: onStderr, error: onError, close: onClose, exit: () => processExit.emit("exit") };
@@ -1589,7 +1592,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             ...base(threadId, turnId), type: "runtime.error",
             message: earlyNotifications.some((event) => ["commandExecution", "fileChange", "mcpToolCall", "webSearch"].includes(event.params?.item?.type))
               ? `${message} A tool action may have run. Check its effects before trying again.` : message,
-            ...(needsAuth ? { setup: true } : codexLimitFacts(raw, route)),
+            ...(needsAuth ? { setup: true } : codexLimitFacts(raw, route)), ...(e instanceof CodexRpcError && rpcCode(e.code) ? { errorCode: rpcCode(e.code) } : {}),
           });
           await settle(false, needsAuth ? "auth_required" : verdict.reason === "provider_safety" ? "provider_safety" : "rpc_error");
         }
@@ -1678,6 +1681,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     get models() {
       return models;
     },
+    ...(plan || config.managed ? {} : { modelCatalogKey: DRIVER_KIND }),
     quickModelsUsable: smallModelsUsable,
     refreshModels,
     ...(startupModelRefresh ? { startupModelRefresh } : {}),

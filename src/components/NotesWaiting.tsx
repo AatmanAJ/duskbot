@@ -10,6 +10,7 @@ import { arrivalFailed, dismissArrival, noteArrival, useNotesArrival, useNotesWo
 import { copyNotesPrompt, importNotes, notesWatch, takeNotesFromDownloads, WATCH_EVERY_MS, isNotesPrompt, notesErrorLine, notesOutcomeLine, scheduleNotesReminder, stopWaiting, useNotesWaiting } from "@/lib/assistant-notes";
 import { myDefaultBot, useViewerEmail } from "@/lib/default-bot";
 import { t } from "@/lib/i18n";
+import { systemNotificationsAllowed } from "@/lib/notify";
 import { useStore } from "@/state/store";
 
 export type NotesSay = (line: string, state: "working" | "done" | "failed") => void;
@@ -68,7 +69,7 @@ export function useNotesReminder() {
   useEffect(() => {
     if (!waiting || waiting.reminded || !firstBotId) return;
     return scheduleNotesReminder(() => {
-      if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+      if (typeof Notification === "undefined" || !systemNotificationsAllowed() || Notification.permission !== "granted") return;
       try {
         new Notification(t("composer.notes.remindTitle"), { body: t("composer.notes.remindBody"), tag: "duskbot:notes", silent: true }).onclick = () => {
           window.focus();

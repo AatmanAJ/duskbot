@@ -13,7 +13,11 @@ import { ConfirmDialogCard } from "./ConfirmDialog";
 import { BotDeleteMenuItem } from "./BotMenuDelete";
 import { BotListItem, botConfirmCopy, botRowProps, currentArchivableBot } from "./Sidebar";
 import { endCall } from "@/lib/call";
+import { activityPreview } from "@/lib/failed-turn";
 import { configureLiveMedia, resetLiveMedia, startLiveCall } from "@/lib/live-call-media";
+
+const FAILED = { name: "error: this computer isn't a place on your dusk cloud: its bots run in the cloud.", ok: false };
+const plainLine = (tool: typeof FAILED) => activityPreview(tool, undefined).replaceAll("'", "&#x27;");
 
 const bot = (overrides: Partial<Bot> = {}): Bot => ({
   id: "atlas",
@@ -74,9 +78,10 @@ describe("BotListItem", () => {
 
     it("previews a failed turn's row when the record follows it", () => {
       const markup = draw(bot({
-        messages: [spoken, { id: "e1", role: "bot", kind: "activity", at: at(1), tool: { name: "error: this computer isn't a place on your dusk cloud: its bots run in the cloud.", ok: false } }, record] as Bot["messages"],
+        messages: [spoken, { id: "e1", role: "bot", kind: "activity", at: at(1), tool: FAILED }, record] as Bot["messages"],
       }));
-      expect(markup).toContain("this computer isn&#x27;t a place on your dusk cloud: its bots run in the cloud.");
+      expect(markup).toContain(plainLine(FAILED));
+      expect(markup).not.toContain("this computer isn&#x27;t a place");
       expect(markup).not.toContain("call with Atlas");
     });
 
@@ -94,10 +99,11 @@ describe("BotListItem", () => {
     const markup = renderRow(bot({
       messages: [
         { id: "u1", role: "user", kind: "text", text: "check the site", at: 1 },
-        { id: "e1", role: "bot", kind: "activity", at: 2, tool: { name: "error: this computer isn't a place on your dusk cloud: its bots run in the cloud.", ok: false } },
+        { id: "e1", role: "bot", kind: "activity", at: 2, tool: FAILED },
       ] as Bot["messages"],
     }));
-    expect(markup).toContain("this computer isn&#x27;t a place on your dusk cloud: its bots run in the cloud.");
+    expect(markup).toContain(plainLine(FAILED));
+      expect(markup).not.toContain("this computer isn&#x27;t a place");
     expect(markup).not.toContain("error:");
   });
 
@@ -210,11 +216,13 @@ describe("archive / delete confirmation", () => {
     expect(currentArchivableBot([snapshot], snapshot.id)).toBeUndefined();
     expect(currentArchivableBot([other, bot({ id: "third" })], snapshot.id)).toBeUndefined();
   });
-  it("archive copy names the bot and says it can be restored", () => {
+  it("archive copy uses the menu's word and says where the bot goes", () => {
     const copy = botConfirmCopy("archive", "Juniper");
 
     expect(copy.title).toContain("Juniper");
-    expect(copy.body).toMatch(/restore/i);
+    expect(copy.title).toBe("Archive Juniper?");
+    expect(copy.confirmLabel).toBe("Archive");
+    expect(copy.body).toMatch(/archived bots/);
     expect(copy.tone).toBe("neutral");
   });
 

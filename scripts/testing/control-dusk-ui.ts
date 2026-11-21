@@ -446,11 +446,11 @@ export async function launchUi(
     let steps: unknown;
     try { steps = JSON.parse(String(values.script)); } catch { steps = undefined; }
     const step = (value: unknown) => {
-      const s = value as { text?: unknown; waitMs?: unknown; tool?: { name?: unknown } } | null;
-      return typeof s?.text === "string" || (Number.isSafeInteger(s?.waitMs) && Number(s?.waitMs) >= 0) || typeof s?.tool?.name === "string";
+      const s = value as { text?: unknown; ifSteered?: unknown; waitMs?: unknown; tool?: { name?: unknown } } | null;
+      return typeof s?.text === "string" || typeof s?.ifSteered === "string" || (Number.isSafeInteger(s?.waitMs) && Number(s?.waitMs) >= 0) || typeof s?.tool?.name === "string";
     };
     if (!Array.isArray(steps) || !steps.every(step)) {
-      throw new ControlDuskError("--script must be a JSON array of {text}, {tool: {name, input?, ok?, output?}} or {waitMs}",
+      throw new ControlDuskError("--script must be a JSON array of {text}, {ifSteered}, {tool: {name, input?, ok?, output?}} or {waitMs}",
         'example: --script \'[{"text":"On it."},{"tool":{"name":"mcp__agents__set_status","input":{"status":"checking prices"}}},{"text":"Done."}]\'');
     }
     fakeEnv.FAKE_CLAUDE_SCRIPT = JSON.stringify(steps);

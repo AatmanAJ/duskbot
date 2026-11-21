@@ -54,6 +54,10 @@ const HIGH_WATER = 2 * 1024 * 1024;
 const TRACK_MS = 6 * 3600_000;
 const TRACK_MAX = 4096;
 const INFO_MS = 60_000;
+const IDLE_MS = 5 * 60_000;
+const SELF_CHECK_MS = 30_000;
+const SELF_CHECK_TIMEOUT_MS = 10_000;
+const SELF_CHECK_FAILURES = 3;
 
 export class Refusal extends Error {
   constructor(message, status = 403) {
@@ -707,6 +711,8 @@ const CRLF = Buffer.from("\r\n");
 const HEAD_END = Buffer.from("\r\n\r\n");
 const EMPTY = Buffer.alloc(0);
 const CLOSED = new Error("connection closed");
+/** docker closed or failed before the gate sent the client any of its answer */
+class Unanswered extends Error {}
 class ProtocolError extends Error {
   constructor(status, message) {
     super(message);
@@ -998,7 +1004,8 @@ async function forward(client, clientReader, req, body, verdict, gate) {
   const reader = new Reader(upstream);
   const drop = () => upstream.destroy();
   client.once("close", drop);
-  let hijacked = false;
+  let hijacked = false, started = false;
+  const relay = (data) => { started = true; return send(client, data); };
   try {
     upstream.write(forwardedHead(req, verdict, body));
     if (body.length) upstream.write(body);
@@ -1009,14 +1016,14 @@ async function forward(client, clientReader, req, body, verdict, gate) {
       const framed = res.chunked || res.length !== null;
       if (res.status === 101 || (verdict.hijack && res.status === 200 && !framed)) {
         if (!verdict.hijack) throw new Error("docker switched protocols unasked");
-        await send(client, raw);
+        await relay(raw);
         client.off("close", drop);
         hijacked = true;
         splice(client, clientReader, upstream, reader);
         return "hijacked";
       }
       if (res.status < 200) {
-        await send(client, raw);
+        await relay(raw);
         continue;
       }
       const framing = req.method === "HEAD" || res.status === 204 || res.status === 304 ? "none"
@@ -1033,13 +1040,16 @@ async function forward(client, clientReader, req, body, verdict, gate) {
           const id = JSON.parse(Buffer.concat(decoded).toString("utf8"))?.Id;
           if (typeof id === "string" && FULL_ID.test(id)) verdict.capture(id);
         } catch {}
-        await send(client, Buffer.concat(out));
+        await relay(Buffer.concat(out));
       } else {
-        await send(client, raw);
+        await relay(raw);
         await relayBody(reader, res, framing, (chunk) => send(client, chunk), () => {});
       }
       return res.close || framing === "close" ? "close" : "keep";
     }
+  } catch (error) {
+    if (!started && !client.destroyed) throw new Unanswered(error instanceof Error ? error.message : String(error));
+    throw error;
   } finally {
     if (!hijacked) {
       client.off("close", drop);
@@ -1052,11 +1062,14 @@ const printable = (value) => value.replace(/[^\x20-\x7e]/g, "?").slice(0, 300);
 
 async function serve(client, gate) {
   client.on("error", () => client.destroy());
+  client.on("timeout", () => client.destroy());
   const reader = new Reader(client);
   for (;;) {
     let req;
     try {
+      client.setTimeout(gate.idleMs);
       req = parseRequest(await reader.until(HEAD_END, MAX_HEAD));
+      client.setTimeout(0);
     } catch (error) {
       if (error === CLOSED) {
         if (!reader.buffer.length) client.end();
@@ -1090,7 +1103,15 @@ async function serve(client, gate) {
       if (req.close) return;
       continue;
     }
-    const outcome = await forward(client, reader, req, body, verdict, gate);
+    let outcome;
+    try {
+      outcome = await forward(client, reader, req, body, verdict, gate);
+    } catch (error) {
+      if (!(error instanceof Unanswered)) throw error;
+      // a Go docker client reads a connection closed without an answer as a bare "EOF"
+      gate.log(`docker gate: ${req.method} ${printable(path)}: docker closed the connection before answering (${printable(error.message)})`);
+      return reply(client, 502, "docker gate: docker closed the connection before answering; try again", { close: true, head: req.method === "HEAD" });
+    }
     if (outcome === "hijacked") return;
     if (outcome === "close" || req.close) {
       client.end();
@@ -1112,8 +1133,8 @@ function removeStaleSocket(path) {
 }
 
 /** Listens on `listen` (mode 0660) and forwards what the policy allows to the docker socket at `upstream`. */
-export async function startGate({ listen = DEFAULT_LISTEN, upstream = DEFAULT_UPSTREAM, pull = DEFAULT_PULL, log = (line) => process.stderr.write(`${line}\n`), now } = {}) {
-  const gate = { upstream, log, ctx: gateContext({ upstream, pull, now }) };
+export async function startGate({ listen = DEFAULT_LISTEN, upstream = DEFAULT_UPSTREAM, pull = DEFAULT_PULL, log = (line) => process.stderr.write(`${line}\n`), now, idleMs = IDLE_MS } = {}) {
+  const gate = { upstream, log, idleMs, ctx: gateContext({ upstream, pull, now }) };
   removeStaleSocket(listen);
   const sockets = new Set();
   const server = createServer({ allowHalfOpen: true }, (socket) => {
@@ -1122,6 +1143,8 @@ export async function startGate({ listen = DEFAULT_LISTEN, upstream = DEFAULT_UP
     serve(socket, gate).catch(() => socket.destroy());
   });
   server.maxConnections = 1024;
+  let dropped = 0;
+  server.on("drop", () => { if (dropped++ % 100 === 0) log(`docker gate: ${server.maxConnections} connections are open; new ones are refused (${dropped} so far)`); });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(listen, () => {
@@ -1139,6 +1162,33 @@ export async function startGate({ listen = DEFAULT_LISTEN, upstream = DEFAULT_UP
   };
 }
 
+/** Whether the gate at `listen` answers an HTTP request at all (docker behind it may be down: a 502 still counts). */
+export function pingGate(listen, timeoutMs = SELF_CHECK_TIMEOUT_MS) {
+  return new Promise((resolve) => {
+    const socket = connect({ path: listen });
+    let seen = "";
+    const done = (ok) => { clearTimeout(timer); socket.destroy(); resolve(ok); };
+    const timer = setTimeout(() => done(false), timeoutMs);
+    socket.on("connect", () => socket.write("HEAD /_ping HTTP/1.1\r\nHost: docker\r\nConnection: close\r\n\r\n"));
+    socket.on("data", (chunk) => { seen += chunk.toString("latin1"); if (/^HTTP\/1\.[01] \d{3} /.test(seen)) done(true); });
+    socket.on("error", () => done(false));
+    socket.on("close", () => done(/^HTTP\/1\.[01] \d{3} /.test(seen)));
+  });
+}
+
+/** Counts the gate's own pings: `true` from `record` once `limit` in a row went unanswered, so systemd starts it again. */
+export class SelfCheck {
+  constructor(limit = SELF_CHECK_FAILURES) {
+    this.limit = limit;
+    this.failures = 0;
+  }
+
+  record(answered) {
+    this.failures = answered ? 0 : this.failures + 1;
+    return this.failures >= this.limit;
+  }
+}
+
 function isMain() {
   try {
     return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
@@ -1153,6 +1203,12 @@ if (isMain()) {
     const configured = process.env.DUSK_GATE_PULL?.split(",").map((entry) => entry.trim()).filter(Boolean);
     const gate = await startGate({ listen: values.listen, upstream: values.upstream, pull: configured?.length ? configured : DEFAULT_PULL });
     process.stderr.write(`docker gate: listening on ${values.listen}, forwarding to ${values.upstream}\n`);
+    const check = new SelfCheck();
+    setInterval(async () => {
+      if (!check.record(await pingGate(values.listen))) return;
+      process.stderr.write(`docker gate: ${check.limit} checks of its own socket went unanswered; exiting so systemd starts it again\n`);
+      process.exit(1);
+    }, SELF_CHECK_MS).unref();
     const stop = () => gate.close().then(() => process.exit(0));
     process.once("SIGTERM", stop);
     process.once("SIGINT", stop);

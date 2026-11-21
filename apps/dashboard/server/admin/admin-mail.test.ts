@@ -28,7 +28,7 @@ const SENDERS: Record<string, "customer" | "admin"> = {
 /** the only places an admin or alert address list reaches a sender */
 const ADMIN_WIRING: Record<string, RegExp[]> = {
   "apps/dashboard/server/app.ts": [/createAlerts\(\{[^\n]*emails: \(\) => adminEmails/],
-  "apps/dashboard/server/main.ts": [/createIncidents\(\{[^\n]*to: \(\) => alertEmails/, /bugReports: \{[^\n]*mail: \{ on: alertsOn, to: \(\) => alertEmails/],
+  "apps/dashboard/server/main.ts": [/createIncidents\(\{[^\n]*to: \(\) => alertEmails/, /bugReports: \{[^\n]*mail: \{ on: alertsOn && process\.env\.DUSK_BUG_REPORT_MAIL === "1", to: \(\) => alertEmails/],
 };
 
 function files(dir: string): string[] {
