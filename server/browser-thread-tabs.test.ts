@@ -61,6 +61,25 @@ describe("a conversation's own tabs", () => {
     expect(browser.calls.filter(([name]) => name === "agent_browser_tab_new")).toHaveLength(2);
   });
 
+  it("never switches to a tab already in front, which would clear the engine's refs, and goes back to its own after someone moved the front", async () => {
+    const browser = engine([blank()]);
+    const tabs = new ThreadTabs();
+    await tabs.front("s", { threadId: "a", generation: "g1" }, "agent_browser_open", browser.rpc);
+    tabs.refs.saw("s", "a", "agent_browser_snapshot", {}, { content: [{ type: "text", text: '- textbox "Message" [ref=e5]' }] });
+    await tabs.front("s", { threadId: "a", generation: "g2" }, "agent_browser_type", browser.rpc);
+    expect(browser.calls.filter(([name]) => name === "agent_browser_tab_switch")).toEqual([]);
+
+    await browser.rpc("agent_browser_tab_new", { label: threadTabLabel("a", "x1") });
+    await tabs.front("s", { threadId: "a", generation: "g2" }, "agent_browser_click", browser.rpc);
+    expect(browser.calls.filter(([name]) => name === "agent_browser_tab_switch")).toEqual([]);
+    await browser.rpc("agent_browser_tab_switch", { tab: "T1" });
+    browser.calls.length = 0;
+    await tabs.front("s", { threadId: "a", generation: "g2" }, "agent_browser_type", browser.rpc);
+    expect(browser.calls.map(([name, args]) => [name, args.tab ?? null])).toEqual([
+      ["agent_browser_tab_list", null], ["agent_browser_tab_switch", "T3"], ["agent_browser_snapshot", null],
+    ]);
+  });
+
   it("leaves a read with no tab of its own on the page in front, and tab tools alone", async () => {
     const browser = engine([blank()]);
     const tabs = new ThreadTabs();
@@ -70,7 +89,7 @@ describe("a conversation's own tabs", () => {
   });
 
   it("closes only that conversation's tabs, each pictured first, opening a blank one before closing the last", async () => {
-    const browser = engine([{ ...blank(), label: "chat-a", active: true }, { tabId: "t2", targetId: "T2", label: "chat-a~x1", url: "https://example.com/", active: false }]);
+    const browser = engine([{ ...blank(), label: "chat-a", active: true }, { tabId: "t2", targetId: "T2", label: "chat-a__x1", url: "https://example.com/", active: false }]);
     const tabs = new ThreadTabs();
     expect(await tabs.close("s", "b", browser.rpc)).toEqual({ closed: [] });
     const { closed } = await tabs.close("s", "a", browser.rpc);
@@ -81,11 +100,15 @@ describe("a conversation's own tabs", () => {
   it("labels a bot's own new tab as its conversation's", () => {
     const label = new ThreadTabs().labelNewTab("a", { url: "https://example.com/", label: "chat-b" }).label;
     expect(threadOfTabLabel(label)).toBe("a");
+    const uuid = "21eddb13-14c0-4708-b5bb-bcdefd2e6b39", own = new ThreadTabs().labelNewTab(uuid, {}).label;
+    // the only labels agent-browser 0.37.0 accepts; anything else fails every new tab
+    expect(own).toMatch(/^[A-Za-z][A-Za-z0-9_-]*$/u);
+    expect(threadOfTabLabel(own)).toBe(uuid);
   });
 
   it("names the conversation of each tab in the live view, and none for tabs no conversation owns", () => {
     expect(threadOfTabLabel("chat-0b1c-2d")).toBe("0b1c-2d");
-    expect(threadOfTabLabel("chat-0b1c~lq2")).toBe("0b1c");
+    expect(threadOfTabLabel("chat-0b1c__lq2")).toBe("0b1c");
     expect(threadOfTabLabel("mine")).toBeNull();
     expect(threadOfTabLabel(null)).toBeNull();
     expect(normalizeBrowserLiveMessage({ type: "tabs", tabs: [
