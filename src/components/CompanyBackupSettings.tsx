@@ -6,6 +6,7 @@ import { collectWorkspaceClientState, WORKSPACE_RESTORE_MARKER } from "@/lib/wor
 import { Card as RowsCard, ItemRow, NoteRow, SwitchRow } from "./ListRows";
 import { textFieldCls } from "./ui/GrokDialog";
 import { WorkspaceBackupRestartNotice, WorkspaceBackupSummaryView } from "./WorkspaceBackupSettings";
+import { ArtState } from "./ui/Art";
 
 type BackupBridge = NonNullable<NonNullable<Window["duskDesktop"]>["companyBackups"]>;
 type BackupList = Awaited<ReturnType<BackupBridge["list"]>>;
@@ -260,7 +261,7 @@ export function ConnectedCompanyBackupSettings({ connection, bridge }: { connect
         <button type="button" className="ui-button" disabled={disabled} onClick={() => openDialog({ kind: "create" })}>{t("companyBackup.create")}</button>
       </ItemRow>
       {pending > 0 && <NoteRow><span role="status">{t("companyBackup.pending", { count: pending })}</span></NoteRow>}
-      {listing && ready.length === 0 && <NoteRow>{t("companyBackup.empty")}</NoteRow>}
+      {listing && ready.length === 0 && <ArtState data-art-state="backups" art="server" title={t("empty.backups.title")} className="py-6">{t("empty.backups.hint")}</ArtState>}
       {ready.map((entry) => <ItemRow key={entry.id} title={dateLabel(entry)}
         hint={<>{bytes(entry.sizeBytes)}{entry.appVersion ? ` · ${entry.appVersion}` : ""} · <span className="break-all">{entry.id}</span></>}>
         <button type="button" className="ui-button" disabled={disabled} onClick={() => openDialog({ kind: "restore", entry })}>{t("companyBackup.restore")}</button>

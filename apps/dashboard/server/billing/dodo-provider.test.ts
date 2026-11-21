@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
-import { createDodoProvider } from "./dodo-provider.ts";
+import { checkoutName, createDodoProvider } from "./dodo-provider.ts";
 
 let server: Server, baseUrl: string;
 let requests: Array<{ method: string; url: string; auth: string | undefined; body: unknown }>;
@@ -36,28 +36,90 @@ describe("dodo HTTP provider fixture", () => {
   it("sends checkout auth, metadata and line items", async () => {
     reply = { session_id: "session", checkout_url: "https://test.checkout.dodopayments.com/session/session" };
     expect(await provider().createCheckout(input)).toEqual({ sessionId: "session", url: (reply as { checkout_url: string }).checkout_url });
-    expect(requests[0]).toEqual({ method: "POST", url: "/checkouts", auth: `Bearer ${apiKey}`, body: { product_cart: [{ product_id: "solo", quantity: 1, addons: [{ addon_id: "desktop", quantity: 1 }] }], customer: { email: "owner@example.com" }, return_url: input.returnUrl, metadata: { checkoutId: "chk_1", accountId: "a1" } } });
+    expect(requests[0]).toEqual({ method: "POST", url: "/checkouts", auth: `Bearer ${apiKey}`, body: { product_cart: [{ product_id: "solo", quantity: 1, addons: [{ addon_id: "desktop", quantity: 1 }] }], customer: { email: "owner@example.com", name: "Owner" }, return_url: input.returnUrl, metadata: { checkoutId: "chk_1", accountId: "a1" } } });
     await provider().createCheckout({ ...input, customerId: "cus_1" });
     expect(requests[1].body).toMatchObject({ customer: { customer_id: "cus_1" } });
     await provider().createCheckout({ ...input, trialDays: 3 });
     expect(requests[2].body).toMatchObject({ subscription_data: { trial_period_days: 3 } });
+  });
+  it("fills the checkout's name from the email, and a refused name never stops the checkout", async () => {
+    expect(checkoutName(null, "jane.doe+promo@example.com")).toBe("Jane Doe");
+    expect(checkoutName("  Marwan  E. ", "x@example.com")).toBe("Marwan E.");
+    expect(checkoutName(null, "meena_siddarth72@gmail.com")).toBe("Meena Siddarth");
+    expect(checkoutName(null, "12345@example.com")).toBeNull();
+    expect(checkoutName(null, "a.b@example.com")).toBeNull();
+    reply = { session_id: "s1", checkout_url: "https://test.checkout.dodopayments.com/session/s1" };
+    await provider().createCheckout({ ...input, email: "jane.doe@example.com" });
+    expect(requests[0].body).toMatchObject({ customer: { email: "jane.doe@example.com", name: "Jane Doe" } });
+    // dodo says no to the name: the same checkout goes again without it and opens
+    let calls = 0;
+    server.removeAllListeners("request");
+    server.on("request", async (req, res) => {
+      const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      const body = JSON.parse(Buffer.concat(chunks).toString()); calls++;
+      requests.push({ method: req.method!, url: req.url!, auth: req.headers.authorization, body });
+      const named = Boolean(body.customer?.name);
+      res.writeHead(named ? 422 : 200, { "content-type": "application/json" });
+      res.end(JSON.stringify(named ? { code: "INVALID_REQUEST" } : { session_id: "s2", checkout_url: "https://test.checkout.dodopayments.com/session/s2" }));
+    });
+    expect(await provider().createCheckout({ ...input, email: "jane.doe@example.com" })).toEqual({ sessionId: "s2", url: "https://test.checkout.dodopayments.com/session/s2" });
+    expect(calls).toBe(2);
+    expect(requests.at(-1)!.body).toMatchObject({ customer: { email: "jane.doe@example.com" } });
+    expect((requests.at(-1)!.body as { customer: Record<string, unknown> }).customer).not.toHaveProperty("name");
   });
   it("opens card-only payment method pages, cancels, changes plans and streams private invoices", async () => {
     const p = provider(); reply = { payment_id: "pay_1", client_secret: "secret", expires_on: "2026-11-14T00:00:00Z", payment_link: "https://test.checkout.dodopayments.com/abc" };
     expect(await p.updatePaymentMethod("sub/1", input.returnUrl)).toEqual({ url: "https://test.checkout.dodopayments.com/abc" });
     expect(requests[0]).toEqual({ method: "POST", url: "/subscriptions/sub%2F1/update-payment-method", auth: `Bearer ${apiKey}`, body: { type: "new", return_url: input.returnUrl } });
     expect(p).not.toHaveProperty("portal");
-    reply = {}; await p.cancelAtPeriodEnd("sub/1", true); await p.changePlan({ subscriptionId: "sub/1", productId: "new", addons: [{ addonId: "cpu", quantity: 8 }] });
+    reply = {}; await p.cancelAtPeriodEnd("sub/1", true);
+    expect(await p.changePlan({ subscriptionId: "sub/1", productId: "new", addons: [{ addonId: "cpu", quantity: 8 }], mode: "keep_cycle" })).toEqual({ paymentUrl: null });
     expect(requests[1]).toMatchObject({ method: "PATCH", url: "/subscriptions/sub%2F1", body: { cancel_at_next_billing_date: true } });
-    expect(requests[2]).toMatchObject({ method: "POST", url: "/subscriptions/sub%2F1/change-plan", body: { product_id: "new", quantity: 1, proration_billing_mode: "difference_immediately", on_payment_failure: "prevent_change", addons: [{ addon_id: "cpu", quantity: 8 }] } });
+    expect(requests[2]).toEqual(expect.objectContaining({ method: "POST", url: "/subscriptions/sub%2F1/change-plan", body: { product_id: "new", quantity: 1, proration_billing_mode: "prorated_immediately_keep_cycle", on_payment_failure: "prevent_change",
+      cancel_scheduled_change_plan: true, addons: [{ addon_id: "cpu", quantity: 8 }] } }));
     expect(await p.invoiceUrl("pay")).toBeNull(); contentType = "application/pdf"; reply = Buffer.from("%PDF-fixture");
     expect(await p.invoicePdf("pay/1")).toEqual({ contentType, body: reply }); expect(requests[3].url).toBe("/invoices/payments/pay%2F1");
+  });
+  it("sends each change mode as dodo's own, prices it from dodo's preview and reads the plan back", async () => {
+    const p = provider(), base = { subscriptionId: "sub_1", productId: "pro", addons: [] };
+    contentType = "application/json";
+    reply = { immediate_charge: { summary: { total_amount: 2655, tax: 405, currency: "USD" } } };
+    expect(await p.previewChange({ ...base, mode: "keep_cycle" })).toEqual({ chargeCents: 2655, taxCents: 405 });
+    expect(requests.at(-1)).toMatchObject({ url: "/subscriptions/sub_1/change-plan/preview", body: { proration_billing_mode: "prorated_immediately_keep_cycle" } });
+    expect(await p.previewChange({ ...base, mode: "scheduled" })).toEqual({ chargeCents: 0, taxCents: 0 });
+    expect(requests.at(-1)!.body).toMatchObject({ proration_billing_mode: "full_immediately", effective_at: "next_billing_date" });
+    await p.previewChange({ ...base, mode: "trial" }); expect(requests.at(-1)!.body).toMatchObject({ proration_billing_mode: "do_not_bill" }); expect(requests.at(-1)!.body).not.toHaveProperty("effective_at");
+    await p.previewChange({ ...base, mode: "new_cycle" }); expect(requests.at(-1)!.body).toMatchObject({ proration_billing_mode: "prorated_immediately" });
+    reply = { immediate_charge: { summary: { total_amount: 100, tax: 0, currency: "EUR" } } };
+    await expect(p.previewChange({ ...base, mode: "keep_cycle" })).rejects.toMatchObject({ code: "refused" });
+    reply = { payment_link: "https://test.checkout.dodopayments.com/pay_x" };
+    expect(await p.changePlan({ ...base, mode: "keep_cycle" })).toEqual({ paymentUrl: "https://test.checkout.dodopayments.com/pay_x" });
+    reply = { payment_link: "https://evil.test/pay" }; await expect(p.changePlan({ ...base, mode: "keep_cycle" })).rejects.toMatchObject({ code: "refused" });
+    reply = {}; await p.cancelScheduledChange("sub_1"); expect(requests.at(-1)).toMatchObject({ method: "DELETE", url: "/subscriptions/sub_1/change-plan/scheduled" });
+    reply = { product_id: "pro", addons: [{ addon_id: "seat", quantity: 2 }], next_billing_date: "2026-12-17T04:37:20Z", status: "active", scheduled_change: { product_id: "plus", addons: [] } };
+    expect(await p.subscription("sub_1")).toEqual({ productId: "pro", addons: [{ addonId: "seat", quantity: 2 }], nextBillingAt: Date.parse("2026-12-17T04:37:20Z"), status: "active", scheduled: { productId: "plus", addons: [] } });
     status = 404; expect(await p.invoicePdf("missing")).toBeNull();
   });
   it("refuses a payment method link that is not the mode's checkout page, such as the customer portal", async () => {
     for (const payment_link of ["https://test.customer.dodopayments.com/session/1", "https://checkout.dodopayments.com/a", "http://test.checkout.dodopayments.com/a", "https://test.checkout.dodopayments.com.evil.test/a"]) {
       reply = { payment_link }; await expect(provider().updatePaymentMethod("sub", input.returnUrl)).rejects.toMatchObject({ code: "refused" });
     }
+  });
+  it("a create-checkout that dodo drops once (5xx) is asked again quietly; a refusal or a second drop is not", async () => {
+    let calls = 0, failFirst = 1;
+    server.removeAllListeners("request");
+    server.on("request", async (req, res) => {
+      for await (const _ of req) { /* drain */ }
+      calls++;
+      const down = calls <= failFirst;
+      res.writeHead(down ? 502 : 200, { "content-type": "application/json" });
+      res.end(JSON.stringify(down ? {} : { session_id: "s3", checkout_url: "https://test.checkout.dodopayments.com/session/s3" }));
+    });
+    expect(await provider().createCheckout(input)).toEqual({ sessionId: "s3", url: "https://test.checkout.dodopayments.com/session/s3" });
+    expect(calls).toBe(2);
+    calls = 0; failFirst = 2;
+    await expect(provider().createCheckout(input)).rejects.toMatchObject({ code: "unavailable" });
+    expect(calls, "only one retry").toBe(2);
   });
   it("refuses cross-mode, credential-bearing and unsafe checkout urls", async () => {
     for (const checkout_url of ["http://test.checkout.dodopayments.com/a", "https://checkout.dodopayments.com/a", "https://test.checkout.dodopayments.com.evil.test/a", "https://user@test.checkout.dodopayments.com/a", "https://test.checkout.dodopayments.com:444/a"]) {

@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { extractReplayImages, extractSteerImages, extractTurnImages } from "./turn-images.ts";
+import { UNREADABLE_IMAGE_NOTE, engineRefusedImage, extractReplayImages, extractSteerImages, extractTurnImages } from "./turn-images.ts";
 
 const IDS = [
   "123e4567-e89b-42d3-a456-426614174000",
@@ -13,6 +13,20 @@ const IDS = [
   "123e4567-e89b-42d3-a456-426614174003",
   "123e4567-e89b-42d3-a456-426614174004",
 ] as const;
+
+/** A picture's size in these tests counts in units, each long enough for its type's magic bytes. */
+const UNIT = 16;
+const MAGIC: Record<string, Buffer> = {
+  ".png": Buffer.from("89504e470d0a1a0a", "hex"),
+  ".jpg": Buffer.from("ffd8ffe0", "hex"),
+  ".gif": Buffer.from("GIF89a", "latin1"),
+  ".webp": Buffer.from("RIFF\0\0\0\0WEBP", "latin1"),
+};
+const picture = (extension: string, units: number, fill: number) => {
+  const bytes = Buffer.alloc(units * UNIT, fill);
+  MAGIC[extension]!.copy(bytes);
+  return bytes;
+};
 
 describe("turn image admission", () => {
   const temporary: string[] = [];
@@ -25,7 +39,7 @@ describe("turn image admission", () => {
 
   const image = (root: string, index: number, extension = ".png", bytes = 4) => {
     const path = join(root, `${IDS[index]}${extension}`);
-    writeFileSync(path, Buffer.alloc(bytes, index + 1));
+    writeFileSync(path, picture(extension, bytes, index + 1));
     return path;
   };
 
@@ -50,8 +64,8 @@ describe("turn image admission", () => {
     expect(source).toContain(png);
     expect(result.text).toBe("compare these\n\n\n\n");
     expect(result.images).toEqual([
-      { path: png, mime: "image/png", bytes: 7 },
-      { path: jpg, mime: "image/jpeg", bytes: 9 },
+      { path: png, mime: "image/png", bytes: 7 * UNIT },
+      { path: jpg, mime: "image/jpeg", bytes: 9 * UNIT },
     ]);
     expect(result.text).not.toContain(root);
   });
@@ -85,7 +99,7 @@ describe("turn image admission", () => {
 
     expect(extractTurnImages(`<attached-image path="${encoded}" />`, { attachmentsDir: root })).toEqual({
       text: "",
-      images: [{ path, mime: "image/webp", bytes: 5 }],
+      images: [{ path, mime: "image/webp", bytes: 5 * UNIT }],
     });
   });
 
@@ -98,7 +112,7 @@ describe("turn image admission", () => {
     expect(() => extractTurnImages(source, { attachmentsDir: root, maxCount: 1 })).toThrow(
       "Send no more than 1 images",
     );
-    expect(() => extractTurnImages(source, { attachmentsDir: root, maxBytes: 7 })).toThrow(
+    expect(() => extractTurnImages(source, { attachmentsDir: root, maxBytes: 7 * UNIT })).toThrow(
       "Attached images exceed 0 MB total",
     );
   });
@@ -107,12 +121,59 @@ describe("turn image admission", () => {
     const root = store();
     const tags = Array.from({ length: 11 }, (_, index) => {
       const path = join(root, `123e4567-e89b-42d3-a456-4266141741${String(index).padStart(2, "0")}.png`);
-      writeFileSync(path, Buffer.alloc(4, index + 1));
+      writeFileSync(path, picture(".png", 4, index));
       return `<attached-image path="${path}" />`;
     });
 
     expect(extractTurnImages(tags.slice(0, 10).join("\n\n"), { attachmentsDir: root }).images).toHaveLength(10);
     expect(() => extractTurnImages(tags.join("\n\n"), { attachmentsDir: root })).toThrow("Send no more than 10 images");
+  });
+
+  it("leaves out a stored picture whose bytes are no image, with a note in its place", () => {
+    const root = store();
+    const good = image(root, 0, ".png", 2);
+    const broken = join(root, `${IDS[1]}.png`);
+    writeFileSync(broken, Buffer.concat([Buffer.from("efbfbd504e470d0a1a0a", "hex"), Buffer.alloc(20)]));
+    const source = `look\n\n<attached-image path="${broken}" />\n\n<attached-image path="${good}" />`;
+
+    expect(extractTurnImages(source, { attachmentsDir: root })).toEqual({
+      text: `look\n\n${UNREADABLE_IMAGE_NOTE}\n\n`,
+      images: [{ path: good, mime: "image/png", bytes: 2 * UNIT }],
+    });
+  });
+
+  it("names a picture by its bytes when its extension says otherwise", () => {
+    const root = store();
+    const path = join(root, `${IDS[0]}.png`);
+    writeFileSync(path, picture(".jpg", 1, 1));
+    expect(extractTurnImages(`<attached-image path="${path}" />`, { attachmentsDir: root }).images).toEqual([{ path, mime: "image/jpeg", bytes: UNIT }]);
+  });
+
+  it("replays a chat holding a broken picture with the note, and can leave every older picture out", () => {
+    const root = store();
+    const broken = join(root, `${IDS[0]}.png`);
+    writeFileSync(broken, Buffer.from("not a picture"));
+    const transcript = [
+      { role: "user" as const, text: `first\n\n<attached-image path="${broken}" />` },
+      { role: "assistant" as const, text: "I could not see it" },
+      { role: "user" as const, text: `second\n\n<attached-image path="${image(root, 1)}" />` },
+    ];
+
+    const replayed = extractReplayImages(transcript, [], { attachmentsDir: root });
+    expect(replayed.transcript.map((entry) => entry.text)).toEqual([`first\n\n${UNREADABLE_IMAGE_NOTE}`, "I could not see it", "second\n\n"]);
+    expect(replayed.images).toHaveLength(1);
+
+    const without = extractReplayImages(transcript, [], { attachmentsDir: root, withoutImages: true });
+    expect(without.transcript.map((entry) => entry.text)).toEqual([`first\n\n${UNREADABLE_IMAGE_NOTE}`, "I could not see it", `second\n\n${UNREADABLE_IMAGE_NOTE}`]);
+    expect(without.images).toEqual([]);
+  });
+
+  it("knows an engine's refusal of a picture it cannot decode", () => {
+    expect(engineRefusedImage("Unable to process input image. Please retry or report in https://developers.generativeai.google/guide/troubleshooting")).toBe(true);
+    expect(engineRefusedImage("messages.0.content.1.image.source.base64.data: Could not process image")).toBe(true);
+    expect(engineRefusedImage("You uploaded an unsupported image. The image data you provided does not represent a valid image.")).toBe(true);
+    expect(engineRefusedImage("rate limit reached, try again later")).toBe(false);
+    expect(engineRefusedImage(undefined)).toBe(false);
   });
 
   it("does not admit a symlink carrying an attachment-shaped name", () => {
@@ -139,8 +200,8 @@ describe("turn image admission", () => {
     expect(extractSteerImages(texts, { attachmentsDir: root })).toEqual({
       texts: ["look\n\n", "plain words stay exactly as sent", "and this\n\n"],
       images: [
-        { path: first, mime: "image/png", bytes: 5 },
-        { path: second, mime: "image/webp", bytes: 6 },
+        { path: first, mime: "image/png", bytes: 5 * UNIT },
+        { path: second, mime: "image/webp", bytes: 6 * UNIT },
       ],
     });
     expect(extractSteerImages(["just text"], { attachmentsDir: root })).toEqual({ texts: ["just text"], images: [] });
@@ -150,14 +211,14 @@ describe("turn image admission", () => {
     const root = store();
     const one = (index: number) => `<attached-image path="${image(root, index, ".png", 4)}" name="${index}.png" />`;
     expect(extractSteerImages([one(0), one(1), one(2)], { attachmentsDir: root, maxCount: 2 })).toBeNull();
-    expect(extractSteerImages([one(3), one(4)], { attachmentsDir: root, maxBytes: 7 })).toBeNull();
+    expect(extractSteerImages([one(3), one(4)], { attachmentsDir: root, maxBytes: 7 * UNIT })).toBeNull();
     expect(extractSteerImages([`${one(0)}\n\n${one(1)}\n\n${one(2)}`], { attachmentsDir: root, maxCount: 2 })).toBeNull();
   });
 
   it("re-sends the newest replayed user images within what the current turn leaves", () => {
     const root = store();
     const tag = (index: number) => `<attached-image path="${image(root, index)}" name="${index}.png" />`;
-    const current = [{ path: image(root, 4), mime: "image/png" as const, bytes: 4 }];
+    const current = [{ path: image(root, 4), mime: "image/png" as const, bytes: 4 * UNIT }];
     const transcript = [
       { role: "user" as const, text: `oldest\n\n${tag(0)}` },
       { role: "assistant" as const, text: `quoted\n\n${tag(1)}` },
@@ -181,7 +242,7 @@ describe("turn image admission", () => {
       { role: "user" as const, text: tag(2) },
     ];
 
-    const result = extractReplayImages(transcript, [], { attachmentsDir: root, maxBytes: 12 });
+    const result = extractReplayImages(transcript, [], { attachmentsDir: root, maxBytes: 12 * UNIT });
 
     expect(result.images.map((entry) => entry.path)).toEqual([join(root, `${IDS[2]}.png`)]);
     expect(result.transcript.slice(0, 2)).toEqual(transcript.slice(0, 2));

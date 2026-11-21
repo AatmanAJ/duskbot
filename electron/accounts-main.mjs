@@ -88,11 +88,13 @@ export function createDesktopRing(deps) {
  *   holdSheet(open: boolean): void,
  *   tellSheet(): void,
  *   tell(): void,
+ *   ownPlace?(event: unknown): boolean,
  * }} deps `ownPage`: this app's own page in the window, or the rail's. `placePage`: the page of a place of the person's own
- * or their team's, which may offer the sheet. `ring`: the accounts kept on this device. `holdSheet`: the rail's page stays up
+ * or their team's, which may offer the sheet. `ownPlace`: a Cloud of the person's own (not a team's or a server's), which may
+ * read the account in use (address, name, face and plan): the app's own session on a Cloud names no owner, so this is how its page knows. `ring`: the accounts kept on this device. `holdSheet`: the rail's page stays up
  * for the sheet, even for someone who hid the rail. `tell`: this app's pages read the list again.
  */
-export function installAccounts({ ipcMain, ownPage, placePage, account, client, ring, holdSheet, tellSheet, tell }) {
+export function installAccounts({ ipcMain, ownPage, placePage, ownPlace = () => false, account, client, ring, holdSheet, tellSheet, tell }) {
   let sheetPending = false;
   const view = () => accountsView(account()?.state());
   const own = (channel, handler) => ipcMain.handle(channel, (event, ...args) => {
@@ -121,6 +123,13 @@ export function installAccounts({ ipcMain, ownPage, placePage, account, client, 
   own("accounts:sheet-pending", () => { const pending = sheetPending; sheetPending = false; return pending; });
   own("accounts:sheet-closed", () => { sheetPending = false; holdSheet(false); });
   ipcMain.handle("accounts:offered", (event) => placePage(event) === true);
+  ipcMain.handle("accounts:face", (event) => {
+    if (ownPlace(event) !== true) return null;
+    const active = view().active;
+    if (!active) return null;
+    return { id: active.id, email: active.email, ...(active.name ? { name: active.name } : {}), ...(active.avatarUrl ? { avatarUrl: active.avatarUrl } : {}),
+      ...(active.avatar ? { avatar: active.avatar } : {}), ...(active.plan ? { plan: active.plan } : {}) };
+  });
   ipcMain.handle("accounts:open", (event) => {
     if (!placePage(event)) throw new Error("accounts:open is only available on a page of the person's own");
     sheetPending = true;
