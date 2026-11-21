@@ -164,6 +164,7 @@ async function upload(base: string, name: string): Promise<string> {
 
 const TERMINAL = ["needs-input", "completed", "failed", "stalled", "idle"];
 
+const JOB_WAIT_MS = 180_000;
 async function waitIdle(api: ReturnType<typeof client>, threadId: string, timeoutMs: number): Promise<string> {
   const deadline = Date.now() + timeoutMs;
   await sleep(800);
@@ -294,7 +295,14 @@ async function converse(srv: StressServer, frames: Frame[], job: { key: string; 
     pages.delete(pagePath);
   }
   const threadLogs: ThreadLog[] = [];
-  if (!live) for (const id of await botThreads(api, bot.id)) if (!threads.includes(id)) threads.push(id);
+  if (!live) {
+    for (const id of await botThreads(api, bot.id)) if (!threads.includes(id)) threads.push(id);
+    // jobs the conversation started run on after its own turn: judge what they wrote, and the main thread they report back to
+    if (threads.length > 1) {
+      await Promise.all(threads.slice(1).map((id) => waitIdle(api, id, JOB_WAIT_MS)));
+      await waitIdle(api, threads[0]!, JOB_WAIT_MS);
+    }
+  }
   for (const id of threads) {
     const messages = (await api.call("GET", `/api/threads/${id}/messages?limit=300`)).messages as Message[];
     if (messages.length || id === threads[0]) threadLogs.push({ threadId: id, messages });
