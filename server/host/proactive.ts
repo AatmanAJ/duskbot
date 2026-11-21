@@ -31,6 +31,8 @@ import { createRoutineChecks } from "./routine-checks.ts";
 import { recordMemoryChange } from "../memory-journal.ts";
 import { readMemoryTopic, writeMemoryTopic } from "../workspace.ts";
 import { createProactivePrefs, PROACTIVE_TOPIC } from "./proactive-prefs.ts";
+import { COMMITMENTS_TOPIC, createCommitments } from "./commitments.ts";
+import { localDate } from "./check-plan.ts";
 
 export { WATCH_INSTRUCTIONS, WATCH_NAME } from "./default-watch.ts";
 export const WATCH_FILE = "watch.json";
@@ -122,6 +124,15 @@ export function createProactive(deps: ProactiveDeps) {
       writeMemoryTopic(botId, PROACTIVE_TOPIC, after);
       recordMemoryChange(botId, { path: `memory/${PROACTIVE_TOPIC}`, actor, via: "proactive", before, after });
     },
+  });
+  const commitments = createCommitments({
+    owner: () => { const bot = deps.team ? null : owner(); return bot && bot.memoryEnabled !== false ? bot : null; },
+    read: (botId) => readMemoryTopic(botId, COMMITMENTS_TOPIC),
+    write: (botId, before, after, actor) => {
+      writeMemoryTopic(botId, COMMITMENTS_TOPIC, after);
+      recordMemoryChange(botId, { path: `memory/${COMMITMENTS_TOPIC}`, actor, via: "proactive", before, after });
+    },
+    today: () => localDate(Date.now(), brief.timeZone()),
   });
   /** The owner's briefing routine is on: pausing or deleting it switches the brief off. */
   const watching = (): boolean => {
@@ -278,7 +289,7 @@ export function createProactive(deps: ProactiveDeps) {
 
   let timer: ReturnType<typeof setInterval> | null = null;
   return {
-    checks: routineChecks, fence, brief, prefs,
+    checks: routineChecks, fence, brief, prefs, commitments,
     /** Only the owner dreams, and only while its brief is on: at most one model call a night, with no switch of its own. */
     dreamer: (): string | undefined => (watching() ? owner()?.id : undefined),
     /** Not now on the add-a-key suggestion; the inbox connected now is remembered with it. */

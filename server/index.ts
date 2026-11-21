@@ -9948,7 +9948,7 @@ const runHealth = startRunHealth({ dataDir: DATA_DIR, turns: () => liveTurnByThr
     }
   },
   startTurn: async (botId, threadId, prompt, runOn, triggerSource, onDispatchError) => {
-    const prefs = proactive.prefs.block(); if (!companyShutdown) await startTurn(botId, prefs ? `${prompt}\n\n${prefs}` : prompt, { threadId, runOn, automationSource: triggerSource, onDispatchError });
+    const prefs = [proactive.prefs.block(), proactive.commitments.block()].filter(Boolean).join("\n\n"); if (!companyShutdown) await startTurn(botId, prefs ? `${prompt}\n\n${prefs}` : prompt, { threadId, runOn, automationSource: triggerSource, onDispatchError });
   },
   startGoal: async (groupId, threadId, prompt, coordinatorBotId, runId, _onDispatchError) => {
     if (!groupId) {
@@ -14347,7 +14347,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         }
         const layer = teamHost.layer(internalSender.id, internalCapability.threadId);
         const result = botMemoryUpdate(layer, body, { source: memorySource(), aboutMe: ownersAsk ? aboutMeFacts : null,
-          prefer: body?.action === "prefer" || body?.action === "notify" ? personPreference.target(internalCapability, internalSender) : null, notify: CLOUD_TEAM ? null : (rule, text) => proactive.prefs.rule(rule, text),
+          prefer: body?.action === "prefer" || body?.action === "notify" || body?.action === "commit" ? personPreference.target(internalCapability, internalSender) : null, notify: CLOUD_TEAM ? null : (rule, text) => proactive.prefs.rule(rule, text), commit: CLOUD_TEAM ? null : (item) => proactive.commitments.commit(item),
           trust: memoryWriteTrust(internalSender.id, internalCapability.threadId),
           about: { owner: aboutOwnerFor(internalSender.id, internalCapability.threadId), text: teamHost.profileFor(internalCapability.threadId, cfg.profile)?.aboutMe ?? "" } });
         return json(res, result.ok ? 200 : result.code === "conflict" || result.code === "ambiguous" ? 409 : 400, result);
