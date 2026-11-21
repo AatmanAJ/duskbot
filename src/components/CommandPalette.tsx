@@ -24,6 +24,9 @@ import { pacedMs } from "@/lib/motion-speed";
 import { openSettings } from "@/lib/open-settings";
 import { settingsCommands } from "./palette-commands";
 
+/** What the app used to call a place. The screens no longer say it, and people still type it to find the switcher. */
+const FORMER_PLACE_WORD = "workspace";
+
 /** A row's 49px and the 2px gap under it. */
 const ROW_STEP = 51;
 
@@ -166,7 +169,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
   const commands: Command[] = [
     { id: "new-bot", name: t("sidebar.grok.newBot"), icon: "plus", run: () => openCreateBot() },
     { id: "new-group", name: t("sidebar.newChannel.title"), icon: "people", run: () => openNewGroup() },
-    ...(switchPlace ? [{ id: "switch-place", name: t("palette.switchPlace"), detail: t("palette.switchPlace.detail"), also: t("palette.also.switchPlace"), icon: "chevrons-up-down" as const, run: switchPlace }] : []),
+    ...(switchPlace ? [{ id: "switch-place", name: t("palette.switchPlace"), detail: t("palette.switchPlace.detail"), also: `${t("palette.also.switchPlace")} ${FORMER_PLACE_WORD}`, icon: "chevrons-up-down" as const, run: switchPlace }] : []),
     { id: "shortcuts", name: t("sidebar.menu.shortcuts"), detail: t("settings.w6.group.help"), also: t("palette.also.shortcuts"), icon: "keyboard", run: () => dispatch({ type: "toggleShortcuts", open: true }) },
     ...settingsCommands().map(({ target, ...command }): Command => ({ ...command, run: () => dispatch(openSettings(target)) })),
     ...(currentBot ? [{ id: "bot-settings", name: t("sidebar.grok.botSettings"), detail: currentBot.name, icon: "settings-gear" as const, run: () => openBotSettingsPage(dispatch, currentBot.id) }] : []),
