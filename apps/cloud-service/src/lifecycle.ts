@@ -19,6 +19,8 @@ import { volumeLayer } from "./bundle.ts";
 import { DAY_MS, DEFAULT_DELETE_DELAY_DAYS, DEFAULT_RETENTION_DAYS, deletionVerdict, dueNotice, prunableBackups, type Entitlement, type NoticeKind, type Verdict } from "./retention.ts";
 import type { Audit, AuditActor, AuditEntry } from "./audit.ts";
 import { RetryableCloudError } from "../../dashboard/server/clouds/http.ts";
+import { homeFailure } from "../../dashboard/server/clouds/home-client.ts";
+import { ENTITLEMENT_DEFAULT_TTL_MS } from "../../../shared/entitlement.ts";
 import { ManagedCloudError } from "../../dashboard/server/clouds/managed.ts";
 import type { HomeClient, HomePower, StoredCloud } from "../../dashboard/server/clouds/types.ts";
 import type { HomeLifecycleState } from "./state.ts";
@@ -32,6 +34,8 @@ export const VIEW_FRESH_MS = 2 * 60_000;
 const skippedInBackup = skippedPath(STREAM_SKIPPED);
 /** how often a backup being written looks at the disk again, in bytes of tar */
 const DISK_CHECK_BYTES = 128 * 1024 ** 2;
+const ENTITLE_RETRY_MS = [2 * 60_000, 5 * 60_000, 10 * 60_000, 20 * 60_000, 30 * 60_000];
+const ENTITLE_ALERT_TRIES = 3, ENTITLE_ALERT_LEFT_MS = 6 * 3_600_000;
 const MINUTE = 60_000, HOUR = 3_600_000, BACKUP_RETRY_MS = 10 * MINUTE, SETUP_TRIES = 3, RESTORE_TRIES = 3, SETUP_PATIENCE_MS = 6 * HOUR, SETUP_ERROR_RETRY_MS = 6 * HOUR;
 
 export interface ManagedSettings {
@@ -292,13 +296,41 @@ export function createLifecycle(deps: LifecycleDeps) {
     b.upstream = upstream;
     c.origin = settings.publicDomain ? `https://${label(c)}.${settings.publicDomain}` : upstream;
   }
-  /** a hosted home serves no client without a fresh entitlement: pushed when it comes up, refreshed hourly */
+  /** a hosted home serves no client without a fresh entitlement: pushed when it comes up, refreshed hourly. A refused
+   *  refresh is logged with its cause when the cause changes and tried again on a growing interval, not every power read */
   async function entitle(c: StoredCloud, force: boolean) {
     if (!deps.home.entitle || (!force && c.entitledAt !== undefined && now() - c.entitledAt < HOUR)) return;
+    const b = state(c), problem = b.entitleProblem ?? null;
+    if (!force && problem && problem.retryAt > now()) return;
     const token = deps.entitle(c);
     if (!token) return;
-    try { await deps.home.entitle(homeOrigin(c), secret(c), token, deps.linkGrant?.(c) ?? null); }
-    catch { throw new RetryableCloudError("Cloud home refused its entitlement."); }
+    const push = (grant: string | null) => deps.home.entitle!(homeOrigin(c), secret(c), token, grant);
+    const grant = deps.linkGrant?.(c) ?? null;
+    let cause: string | null = null;
+    try { await push(grant); }
+    catch (error) {
+      cause = homeFailure(error);
+      // the link grant only seeds the home's phone relay; the entitlement is what keeps the home serving
+      if (grant) {
+        try { await push(null); console.warn(`managed: cloud ${c.id} refused its entitlement with a link grant (${cause}) and took it without one`); cause = null; }
+        catch (again) { cause = homeFailure(again); }
+      }
+    }
+    if (cause) {
+      const tries = (problem?.tries ?? 0) + 1;
+      const retryAt = now() + ENTITLE_RETRY_MS[Math.min(tries - 1, ENTITLE_RETRY_MS.length - 1)]!;
+      if (problem?.cause !== cause) console.warn(`managed: the entitlement push to ${c.id} failed (${cause}); tried again with a growing wait`);
+      b.entitleProblem = { cause, since: problem?.since ?? now(), tries, retryAt, alerted: problem?.alerted ?? false };
+      const left = c.entitledAt === undefined ? 0 : c.entitledAt + ENTITLEMENT_DEFAULT_TTL_MS - now();
+      if (!b.entitleProblem.alerted && (tries >= ENTITLE_ALERT_TRIES || left < ENTITLE_ALERT_LEFT_MS)) {
+        b.entitleProblem.alerted = true;
+        opsAlert(c, "entitle_failing", cause, `cloud ${c.id}: its entitlement refresh keeps failing (${cause}); the home refuses its clients once the last one runs out`);
+      }
+      deps.save(c);
+      throw new RetryableCloudError("Cloud home refused its entitlement.");
+    }
+    if (problem) console.warn(`managed: the entitlement push to ${c.id} works again after ${problem.tries} failed tries (${problem.cause})`);
+    b.entitleProblem = null;
     c.entitledAt = now(); deps.save(c);
   }
   const latestVerified = (b: HomeLifecycleState) => [...b.backups].reverse().find(g => g.verifiedAt !== null) ?? null;
@@ -945,7 +977,7 @@ export function createLifecycle(deps: LifecycleDeps) {
     if (b.leaseAt === null || now() - b.leaseAt >= Math.min(30 * MINUTE, settings.leaseSeconds * 500)) { await provider.lease(c.serverId, settings.leaseSeconds); b.leaseAt = now(); deps.save(c); }
     if (b.lastPowerAt !== null && now() - b.lastPowerAt < settings.powerReadMs) return;
     b.lastPowerAt = now();
-    await entitle(c, false).catch(() => console.warn(`managed: the entitlement refresh for ${c.id} failed; it is tried again`));
+    await entitle(c, false).catch(() => {});
     const power = deps.home.power ? await deps.home.power(homeOrigin(c), secret(c), Math.max(1, Math.round(rails.minIdleMs / MINUTE))).catch(() => null) : null;
     if (await deps.updates?.step(c, { origin: c.origin!, upstream: homeOrigin(c), secret: secret(c), busy: power?.busy ?? null })) { deps.save(c); return; }
     if (!power) { deps.save(c); return; }
