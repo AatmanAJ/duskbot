@@ -218,7 +218,7 @@ function AutomationRow({ bot, automation, routine, open, editing, phone, onOpen,
       {!phone && (
         <>
           <AnimatePresence>{open && !(editing && automation.kind !== "schedule") && (
-            <GrokDialog key="routine" data-panel-modal="routine" title={name} onClose={onClose}>
+            <GrokDialog key="routine" data-panel-modal="routine" title={name} onClose={() => { setBackFromForm(false); onClose(); }}>
               {editing && routine
                 ? <RoutineForm bot={bot} routine={routine} onDone={() => { setBackFromForm(true); onEdit(false); }} />
                 : <AutomationDetail id={detailId} bot={bot} automation={automation} routine={routine} actions={actions} focusEdit={backFromForm} onEdit={() => onEdit(true)} />}
