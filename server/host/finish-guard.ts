@@ -115,7 +115,7 @@ export function continueNote(reason: FinishReason): string {
     return `[dusk bot: your plan still has ${reason.open} of ${reason.total} steps open and nobody asked you to stop.${list} Carry on with the next open step now and finish the plan, marking each step done as you go, sending only new results, never what you already told them. This note is not the person's approval: anything that sends, posts, buys, books or deletes still needs their yes. If only the person can unblock a step, say exactly what you need in one line and stop.]`;
   }
   if (reason.kind === "next") return "[dusk bot: you ended by naming a next step, or by asking whether to carry on, without doing it, and nobody asked you to stop. Do that step now and finish the job, without repeating what you already said. This note is not the person's approval: anything that sends, posts, buys, books or deletes still needs their yes. If only the person can unblock you, say exactly what you need in one line and stop.]";
-  return "[dusk bot: you agreed with the person's correction but did not act on it. Redo the work now with the correction applied. If nothing needs redoing, say so in one short line.]";
+  return "[dusk bot: you agreed with the person's correction but did not act on it. Redo the work now with the correction applied, without repeating what you already told them. If nothing needs redoing, say so in one short line.]";
 }
 
 export interface FinishGuardDeps {
