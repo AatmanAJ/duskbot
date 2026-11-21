@@ -198,7 +198,7 @@ export function importPackageDocument(
   }
   if (library) return importLibraryFile(document, deps.presets!);
   const moved = options.trust === "file" && pkg.category === MOVED_IN_CATEGORY
-    ? deps.store.bots.find((bot) => bot.installedPackage?.source === "file" && bot.installedPackage.id === pkg.id)?.installedPackage
+    ? deps.store.bots.find((bot) => !bot.hidden && bot.installedPackage?.source === "file" && bot.installedPackage.id === pkg.id)?.installedPackage
     : undefined;
   if (moved) return { alreadyAdded: true, installId: moved.installId ?? pkg.id };
   return runImport({ kind: "package", document }, options, deps);

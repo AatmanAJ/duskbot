@@ -101,7 +101,7 @@ export function useDialogKeys(sheet: RefObject<HTMLElement | null>, onClose: () 
 }
 
 function focusedElement(): HTMLElement | null {
-  return typeof document !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  return typeof document !== "undefined" && typeof HTMLElement !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null;
 }
 
 /** On its own, Grok's form dialog (New login), easing in as bencho's modal does; inside a railed sheet, that sheet's pane. */
