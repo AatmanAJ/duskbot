@@ -2390,6 +2390,8 @@
   "chat.find.failed": "Search didn't work. Try again.",
   "chat.find.unavailable": "That message is unavailable",
   "chat.reply.replyingTo": "Replying to {name}",
+  "chat.quoteSelection": "Quote",
+  "chat.quoteSelection.aria": "Quote in your reply",
   "chat.reply.jump": "Jump to original message",
   "chat.reply.cancel": "Cancel reply",
   "chat.reply.image": "[Image]",

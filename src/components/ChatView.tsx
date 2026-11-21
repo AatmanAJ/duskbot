@@ -82,7 +82,8 @@ import { useColorUserBubbles } from "@/lib/user-bubble-preference";
 import { grokAccentText, userBubbleStyle } from "@/lib/user-bubble-tone";
 import { ToolActivity } from "./ToolActivity";
 import { DataResultChip } from "./DataResultChip"; import { PublishedPageCard } from "./PublishedPageCard";
-import { ThreadRefText } from "./ThreadRefs";
+import { OwnMessageText } from "./OwnMessageText";
+import { SelectionQuote } from "./SelectionQuote";
 import { optionsCardRow, settledCardGoes } from "./OptionsCardRow";
 import { MessageBoundary } from "./MessageBoundary";
 import { RichMessageRow, UserLineNote, richRowKind } from "./RichMessageRow"; import { SetupOffer } from "./SetupOffer";
@@ -529,7 +530,7 @@ const Bubble = memo(function Bubble({
               {attachments && !imagesAbove && <AttachmentGallery media={message.media} images={attachments.images} files={attachments.files} message={{ threadId, messageId: message.id }} eager={eagerAttachments} align="end" className={!visibleText ? "mb-0" : undefined} />}
               {visibleText && (
                 <div className={cn("chat-text", collapsible && "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]")}>
-                  <ThreadRefText text={visibleText} peers={mentionPeers} />
+                  <OwnMessageText text={visibleText} peers={mentionPeers} />
                 </div>
               )}
               {message.quickModel && <QuickModelNote model={message.quickModel} />}
@@ -1485,7 +1486,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
       )}
       </div>
       </GlassScrollFrame>
-
+      <SelectionQuote root={transcriptRef} threadId={bot.threadId} />
     </main>
     </ThreadLinkContext>
   );

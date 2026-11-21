@@ -61,6 +61,7 @@ Use only mapped, tested commands:
 - [Peer approval denial, expiry, and cancellation](peer-approvals.md)
 - [Shared VPS ownership, waiting and control boundaries](computer-wait.md)
 - [Chat UI, driven headlessly](chat-ui.md)
+- [Quoting selected text](quote-selection.md)
 - [Computer panel focus hand-off](computer-panel-focus.md)
 - [Taking control of a bot's computer](take-control.md)
 - [What a bot can do on its VPS desktop](vps-computer-tools.md)

@@ -103,6 +103,7 @@ import {
   type ComposerSlashCommand,
 } from "@/lib/composer-commands";
 import { useSlashSkills } from "@/lib/use-slash-skills";
+import { useQuoteRequests, withQuote } from "@/lib/quote-selection";
 import { randomUuid } from "@/lib/random-uuid";
 import { noteSendLaunch } from "./bubble-entrance";
 import { friendlyError } from "@/lib/plain-error";
@@ -249,6 +250,10 @@ export function Composer({
   const [sendAfterVoice, setSendAfterVoice] = useState<{ followUp: FollowUp | undefined } | null>(null);
   const micButtonRef = useRef<HTMLButtonElement>(null);
   const [caret, setCaret] = useState(0);
+  useQuoteRequests(threadId, (selected) => {
+    const next = withQuote(text, selected); editText(next); setCaret(next.length);
+    requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(next.length, next.length); });
+  });
   const shellRef = useRef<HTMLDivElement>(null);
   const [highlight, setHighlight] = useState(0);
   const [dismissedAt, setDismissedAt] = useState<number | null>(null);
