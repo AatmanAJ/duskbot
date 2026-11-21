@@ -94,6 +94,8 @@ export interface XSessionOptions {
   now?: () => number;
   random?: () => number;
   sleep?: (ms: number) => Promise<void>;
+  /** x.com, or a stand-in in tests. */
+  origin?: string;
 }
 
 const GRAPHQL = /\/i\/api\/graphql\/[^/?]+\/([A-Za-z]+)(?:\?|$)/;
@@ -121,6 +123,7 @@ export function createSessionProvider(options: XSessionOptions): XSessionProvide
   const queues = new Map<string, Promise<unknown>>();
   const asking = new Map<string, Promise<boolean>>();
   const store = options.store;
+  const origin = options.origin ?? "https://x.com";
 
   const usable = async (call: XCall): Promise<XSessionTarget | null> => {
     const target = await options.browser.target(call.botId, call.threadId);
@@ -253,7 +256,7 @@ export function createSessionProvider(options: XSessionOptions): XSessionProvide
       const watch = `search:${input.sort}:${input.query.toLowerCase()}`;
       watchDue(where, watch, input.sinceId);
       const query = input.sinceId === undefined ? input.query : `${input.query} since_id:${input.sinceId}`;
-      const data = await paced(where, () => read(where, `https://x.com/search?q=${encodeURIComponent(query)}&src=typed_query&f=${input.sort === "top" ? "top" : "live"}`, "SearchTimeline"));
+      const data = await paced(where, () => read(where, `${origin}/search?q=${encodeURIComponent(query)}&src=typed_query&f=${input.sort === "top" ? "top" : "live"}`, "SearchTimeline"));
       watchRead(where, watch, input.sinceId);
       const posts = timelinePosts(findTimeline(data));
       if (input.sort === "latest") posts.sort((a, b) => (BigInt(b.id) > BigInt(a.id) ? 1 : -1));
@@ -264,7 +267,7 @@ export function createSessionProvider(options: XSessionOptions): XSessionProvide
       const watch = `user:${input.handle.toLowerCase()}:${input.includeReplies}`;
       watchDue(where, watch, input.sinceId);
       const op = input.includeReplies ? "UserTweetsAndReplies" : "UserTweets";
-      const data = await paced(where, () => read(where, `https://x.com/${input.handle}${input.includeReplies ? "/with_replies" : ""}`, op));
+      const data = await paced(where, () => read(where, `${origin}/${input.handle}${input.includeReplies ? "/with_replies" : ""}`, op));
       watchRead(where, watch, input.sinceId);
       const posts = timelinePosts(findTimeline(data), input.handle)
         .filter((post) => input.includeReplies || post.isReply !== true)
@@ -274,7 +277,7 @@ export function createSessionProvider(options: XSessionOptions): XSessionProvide
     },
     async post(input: PostInput, call: XCall): Promise<XPostWithReplies> {
       const where = await target(call);
-      const data = await paced(where, () => read(where, `https://x.com/${input.handle ?? "i"}/status/${input.id}`, "TweetDetail"));
+      const data = await paced(where, () => read(where, `${origin}/${input.handle ?? "i"}/status/${input.id}`, "TweetDetail"));
       const posts = timelinePosts(findTimeline(data));
       const post = posts.find((one) => one.id === input.id);
       if (!post) throw new XResearchError("not_found", X_MESSAGES.postNotFound);
@@ -283,7 +286,7 @@ export function createSessionProvider(options: XSessionOptions): XSessionProvide
     },
     async profile(handle: string, call: XCall): Promise<XProfile> {
       const where = await target(call);
-      const data = await paced(where, () => read(where, `https://x.com/${handle}`, "UserByScreenName"));
+      const data = await paced(where, () => read(where, `${origin}/${handle}`, "UserByScreenName"));
       const found = toProfile(at(data, "user", "result"));
       if (!found) throw new XResearchError("not_found", X_MESSAGES.accountNotFound(handle));
       return found;

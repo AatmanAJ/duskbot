@@ -4,6 +4,12 @@
 // with DUSK_SMOKE_TREG_CLI=1, through the logged-in `treg` CLI (the key stays inside the CLI).
 // No X account is used: the person's sign-in route needs a real login and is covered by its fixture tests.
 import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createXIndexRoutes } from "../apps/dashboard/server/x-index/routes.ts";
+import { createXIndexService, type XIndexResult } from "../apps/dashboard/server/x-index/service.ts";
 import type { ServiceCredential } from "../server/included-services.ts";
 import { createResearchClient, type ResearchClient } from "../server/research.ts";
 import { createOembedProvider } from "../server/x-providers/oembed.ts";
@@ -60,6 +66,25 @@ for (const query of QUERIES) await check("web index (Brave)", query, async () =>
 if (treg) for (const query of QUERIES) await check("web index (treg TinyFish)", query, async () => { const list = await web.search!({ query, sort: "latest", limit: 10 }, { ...call, credential: treg }); return `${list.posts.length} posts, newest ${newest(list.posts)}`; });
 for (const query of QUERIES) await check("router search, no key", query, async () => { const list = await router.client(call).search({ query, sort: "latest", limit: 10 }); return `${list.posts.length} posts${list.freshness ? ` (${list.freshness})` : ""}, newest ${newest(list.posts)}`; });
 if (treg) for (const query of QUERIES) await check("router search, treg index", query, async () => { const list = await router.client({ ...call, credential: treg }).search({ query, sort: "top", limit: 10 }); return `${list.posts.length} posts${list.freshness ? ` (${list.freshness})` : ""}, newest ${newest(list.posts)}`; });
+if (viaCli) {
+  // The account service's keyless index on loopback, its TinyFish search live through the treg CLI; the router reaches
+  // it as a signed-in desktop with no key of its own.
+  const dir = mkdtempSync(join(tmpdir(), "x-index-smoke-"));
+  const server = createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const service = createXIndexService({
+    dataDir: dir, clouds: { get: () => null }, unseal: (value) => value, publicUrl: base,
+    search: async (query) => ((await cliResearch.call({ id: "tinyfish.web.search", params: { query, domain_type: "web", include_domains: "x.com" } })).result as { results: XIndexResult[] }).results,
+  });
+  const routes = createXIndexRoutes(service, () => ({ id: "smoke-account", email: "smoke@test-mail.invalid" }));
+  server.on("request", (req, res) => { void routes.handle(req, res, new URL(req.url ?? "/", base)); });
+  const access = service.issue("smoke-account");
+  const keyless = createXRouter({ index: () => ({ kind: "desktop", ...access }) });
+  for (const query of QUERIES) await check("router search, keyless index", query, async () => { const list = await keyless.client(call).search({ query, sort: "latest", limit: 10 }); return `${list.posts.length} posts${list.freshness ? ` (${list.freshness})` : ""}, newest ${newest(list.posts)}`; });
+  await new Promise((resolve) => server.close(resolve));
+  rmSync(dir, { recursive: true, force: true });
+}
 for (const handle of HANDLES) await check("router user_posts, no key", handle, async () => { const list = await router.client(call).userPosts({ handle, limit: 10, includeReplies: false }); return `${list.posts.length} posts, newest ${newest(list.posts)}`; });
 
 const width = Math.max(...rows.map((row) => row.route.length));

@@ -1,12 +1,14 @@
 // Search without a live X route: a web search limited to x.com finds post links, and each post is read through X's
 // embed backend. Search indexes lag X by days and see only part of it, so the answer is labelled `freshness: "days"`
-// and is never used for a watch (an ask with sinceId). The index is TinyFish through treg when a research credential is
-// held (listed free, so no paid provider is walked to), else Brave's public results page.
+// and is never used for a watch (an ask with sinceId). The index, first that answers: TinyFish through treg on the
+// person's own research credential (listed free, so no paid provider is walked to); dusk's keyless X index for any
+// signed-in dusk account (x-index.ts); Brave's public results page, which often answers a server with a captcha.
 import type { ResearchClient } from "../research.ts";
 import type { ServiceCredential } from "../included-services.ts";
 import { postList, X_MESSAGES, XResearchError, type XPostList } from "../x-research.ts";
 import { httpGet, rateLimited, unavailable, type HttpOptions } from "./http.ts";
 import { syndicationPosts } from "./syndication.ts";
+import { searchXIndex, type XIndexAccess } from "./x-index.ts";
 import { XSkip, type SearchInput, type XCall, type XProvider } from "./types.ts";
 
 export const TINYFISH_SEARCH = "tinyfish.web.search";
@@ -39,6 +41,8 @@ export function statusLinks(text: string): Array<{ id: string; handle: string }>
 
 export interface WebSearchOptions extends HttpOptions {
   research?: (credential: ServiceCredential) => ResearchClient;
+  /** dusk's keyless X index for this server's dusk account, when it is signed in to one. */
+  index?: () => XIndexAccess | null;
 }
 
 export function createWebSearchProvider(options: WebSearchOptions = {}): XProvider {
@@ -68,10 +72,15 @@ export function createWebSearchProvider(options: WebSearchOptions = {}): XProvid
       if (!words) throw new XSkip("not_for_this");
       let found: string | null = null;
       let failure: unknown = null;
-      if (call.credential) found = await tinyfish(call.credential, words).catch((error: unknown) => { failure = error; return null; });
-      if (found === null || statusLinks(found).length === 0) {
-        const fromBrave = await brave(words).catch((error: unknown) => { failure = error; return null; });
-        if (fromBrave !== null) found = fromBrave;
+      const sources: Array<() => Promise<string>> = [];
+      if (call.credential) sources.push(() => tinyfish(call.credential!, words));
+      const index = options.index?.();
+      if (index) sources.push(() => searchXIndex(index, words, options));
+      sources.push(() => brave(words));
+      for (const source of sources) {
+        const answer = await source().catch((error: unknown) => { failure = error; return null; });
+        if (answer !== null) found = answer;
+        if (found !== null && statusLinks(found).length > 0) break;
       }
       if (found === null) throw failure instanceof XResearchError ? failure : unavailable();
       const links = statusLinks(found).filter((link) => !handle || link.handle.toLowerCase() === handle.toLowerCase()).slice(0, MAX_POSTS_READ);

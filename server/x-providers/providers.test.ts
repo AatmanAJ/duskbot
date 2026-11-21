@@ -161,6 +161,22 @@ describe("web search fallback", () => {
     await expect(walled.search!({ query: "x", sort: "top", limit: 5 }, call)).rejects.toMatchObject({ code: "rate_limited" });
   });
 
+  it("uses dusk's keyless index for a signed-in account with no key of its own, before Brave", async () => {
+    const fetcher = fakeFetch([["https://account.test/api/cloud/x-index", 200, JSON.stringify({ results: [{ url: "https://x.com/OpenAI/status/2123899406550528422" }] })], ["https://cdn.syndication.twimg.com", 200, synd]]);
+    const provider = createWebSearchProvider({ fetcher, index: () => ({ kind: "desktop", url: "https://account.test/api/cloud/x-index", token: `dusk_xi_${"a".repeat(43)}` }) });
+    const list = await provider.search!({ query: "openai", sort: "latest", limit: 5 }, call);
+    expect(list).toMatchObject({ freshness: "days", posts: [{ id: POST_ID }] });
+    expect(fetcher.mock.calls.map(([url]) => String(url)).some((url) => url.includes("brave"))).toBe(false);
+    const [, init] = fetcher.mock.calls[0]! as [string, RequestInit];
+    expect(init.headers).toMatchObject({ authorization: `Bearer dusk_xi_${"a".repeat(43)}` });
+  });
+
+  it("falls to Brave when the index's day is used up", async () => {
+    const fetcher = fakeFetch([["https://account.test/api/cloud/x-index", 429, "{}"], ["https://search.brave.com", 200, fixture("brave-from-openai.html")], ["https://cdn.syndication.twimg.com", 200, synd]]);
+    const provider = createWebSearchProvider({ fetcher, index: () => ({ kind: "desktop", url: "https://account.test/api/cloud/x-index", token: `dusk_xi_${"a".repeat(43)}` }) });
+    expect((await provider.search!({ query: "openai", sort: "latest", limit: 5 }, call)).posts.length).toBeGreaterThan(0);
+  });
+
   it("is never used for a watch", async () => {
     await expect(createWebSearchProvider({ fetcher: fakeFetch([]) }).search!({ query: "x", sort: "latest", limit: 5, sinceId: "5" }, call)).rejects.toBeInstanceOf(XSkip);
   });

@@ -9,10 +9,12 @@ import { createSessionProvider, graphqlOp, XAccountStore, type XAskAnswer, type 
 import { createSyndicationProvider } from "./syndication.ts";
 import { createTregProvider } from "./treg.ts";
 import { createWebSearchProvider } from "./websearch.ts";
+import type { XIndexAccess } from "./x-index.ts";
 import { createXPageProvider } from "./xpage.ts";
 
 export interface XRouterDeps {
   research?: (credential: ServiceCredential) => ResearchClient;
+  index?: () => XIndexAccess | null;
   treg?: (credential: ServiceCredential) => XResearchClient;
   session?: XSessionProvider;
   fetcher?: typeof fetch;
@@ -25,7 +27,7 @@ export function createXRouter(deps: XRouterDeps = {}): XRouter {
       createSyndicationProvider(http),
       createXPageProvider(http),
       createOembedProvider(http),
-      createWebSearchProvider({ ...http, ...(deps.research ? { research: deps.research } : {}) }),
+      createWebSearchProvider({ ...http, ...(deps.research ? { research: deps.research } : {}), ...(deps.index ? { index: deps.index } : {}) }),
       createTregProvider(deps.treg ? { client: deps.treg } : {}),
     ],
     ...(deps.session ? { session: deps.session } : {}),
@@ -36,6 +38,7 @@ export function createXRouter(deps: XRouterDeps = {}): XRouter {
  * card in the conversation; its answers and pacing are kept in the data folder. */
 export function createServerXRouter(deps: {
   dataDir: string;
+  index: () => XIndexAccess | null;
   research: (credential: ServiceCredential) => ResearchClient;
   askPerson: (input: { botId: string; threadId: string; title: string; subtitle: string; options: string[] }) => Promise<XAskAnswer>;
   target: (botId: string, threadId?: string) => Promise<XSessionTarget | null>;
@@ -43,6 +46,7 @@ export function createServerXRouter(deps: {
 }): XRouter {
   return createXRouter({
     research: deps.research,
+    index: deps.index,
     session: createSessionProvider({
       store: new XAccountStore(deps.dataDir),
       askPerson: deps.askPerson,

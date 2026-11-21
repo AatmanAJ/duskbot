@@ -498,7 +498,7 @@ import { flushAllProfileHistory, flushProfileHistory, readHistory, recordProfile
 import { describeTool } from "./activity.ts";
 import { OutboundCounts } from "./outbound-counts.ts";
 import { OutboundRequestService } from "./outbound-requests.ts";
-import { createOutboundHold, OUTBOUND_HOLD_MS, type OutboundHoldAnswer } from "./outbound-hold.ts"; import { createXAccountCards } from "./host/x-account-cards.ts"; import { createServerXRouter } from "./x-providers/index.ts"; import { computerPurchasePasses } from "./computer-purchase.ts"; import { readGmailDraft } from "./gmail-draft-read.ts";
+import { createOutboundHold, OUTBOUND_HOLD_MS, type OutboundHoldAnswer } from "./outbound-hold.ts"; import { createXAccountCards } from "./host/x-account-cards.ts"; import { createServerXRouter } from "./x-providers/index.ts"; import { applyIncludedXIndexMessage, xIndexAccess } from "./x-providers/x-index.ts"; import { computerPurchasePasses } from "./computer-purchase.ts"; import { readGmailDraft } from "./gmail-draft-read.ts";
 import { connectorCallsIn, outboundCallsIn } from "../shared/outbound.ts";
 import { connectorAccessDecision, describeConnectorScopes } from "../shared/connector-scopes.ts";
 import { bindThreadLogCapProvider } from "./thread-log-rotation.ts";
@@ -1511,7 +1511,7 @@ utilityParentPort?.on("message", (event) => {
     if (browsersFlush.receive(message)) return;
     if (savedSecretsKey?.receive(message)) return;
     if (phoneSecrets.receive(message) || botLogins.receiveHandoff(message, postDesktopPrivateMessage, (what) => cloudConnections.handoff(what))) return;
-    if (applyIncludedPagesMessage(message)) return; if (applyIncludedXMessage(message)) return void broadcast({ kind: "config", ...configStatus() });
+    if (applyIncludedPagesMessage(message) || applyIncludedXIndexMessage(message)) return; if (applyIncludedXMessage(message)) return void broadcast({ kind: "config", ...configStatus() });
     composio.applyManagedBrokerMessage(message);
   } catch (error) {
     console.error(`[desktop-sync] rejected private parent message: ${error instanceof Error ? error.message : String(error)}`);
@@ -10285,7 +10285,7 @@ const outboundRequests = new OutboundRequestService();
 const outboundCounts = new OutboundCounts(join(DATA_DIR, "outbound-counts.json"));
 const outboundHold = createOutboundHold({ store, dataDir: DATA_DIR, outboundRequests, outboundCounts, holdMs: OUTBOUND_HOLD_MS, connectorThread, activeGroupTurnForBot, notify });
 const xAccountCards = createXAccountCards({ store, holdMs: OUTBOUND_HOLD_MS });
-const xRouter = createServerXRouter({ dataDir: DATA_DIR, askPerson: (input) => xAccountCards.ask(input), target: xSessionTarget, readResponses: xSessionRead, research: (credential) => createResearchClient(credential) });
+const xRouter = createServerXRouter({ dataDir: DATA_DIR, index: () => xIndexAccess(CLOUD_HOME), askPerson: (input) => xAccountCards.ask(input), target: xSessionTarget, readResponses: xSessionRead, research: (credential) => createResearchClient(credential) });
 
 function resolveAndSendTrust(res: ServerResponse, threadId: string, requestId: string, behavior: "allow" | "deny" | "answer", edits?: unknown): boolean {
   const remembered = outsideWrites.resolve(threadId, requestId, behavior);
