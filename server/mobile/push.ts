@@ -2,6 +2,7 @@ import { createPrivateKey, sign, type KeyObject } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { connect, constants, type ClientHttp2Session } from "node:http2";
 import type { PushService } from "../../shared/mobile-link.ts";
+import { pushCategory, TURN_ACTIVITY_TYPE, type TurnActivityAttributes, type TurnActivityState } from "../../shared/phone-activity.ts";
 
 /** What a push carries: never a message body, so a lock screen shows who wrote, not what. */
 export interface PushMessage {
@@ -12,6 +13,22 @@ export interface PushMessage {
   botName: string;
   threadId: string;
   groupId?: string;
+  /** an approval's or question's ask, so the notification's buttons answer that one */
+  requestId?: string;
+}
+
+/** One Live Activity push: an update, the end, or (push-to-start) the start of one. Never carries `line`. */
+export interface ActivityPush {
+  event: "update" | "end" | "start";
+  state: Omit<TurnActivityState, "line">;
+  /** epoch seconds; the phone drops a push older than the one it showed */
+  timestamp: number;
+  /** end only: when the lock screen lets it go, epoch seconds */
+  dismissAt?: number;
+  /** start only */
+  attributes?: TurnActivityAttributes;
+  /** 10 for what the person must see now (an ask, the end), 5 for a step */
+  priority: 5 | 10;
 }
 
 export interface PushTarget {
@@ -28,6 +45,22 @@ export interface PushSender {
   /** whether a push for this service leaves this server at all: its own keys, or a push relay */
   delivers?(service: PushService): boolean;
   send(target: PushTarget, message: PushMessage): Promise<PushOutcome>;
+  /** APNs only; `target.token` is the activity's own token, or the push-to-start one */
+  sendActivity?(target: PushTarget, push: ActivityPush): Promise<PushOutcome>;
+}
+
+/** The APNs body of a Live Activity push. */
+export function activityApnsBody(push: ActivityPush): object {
+  return {
+    aps: {
+      timestamp: push.timestamp, event: push.event, "content-state": push.state,
+      ...(push.event === "end" && push.dismissAt ? { "dismissal-date": push.dismissAt } : {}),
+      ...(push.event === "start" && push.attributes ? {
+        "attributes-type": TURN_ACTIVITY_TYPE, attributes: push.attributes,
+        alert: { title: push.attributes.botName, body: "Waiting for you" },
+      } : {}),
+    },
+  };
 }
 
 /** DUSK_PUSH_RELAY: where a server with no APNs or FCM keys of its own sends pushes ("off" for nowhere); unset, `fallback` */
@@ -57,6 +90,15 @@ function messageData(message: PushMessage): Record<string, string> {
   return {
     kind: message.kind, botId: message.botId, threadId: message.threadId, id: message.id,
     ...(message.groupId !== undefined ? { groupId: message.groupId } : {}),
+    ...(message.requestId !== undefined ? { requestId: message.requestId } : {}),
+  };
+}
+
+export function apnsAlertBody(message: PushMessage): object {
+  const category = pushCategory(message);
+  return {
+    aps: { alert: { title: message.botName, body: "New message" }, sound: "default", "thread-id": message.threadId, ...(category ? { category } : {}) },
+    dusk: messageData(message),
   };
 }
 
@@ -120,7 +162,7 @@ export function createPushSender(env: NodeJS.ProcessEnv = process.env, deps: {
     return current;
   }
 
-  async function sendApns(target: PushTarget, message: PushMessage): Promise<PushOutcome> {
+  async function sendApns(target: PushTarget, kind: { type: "alert"; collapse: string } | { type: "liveactivity"; priority: 5 | 10 }, payload: object): Promise<PushOutcome> {
     const credentials = apns!;
     const timestamp = now();
     if (!providerToken || timestamp - providerToken.createdAt >= 50 * 60_000) {
@@ -134,8 +176,10 @@ export function createPushSender(env: NodeJS.ProcessEnv = process.env, deps: {
     return new Promise<PushOutcome>((resolve) => {
       const request = current.request({
         ":method": "POST", ":path": `/3/device/${target.token}`,
-        authorization: `bearer ${providerToken!.value}`, "apns-topic": credentials.topic,
-        "apns-push-type": "alert", "apns-priority": "10", "apns-collapse-id": collapseId(message.threadId),
+        authorization: `bearer ${providerToken!.value}`,
+        ...(kind.type === "alert"
+          ? { "apns-topic": credentials.topic, "apns-push-type": "alert", "apns-priority": "10", "apns-collapse-id": collapseId(kind.collapse) }
+          : { "apns-topic": `${credentials.topic}.push-type.liveactivity`, "apns-push-type": "liveactivity", "apns-priority": String(kind.priority) }),
       });
       let status = 0;
       let body = "";
@@ -157,10 +201,7 @@ export function createPushSender(env: NodeJS.ProcessEnv = process.env, deps: {
         try { reason = JSON.parse(body).reason; } catch {}
         finish(status === 400 && (reason === "BadDeviceToken" || reason === "DeviceTokenNotForTopic") ? "gone" : "failed");
       });
-      request.end(JSON.stringify({
-        aps: { alert: { title: message.botName, body: "New message" }, sound: "default", "thread-id": message.threadId },
-        dusk: messageData(message),
-      }));
+      request.end(JSON.stringify(payload));
     });
   }
 
@@ -212,11 +253,10 @@ export function createPushSender(env: NodeJS.ProcessEnv = process.env, deps: {
   }
 
   /** the relay sees the device token, the bot's name and the ids a tap opens; never a title or message text */
-  async function sendRelay(base: string, target: PushTarget, message: PushMessage): Promise<PushOutcome> {
-    const { title: _title, ...shown } = message;
+  async function sendRelay(base: string, target: PushTarget, what: { message: Omit<PushMessage, "title"> } | { activity: ActivityPush }): Promise<PushOutcome> {
     const response = await fetch(`${base}/v1/push`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ service: target.service, token: target.token, ...(target.environment ? { environment: target.environment } : {}), message: shown }),
+      body: JSON.stringify({ service: target.service, token: target.token, ...(target.environment ? { environment: target.environment } : {}), ...what }),
       signal: AbortSignal.timeout(10_000),
     });
     const answer = await response.json().catch(() => null) as { outcome?: unknown; code?: unknown } | null;
@@ -237,8 +277,20 @@ export function createPushSender(env: NodeJS.ProcessEnv = process.env, deps: {
       }
       if (!configured.includes(target.service) && !relay) return "skipped";
       try {
-        if (relay) return await sendRelay(relay, target, message);
-        return await (target.service === "apns" ? sendApns(target, message) : sendFcm(target, message));
+        const { title: _title, ...shown } = message;
+        if (relay) return await sendRelay(relay, target, { message: shown });
+        return await (target.service === "apns" ? sendApns(target, { type: "alert", collapse: message.threadId }, apnsAlertBody(message)) : sendFcm(target, message));
+      } catch {
+        return "failed";
+      }
+    },
+    async sendActivity(target, activity) {
+      if (target.service !== "apns") return "skipped";
+      const relay = configured.includes("apns") ? null : deps.relay?.() ?? null;
+      if (!configured.includes("apns") && !relay) return "skipped";
+      try {
+        if (relay) return await sendRelay(relay, target, { activity });
+        return await sendApns(target, { type: "liveactivity", priority: activity.priority }, activityApnsBody(activity));
       } catch {
         return "failed";
       }

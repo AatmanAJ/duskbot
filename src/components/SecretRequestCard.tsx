@@ -16,6 +16,7 @@ import { sealCardSecret, SealTrustError } from "@/lib/card-seal";
 import type { CardSealKey } from "../../shared/saved-secrets";
 import { Icon } from "./Icon";
 import { Toggle } from "./ui/Toggle";
+import { useSettleFold } from "./settle-fold";
 
 // Security: the value goes straight to the host's settings, never into the chat. A custom secret leaves this app only
 // sealed for the server that keeps it, so a relay between them (the VPS tunnel, a Cloud's proxy) never reads it.
@@ -42,16 +43,25 @@ export function SecretSettledRow({ label, status, tone = "done", title, action, 
   );
 }
 
-export function SecretRequestCard({
-  botId,
-  threadId,
-  message,
-}: {
+type SecretRequestCardProps = {
   botId: string;
   color?: Bot["color"];
   threadId: string;
   message: Message;
-}) {
+};
+
+export function SecretRequestCard(props: SecretRequestCardProps) {
+  const secret = props.message.secret!;
+  const settled = credentialResumeOutcome(secret) !== null || secret.superseded === true || secret.stopped === true;
+  const fold = useSettleFold<HTMLDivElement>(settled);
+  return <div ref={fold} className="w-full max-w-[560px]"><SecretRequestCardBody {...props} /></div>;
+}
+
+export function SecretRequestCardBody({
+  botId,
+  threadId,
+  message,
+}: SecretRequestCardProps) {
   const { dispatch } = useStore();
   const secret = message.secret!;
   const [value, setValue] = useState("");

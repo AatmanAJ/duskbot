@@ -7,7 +7,6 @@ import {
   useReducer,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
@@ -58,8 +57,10 @@ import {
   phonePairingManualCodeMode,
 } from "../lib/companion-state";
 import { ConnectionDetail } from "./ConnectionDetail";
-import { PixelIcon, type PixelIconName } from "./ui/PixelIcon";
 import { requireUserPresence } from "@/lib/user-presence";
+import { phoneRelayBridge, relayPairingUsable } from "@/lib/phone-relay";
+import type { PhoneRelayState } from "../types/duskDesktop";
+import { AnywhereUnavailableRows, ErrorLine, FIELD, FlowRow, RelayPairingRows, WifiRow } from "./PhoneFlowRows";
 
 export interface PhoneDevice {
   id: string;
@@ -150,12 +151,18 @@ export const companionAccountActionError = (
   actionError: string | null,
 ): string | null => {
   if (actionError) return actionError;
-  return account?.status === "signed-out" ? account.message ?? null : null;
+  return account?.available && account.status === "signed-out" ? account.message ?? null : null;
 };
 
 export interface PhoneSetupController {
   state: CompanionState | null;
   account: CompanionAccountState | null;
+  /** this computer's relay to its phones; null in a build without one */
+  relay: PhoneRelayState | null;
+  /** the secure route is the relay: the pairing code reaches this computer from any network */
+  relayPairing: boolean;
+  /** the relay's state was asked for at least once, so a null relay means this build has none */
+  relayChecked: boolean;
   phase: PhoneSetupPhase;
   email: string;
   code: string;
@@ -185,6 +192,7 @@ export interface PhoneSetupController {
   requestCode: () => void;
   verifyCode: () => void;
   retryAccount: () => void;
+  retryRelay: () => void;
   cancel: () => void;
   refreshCode: () => void;
   finish: () => void;
@@ -195,6 +203,8 @@ export interface PhoneSetupController {
 export function usePhoneSetupController(profileEmail = ""): PhoneSetupController {
   const [state, setState] = useState<CompanionState | null>(null);
   const [account, setAccount] = useState<CompanionAccountState | null>(null);
+  const [relay, setRelay] = useState<PhoneRelayState | null>(null);
+  const [relayChecked, setRelayChecked] = useState(false);
   const [email, setEmailState] = useState(profileEmail);
   const [code, setCodeState] = useState("");
   const [codeSent, setCodeSent] = useState(false);
@@ -229,8 +239,20 @@ export function usePhoneSetupController(profileEmail = ""): PhoneSetupController
     setPairingRoutePinState(pin);
   }, []);
 
+  const loadRelay = useCallback((ask: "state" | "ready" = "state") => {
+    const bridge = phoneRelayBridge();
+    if (!bridge) {
+      setRelayChecked(true);
+      return;
+    }
+    void bridge[ask]()
+      .then((next) => { if (mounted.current) setRelay(next); }, () => {})
+      .finally(() => { if (mounted.current) setRelayChecked(true); });
+  }, []);
+
   useEffect(() => {
     mounted.current = true;
+    loadRelay();
     return () => {
       mounted.current = false;
       setupGeneration.current += 1;
@@ -501,6 +523,8 @@ export function usePhoneSetupController(profileEmail = ""): PhoneSetupController
     setError(null);
     setAccountError(null);
     setSetupTimedOut(false);
+    loadRelay();
+    if (relayPairingUsable(relay) && phonePairingGate(account, state, false) !== "open") return;
     if (
       phonePairingGate(account, state, false) === "open"
       || (account?.available && (account.status === "ready" || account.status === "connecting"))
@@ -508,7 +532,7 @@ export function usePhoneSetupController(profileEmail = ""): PhoneSetupController
       setProvisioning(true);
       void openPairing("automatic", account, generation);
     }
-  }, [account, openPairing, state]);
+  }, [account, loadRelay, openPairing, relay, state]);
 
   const useLocalNow = useCallback(() => {
     const baseline = phoneSetupBaseline(state?.devices ?? null);
@@ -667,6 +691,20 @@ export function usePhoneSetupController(profileEmail = ""): PhoneSetupController
       && pairingRoutePinState?.token === state.pairing.token,
     ),
   });
+
+  const onlyWifi = phase === "sign-in" && !account?.available && relayChecked && relay === null
+    && !flow.localFallback && !flow.tailscaleFallback;
+  useEffect(() => {
+    if (onlyWifi) entries.current.useLocalNow();
+  }, [onlyWifi]);
+
+  const signingIn = phase === "sign-in";
+  useEffect(() => {
+    if (!signingIn) return;
+    const refresh = () => loadRelay();
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [loadRelay, signingIn]);
 
   useEffect(() => {
     if (
@@ -838,6 +876,10 @@ export function usePhoneSetupController(profileEmail = ""): PhoneSetupController
   return {
     state,
     account,
+    relay,
+    relayPairing: flow.active && !flow.localFallback && !flow.tailscaleFallback && relayPairingUsable(relay)
+      && !state?.endpoints?.some((endpoint) => endpoint.kind === "hosted"),
+    relayChecked,
     phase,
     email,
     code,
@@ -876,6 +918,7 @@ export function usePhoneSetupController(profileEmail = ""): PhoneSetupController
     requestCode,
     verifyCode,
     retryAccount,
+    retryRelay: () => loadRelay("ready"),
     cancel,
     refreshCode: () => afterPresence(() => {
       const generation = ++setupGeneration.current;
@@ -897,27 +940,6 @@ export function usePhoneSetupController(profileEmail = ""): PhoneSetupController
   };
 }
 
-const ROW = "flex min-h-12 flex-wrap items-center justify-between gap-x-5 gap-y-2 px-3.5 py-2.5";
-const LABEL = "min-w-0 flex-1 basis-48";
-const TITLE = "text-[13px] leading-[18px] tracking-[-0.08px] text-ink";
-const SECONDARY = "text-[13px] leading-[18px] tracking-[-0.08px] text-ink-secondary";
-const FIELD = "h-8 w-56 max-w-full rounded-[10px] border border-transparent bg-menu px-3 text-[13px] text-ink outline-none placeholder:text-ink-tertiary focus:border-transparent disabled:opacity-50";
-
-/** One Grok row: a label, an optional short line under it, and what sits on the right. */
-function FlowRow({ title, detail, alert, icon, children }: { title: ReactNode; detail?: ReactNode; alert?: boolean; icon?: PixelIconName; children?: ReactNode }) {
-  return (
-    <div className={ROW}>
-      {icon && <PixelIcon name={icon} size={24} className="-me-1 shrink-0" />}
-      <div className={LABEL}>
-        <div className={TITLE}>{title}</div>
-        {detail && <div role={alert ? "alert" : undefined} className={SECONDARY}>{detail}</div>}
-      </div>
-      {children && <div className="ms-auto flex shrink-0 flex-wrap items-center justify-end gap-2">{children}</div>}
-    </div>
-  );
-}
-
-const ErrorLine = ({ children }: { children: ReactNode }) => <p role="alert" className="px-3.5 pb-2.5 text-[13px] leading-[18px] text-danger">{children}</p>;
 
 export function phoneAccessStatus(state: CompanionState | null): string {
   if (!state) return t("common.checking");
@@ -945,25 +967,26 @@ export function PhoneSetupFlowView({ controller }: { controller: PhoneSetupContr
     );
   }
 
+  if (c.relayPairing) return <RelayPairingRows onCancel={c.cancel} onDone={c.finish} />;
+
+  if (c.phase === "sign-in" && !c.account?.available) return <AnywhereUnavailableRows c={c} />;
+
   if (c.phase === "sign-in") {
-    const unavailable = !c.account?.available;
     const failed = c.account?.status === "error" || c.setupTimedOut;
-    const problem = unavailable
-      ? t("phone.signIn.unavailable")
-      : c.setupTimedOut
-        ? t("phone.signIn.timedOut")
-        : failed ? c.account?.message ?? t("phone.signIn.failed") : null;
+    const problem = c.setupTimedOut
+      ? t("phone.signIn.timedOut")
+      : failed ? c.account?.message ?? t("phone.signIn.failed") : null;
     return (
       <>
-        <FlowRow title={unavailable || failed ? t("phone.signIn.attention") : t("phone.signIn.title")} detail={problem} alert={Boolean(c.setupTimedOut)}>
-          {(unavailable || failed) && (
+        <FlowRow title={failed ? t("phone.signIn.attention") : t("phone.signIn.title")} detail={problem} alert={Boolean(c.setupTimedOut)}>
+          {failed && (
             <button type="button" disabled={c.accountBusy} onClick={c.retryAccount} className="ui-button">
               {c.accountBusy ? t("remote.account.retrying") : t("phone.signIn.retry")}
             </button>
           )}
           <button type="button" onClick={c.cancel} className="ui-button">{t("phone.back")}</button>
         </FlowRow>
-        {!unavailable && !failed && (
+        {!failed && (
           <>
             <FlowRow title={<label htmlFor="phone-sign-in-email">{t("phone.signIn.email")}</label>}>
               <input
@@ -1004,9 +1027,7 @@ export function PhoneSetupFlowView({ controller }: { controller: PhoneSetupContr
           </>
         )}
         {actionError && <ErrorLine>{actionError}</ErrorLine>}
-        <FlowRow title={t("settings.w6.phone.wifi")} detail={t("settings.w6.phone.wifiDetail")}>
-          <button type="button" disabled={c.busy || c.accountBusy} onClick={c.useLocal} className="ui-button">{t("settings.w6.phone.useWifi")}</button>
-        </FlowRow>
+        <WifiRow c={c} />
       </>
     );
   }
@@ -1065,5 +1086,6 @@ export function PhoneSetupFlowView({ controller }: { controller: PhoneSetupContr
     </>
   );
 }
+
 
 export { companionPairingMode };

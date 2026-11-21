@@ -80,6 +80,9 @@ export function createIncidents(options: IncidentsOptions) {
 
   const dayOf = (at: number) => Math.floor(at / DAY);
   const muted = (incident: Incident) => incident.mutedUntil !== null && incident.mutedUntil > now();
+  // only what needs the owner now emails: the server itself failing. client and desktop errors and new problem groups
+  // stay in the admin panel (the owner asked for urgent mail only, 2026-11-17)
+  const urgent = (incident: Pick<Incident, "source" | "name">) => !isClientSource(incident.source) && incident.name !== "NewProblemGroup";
   function count() { const day = dayOf(now()); if (today.day !== day) Object.assign(today, { day, mails: 0, clientMails: 0 }); return today; }
   function within(list: number[], ms: number) { const time = now(); while (list.length && list[0]! <= time - ms) list.shift(); return list.length; }
 
@@ -123,7 +126,7 @@ export function createIncidents(options: IncidentsOptions) {
       Object.assign(entry.incident, fields, { count: entry.incident.count + 1 });
       entry.unsaved++;
       if (reopened) { entry.incident.notifiedAt = null; entry.incident.firstSeen = at; }
-      if (entry.incident.notifiedAt === null && !entry.fast && !muted(entry.incident)) {
+      if (entry.incident.notifiedAt === null && !entry.fast && !muted(entry.incident) && urgent(entry.incident)) {
         entry.fast = true;
         entry.client = client;
         fastTimer ??= options.timers === false ? null : setTimeout(() => { fastTimer = null; void flushNew(); }, RULES.fastMs);
@@ -189,7 +192,7 @@ export function createIncidents(options: IncidentsOptions) {
   async function daily(): Promise<void> {
     const time = now(), midnight = dayOf(time) * DAY;
     if (time < midnight + RULES.dailyHourUtc * HOUR || !options.mail || !options.to().length) return;
-    const unmailed = (await store.list({ limit: 200, since: midnight - DAY })).filter(incident => incident.notifiedAt === null && !(incident.mutedUntil !== null && incident.mutedUntil > time));
+    const unmailed = (await store.list({ limit: 200, since: midnight - DAY })).filter(incident => incident.notifiedAt === null && urgent(incident) && !(incident.mutedUntil !== null && incident.mutedUntil > time));
     if (!unmailed.length || !await store.once(`daily|${options.env}|${midnight}`, time + 7 * DAY)) return;
     const capped = today.heldBack > 0;
     today.heldBack = 0;
