@@ -377,7 +377,7 @@ export class BrowserCleanupCoordinator {
 }
 
 /** Defaults for config.json's browserEngine.idleTimeoutMinutes (1-60); agent-browser's own backstop closes an idle daemon after an hour. */
-export const DEFAULT_BROWSER_IDLE_MINUTES = 10;
+export const DEFAULT_BROWSER_IDLE_MINUTES = 40;
 export const CLOUD_HOME_BROWSER_IDLE_MINUTES = 3;
 
 export function browserIdleMs(cfg: { browserEngine?: { idleTimeoutMinutes?: number } }, { cloudHome = false }: { cloudHome?: boolean } = {}): number {
@@ -472,6 +472,11 @@ export class BrowserSweep {
   async closeAll(timeoutMs = 4_000): Promise<void> {
     clearInterval(this.#timer);
     this.#timer = undefined;
+    await this.closeOwned(timeoutMs);
+  }
+
+  /** Closes every browser of this data folder through the engine's own close, which writes cookies to disk; the sweep goes on. */
+  async closeOwned(timeoutMs = 4_000): Promise<void> {
     const binaryPath = this.#engine();
     const owned = binaryPath ? await this.#owned(binaryPath, timeoutMs).catch(() => null) : null;
     await Promise.all((owned ?? []).map(async (session) => {

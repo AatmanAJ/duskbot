@@ -1,20 +1,26 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { AnimatePresence } from "motion/react";
 import { createPortal } from "react-dom";
 import { Check, Copy } from "../../icons";
 
 import { automationSentence, automationsFrom, automationStatus, AUTOMATION_FIX_LABEL, nextWhen, plainWhen, runLine, type Automation, type AutomationFix } from "@/lib/automations";
 import { appWhen } from "@/lib/app-automations";
 import { useAppTriggers } from "@/lib/app-triggers";
+import { botAccentScope } from "@/lib/bot-accent";
 import { cn } from "@/lib/cn";
+import { friendlyError } from "@/lib/plain-error";
 import { t } from "@/lib/i18n";
 import { lowerFirst, upperFirst } from "@/lib/lower-first";
 import { routineRunsOn } from "@/lib/routine-display";
-import { fetchForecast, forecastLine, pauseLine, useLoaded } from "@/lib/spend";
+import { fetchForecast, forecastLine, forecastWarning, lessOften, pauseLine, periodLine, useLoaded } from "@/lib/spend";
+import { phoneApp } from "@/lib/store-app";
 import { formatCost } from "@/lib/usage-trace";
-import { isRoutineProblemRun, type Routine, type RoutineRunOn } from "@/lib/routines";
+import { isRoutineProblemRun, type Routine, type RoutineRun, type RoutineRunOn } from "@/lib/routines";
 import { hoursLine, liveStrip, probeLine } from "@/lib/routine-display";
 import { saveWebhookCredential, webhookCredentialStore } from "@/lib/webhook-credentials";
-import { useStore, type Bot } from "@/state/store";
+import { SheetPush } from "@/mobile/SheetPush";
+import { api, useStore, type Bot } from "@/state/store";
+import { ROUTINE_RUNS_WINDOW_MS } from "@/state/routine-runs";
 import { useAllAutomationActions } from "../automations/app-actions";
 import { AppEventEditor } from "../automations/AppEventEditor";
 import { WebhookEditor } from "../WebhookTrigger";
@@ -23,6 +29,12 @@ import { RoutineForm } from "./RoutineForm";
 import { RunStrip } from "./RunStrip";
 import { SpendCap } from "../usage/SpendCap";
 import { GrokDialog } from "../ui/GrokDialog";
+
+interface BotMailView {
+  address: string;
+  problem?: string;
+  routes: Array<{ alias: string; targetId: string; from: string[]; address: string }>;
+}
 
 const termCls = "text-[12px] leading-4 tracking-[0.01em] text-ink-secondary";
 const valueCls = "mt-0.5 text-[13px] leading-[18px] tracking-[0.015em] text-ink";
@@ -67,41 +79,118 @@ export function BotRoutines({ bot, defaultRunOn, label = true }: { bot: Bot; def
     requestAnimationFrame(() => document.querySelector(`[data-panel-routine="${CSS.escape(focus.routineId!)}"]`)?.scrollIntoView({ block: "nearest" }));
   }, [focus, automations]);
 
+  const phone = phoneApp();
+  const actions = useAllAutomationActions();
+  const openAutomation = openId ? automations.find((automation) => automation.id === openId) ?? null : null;
+  const openRoutine = openAutomation?.kind === "schedule" ? state.routines.find((routine) => routine.id === openAutomation.id) : undefined;
+  const lastOpen = useRef<{ automation: Automation; routine?: Routine } | null>(null);
+  if (openAutomation) lastOpen.current = { automation: openAutomation, routine: openRoutine };
+  const shown = openAutomation ? { automation: openAutomation, routine: openRoutine } : lastOpen.current;
+  const shownName = shown ? shown.automation.name.trim() || automationSentence(shown.automation, bot.name) : undefined;
+  const closePhoneRoutine = () => { setOpenId(null); setEditing(null); };
+
   const add = editing === "new"
     ? <RoutineForm bot={bot} defaultRunOn={defaultRunOn} onDone={(saved) => { setEditing(null); if (saved) setOpenId(saved.id); }} />
     : null;
 
+  const phonePush = phone && shown ? (
+    <SheetPush
+      open={Boolean(openAutomation)}
+      onClose={closePhoneRoutine}
+      title={shownName}
+      pageId="routine"
+    >
+      <div {...botAccentScope(bot.color)} data-panel-modal="routine" className="px-4 pb-8 pt-2">
+        <AutomationDetail
+          id={`routine-detail-${shown.automation.id}`}
+          bot={bot}
+          automation={shown.automation}
+          routine={shown.routine}
+          actions={actions}
+          onEdit={() => setEditing(shown.automation.id)}
+        />
+      </div>
+      {shown.routine && (
+        <SheetPush
+          open={Boolean(openAutomation && editing === openAutomation.id && openRoutine)}
+          onClose={() => setEditing(null)}
+          title={t("automations.edit")}
+          pageId="routine-edit"
+        >
+          <div {...botAccentScope(bot.color)} className="px-4 pb-8 pt-2">
+            <RoutineForm bot={bot} routine={shown.routine} onDone={() => setEditing(null)} />
+          </div>
+        </SheetPush>
+      )}
+      {openAutomation && editing === openAutomation.id && openAutomation.kind !== "schedule" && (
+        <ForeignEditor automation={openAutomation} onClose={() => setEditing(null)} />
+      )}
+    </SheetPush>
+  ) : null;
+
+  const loadFailed = state.routinesLoadState === "error";
   if (automations.length === 0 && editing !== "new") {
     return (
-      <PanelEmpty data-panel-empty="routines">{t("botPanel.routines.empty")}</PanelEmpty>
+      <>
+        {loadFailed
+          ? <RoutinesLoadFailed />
+          : state.routinesLoadState === "ready"
+            ? <PanelEmpty data-panel-empty="routines">{t("botPanel.routines.empty")}</PanelEmpty>
+            : <PanelEmpty data-panel-empty="routines-loading">{t("botPanel.routines.loading")}</PanelEmpty>}
+        {phonePush}
+      </>
     );
   }
   return (
-    <Card label={label ? t("botPanel.ui.botSettingsSimpleRoutines") : undefined} anchor="routines">
-      {automations.map((automation) => (
-        <AutomationRow
-          key={automation.id}
-          bot={bot}
-          automation={automation}
-          routine={automation.kind === "schedule" ? state.routines.find((routine) => routine.id === automation.id) : undefined}
-          open={openId === automation.id}
-          editing={editing === automation.id}
-          onOpen={() => { setOpenId(automation.id); setEditing(null); }}
-          onClose={() => { setOpenId(null); setEditing(null); }}
-          onEdit={(on) => setEditing(on ? automation.id : null)}
-        />
-      ))}
-      {add}
-    </Card>
+    <>
+      <Card label={label ? t("botPanel.ui.botSettingsSimpleRoutines") : undefined} anchor="routines">
+        {loadFailed && <RoutinesLoadFailed />}
+        {automations.map((automation) => (
+          <AutomationRow
+            key={automation.id}
+            bot={bot}
+            automation={automation}
+            routine={automation.kind === "schedule" ? state.routines.find((routine) => routine.id === automation.id) : undefined}
+            open={openId === automation.id}
+            editing={editing === automation.id}
+            phone={phone}
+            onOpen={() => { setOpenId(automation.id); setEditing(null); }}
+            onClose={() => { setOpenId(null); setEditing(null); }}
+            onEdit={(on) => setEditing(on ? automation.id : null)}
+          />
+        ))}
+        {add}
+      </Card>
+      {phonePush}
+    </>
   );
 }
 
-function AutomationRow({ bot, automation, routine, open, editing, onOpen, onClose, onEdit }: {
+function RoutinesLoadFailed() {
+  const { dispatch } = useStore();
+  const [trying, setTrying] = useState(false);
+  const retry = () => {
+    const since = Date.now() - ROUTINE_RUNS_WINDOW_MS;
+    setTrying(true);
+    void api<{ routines: Routine[]; runs: RoutineRun[] }>(`/api/routines?since=${since}`)
+      .then(({ routines, runs }) => dispatch({ type: "routinesHydrated", routines, runs, since }), () => {})
+      .finally(() => setTrying(false));
+  };
+  return (
+    <div role="alert" data-panel-empty="routines-error" className="flex flex-col items-center gap-2.5 px-4 py-4">
+      <p className="text-pretty text-center text-[13px] leading-[18px] tracking-[0.015em] text-ink/[0.56]">{t("botPanel.routines.loadError")}</p>
+      <button type="button" className={buttonCls} disabled={trying} onClick={retry}>{t("botPanel.routines.retry")}</button>
+    </div>
+  );
+}
+
+function AutomationRow({ bot, automation, routine, open, editing, phone, onOpen, onClose, onEdit }: {
   bot: Bot;
   automation: Automation;
   routine?: Routine;
   open: boolean;
   editing: boolean;
+  phone: boolean;
   onOpen: () => void;
   onClose: () => void;
   onEdit: (on: boolean) => void;
@@ -149,14 +238,18 @@ function AutomationRow({ bot, automation, routine, open, editing, onOpen, onClos
         )}
       </div>
       {!open && actions.error && <p role="alert" className="m-0 px-2 pb-1.5 text-[12px] leading-4 text-danger">{actions.error}</p>}
-      {open && !(editing && automation.kind !== "schedule") && (
-        <GrokDialog data-panel-modal="routine" title={name} onClose={onClose}>
-          {editing && routine
-            ? <RoutineForm bot={bot} routine={routine} onDone={() => onEdit(false)} />
-            : <AutomationDetail id={detailId} bot={bot} automation={automation} routine={routine} actions={actions} onEdit={() => onEdit(true)} />}
-        </GrokDialog>
+      {!phone && (
+        <>
+          <AnimatePresence>{open && !(editing && automation.kind !== "schedule") && (
+            <GrokDialog key="routine" data-panel-modal="routine" title={name} onClose={onClose}>
+              {editing && routine
+                ? <RoutineForm bot={bot} routine={routine} onDone={() => onEdit(false)} />
+                : <AutomationDetail id={detailId} bot={bot} automation={automation} routine={routine} actions={actions} onEdit={() => onEdit(true)} />}
+            </GrokDialog>
+          )}</AnimatePresence>
+          {editing && automation.kind !== "schedule" && <ForeignEditor automation={automation} onClose={() => onEdit(false)} />}
+        </>
       )}
-      {editing && automation.kind !== "schedule" && <ForeignEditor automation={automation} onClose={() => onEdit(false)} />}
     </div>
   );
 }
@@ -185,8 +278,26 @@ function AutomationDetail({ id, bot, automation, routine, actions, onEdit }: {
   const [confirming, setConfirming] = useState(false);
   const [capSaved, setCapSaved] = useState(0);
   const forecast = useLoaded(() => (routine ? fetchForecast(routine.id) : Promise.resolve(null)), `${routine?.id}:${routine?.updatedAt}:${capSaved}:${automation.runs[0]?.status}`);
+  const mail = useLoaded(() => (routine ? api(`/api/webhooks/mail/${encodeURIComponent(bot.id)}`).then((body) => body.mail as BotMailView | null).catch(() => null) : Promise.resolve(null)), `${bot.id}:${routine?.id}`);
+  const mailRoutes = mail?.routes?.filter((route) => route.targetId === automation.id) ?? [];
+  const slower = routine && forecast?.warnings?.some((warning) => warning === "frequent" || warning === "spike") ? lessOften(routine.schedule) : null;
+  const [slowing, setSlowing] = useState(false);
+  const runLessOften = async () => {
+    if (!routine || !slower || slowing) return;
+    setSlowing(true);
+    actions.setError("");
+    try {
+      const response = await api(`/api/routines/${routine.id}`, { method: "PATCH", body: JSON.stringify({ schedule: slower }) });
+      dispatch({ type: "routinePatched", routine: response.routine });
+    } catch (failure) {
+      actions.setError(friendlyError(failure));
+    } finally {
+      setSlowing(false);
+    }
+  };
+  const addressCopied = actions.copied === automation.id || (automation.addressId !== undefined && actions.copied === automation.addressId);
   const status = automationStatus(automation);
-  const runs = automation.runs.filter((run) => run.status !== "queued").slice(0, RECENT_RUNS);
+  const runs = automation.runs.filter((run) => run.status !== "queued" || Boolean(run.attention?.trim())).slice(0, RECENT_RUNS);
   const roomGoal = routine?.target === "room-goal";
   const worksOn = routineRunsOn({ roomGoal, runOn: routine?.runOn ?? automation.appTrigger?.runOn, computer: bot.computer, cloudHome: state.config?.cloudHome === true });
   const resultsTo = roomGoal
@@ -207,6 +318,7 @@ function AutomationDetail({ id, bot, automation, routine, actions, onEdit }: {
   const fix = (kind: AutomationFix) => {
     if (kind === "usage") dispatch({ type: "toggleAppSettings", open: true, section: "usage" });
     else if (kind === "reconnect") dispatch({ type: "togglePlugins", open: true, surface: "apps" });
+    else if (kind === "answer") actions.answerRun(automation);
     else actions.openRun(automation, automation.runs.find((run) => run.status !== "queued"));
   };
 
@@ -224,9 +336,39 @@ function AutomationDetail({ id, bot, automation, routine, actions, onEdit }: {
         <Fact term={t("routines.inline.worksOn")}>{upperFirst(worksOn.label)}</Fact>
         {automation.kind === "schedule" && <Fact term={t("routines.inline.resultsTo")}>{upperFirst(resultsTo)}</Fact>}
         {routine && forecast?.warnings && (
-          <Fact term={t("routines.cost.term")}>
-            <span data-routine-forecast="">{upperFirst(forecastLine(forecast))}</span>
-            {forecast.warnings.map((warning) => <span key={warning} className="block text-[12px] leading-4 text-warning">{t(warning === "frequent" ? "routines.cost.frequent" : "routines.cost.costly")}</span>)}
+          <Fact term={t("routines.usage.term")}>
+            {forecast.usage && (forecast.usage.month.runs > 0 || !forecast.warnings.length) ? (
+              <>
+                <span data-routine-usage="" className="block">{upperFirst(t("routines.usage.week", { line: periodLine(forecast.usage.week) }))}</span>
+                <span className="block text-ink-secondary">{upperFirst(t("routines.usage.month", { line: periodLine(forecast.usage.month) }))}</span>
+              </>
+            ) : <span data-routine-forecast="">{upperFirst(forecastLine(forecast))}</span>}
+            {forecastWarning(forecast) && <span data-routine-warning="" className="block text-[12px] leading-4 text-warning">{forecastWarning(forecast)}</span>}
+            {slower && (
+              <button type="button" data-routine-action="less-often" disabled={slowing} onClick={() => void runLessOften()} className={cn(buttonCls, "mt-1.5")}>
+                {upperFirst(t("routines.lessOften"))}
+              </button>
+            )}
+          </Fact>
+        )}
+        {routine && (
+          <Fact term={t("routines.address.term")}>
+            <span className="block text-ink-secondary">{upperFirst(t("routines.address.hint"))}</span>
+            <button type="button" data-routine-action="address" disabled={busy} onClick={() => void actions.copyRoutineAddress(automation)} className={cn(buttonCls, "mt-1.5")}>
+              {addressCopied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+              {upperFirst(addressCopied ? t("automations.address.copied") : automation.addressId ? t("automations.address.copy") : t("routines.address.get"))}
+            </button>
+          </Fact>
+        )}
+        {mailRoutes.length > 0 && (
+          <Fact term={t("routines.email.term")}>
+            {mailRoutes.map((route) => (
+              <span key={route.address} data-routine-mail="" className="block select-text">
+                {route.address}
+                <span className="text-ink-secondary"> · {lowerFirst(t("routines.email.from", { senders: route.from.join(", ") }))}</span>
+              </span>
+            ))}
+            {mail?.problem && <span className="block text-[12px] leading-4 text-warning">{mail.problem}</span>}
           </Fact>
         )}
         {routine && <Fact term={t("usage.cap.label")}><SpendCap kind="routine" id={routine.id} capUsd={forecast?.capUsd} onSaved={() => setCapSaved((n) => n + 1)} className="mt-0.5" sentence /></Fact>}

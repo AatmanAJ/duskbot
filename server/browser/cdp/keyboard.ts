@@ -461,10 +461,15 @@ export class Keyboard {
     }
   }
 
-  /** Key events per character, Shift held for shifted ones; characters the US layout lacks are inserted as text. */
+  /** Key events per character, Shift held for shifted ones; characters the US layout lacks are inserted as text. A line
+   * break is Shift+Enter, which starts a new line where a bare Enter would send a chat message or a form. */
   async type(text: string): Promise<void> {
+    let previous = "";
     for (const char of text) {
-      const typed = TYPED.get(char);
+      const after = previous;
+      previous = char;
+      if (char === "\n" && after === "\r") continue;
+      const typed = char === "\n" || char === "\r" ? { code: "Enter", shift: true } : TYPED.get(char);
       if (!typed) {
         await this.insertText(char);
         continue;

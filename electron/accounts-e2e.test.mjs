@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { ACCOUNT_ROUTES as R, CSRF_COOKIE, CSRF_HEADER, EMAIL_RESEND_SECONDS, SESSION_COOKIE } from "../shared/account-api.ts";
+import { ACCOUNT_ROUTES as R, APP_AUTH_REDIRECT, APP_LANDING_PATH, CSRF_COOKIE, CSRF_HEADER, EMAIL_RESEND_SECONDS, SESSION_COOKIE } from "../shared/account-api.ts";
 import { createDashboardApp } from "../apps/dashboard/server/app.ts";
 import { startFakeProviders } from "../apps/dashboard/server/auth/fake-providers.ts";
 import { memoryMailer } from "../apps/dashboard/server/auth/mail.ts";
@@ -104,9 +104,14 @@ describe("accounts across the website, desktop, workspace and phone", () => {
       return request(path, { method, headers: { ...(body === undefined ? {} : { "content-type": "application/json", origin: f.url }), ...(withCsrf ? csrf() : {}) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     }
+    function appLink(target) {
+      const url = new URL(target, f.url);
+      return url.origin === f.url && url.pathname === APP_LANDING_PATH ? new URL(`${APP_AUTH_REDIRECT}?${url.hash.slice(1)}`) : url;
+    }
     async function follow(path) {
       let url = new URL(path, f.url), init = {};
       for (let hop = 0; hop < 12; hop++) {
+        url = appLink(url);
         if (url.protocol === "duskbot:" || (url.origin === f.url && ["/", "/sign-in", "/cloud/desktop"].includes(url.pathname))) return url;
         const response = await request(url, init);
         if ([302, 303].includes(response.status)) {
@@ -126,7 +131,7 @@ describe("accounts across the website, desktop, workspace and phone", () => {
       }
       throw new Error("Too many fixture redirects.");
     }
-    return { cookies, json, follow };
+    return { cookies, json, follow, appLink };
   }
   async function webSignIn(jar, email, pending) {
     const start = await jar.json(R.emailStart, { email, ...(pending ? { pending } : {}) });
@@ -315,8 +320,9 @@ describe("accounts across the website, desktop, workspace and phone", () => {
     expect(pendingUrl.pathname).toBe("/sign-in"); expect(pending).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect((await browser().json(R.emailStart, { email: "phone-held@accounts.test", pending })).status).toBe(400);
     const verified = await webSignIn(jar, "phone-held@accounts.test", pending);
-    expect(new URL(verified.redirect).protocol).toBe("duskbot:");
-    expect(await p.client.handleAuthUrl(verified.redirect)).toEqual({ outcome: "signed-in" });
+    const handedBack = jar.appLink(verified.redirect);
+    expect(handedBack.protocol).toBe("duskbot:");
+    expect(await p.client.handleAuthUrl(handedBack.href)).toEqual({ outcome: "signed-in" });
     expect((await bearer(p.token())).data.account).toMatchObject(p.client.account());
     expect(p.client.account().id).toBe(verified.account.id);
     expect(await p.client.enrollGrant()).toEqual({ enrollToken: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/), dashboardUrl: f.url });

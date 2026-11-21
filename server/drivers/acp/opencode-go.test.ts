@@ -1096,10 +1096,10 @@ describe("OpenCode session variants", () => {
     { ...variantConfig(ids, currentValue), type: "select", category: "thought_level" },
   ];
   const fixtures: Array<{ scratch: string; instance: ProviderInstance; recorder: EventRecorder }> = [];
-  const fixture = async (variants: Record<string, unknown>, environment: Record<string, string> = {}) => {
+  const fixture = async (variants: Record<string, unknown>, environment: Record<string, string> = {}, models: ModelCatalog = catalog(model, secondModel, plainModel)) => {
     const scratch = mkdtempSync(join(tmpdir(), "dusk-opencode-variants-"));
     const dump = join(scratch, "rpc");
-    const driver = createOpenCodeDriver(async () => catalog(model, secondModel, plainModel));
+    const driver = createOpenCodeDriver(async () => models);
     const instance = await driver.create({
       instanceId: "opencode-variant-test", displayName: "OpenCode", enabled: true,
       config: { cli: FAKE_CLI, fullAuto: false, workspace: scratch },
@@ -1167,6 +1167,21 @@ describe("OpenCode session variants", () => {
     expect((await f.run({ variant })).done).toMatchObject({ ok: false });
     expect(f.prompted()).toBe(false);
     expect(f.calls()).toEqual([]);
+  });
+
+  it("uses the catalog's variant on a free rung when the session still advertises an unsupported one", async () => {
+    const free = "opencode/ladder-free";
+    const f = await fixture(
+      { [free]: variantConfig(["low", "high", "default"], "low") },
+      { FAKE_ACP_MODELS: free },
+      { default: free, options: [{ id: free, label: free, variants: [
+        { id: "none", label: "none" }, { id: "high", label: "high" }, { id: "default", label: "default" },
+      ] }] },
+    );
+    expect((await f.run({ model: free, variant: "low" })).done).toMatchObject({ ok: true });
+    expect(f.calls().map((call) => call.params)).toEqual([
+      { sessionId: "fake-acp-session", configId: "effort", value: "default" },
+    ]);
   });
 
   it("allows a model without configurable reasoning, but rejects an explicit variant", async () => {
@@ -1396,6 +1411,33 @@ describe("OpenCode ready only through its free models", () => {
       .toMatchObject({ authenticated: true, freeFallback: true });
   });
 
+  it("loads the free models when a status read finds it ready after the list read empty (installed after start)", async () => {
+    const scratch = mkdtempSync(join(tmpdir(), "dusk-opencode-late-"));
+    resetOpenCodeModelCache();
+    let installed = false;
+    const loader = vi.fn(async () => (installed ? catalog("opencode/big-pickle", "opencode/grok-code") : { default: "", options: [] }));
+    const instance = await createOpenCodeDriver(loader).create({
+      instanceId: `opencode-late-${Date.now()}`,
+      displayName: "OpenCode",
+      environment: { HOME: scratch, USERPROFILE: scratch, XDG_DATA_HOME: join(scratch, "data"), ...noKeys },
+      enabled: true,
+      config: { cli: FAKE_CLI, fullAuto: false },
+    });
+    try {
+      expect(instance.models.options).toEqual([]);
+      installed = true;
+      expect(await instance.snapshot()).toMatchObject({ state: "available", authenticated: true, freeFallback: true });
+      expect(instance.models.default).toBe("opencode/big-pickle");
+      const calls = loader.mock.calls.length;
+      await instance.snapshot();
+      expect(loader.mock.calls.length).toBe(calls);
+    } finally {
+      await instance.dispose();
+      await removeTempDir(scratch);
+      resetOpenCodeModelCache();
+    }
+  });
+
   it("is a normal AI when OpenCode offers another provider's models", async () => {
     const snapshot = await snapshotWith(catalog("opencode/big-pickle", "openrouter/vendor/model-v2"));
     expect(snapshot.authenticated).toBe(true);
@@ -1415,7 +1457,7 @@ describe("OpenCode free model that never answers, or answers nothing", () => {
 
   // `login`: OpenCode's stored auth.json, as on a Mac where the person once signed OpenCode in to something
   async function firstMessage(hang: string, extra: Record<string, string> = {}, replyMs = "600", login?: Record<string, unknown>,
-    models: ModelCatalog = catalog("opencode/big-pickle", "opencode/grok-code", "opencode/minimax-free")) {
+    models: ModelCatalog = catalog("opencode/big-pickle", "opencode/grok-code", "opencode/minimax")) {
     process.env.DUSK_ACP_FIRST_REPLY_MS = replyMs;
     const scratch = mkdtempSync(join(tmpdir(), "dusk-opencode-hang-"));
     if (login) {
@@ -1428,7 +1470,7 @@ describe("OpenCode free model that never answers, or answers nothing", () => {
       instanceId: "opencode-hang",
       displayName: "OpenCode",
       environment: { HOME: scratch, USERPROFILE: scratch, XDG_DATA_HOME: join(scratch, "data"), ...noKeys,
-        FAKE_ACP_MODELS: "opencode/big-pickle,opencode/grok-code,opencode/minimax-free", FAKE_ACP_HANG_MODELS: hang,
+        FAKE_ACP_MODELS: "opencode/big-pickle,opencode/grok-code,opencode/minimax", FAKE_ACP_HANG_MODELS: hang,
         FAKE_ACP_TEXT_REPLY: "ok", FAKE_ACP_DUMP: join(scratch, "dump"), ...extra },
       enabled: true,
       config: { cli: FAKE_CLI, fullAuto: false },
@@ -1491,7 +1533,7 @@ describe("OpenCode free model that never answers, or answers nothing", () => {
     const effort = [{ id: "low", label: "Low" }, { id: "high", label: "High" }];
     const models: ModelCatalog = { default: "opencode/big-pickle", options: [
       { id: "opencode/big-pickle", label: "Big Pickle" }, { id: "opencode/grok-code", label: "Grok Code", variants: effort },
-      { id: "opencode/minimax-free", label: "MiniMax" },
+      { id: "opencode/minimax", label: "MiniMax" },
     ] };
     const { done, rungs } = await firstMessage("opencode/big-pickle", {
       FAKE_ACP_VARIANTS: JSON.stringify({ "opencode/grok-code": { currentValue: "high", options: [{ value: "low", name: "Low" }, { value: "high", name: "High" }] } }),
@@ -1513,8 +1555,8 @@ describe("OpenCode free model that never answers, or answers nothing", () => {
   }, 30_000);
 
   it("ends the turn with a plain line when no free model answers, never in silence", async () => {
-    const { done, events, tried } = await firstMessage("opencode/big-pickle,opencode/grok-code,opencode/minimax-free");
-    expect(tried).toEqual(["opencode/big-pickle", "opencode/grok-code", "opencode/minimax-free"]);
+    const { done, events, tried } = await firstMessage("opencode/big-pickle,opencode/grok-code,opencode/minimax");
+    expect(tried).toEqual(["opencode/big-pickle", "opencode/grok-code", "opencode/minimax"]);
     expect(done).toMatchObject({ ok: false, stopReason: "no_reply" });
     expect(trailed).toEqual(expect.arrayContaining([expect.objectContaining({ ev: "free_model.exhausted", reason: "timeout", rung: 3 })]));
     expect(events.filter((event) => event.type === "runtime.error")).toEqual([expect.objectContaining({
@@ -1533,7 +1575,7 @@ describe("OpenCode free model that never answers, or answers nothing", () => {
   }, 20_000);
 
   it("ends with a plain line when every free model answers nothing", async () => {
-    const all = "opencode/big-pickle,opencode/grok-code,opencode/minimax-free";
+    const all = "opencode/big-pickle,opencode/grok-code,opencode/minimax";
     const { done, events, tried } = await firstMessage("", { FAKE_ACP_EMPTY_MODELS: all });
     expect(tried).toHaveLength(3);
     expect(done).toMatchObject({ ok: false, stopReason: "no_reply" });
@@ -1542,13 +1584,14 @@ describe("OpenCode free model that never answers, or answers nothing", () => {
 
   it("stops at OpenCode's free usage limit, which every free model shares, and says so", async () => {
     // well before the first-reply wait: the limit in OpenCode's log ends the turn at the next 2 s look
-    const { done, events, tried, ms } = await firstMessage("opencode/big-pickle,opencode/grok-code,opencode/minimax-free", { FAKE_ACP_FREE_LIMIT: "1" }, "8000");
+    const { done, events, tried, ms } = await firstMessage("opencode/big-pickle,opencode/grok-code,opencode/minimax", { FAKE_ACP_FREE_LIMIT: "1" }, "8000");
     expect(tried).toEqual(["opencode/big-pickle"]);
     expect(ms).toBeLessThan(7_000);
     expect(done).toMatchObject({ ok: false, stopReason: "no_reply" });
     expect(events.some((event) => event.type === "runtime.notice" && /another free model/.test(event.message))).toBe(false);
     expect(events.filter((event) => event.type === "runtime.error")).toEqual([expect.objectContaining({
       message: "The free backup model has used up its free replies for now, so this message got no reply. Connect your own AI, like Claude or ChatGPT, to keep going, or send it again later.",
+      errorCode: "free_pool_limit", limit: "engine",
     })]);
   }, 20_000);
 
@@ -1558,7 +1601,7 @@ describe("OpenCode free model that never answers, or answers nothing", () => {
     const stray = { codex: { type: "api", key: "sk-stray" } };
 
     it("stops at the free usage limit within seconds, with the line the connect card is drawn from", async () => {
-      const { done, events, tried, ms } = await firstMessage("opencode/big-pickle,opencode/grok-code,opencode/minimax-free", { FAKE_ACP_FREE_LIMIT: "1" }, "25000", stray);
+      const { done, events, tried, ms } = await firstMessage("opencode/big-pickle,opencode/grok-code,opencode/minimax", { FAKE_ACP_FREE_LIMIT: "1" }, "25000", stray);
       expect(tried).toEqual(["opencode/big-pickle"]);
       expect(ms).toBeLessThan(7_000);
       expect(done).toMatchObject({ ok: false, stopReason: "no_reply" });
@@ -1578,7 +1621,7 @@ describe("OpenCode free model that never answers, or answers nothing", () => {
   it("ends a turn no free model answers inside the turn's free budget, not after every model's full wait", async () => {
     // three models at 600 ms each would take 1.8 s; the budget stops it after the second
     process.env.DUSK_ACP_FREE_TURN_MS = "1000";
-    const { done, events, tried } = await firstMessage("opencode/big-pickle,opencode/grok-code,opencode/minimax-free");
+    const { done, events, tried } = await firstMessage("opencode/big-pickle,opencode/grok-code,opencode/minimax");
     expect(tried.length).toBeLessThan(3);
     expect(done).toMatchObject({ ok: false, stopReason: "no_reply" });
     expect(events.filter((event) => event.type === "runtime.error")).toEqual([expect.objectContaining({
@@ -1592,6 +1635,13 @@ describe("OpenCode free model that never answers, or answers nothing", () => {
     expect(openCodeFreeModelOrder("openrouter/x-free", true, catalog("openrouter/x-free", "opencode/paid-one", "opencode/a-free")))
       .toEqual(["opencode/a-free", "openrouter/x-free"]);
     expect(openCodeFreeModelOrder("opencode-go/minimax-m3", true, catalog("opencode-go/minimax-m3"))).toBeNull();
+  });
+
+  it("falls back only through the models marked free when the CLI lists its paid ones too, with no login of the person's own", () => {
+    // the V2 CLI lists every Zen model without a login; the paid ones answer 402 Insufficient balance
+    const v2 = catalog("opencode/beam-free", "opencode/claude-opus-5", "opencode/glm-5.3-flash-free", "opencode/gpt-6-sol");
+    expect(openCodeFreeModelOrder("opencode/beam-free", false, v2)).toEqual(["opencode/beam-free", "opencode/glm-5.3-flash-free"]);
+    expect(openCodeFreeModelOrder("opencode/claude-opus-5", false, v2)).toBeNull();
   });
 });
 

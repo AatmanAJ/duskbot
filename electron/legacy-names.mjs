@@ -62,7 +62,6 @@ export const CLOUD_HOME = Object.freeze({
   root: `/usr/lib/${OLD}`,
   etc: `/etc/${OLD}`,
   run: `/run/${OLD}`,
-  gate: `${OLD}-docker`,
   data: `/data/.${OLD}`,
   dataName: `.${OLD}`,
 });

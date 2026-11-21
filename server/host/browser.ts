@@ -39,7 +39,10 @@ import { LAUNCHER_SECCOMP_FD, type LauncherBox } from "../browser/chrome/wrapper
 import type { HostKind } from "../browser/chrome/flags.ts";
 import { browserEngineKind, type BrowserEngineKind } from "../browser/config.ts";
 import { ChromeEngine, chromeTarget, LiveRouter, profileKey, RuntimeRouter } from "../browser/engines.ts";
+import { readOnAgentBrowser, type ReadAnswer, type ResponseRead } from "../x-providers/cdp-read.ts";
+import type { XSessionTarget } from "../x-providers/session.ts";
 import { CHROME_BROWSER_SYSTEM_PROMPT } from "../browser/prompt.ts";
+import { refusedSignInNote } from "../browser/agent-browser-args.ts";
 import { passkeyAnnotation } from "../browser/passkey-notice.ts";
 import type { EngineBrowsers } from "../engine-memory.ts";
 import { augmentedPath } from "../env-path.ts";
@@ -76,6 +79,9 @@ export interface BrowserHostDeps {
   /** Chromium on this turn's assigned VPS computer. Null permits a host browser; false omits structured browsing on a
    * selected desktop without CDP. An unavailable selected computer rejects. The turn pins shared-computer ownership. */
   boxChrome?(botId: string, turn?: BrowserTurn): Promise<string | false | null>;
+  /** The bot asked the person to sign in or pass a check in its browser and the card is still open: while they hold
+   * that browser, its calls are refused rather than held back, because they may be typing a password. */
+  signingIn?(botId: string): boolean;
 }
 
 type Spec = { command: string; args?: readonly string[]; env: Record<string, string> };
@@ -117,6 +123,7 @@ export function createBrowserHost(deps: BrowserHostDeps) {
     botByThread: (threadId: string) => deps.store().botByThread(threadId) };
 
   // an idle close (or its bot stopped) says so just before it closes the browser; a restart never does
+  const signingIn = (session: string) => Boolean(deps.signingIn) && store.bots.some((bot) => deps.signingIn!(bot.id) && browserSessionsOf(bot.id, bot.browserProfile).includes(session));
   const idleClosing = new Set<string>();
   const agentBrowserRuntime = new BrowserRuntime({
     closeBrowser: async (session, spec) => {
@@ -129,12 +136,14 @@ export function createBrowserHost(deps: BrowserHostDeps) {
       throw error instanceof RelayTimeout ? new TransportError(error.message) : error;
     }),
     steps: browserSteps,
+    signingIn,
     onTiming: process.env.DUSK_BROWSER_TIMING === "1" ? (timing) => console.info(formatBrowserTiming(timing)) : undefined,
   });
   const browserBox = deps.browserBox;
   const boxed = Boolean(browserBox?.(LAUNCHER_SECCOMP_FD, []));
   if (browserBox) chromeLauncher.boxWith(() => browserBox(LAUNCHER_SECCOMP_FD, []));
   agentBrowserRuntime.onIdleClose((session) => idleClosing.add(session));
+  agentBrowserRuntime.refusedSignIn = () => refusedSignInNote(myChromeAvailable() && (cfg.browserProfiles ?? []).some((profile) => profile.browser === "chrome"));
   const agentBrowserLive = new BrowserLive({ runtime: agentBrowserRuntime, devTools: {
     url: (port) => relay(port, { action: "cdp_url" }, { timeoutMs: 5_000, maxBytes: 65_536 }).then((answer) => answer.data?.cdpUrl),
   } });
@@ -151,6 +160,7 @@ export function createBrowserHost(deps: BrowserHostDeps) {
     host,
     egressPort: (key) => browserEgress.open(key),
     egressNotice: (key) => browserEgress.takeNotice(key),
+    signingIn,
     idleMs,
     log: (line) => console.warn(line),
     onScratch: (session, path) => { scratch.mark(`browser:${session}`, path); },
@@ -198,6 +208,11 @@ export function createBrowserHost(deps: BrowserHostDeps) {
       return agentBrowserSweep.closeAll();
     },
   };
+  /** Quits the bots' browsers so their cookies reach disk. agent-browser's are closed only when the app is surely going:
+   * its runtime keeps a client for a browser closed under it. `pictures` keeps each tab's last screen for Recent tabs. */
+  async function flushBrowsers(final: boolean, pictures = false): Promise<void> {
+    await Promise.all([chromeEngine.service.closeAll({ pictures }), final ? agentBrowserSweep.closeOwned() : undefined]);
+  }
   // The viewer and the agent must address the SAME temporary browser.
   const temporaryBrowserSessions = new Map<string, string>();
   /** The suffix an audience gives a browser's name, remembered so a deletion erases every audience's browser. */
@@ -284,6 +299,31 @@ export function createBrowserHost(deps: BrowserHostDeps) {
     const session = sessionFor(botId, profile, suffix);
     const target = profile && profile !== "guest" ? browserProfilePartitionTarget(cfg, profile) : null;
     return { session, spec: chromeEngine.spec(session, profileKey(botId + suffix, session, { guest: profile === "guest", partitionId: target ? target.partitionId + suffix : null })) };
+  }
+  /** The kept browser profile x_search may read X through for this bot (server/x-providers/session.ts), on either engine:
+   * dusk bot's own Chrome, or agent-browser's Chrome reached over its DevTools socket. Never a temporary browser, the
+   * person's own Chrome or a bot's own box. */
+  const xAgentBrowsers = new Map<string, BrowserSitesTarget>();
+  async function xSessionTarget(botId: string, threadId?: string): Promise<XSessionTarget | null> {
+    const bot = store.bot(botId);
+    if (!bot || bot.browser === false || bot.computer === "off" || !builtInBrowserEnabled(cfg) || bot.browserProfile === "guest") return null;
+    if ((await boxChromeOf(botId)) !== null) return null;
+    if (onChrome(bot.browserProfile)) {
+      if (chromeEngine.summary().kind !== "engine") return null;
+      const { session, spec } = chromeSpec(botId, bot.browserProfile, browserAudience(threadId));
+      return chromeTarget(session, spec);
+    }
+    if (usesMyChrome(browserProfileIdOf(bot.browserProfile))) return null;
+    const sites = await signedInSitesTarget({ bot: botId }, browserAudience(threadId));
+    if (!("session" in sites) || !sites.env.AGENT_BROWSER_PROFILE) return null;
+    const key = `agent-browser:${sites.session}`;
+    xAgentBrowsers.set(key, sites);
+    return { key, session: sites.session };
+  }
+  /** Reads through whichever engine the target is on; a stopped agent-browser session is started first. */
+  async function xSessionRead(target: XSessionTarget, request: ResponseRead): Promise<ReadAnswer> {
+    const sites = xAgentBrowsers.get(target.key);
+    return sites ? readOnAgentBrowser(sites, request) : chromeEngine.service.readResponses(target, request);
   }
   /** Chrome for the new engine, the installed agent-browser otherwise. */
   function browserReady(profile: string | undefined): boolean {
@@ -524,8 +564,8 @@ export function createBrowserHost(deps: BrowserHostDeps) {
   return {
     browserRuntime, browserLive, usedBrowserSessions, browserSweep, temporaryBrowserSessions, browserIdleMs: idleMs,
     currentBrowserSession, forgetTemporaryBrowser, myChromeAvailable, usesMyChrome, browserSessionSpec, browserIntegration,
-    browserReady, hostBrowserUsable, currentBrowserSpec, browserRunning, loginInput, browserSystemPrompt, signedInSitesRefusal, closeBrowser, browserEngineSwitched,
+    browserReady, hostBrowserUsable, currentBrowserSpec, xSessionTarget, xSessionRead, browserRunning, loginInput, browserSystemPrompt, signedInSitesRefusal, closeBrowser, browserEngineSwitched,
     eraseDeletedBrowser, engineSummary, engineBrowsers, browserAudience, browserSessionsOf, signedInSitesTarget, uploadPaths,
-    eraseAudienceBrowsers,
+    eraseAudienceBrowsers, flushBrowsers,
   };
 }
