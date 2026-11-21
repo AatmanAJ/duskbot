@@ -73,10 +73,10 @@ export function useSidebarSections({ simple, rail, density, query, label, sideba
       setSimpleOrder((current) => { const next = replace(current); saveSimpleSectionOrder(next); return next; });
       focusHeader(to);
     },
-    arrange(natural: string[], { mainUnassigned = false }: { mainUnassigned?: boolean } = {}) {
+    arrange(natural: string[]) {
       const orderedIds = orderedSidebarSections(natural, savedOrder);
       const ownOrder = simple || rail;
-      const sectionIds = ownOrder ? simpleOrderedSections(orderedIds, simpleOrder, mainUnassigned) : orderedIds;
+      const sectionIds = ownOrder ? simpleOrderedSections(orderedIds, simpleOrder) : orderedIds;
       const reorder = (id: string, next: string[]) => {
         if (sameSectionOrder(next, sectionIds)) return;
         const saved = ownOrder ? simpleOrder : savedOrder;

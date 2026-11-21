@@ -963,7 +963,7 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
     ...(unsectionedBots.length > 0 ? [BOTS_SECTION_ID] : []),
     ...sectionNames.map(userSectionId),
   ];
-  const layout = sections.arrange(naturalSectionIds, { mainUnassigned: unsectionedBots.some((bot) => bot.id === mainBotId) });
+  const layout = sections.arrange(naturalSectionIds);
   // the main bot alone outside every department leads the list with no "Unassigned" header over it
   const loneMain = simple && unsectionedBots.length === 1 && unsectionedBots[0]!.id === mainBotId;
   const sectionIds = loneMain ? [BOTS_SECTION_ID, ...layout.sectionIds.filter((id) => id !== BOTS_SECTION_ID)] : layout.sectionIds;
@@ -973,7 +973,7 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
   const { interactive: layoutInteractive, collapsed: sectionCollapsed, toggle: toggleSection } = sections;
   // grok's header menu: Rename, Move up, Move down and Delete for a section; Unassigned only moves
   const sectionMenuFor = (id: string): boolean => layoutInteractive && !remoteClient && (userSectionName(id) !== null || (id === BOTS_SECTION_ID && sectionIds.length > 1));
-  const nothingListed = !q && !rail && !primary && !unsectionedChief
+  const nothingListed = state.hydrated === true && !q && !rail && !primary && !unsectionedChief
     && pinnedBots.length + sectionChiefs.length + sectionedBots.length + unsectionedBots.length + visibleGroups.length === 0;
   const archivedBots = state.bots.filter((bot) => bot.hidden && !bot.movedTo);
   const archivedEntry = remoteClient ? undefined : { count: archivedBots.length, open: () => setArchivedBotsOpen(true) };

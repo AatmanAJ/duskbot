@@ -279,14 +279,6 @@ describe("Simple-mode section order", () => {
     expect(placeSection(shown, CHANNELS_SECTION_ID, work, "before")).toEqual([CHANNELS_SECTION_ID, work, BOTS_SECTION_ID]);
   });
 
-  it("leads with the person's own bots while their main bot is in no department, and a new department goes below", () => {
-    const testBots = userSectionId("Test bots");
-    expect(simpleOrderedSections([BOTS_SECTION_ID, testBots], [], true)).toEqual([BOTS_SECTION_ID, testBots]);
-    expect(simpleOrderedSections([CHANNELS_SECTION_ID, BOTS_SECTION_ID, work, testBots], [], true)).toEqual([BOTS_SECTION_ID, work, testBots, CHANNELS_SECTION_ID]);
-    expect(simpleOrderedSections([BOTS_SECTION_ID, work, testBots], [BOTS_SECTION_ID, work], true)).toEqual([BOTS_SECTION_ID, work, testBots]);
-    expect(simpleOrderedSections([BOTS_SECTION_ID, work], [work, BOTS_SECTION_ID], true)).toEqual([work, BOTS_SECTION_ID]);
-  });
-
   it("slots a department added after a Simple move in beside its neighbours from the default", () => {
     const saved = [work, CHANNELS_SECTION_ID, BOTS_SECTION_ID];
     expect(simpleOrderedSections([CHANNELS_SECTION_ID, BOTS_SECTION_ID, work, home], saved)).toEqual([work, home, CHANNELS_SECTION_ID, BOTS_SECTION_ID]);

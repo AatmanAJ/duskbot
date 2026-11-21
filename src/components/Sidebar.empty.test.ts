@@ -77,7 +77,7 @@ describe("a sidebar with no bot in it", () => {
   const empty = () => sidebar().filter((node) => node.type === SidebarEmpty);
 
   it("says so when every bot is hidden or archived, instead of an empty column", () => {
-    fixture.state = { ...initialState, bots: [left("dusk", { defaultBot: { person: "" }, sidebarHidden: true }), left("scout", { hidden: true })], selectedId: "scout", activeView: "chat" };
+    fixture.state = { ...initialState, hydrated: true, bots: [left("dusk", { defaultBot: { person: "" }, sidebarHidden: true }), left("scout", { hidden: true })], selectedId: "scout", activeView: "chat" };
     expect(empty()).toHaveLength(1);
   });
 
