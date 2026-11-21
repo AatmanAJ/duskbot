@@ -18,6 +18,8 @@ export interface CloudSendItem {
   id?: string;
   bot?: string;
   parts: Record<string, string>;
+  /** A move's bot the person has talked with (a message of theirs in one of its chats): the move asks before it goes. */
+  talked?: true;
 }
 
 export interface CloudSendSummary { v: 1; appVersion: string; items: CloudSendItem[] }
@@ -31,6 +33,10 @@ export interface CloudSendSources {
   inRoom?(botId: string): boolean;
   /** The bot has routines here the person set up or changed, which a move takes to My Cloud only with their bot. */
   automated?(botId: string): boolean;
+  /** The bot's memory holds notes (notes brought in from other AI apps among them), which a move takes only with their bot. */
+  remembers?(botId: string): boolean;
+  /** The person has written in one of the bot's chats. */
+  talked?(bot: BotRecord): boolean;
   skills(bot: BotRecord): ReadonlyArray<{ name: string; description?: string; sha256: string; enabled: boolean }>;
   /** The stored picture's bytes, or null when it is gone. */
   picture(avatarUrl: string): Uint8Array | null;
@@ -88,9 +94,9 @@ export function botParts(bot: BotRecord, picture: (avatarUrl: string) => Uint8Ar
 /** A bot nobody has touched since it was made (a fresh install's starter): left out, so it never lands beside My Cloud's
  * own starter. A bot sent from another computer arrives without a greeting, so it never reads as unused. */
 export function unused(bot: BotRecord, skills: number, greetingOnly: (threadId: string, name: string) => boolean, inRoom: (botId: string) => boolean = () => false,
-  automated: (botId: string) => boolean = () => false): boolean {
+  automated: (botId: string) => boolean = () => false, remembers: (botId: string) => boolean = () => false): boolean {
   return !bot.soul?.trim() && !bot.title && !bot.description && !bot.avatarUrl && !bot.sidebarHidden && !bot.welcomed && skills === 0 && (bot.tasks?.length ?? 1) <= 1 && greetingOnly(bot.threadId, bot.name)
-    && !inRoom(bot.id) && !automated(bot.id);
+    && !inRoom(bot.id) && !automated(bot.id) && !remembers(bot.id);
 }
 
 /** `move`: a move's comparison, with what only a move carries. `bot`: a move of that one bot into a team: the bot, its
@@ -101,11 +107,11 @@ export function cloudSendSummary(sources: CloudSendSources, { move = false, bot:
   for (const bot of sources.bots()) {
     if (only !== undefined && bot.id !== only) continue;
     const skills = sources.skills(bot);
-    if (only === undefined && unused(bot, skills.length, sources.greetingOnly, sources.inRoom, move ? sources.automated : undefined)) continue;
+    if (only === undefined && unused(bot, skills.length, sources.greetingOnly, sources.inRoom, move ? sources.automated : undefined, move ? sources.remembers : undefined)) continue;
     carried.add(bot.id);
     const parts: Record<string, string> = { ...botParts(bot, sources.picture), ...(move && sources.move ? sources.move.botParts(bot) : {}) };
     if (only !== undefined) for (const part of TEAM_HELD_PARTS) delete parts[part];
-    items.push({ key: itemKey.bot(bot.id), kind: "bot", label: bot.name, id: bot.id, parts });
+    items.push({ key: itemKey.bot(bot.id), kind: "bot", label: bot.name, id: bot.id, parts, ...(move && sources.talked?.(bot) ? { talked: true as const } : {}) });
     for (const skill of skills) {
       items.push({ key: itemKey.skill(bot.id, skill.name), kind: "skill", label: skill.name, id: skill.name, bot: bot.id,
         parts: { text: skill.sha256.slice(0, 24) || EMPTY, on: skill.enabled ? "on" : "off" } });

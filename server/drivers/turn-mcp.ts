@@ -63,12 +63,20 @@ export function turnStdioMcpServers(turn: SendTurnInput, options: { schemaProfil
 /** dusk bot's proxies and gates that cap their list at DUSK_TOOL_LIMIT. */
 const LIMITING_PROXY = /(?:^|[\\/])(?:agents-proxy|harness-mcp-proxy|connector-proxy|mcp-gate|mcp-remote-proxy)\.[jt]s$/;
 
+const CORE_INTEGRATIONS = { browser: "browser", data: "data", email: "email", device: "device", computer: "localComputer" } as const;
+
+function isCoreServer(name: string, turn: SendTurnInput): boolean {
+  const key = CORE_INTEGRATIONS[name as keyof typeof CORE_INTEGRATIONS];
+  return key !== undefined && turn.integrations?.[key] !== undefined;
+}
+
 /** Each server's share of `budget` tools in its environment, the agents server's whole list first; a server that would
  * not read its share goes behind a gate that does. */
 function withToolShares(servers: TurnStdioMcpServer[], turn: SendTurnInput, budget: number): TurnStdioMcpServer[] {
   const agents = turn.integrations?.agents;
   const shares = shareToolBudget(servers.map((server) => server.name === "agents" && agents
-    ? { name: server.name, tools: agentsToolList(agents.env).listed.length } : { name: server.name }), budget);
+    ? { name: server.name, tools: agentsToolList(agents.env).listed.length, core: true }
+    : { name: server.name, core: isCoreServer(server.name, turn) }), budget);
   return servers.map((server) => {
     const share = { [TOOL_LIMIT_ENV]: String(shares.get(server.name) ?? 0) };
     if (server.args.some((arg) => LIMITING_PROXY.test(arg))) return { ...server, env: { ...server.env, ...share } };

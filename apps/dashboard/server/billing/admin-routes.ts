@@ -66,7 +66,9 @@ export function createAdminRoutes(ctx: BillingContext) {
     const view = clouds.view(c), sub = service.subscriptions(account.id).find(s => s.id === c.subscriptionId);
     const isPrimary = primary(account)?.id === c.id, power = managedPower(c);
     const ended = ["destroyed", "destroying", "error"].includes(view.status) || sub?.status === "ended" && !c.review;
-    const status = ended ? "ended" : power ? "ready" : view.status === "provisioning" ? "setting_up" : view.status === "running" ? "ready" : ["sleeping", "suspended"].includes(view.status) ? "stopped" : view.status;
+    // a failed charge stops it: the app shows why, and its one way back, instead of opening it
+    const owing = sub?.status === "payment_problem" && sub.fixBy !== undefined && !c.review;
+    const status = ended ? "ended" : owing ? "payment_problem" : power ? "ready" : view.status === "provisioning" ? "setting_up" : view.status === "running" ? "ready" : ["sleeping", "suspended"].includes(view.status) ? "stopped" : view.status;
     const tier = sub?.bundle ?? config.bundles.find(b => b.cart.desktop.kind === c.kind)?.id ?? "custom";
     const runs = sub && sub.status !== "ended" && sub.status !== "pending" && sub.currentPeriodEnd !== null && sub.currentPeriodEnd > now();
     return { id: c.id, name: c.name, color: c.color, role: "owner", tier, runsOn: "cloud", status, origin: c.origin, teamId: null, primary: isPrimary, managed: true,
@@ -76,12 +78,14 @@ export function createAdminRoutes(ctx: BillingContext) {
       ...(["stopped", "ended"].includes(status) && c.destroyAt !== null ? { deleteAfter: c.destroyAt } : {}),
       removable: status === "ended" || status === "checkout",
       ...(isPrimary && runs ? { renewal: { trial: sub.trialEndsAt !== undefined, endsAt: sub.cancelAtPeriodEnd ? sub.currentPeriodEnd : null, keptDays: config.graceDays } } : {}),
+      ...(owing ? { payment: { fixBy: sub!.fixBy!, ...(sub!.trialUnpaid ? { trial: true } : {}) } } : {}),
       cancelAtPeriodEnd: sub?.cancelAtPeriodEnd ?? false, renewsAt: sub?.currentPeriodEnd ?? null };
   }
   /** `moves`: the app may move this computer's (or a server's) bots into this ready Cloud by itself; only its owner's */
   function machineSummary(c: StoredCloud, own: boolean) {
-    const view = clouds.view(c), power = managedPower(c);
-    const state = power ? "ready" : view.status === "provisioning" ? "setting_up" : view.status === "running" ? "ready" : view.status === "payment_problem" ? "payment_problem" : view.status === "error" ? "failed" : "stopped";
+    const view = clouds.view(c), sub = service.subscriptions(c.accountId).find(s => s.id === c.subscriptionId);
+    const owing = sub?.status === "payment_problem" && sub.fixBy !== undefined && !c.review, power = owing ? null : managedPower(c);
+    const state = owing ? "payment_problem" : power ? "ready" : view.status === "provisioning" ? "setting_up" : view.status === "running" ? "ready" : view.status === "payment_problem" ? "payment_problem" : view.status === "error" ? "failed" : "stopped";
     return { state, ...(state === "ready" ? { origin: c.origin, ...(own ? { moves: true } : {}) } : {}), ...(power ? { power } : {}), ...(state === "setting_up" ? { setup: { step: c.setupStep ?? "reserving" } } : {}),
       disk: { gb: c.spec.diskGb, maxGb: c.placement === "dedicated" ? config.dedicated.diskGb.max : c.spec.diskGb } };
   }
@@ -165,16 +169,18 @@ export function createAdminRoutes(ctx: BillingContext) {
         text(data.source);
         const sub = subscription(account), cart = bundleCart(data.plan, sub.cart.interval);
         if (route === "upgrade/preview") {
-          const preview = service.previewChange(account, sub.id, cart);
+          const preview = await service.previewChange(account, sub.id, cart);
+          // the app sells upgrades; a smaller plan is switched on the plans page, where its date is shown
+          if (preview.timing === "scheduled" || preview.timing === "undo") throw new BillingError(409, "plan_change_unavailable");
           for (const [key, value] of confirmations) if (value.expiresAt <= now() || value.accountId === account.id) confirmations.delete(key);
           confirmations.set(preview.confirmation, { accountId: account.id, plan: data.plan, subscriptionId: sub.id, expiresAt: preview.expiresAt });
-          return send({ tier: data.plan, from: sub.bundle ?? "custom", price: preview.quote.totalCents, chargeNow: preview.chargeNowCents, tax: 0, currency: "USD", trial: false,
-            confirmation: preview.confirmation, expiresAt: preview.expiresAt, nextBillingAt: sub.currentPeriodEnd });
+          return send({ tier: data.plan, from: sub.bundle ?? "custom", price: preview.quote.totalCents, chargeNow: preview.chargeNowCents, tax: preview.taxCents, currency: "USD", trial: preview.timing === "trial",
+            confirmation: preview.confirmation, expiresAt: preview.expiresAt, nextBillingAt: preview.nextChargeAt });
         }
         const token = text(data.confirmation), confirmation = confirmations.get(token);
         if (!confirmation || confirmation.accountId !== account.id || confirmation.subscriptionId !== sub.id || confirmation.plan !== data.plan || confirmation.expiresAt <= now()) throw new BillingError(409, "confirmation_required");
         confirmations.delete(token);
-        const changed = await service.change(account, sub.id, token);
+        const changed = (await service.change(account, sub.id, token)).subscription;
         return send({ status: changed.bundle === data.plan ? "upgraded" : "pending", tier: changed.bundle ?? "custom" });
       }
       if (route === "pairing") {

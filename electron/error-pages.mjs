@@ -8,21 +8,54 @@ function escapeHtml(value) {
   return value.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 }
 
-/** The page the main window shows when the background server never came up. */
-export function buildErrorPage({ allPortsOccupied, logDir }) {
+/** Addresses the server-failure page's two buttons navigate to; main runs them and never lets the navigation through. */
+export const SERVER_PAGE_ACTIONS = Object.freeze({ retry: "https://duskbot.invalid/start-again", report: "https://duskbot.invalid/report" });
+
+/** The server-failure page's button behind `url`, or null. */
+export function serverPageAction(url) {
+  return Object.entries(SERVER_PAGE_ACTIONS).find(([, at]) => at === String(url))?.[0] ?? null;
+}
+
+/** Why the background server isn't up, in the person's words. */
+export const SERVER_FAILURES = Object.freeze({
+  ports: "Other apps are using every port dusk bot can open on.",
+  timeout: "Its background server didn't answer within a minute.",
+  stopped: "Its background server stopped while it was starting.",
+  crashed: "Its background server kept stopping, so dusk bot paused it.",
+});
+
+/** The page the main window shows while the background server isn't up: why, Try again, and a way to report it. */
+export function buildErrorPage({ reason = "timeout", logDir, starting = false }) {
+  if (starting) {
+    return dataUrl(handoffPage({ title: "dusk bot", mood: "go", content: `<h1 role="status">Starting dusk bot again…</h1><p>This takes a few seconds.</p>` }));
+  }
   const serverLogPath = path.join(logDir, "server.log");
-  const reason = allPortsOccupied
-    ? "Every dusk bot port answered health checks from another process, likely a second copy of the app, or another program on ports 8799–28799. Quit that program, then quit and reopen dusk bot."
-    : "The background server didn't come up in time. This is usually slow startup, not a port conflict. Quit and reopen dusk bot.";
+  const why = SERVER_FAILURES[reason] ?? SERVER_FAILURES.timeout;
   return dataUrl(handoffPage({
     title: "dusk bot couldn't start",
     mood: "oops",
-    content: `<h1>The bot server didn't wake up</h1><p>${escapeHtml(reason)} If it keeps happening, check <code>${escapeHtml(serverLogPath)}</code>.</p>`,
+    content: `<h1>dusk bot couldn't start</h1><p>${escapeHtml(why)} Your bots and chats are safe.</p>`
+      + `<p class="go"><a href="${SERVER_PAGE_ACTIONS.retry}">Try again</a></p>`
+      + `<p class="hint">Still stuck? <a href="${SERVER_PAGE_ACTIONS.report}">Report the problem</a> and we'll look into it. The details are in <code>${escapeHtml(serverLogPath)}</code></p>`,
   }));
 }
 
-/** The page the live-desktop viewer shows when it cannot open. */
-export function desktopViewerErrorPage(message, retryUrl) {
+/** A new GitHub issue about a server that couldn't start, filled in with what helps and nothing private. */
+export function serverProblemReportUrl({ reason, version, platform, arch }) {
+  const body = [
+    "### What happened", "dusk bot showed \"dusk bot couldn't start\".", "",
+    `- Reason: ${SERVER_FAILURES[reason] ?? reason}`, `- Version: ${version}`, `- Platform: ${platform} ${arch}`, "",
+    "Attach server.log from the folder the page names if you can.",
+  ].join("\n");
+  const url = new URL("https://github.com/DuskBotAI/duskbot/issues/new");
+  url.searchParams.set("title", "dusk bot couldn't start");
+  url.searchParams.set("body", body);
+  return url.toString();
+}
+
+/** The page the live-desktop viewer shows when it cannot open: one plain sentence and what to press; the browser's
+ * reason goes to the log. */
+export function desktopViewerErrorPage(retryUrl) {
   const escape = (value) =>
     String(value)
       .replaceAll("&", "&amp;")
@@ -32,7 +65,7 @@ export function desktopViewerErrorPage(message, retryUrl) {
   return dataUrl(handoffPage({
     title: "Desktop unavailable",
     mood: "oops",
-    content: `<h1>Couldn't open the live desktop</h1><p>${escape(message)}</p><p class="go"><a href="${escape(retryUrl)}" target="_blank" rel="noreferrer">Open in browser</a></p>`,
+    content: `<h1>Couldn't open the live desktop</h1><p>It may still be starting. Try again in a moment.</p><p class="go"><a href="${escape(retryUrl)}">Try again</a> <a href="${escape(retryUrl)}" target="_blank" rel="noreferrer">Open in browser</a></p>`,
   }));
 }
 

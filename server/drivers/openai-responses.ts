@@ -4,7 +4,9 @@
 import type { Completion, OpenAIChatMessage } from "./openai-chat.ts";
 import type { ChatContentPart } from "./chat-images.ts";
 import type { ChatToolDefinition } from "./chat-mcp-tools.ts";
+import type { EffortLevel } from "../contracts.ts";
 import { ChatProtocolError, ChatToolCalls, object } from "./openai-chat-protocol.ts";
+import { noReplyError } from "./openai-chat-final.ts";
 
 export type ResponseItem = Record<string, unknown>;
 
@@ -114,6 +116,7 @@ export function responsesRequest(input: {
   tools: readonly ChatToolDefinition[];
   replay: (message: OpenAIChatMessage) => ResponseItem[] | undefined;
   summaries: boolean;
+  effort?: EffortLevel;
 }): Record<string, unknown> {
   const instructions = input.messages.filter((message) => message.role === "system" && typeof message.content === "string")
     .map((message) => message.content).join("\n\n");
@@ -123,7 +126,7 @@ export function responsesRequest(input: {
     store: false,
     ...(instructions ? { instructions } : {}),
     input: input.messages.flatMap((message) => inputItems(message, input.replay(message))),
-    ...(input.summaries ? { reasoning: { summary: "auto" } } : {}),
+    ...(input.summaries || input.effort ? { reasoning: { ...(input.effort ? { effort: input.effort } : {}), ...(input.summaries ? { summary: "auto" } : {}) } } : {}),
     tools: input.tools.map(({ function: { name, description, parameters } }) => ({ type: "function", name, description, parameters, strict: false })),
   };
 }
@@ -240,7 +243,7 @@ export async function readResponsesStream(body: ReadableStream<Uint8Array> | nul
   try {
     while (!ended) {
       const { done: closed, value } = await reader.read();
-      if (closed) throw new ChatProtocolError("Stream ended before completion");
+      if (closed) throw noReplyError("stream_cut");
       handlers.onBytes();
       buffer += decoder.decode(value, { stream: true });
       if (buffer.length > MAX_FRAME_CHARS) throw new ChatProtocolError("provider stream frame exceeded the size limit");

@@ -40,11 +40,39 @@ const NO_BROWSER_NOTE =
   " This bot is set to work in the built-in browser, but the built-in browser is switched off in App Settings, so you have no browser and no computer this turn: say so instead of guessing.";
 
 const OFF_NOTE =
-  " This bot's \"Works on\" setting is Off, so no computer and no built-in browser are mounted this turn: you cannot open a page, click, or type on any screen. If the user asks for something that needs one, tell them Works on is Off in this bot's settings, never claim you are opening a browser you do not have.";
+  " This bot's \"Works on\" setting is Off, so no computer or built-in browser is mounted this turn. Everything else works (automations, waits, memory, connected apps, teammates, files you make here): do the job with those. Only a step that needs a screen or a shell is out: do the rest, give the person that step's exact command or clicks, and say in one line that turning on Works on in this bot's settings lets you do it yourself.";
 
-export function computerSkippedNote(cause: string): string {
+/** Off for an engine that has its own shell in the bot's working folder: that shell stays, only places are off. */
+const OFF_NOTE_ENGINE_SHELL =
+  " This bot's \"Works on\" setting is Off, so no computer or built-in browser is mounted this turn. Your own shell and files in your working folder still work: write, run and test code there and show the real output, never say you cannot run code. Everything else works too (automations, waits, memory, connected apps, teammates, files you make here). Only a step that needs a screen, a website or the person's own files outside your folder is out: do the rest, give the person that step's exact command or clicks, and say in one line that turning on Works on in this bot's settings lets you do it yourself.";
+
+const NO_PERMISSION_TALK = " Never explain permissions or System Settings yourself, and never claim to have used this computer's screen.";
+
+/** A bot on this computer whose screen control the OS has not granted yet: it chats and works in its browser as usual.
+ * `missing`: the grants macOS still withholds, by name; `ask`: request_screen_access is mounted; `shell`: the bot has a shell on this computer. */
+export function screenAccessMissingNote(browser: boolean, missing: readonly string[] = [], ask = false, shell = false): string {
+  const withheld = missing.length ? ` (macOS has not given dusk bot ${missing.join(" or ")} on this Mac yet)` : "";
+  const desktop = (shell ? " Files and commands on this computer need no screen control: your own shell and file tools work on it now, so find, read and change files and run commands with them." : "")
+    + ` Only a task that truly needs this computer's own desktop apps${shell ? "" : ", or files outside the browser,"} needs screen control${withheld}.`
+    + (ask ? " For such a task, call request_screen_access with a one-line reason: the person sees one way to allow it. Never call it for web work." : "")
+    + (ask ? " After calling it, say in one short line that you will carry on as soon as it is allowed, and meanwhile do what you can" : " Meanwhile do what you can")
+    + (browser ? ", in your built-in browser when that could work." : ".");
+  return browser
+    ? " Your built-in browser is available this turn and is the default for everything on the web: opening a site, searching, reading pages, filling in forms, signing in. When the person asks you to open a site or do anything a browser can do, go straight to your built-in browser and do it; never say you cannot open a website. Control of this computer's desktop apps is not available." + desktop + NO_PERMISSION_TALK
+    : " Control of this computer's desktop apps is not available this turn. Answer and chat normally, with web search and page fetches for lookups." + desktop + NO_PERMISSION_TALK;
+}
+
+export function computerSkippedNote(cause: string, incident = true, gone = false): string {
+  if (!incident && gone) return " Your computer is not set up right now, so no computer is mounted this turn: answer and work without it. Only if the request truly needs a screen, say in one short sentence that your computer isn't set up and the person can set it up again in Settings > Computers; never quote an error, and never claim to have used that computer.";
+  if (!incident) return " Your computer is not answering right now, so no computer is mounted this turn: answer and work without it. Only if the request truly needs a screen, say in one short sentence that your computer isn't answering and the person can try again in a minute; never quote an error, and never claim to have used that computer.";
   const why = cause.trim().replace(/[\s.]+$/, "");
   return ` This turn answers a Team incidents report and your computer could not be prepared for it (${why}), so no computer is mounted: you cannot open, click or check anything on it this turn. Act through your teammates, or tell the person what only they can fix, never claim to have checked that computer yourself.`;
+}
+
+/** Whether a turn goes on with no computer when its computer could not be prepared: an incident report always does, any
+ * turn does when the computer was unreachable, and a cancelled or parked setup never does. */
+export function continuesWithoutComputer(input: { incident: boolean; unreachable: boolean; cancelled: boolean }): boolean {
+  return !input.cancelled && (input.incident || input.unreachable);
 }
 
 /** One place per turn, plus the browser beside it in a thread a bot opened. A person's pin beats the bot's default (only Off overrides it), an Auto pin yields to a Works on change, and a pin the turn cannot honour is reported, never swapped. */
@@ -53,15 +81,17 @@ export function resolveSurface(input: {
   pinnedSurface?: Surface | null;
   browserOn: boolean;
   botOpened?: boolean;
+  /** The engine has its own shell in the bot's working folder (supportsWorkspaceFiles), whatever Works on says. */
+  engineShell?: boolean;
 }): SurfacePlan {
   const plan = placeOf(input);
   return input.botOpened ? { ...plan, botOpened: true } : plan;
 }
 
-function placeOf(input: { destination: Destination; pinnedSurface?: Surface | null; browserOn: boolean; botOpened?: boolean }): SurfacePlan {
+function placeOf(input: { destination: Destination; pinnedSurface?: Surface | null; browserOn: boolean; botOpened?: boolean; engineShell?: boolean }): SurfacePlan {
   const { destination, browserOn } = input;
   if (destination === "off") {
-    return { computer: "off", browser: false, pinned: null, note: OFF_NOTE };
+    return { computer: "off", browser: false, pinned: null, note: input.engineShell ? OFF_NOTE_ENGINE_SHELL : OFF_NOTE };
   }
   const beside = input.botOpened === true && browserOn;
   const pin = input.pinnedSurface ?? null;
@@ -156,10 +186,12 @@ export function surfaceLabel(surface: Surface): string {
 const WEB_WORK_ORDER = "For web work such as finding, booking or looking something up, use, in this order:";
 const YOUR_COMPUTER_LAST =
   " Use their own browser or screen only when the task needs their own signed-in session and nothing else works. Before your first action on it in a request, dusk bot asks them once whether you may, at every approval level except Full access: do not ask in chat yourself, and if they say no, finish another way. " + PLAIN_WORDS;
+const OWN_SHELL_HERE =
+  " Your own shell and file tools, when you have them, already run on this computer: run commands and edit files with them. Never open Terminal, Command Prompt or PowerShell on the person's screen to type a command your own shell tool can run. Only without a shell tool of your own do commands and files go through this computer tools.";
 const YOUR_COMPUTER_BESIDE_BROWSER =
-  ` This computer is the person's own: their screen, their apps and the browsers they are signed in to. ${WEB_WORK_ORDER} a connected app that does it, your built-in browser, a cloud computer if select_computer offers one.${YOUR_COMPUTER_LAST}`;
+  ` This computer is the person's own: their screen, their apps and the browsers they are signed in to. ${WEB_WORK_ORDER} a connected app that does it, your built-in browser, a cloud computer if select_computer offers one. A web app with no connected app (Slack, Gmail, LinkedIn, a booking site) goes in your browser, not in its desktop app on their screen.${YOUR_COMPUTER_LAST}`;
 const YOUR_COMPUTER_ALONE =
-  ` Everything you do on screen happens on this computer, which is the person's own: their screen, their apps and the browsers they are signed in to; there is no built-in browser of yours this turn. ${WEB_WORK_ORDER} a connected app that does it, web search and fetching pages, a cloud computer if select_computer offers one.${YOUR_COMPUTER_LAST} If you need the user to sign in, tell them it is on this computer.`;
+  ` Everything you do on screen happens on this computer, which is the person's own: their screen, their apps and the browsers they are signed in to; there is no built-in browser of yours this turn. ${WEB_WORK_ORDER} a connected app that does it, web search and fetching pages, a cloud computer if select_computer offers one.${YOUR_COMPUTER_LAST}${OWN_SHELL_HERE} If you need the user to sign in, tell them it is on this computer.`;
 
 /** A connected app does a task more cheaply and surely than any screen, and one that is refused or broken is the person's
  * to fix: worked around on a screen, it stays broken and they never hear why. */
@@ -168,7 +200,13 @@ const CONNECTED_APP_FIRST =
 
 /** Reading the web is quicker through search and fetch; acting on a site belongs where the person can watch and take over. */
 const BROWSER_FIRST =
-  " Find and read information with web search and page fetches: lookups, prices, summaries and comparisons need no browser. Use your built-in browser for anything interactive: filling in forms, signing in, clicking through a site, pages that need JavaScript or a login, and anything the person may want to watch or take over. Never do interactive work in another browser, with curl scripts or with a Playwright, Puppeteer or Selenium script of your own, and never make local files or drafts in place of work the person asked for on a website you can reach. Do as much of the task as you can; ask the person only for what only they can do: a sign-in, approving a payment, or a real decision. dusk bot keeps this conversation's pages in a tab of its own and closes it a couple of minutes after the task is done; open a second tab only to keep two pages side by side, and never close the whole browser: other conversations' tabs live in it. Show what you did with pictures, not long descriptions: every agent_browser_screenshot you take is also posted in the chat for the person (up to four a turn), so take one at the moments that matter: a form filled in, just before you send or submit, the result, and when you stop at a sign-in. The person sees your browser in the Computer tab of your panel, with your tabs and the live page, where they can take control or open it big; name only that place, never another panel or menu. To have them sign in, call request_sign_in, which posts a sign-in card, instead of giving directions.";
+  " Find and read information with web search and page fetches: lookups, prices, summaries and comparisons need no browser. Use your built-in browser for anything interactive: filling in forms, signing in, clicking through a site, pages that need JavaScript or a login, and anything the person may want to watch or take over. Never do interactive work in another browser, with curl scripts or with a Playwright, Puppeteer or Selenium script of your own, and never make local files or drafts in place of work the person asked for on a website you can reach. Do as much of the task as you can; ask the person only for what only they can do: a sign-in, approving a payment, or a real decision. dusk bot keeps this conversation's pages in a tab of its own and closes it a couple of minutes after the task is done; open a second tab only to keep two pages side by side, and never close the whole browser: other conversations' tabs live in it. Before saying what a page shows or that something is already open, read the current page once instead of trusting earlier in the chat; if it is not there, open it. Show what you did with pictures, not long descriptions: every agent_browser_screenshot you take is also posted in the chat for the person (up to four a turn), so take one at the moments that matter: a form filled in, just before you send or submit, the result, and when you stop at a sign-in. To have them sign in, call request_sign_in, which posts a sign-in card, instead of giving directions.";
+
+/** Where the person watches the built-in browser: the Computer tab shows it only in the app on the computer it runs on. */
+const BROWSER_IN_COMPUTER_TAB =
+  " The person sees your browser in the Computer tab of your panel in the dusk bot app on this computer, with your tabs and the live page, where they can take control or open it big; name only that place, never another panel or menu. The iPhone app has no view of your browser: there, the screenshots you post are what they see.";
+const BROWSER_NOT_SHOWN =
+  " The person cannot watch this browser live: the screenshots you post in the chat are what they see of it, so never tell them it is open in a tab or panel of theirs.";
 
 const RESTATE_SENTENCE =
   " Before your first action on a screen or page in a task, say in one short sentence where you are working, using that same name.";
@@ -197,14 +235,16 @@ const CLOUD_HOME_WORDING: ReadonlyArray<readonly [string, string]> = [
  */
 export function surfacePrompt(
   mounted: MountedSurfaces,
-  opts: { pinned?: Surface | null; note?: string; canSelect?: boolean; cloudHome?: boolean; botOpened?: boolean } = {},
+  opts: { pinned?: Surface | null; note?: string; canSelect?: boolean; cloudHome?: boolean; botOpened?: boolean;
+    /** The panel's Computer tab shows this host's built-in browser: the desktop app on this computer, never a server's or a cloud's. */
+    browserInComputerTab?: boolean } = {},
 ): string {
   const reportBack = opts.botOpened && !opts.canSelect;
   const computer = mounted.computer ? surfaceLabel(mounted.computer) : null;
   let text = "";
   if (mounted.computer === "local" && !opts.cloudHome) {
     text = mounted.browser
-      ? ` Two surfaces are mounted this turn: the built-in browser (the browser server's agent_browser_* tools) and this computer (the computer server's tools). Web tasks → the built-in browser. Desktop apps, files and shell → this computer tools. Pick one surface for a task and stay on it.${YOUR_COMPUTER_BESIDE_BROWSER}`
+      ? ` Two surfaces are mounted this turn: the built-in browser (the browser server's agent_browser_* tools) and this computer (the computer server's tools). Web tasks → the built-in browser. Desktop apps → this computer tools. Pick one surface for a task and stay on it.${OWN_SHELL_HERE}${YOUR_COMPUTER_BESIDE_BROWSER}`
       : YOUR_COMPUTER_ALONE;
   } else if (computer && mounted.browser) {
     text =
@@ -225,11 +265,11 @@ export function surfacePrompt(
   if (opts.pinned) {
     text += ` This conversation is pinned to ${surfaceLabel(opts.pinned)}; changing places requires ${opts.canSelect ? "select_computer or " : ""}the user's choice in ${PLACE_CONTROL}, not a different tool name.`;
   }
-  if (opts.canSelect) text += " For a screen task, use select_computer with no arguments when you need to inspect the actual available targets. Choose the requested place from its result; if the user left the place open, use a suitable available target or surface auto instead of asking them to operate the menu. Browser-only work can stay in Browser; when it needs desktop apps or capabilities the current Browser lacks, select an available Local VM without asking the user to switch it manually. Choose before taking actions, and do not repeat actions already completed if the task must continue elsewhere. dusk bot can start an existing configured computer and highlight the selected target. If the right tools are already mounted, use them directly. On a pending switch, end this turn: the original request resumes automatically with the new tools, and then you must carry out the task. Only ask for input for a genuine blocker, such as missing setup, required sign-in or an approval. Never silently replace an explicitly requested VM with the host desktop.";
-  if (opts.canSelect) text += " If no suitable computer is running but its provider is configured, select_computer can provision one for this computer task; reuse existing resources first. Do not provision merely for ordinary chat or inspection.";
+  if (opts.canSelect) text += " For a screen task, use select_computer with no arguments when you need the real available targets, and pick the requested place from its result; when the person left it open, use a suitable available target or surface auto instead of asking them to operate the menu. Browser-only work can stay in Browser; when it needs desktop apps or capabilities the current Browser lacks, select an available Local VM without asking the user to switch. Choose before acting, and after a move never repeat what is already done. dusk bot can start an existing configured computer and highlight the selected target; tools already mounted are used directly. On a pending switch, end this turn: the request resumes with the new tools, and then you must carry out the task. Ask only for a real blocker: missing setup, a sign-in or an approval. Never silently replace an explicitly requested VM with the host desktop.";
+  if (opts.canSelect) text += " If no suitable computer is running but its provider is configured, select_computer can provision one for this task; reuse existing resources first, and never provision for ordinary chat or inspection.";
   if (opts.canSelect && !computer && !mounted.browser) text += " No computer or browser tools are mounted yet; select_computer is the way to connect them before screen work, not a reason to claim you already performed it.";
   if (computer || mounted.browser) text += CONNECTED_APP_FIRST;
-  if (mounted.browser) text += BROWSER_FIRST;
+  if (mounted.browser) text += BROWSER_FIRST + (opts.browserInComputerTab === false || opts.cloudHome ? BROWSER_NOT_SHOWN : BROWSER_IN_COMPUTER_TAB);
   if (computer || mounted.browser) text += " For online research, use the selected dusk bot browser when a search service is unavailable. A failed tool proves only that this attempt failed, not that every browser is unavailable. Inspect the current page after navigation; report a sign-in page, redirect or error as such. A completed model turn is not proof that the user's task succeeded.";
   if (opts.cloudHome) for (const [desktop, cloudHome] of CLOUD_HOME_WORDING) text = text.replace(desktop, cloudHome);
   return text + (opts.note ?? "");
