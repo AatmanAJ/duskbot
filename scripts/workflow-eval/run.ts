@@ -6,13 +6,16 @@
 //   node --experimental-strip-types scripts/workflow-eval/run.ts --tmp <dir> --out <dir> [--only id,id] [--parallel 4]
 //     [--model gpt-6.2-sol] [--judge gpt-6.2-sol] [--repeat 1]
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomInt, randomUUID } from "node:crypto";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { client } from "../memory-eval/client.ts";
 import { gatewayFromEnv } from "../memory-eval/sandbox.ts";
 import { launchServer, type StressServer } from "../stress-eval/server.ts";
+import { startTelegram } from "../stress-eval/telegram.ts";
 import { CASES, type WorkflowCase } from "./cases.ts";
 import { DONE, personReply } from "./person.ts";
 import { judgeWorkflow } from "./judge.ts";
@@ -38,6 +41,16 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const gateway = gatewayFromEnv(values.model!);
 const judgeGateway = gatewayFromEnv(values.judge!);
 const appsServer = join(here, "apps-mcp.mjs");
+const telegram = await startTelegram();
+const pages = new Map<string, string>();
+const pageServer = createServer((req, res) => {
+  const html = pages.get(new URL(req.url ?? "/", "http://127.0.0.1").pathname);
+  res.writeHead(html ? 200 : 404, { "content-type": "text/html; charset=utf-8" });
+  res.end(html ?? "not found");
+});
+await new Promise<void>((done) => pageServer.listen(0, "127.0.0.1", done));
+const pageOrigin = `http://127.0.0.1:${(pageServer.address() as AddressInfo).port}`;
+const OWNER = { fromId: 501, from: "Maya" };
 
 type Message = { id: string; role: string; kind?: string; text?: string; card?: any; tool?: { name?: string }; document?: { title: string; kind: string } ; attachments?: Array<{ name?: string; path: string }> };
 
@@ -125,11 +138,16 @@ async function runCase(c: WorkflowCase, run: number): Promise<Record<string, unk
   mkdirSync(caseDir, { recursive: true });
   const statePath = join(caseDir, "apps-state.json");
   writeFileSync(statePath, JSON.stringify({ mail: [], ...c.seed }, null, 2));
+  const tgToken = `${randomInt(7_000_000, 7_999_999)}:AAH${randomBytes(24).toString("base64url").slice(0, 32)}`;
+  const pageKey = `/${c.id}-${run}-${randomUUID().slice(0, 6)}`;
+  for (const [name, html] of Object.entries(c.telegram?.pages ?? {})) pages.set(`${pageKey}/${name}/pricing`, html);
+  const fill = (text: string) => text.replaceAll("{{TG_TOKEN}}", tgToken).replace(/\{\{PAGE:(\w+)\}\}/g, (_, name: string) => `${pageOrigin}${pageKey}/${name}/pricing`);
+  c = { ...c, ask: fill(c.ask), brief: fill(c.brief), change: fill(c.change) };
   const mcpServers = Object.fromEntries(c.apps.map((app) => [app, { command: process.execPath, args: [appsServer, app], env: { BIZ_STATE: statePath } }]));
   // two eval processes can pick the same free port pair at once: the loser exits on EADDRINUSE and tries again
   const launch = async (reuseRoot?: string): Promise<StressServer> => {
     for (let attempt = 0; ; attempt++) {
-      try { return await launchServer(values.repo!, caseDir, gateway, [values.model!], { mcpServers }, reuseRoot); }
+      try { return await launchServer(values.repo!, caseDir, gateway, [values.model!], { mcpServers }, reuseRoot, { env: { DUSK_TELEGRAM_API_URL: telegram.origin, DUSK_PROBE_LOOPBACK_ORIGIN: pageOrigin } }); }
       catch (error) { if (attempt >= 4) throw error; await sleep(2_000 + Math.random() * 6_000); }
     }
   };
@@ -137,6 +155,7 @@ async function runCase(c: WorkflowCase, run: number): Promise<Record<string, unk
   const started = Date.now();
   let api = client(srv.url);
   const restartNotes: string[] = [];
+  const fireNotes: string[] = [];
   const tools: string[] = [];
   try {
     const bot = await api.createBot("Sage", values.model!);
@@ -182,6 +201,35 @@ async function runCase(c: WorkflowCase, run: number): Promise<Record<string, unk
       await runsSettled();
       restartNotes.push(`the server restarted at ${new Date().toISOString()}, ${c.restart.arrive.length} new emails arrived (${c.restart.arrive.map((m) => m.subject).join("; ")}), and these automations then ran once as if their time had come: ${due.map((r) => r.name).join(", ") || "none existed"}`);
     }
+    if (c.fire) {
+      const hooks = ((await api.call("GET", "/api/webhooks").catch(() => ({ webhooks: [] }))).webhooks ?? []) as Array<{ id: string; botId?: string; name?: string }>;
+      const hook = hooks.find((one) => one.botId === bot.id);
+      let posted: string;
+      if (!hook) posted = "no webhook automation exists, so nothing was posted";
+      else {
+        const address = await api.call("GET", `/api/webhooks/${hook.id}/address`).catch((error: Error) => ({ error: error.message }));
+        const credential = address.credential as { url?: string; bearer?: string } | undefined;
+        const res = credential?.url ? await fetch(credential.url, { method: "POST", headers: { "content-type": "application/json", ...(credential.bearer ? { authorization: `Bearer ${credential.bearer}` } : {}) }, body: JSON.stringify(c.fire.body) }).catch(() => null) : null;
+        posted = credential?.url ? `posted ${JSON.stringify(c.fire.body)} to the webhook "${hook.name}" (HTTP ${res?.status ?? "unreachable"})` : `the webhook "${hook.name}" gave no address: ${JSON.stringify(address).slice(0, 200)}`;
+      }
+      await sleep(8_000);
+      await runsSettled();
+      fireNotes.push(`after setup the eval ${posted} at ${new Date().toISOString()} and waited for the run`);
+    }
+    if (c.telegram) {
+      const said = (await messages(setupThread)).filter((m) => m.role === "bot").map((m) => `${m.text ?? ""} ${JSON.stringify(m.card ?? "")}`).join("\n");
+      const code = /start=([\w-]{4,64})/.exec(said)?.[1] ?? /\/start\s+([\w-]{4,64})/.exec(said)?.[1] ?? null;
+      const connected = telegram.calls.some((call) => call.token === tgToken && call.method === "getMe");
+      if (code) { telegram.message(tgToken, { ...OWNER, text: `/start ${code}` }); await sleep(8_000); }
+      const flipAt = Date.now();
+      pages.set(`${pageKey}/${c.telegram.change.page}/pricing`, c.telegram.change.html);
+      let pinged: string[] = [];
+      while (!pinged.length && Date.now() < flipAt + 420_000) {
+        await sleep(5_000);
+        pinged = telegram.sent(tgToken).filter((call) => call.at > flipAt).map((call) => String(call.params.text ?? "")).filter((text) => text.trim() && !text.startsWith("Connected."));
+      }
+      fireNotes.push(`the bot's Telegram token was ${connected ? "used with the fake Telegram" : "never used"}; the pairing code was ${code ? "in the chat, and the owner sent /start with it" : "not in the chat, so the owner could not pair"}; then the eval changed the ${c.telegram.change.page} page (Pro $39 to $29) at ${new Date(flipAt).toISOString()} and waited up to 7 minutes: ${pinged.length ? `Telegram messages to the owner after the change: ${JSON.stringify(pinged).slice(0, 600)}` : "no Telegram message came"}; every Telegram message the bot sent: ${JSON.stringify(telegram.sent(tgToken).map((call) => String(call.params.text ?? "").slice(0, 160))).slice(0, 900)}`);
+    }
     const laterThread = await api.newThread(bot.id);
     states.push(await say(laterThread, "what's running for me right now? list everything you set up, when it runs and how the last run went"));
     states.push(await say(laterThread, c.change));
@@ -192,6 +240,7 @@ async function runCase(c: WorkflowCase, run: number): Promise<Record<string, unk
     for (const m of [...setupMessages, ...laterMessages]) if (m.kind === "activity" && m.tool?.name) tools.push(String(m.tool.name).slice(0, m.tool.name.startsWith("error") ? 400 : 60));
     const truth = await groundTruth(srv, api, botIds, statePath, tools);
     if (restartNotes.length) truth.text = `RESTART: ${restartNotes.join(" ")}\n${truth.text}`;
+    if (fireNotes.length) truth.text = `FIRED: ${fireNotes.join(" ")}\n${truth.text}`;
     const setupChat = render(setupMessages);
     const laterChat = render(laterMessages);
     const verdict = await judgeWorkflow(judgeGateway, c, setupChat, laterChat, truth.text);
@@ -222,3 +271,5 @@ await Promise.all(Array.from({ length: Number(values.parallel) }, async () => {
   }
 }));
 log("done:", resultsPath);
+await telegram.close();
+pageServer.close();

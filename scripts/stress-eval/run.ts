@@ -361,6 +361,7 @@ async function worker(index: number): Promise<void> {
         browserEngine: { egress: { allow: [`127.0.0.1:${site.port}`] } },
       }, undefined, { engine, env: {
         DUSK_TELEGRAM_API_URL: telegram.origin,
+        DUSK_PROBE_LOOPBACK_ORIGIN: pageBase,
         ...(values["browser-bin"] ? { DUSK_AGENT_BROWSER_PATH: values["browser-bin"] } : {}),
         ...(values["chrome-bin"] ? { AGENT_BROWSER_EXECUTABLE_PATH: values["chrome-bin"] } : {}),
       } });
