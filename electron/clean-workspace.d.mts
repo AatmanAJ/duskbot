@@ -4,6 +4,7 @@ export interface CleanWorkspace {
   active(): boolean;
   ownCopy(): boolean;
   marker(): { frozen: boolean; cloud?: string; place?: string };
+  showable(): boolean;
   enter(): Promise<boolean>;
   leave(): Promise<boolean>;
   startFolder(): string;

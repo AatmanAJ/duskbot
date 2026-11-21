@@ -482,6 +482,15 @@ jobs:
           DUSK_UI_EVIDENCE_DIR: .dusk-scratch/verify-evidence
         timeout-minutes: 30
         run: pnpm exec vitest run scripts/testing/dead-clicks.e2e.test.ts
+      - name: Check the phone app's layout as the browser draws it
+        # its own verdict even when a step above failed
+        if: ${{ !cancelled() }}
+        # apps/mobile/store/layout-check.ts: the phone app on the store fixture at 440 x 956, light and dark; message
+        # widths, the composer's and top bar's controls, nothing over the composer or off the side. About 70 seconds.
+        env:
+          DUSK_CDP_CHROME: /usr/bin/google-chrome
+        timeout-minutes: 10
+        run: pnpm test:phone-layout
       - name: Upload the renderer screenshot
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { cn } from "@/lib/cn";
-import { siteIconUrl } from "@/lib/site-icon";
+import { appLogoUrl, siteIconUrl } from "@/lib/site-icon";
 
 /** One connectable app as the Apps catalog lists it. */
 export interface ToolkitCard {
@@ -56,7 +56,7 @@ const INITIAL_TINTS = ["#c2ecfc", "#d0cefb", "#ffc4dd", "#fff3a0", "#c9f63f"];
 const initialTint = (label: string) => INITIAL_TINTS[[...label].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % INITIAL_TINTS.length];
 
 export function ServiceTile({ card, size = 40, className }: { card: TileArt; size?: number; className?: string }) {
-  const sources = [card.image, card.logo, siteIconUrl(card.domain)]
+  const sources = [...new Set([card.image, card.logo && appLogoUrl(card.logo), card.logo, siteIconUrl(card.domain)])]
     .filter((source): source is string => Boolean(source));
   // failures count against this list of sources only: an app whose art arrives later starts over from its best source
   const sourcesKey = sources.join("\n");
@@ -75,7 +75,7 @@ export function ServiceTile({ card, size = 40, className }: { card: TileArt; siz
   const padded = card.padded || source !== card.image;
   const inner = padded ? size * (card.scale ?? 0.684) : size - 2;
   return (
-    <span aria-hidden="true" className={cn(TILE, className)} style={frame}>
+    <span aria-hidden="true" data-service-tile-bare={padded && !card.background ? "" : undefined} className={cn(TILE, className)} style={frame}>
       <img key={source} src={source} alt="" draggable={false} loading="lazy" decoding="async" width={inner} height={inner} style={{ width: inner, height: inner }} className="object-contain" onError={() => setFailed((count) => count + 1)} />
     </span>
   );

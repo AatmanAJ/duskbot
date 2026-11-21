@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { AnimatePresence } from "motion/react";
 import {
   Archive,
   Check,
@@ -20,7 +21,7 @@ import {
   UserRound,
 } from "../icons";
 
-import { accountMenuItems, AccountsSheet, cloudRowLabel, useAccounts, type AccountsAccess } from "./AccountMenu";
+import { accountMenuItems, accountPlanText, AccountsSheet, cloudRowLabel, useAccounts, type AccountsAccess } from "./AccountMenu";
 import { openSignIn } from "@/lib/sign-in-sheet";
 import { Icon, type IconName } from "./Icon";
 import { exportUsageLog, trailAvailable } from "@/lib/trail";
@@ -44,10 +45,12 @@ import { useSidebarPhoneStatus } from "./SidebarPhoneButton";
 import { api, useStore, type Action, type ConfigStatus } from "@/state/store";
 import { localDesktopPage } from "./onboarding/WelcomeGate";
 import { serverCheckPhase, serverUpdateRow, type ServerUpdateCheck, type ServerUpdatePhase } from "@/lib/server-update";
-import type { CloudAccountBridge, CloudAccountState } from "../../electron/cloud-account.mjs";
+import type { AccountFace } from "../../electron/cloud-account.mjs";
+import { cloudPlanLabel, trialRunning } from "@/lib/cloud-plan";
 import { cloudColor } from "@/lib/cloud-look";
 import { cn } from "@/lib/cn";
 import { meterPercent, resetLine } from "@/lib/usage-meter";
+import { shownShare, useUsageDisplay, type UsageDisplay } from "@/lib/usage-display";
 import type { CloudPlanSnapshot } from "../../electron/cloud-account.mjs";
 import { activeLocale, t } from "@/lib/i18n";
 import { HELP_CENTER_URL, appVersion, openExternalLink } from "@/lib/app-links";
@@ -56,18 +59,15 @@ import { openAccountDashboard } from "@/lib/account-dashboard";
 import { useOtherServerName } from "@/lib/other-server";
 import { profileForSession, readSessionState, type SessionState } from "@/lib/session";
 import {
-  cloudPhoneDestination,
   connectPhoneEntry,
   currentPhonePairingTarget,
   loadPhonePairingAccess,
-  phoneDestinations,
   phonePairingSettingsAction,
-  type CloudPhoneDestination,
   type ConnectPhoneEntry,
-  type PhoneDestination,
   type PhonePairingAccess,
 } from "@/lib/phone-pairing";
 import { phoneAppEnabled } from "@/lib/feature-flags";
+import { friendlyError } from "@/lib/plain-error";
 
 /** The dusk cloud account signed in on this computer lends its name and photo where this place's profile has none: the same
  * person by address, or a profile with no address of its own. */
@@ -76,25 +76,32 @@ export function withAccountFace(profile: { name?: string; email?: string; avatar
   const own = profile?.email?.trim().toLowerCase();
   if (own && own !== account.email.trim().toLowerCase()) return profile;
   // the avatar the person picked on their account shows over this place's own photo; without a pick, the place's photo stays
-  const face = account.id && (account.avatar || !profile?.avatarUrl) ? { face: { id: account.id, ...(account.avatarUrl ? { avatarUrl: account.avatarUrl } : {}), ...(account.avatar ? { avatar: account.avatar } : {}) } } : {};
+  // a real photo, the account's or else this place's, stands in for a drawn head unless the person picked a drawing
+  const photo = account.avatarUrl || profile?.avatarUrl;
+  const face = account.id && (account.avatar || !profile?.avatarUrl) ? { face: { id: account.id, ...(photo ? { avatarUrl: photo } : {}), ...(account.avatar ? { avatar: account.avatar } : {}) } } : {};
   return { ...profile, ...(!own ? { email: account.email } : {}), ...(!profile?.name?.trim() && account.name ? { name: account.name } : {}), ...(!profile?.avatarUrl && account.avatarUrl ? { avatarUrl: account.avatarUrl } : {}), ...face };
 }
 
-/** The name this place's profile takes from the signed-in account: where the profile has none, or only the computer's own
- * (the first run's guess), and the account has one of its own, for the same person. Null keeps the profile as it is. */
-export function adoptedAccountName(profile: { name?: string; email?: string } | undefined, account: { email: string; name?: string } | null, computerName: string | null): string | null {
+type AccountNamedProfile = { name?: string; email?: string; accountName?: string };
+
+/** What this place's profile takes from the signed-in account's name, for the same person: the name where the profile has
+ * none, only the computer's own (the first run's guess), the account's last name copied here, or the same name in other
+ * letter case; and the copy's mark either way. A name the person typed here stays theirs. Null keeps the profile as it is. */
+export function adoptedAccountName(profile: AccountNamedProfile | undefined, account: { email: string; name?: string } | null, computerName: string | null): { name: string; accountName: string } | null {
   const wanted = account?.name?.trim();
   if (!wanted) return null;
   const own = profile?.email?.trim().toLowerCase();
   if (own && own !== account!.email.trim().toLowerCase()) return null;
   const current = profile?.name?.trim() ?? "";
-  if (current === wanted) return null;
-  return !current || (computerName !== null && current === computerName.trim()) ? wanted : null;
+  const copied = profile?.accountName?.trim() ?? "";
+  if (current === wanted) return copied === wanted ? null : { name: wanted, accountName: wanted };
+  const takes = !current || current === copied || current.toLowerCase() === wanted.toLowerCase() || (computerName !== null && current === computerName.trim());
+  return takes ? { name: wanted, accountName: wanted } : null;
 }
 
-/** This computer's page keeps the account's name once one is set (on the website's first step, often after the app's own
- * first run): the bots and the sidebar call the person by it. A name the person typed here stays theirs. */
-function useAccountName(enabled: boolean, profile: { name?: string; email?: string } | undefined, account: { email: string; name?: string } | null, dispatch: (action: Action) => void) {
+/** This computer's page keeps the account's name (set on the website's first step, often after the app's own first run, and
+ * renamed there later): the bots, the sidebar and a paired phone call the person by it. */
+function useAccountName(enabled: boolean, profile: AccountNamedProfile | undefined, account: { email: string; name?: string } | null, dispatch: (action: Action) => void) {
   const asked = useRef<string | null>(null);
   const wanted = account?.name?.trim() ?? null;
   useEffect(() => {
@@ -102,15 +109,17 @@ function useAccountName(enabled: boolean, profile: { name?: string; email?: stri
     let active = true;
     void (async () => {
       const computer = (await window.duskDesktop?.desktopProfile?.systemName().catch(() => null))?.trim() || null;
-      const name = active ? adoptedAccountName(profile, account, computer) : null;
+      if (!active) return;
+      const adopted = adoptedAccountName(profile, account, computer);
+      if (!adopted) { asked.current = wanted; return; }
+      const config = await api<ConfigStatus>("/api/config", { method: "PUT", body: JSON.stringify({ profile: adopted }) }).catch(() => null);
+      if (!config) return;
       asked.current = wanted;
-      if (!name) return;
-      const config = await api<ConfigStatus>("/api/config", { method: "PUT", body: JSON.stringify({ profile: { name } }) }).catch(() => null);
-      if (config && active) dispatch({ type: "configStatus", config });
+      if (active) dispatch({ type: "configStatus", config });
     })();
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, wanted, profile?.name]);
+  }, [enabled, wanted, profile?.name, profile?.accountName]);
 }
 
 /** What `UserFace` draws for a person: an id to seed the drawn head, and the photo and choice that may stand in for it. */
@@ -125,10 +134,27 @@ export function personFace(profile: { name?: string; email?: string; avatarUrl?:
   return seed ? { id: seed, ...(profile?.avatarUrl ? { avatarUrl: profile.avatarUrl, avatar: "photo" } : {}) } : null;
 }
 
+/** A Cloud of the person's own, in this app's window: main lends the account in use (accounts:face); its address is the
+ * page's own profile's, else the Cloud's owner from a browser's session, else the account's (the app's own session on a Cloud
+ * names nobody). Null on this app's own page, a team's Cloud, or without an account. */
+export function placeAccount(profile: { name?: string; email?: string; avatarUrl?: string } | undefined, { face, owner }: { face: AccountFace | null; owner: string | null }): { profile: { name?: string; email?: string; avatarUrl?: string }; account: AccountFace & { email: string } } | null {
+  const email = profile?.email?.trim() || owner?.trim() || face?.email?.trim();
+  if (!face || !email) return null;
+  return { profile: { ...profile, email }, account: { ...face, email } };
+}
+
+/** The plan line from this window's Cloud plan, where no account card says it. */
+export function snapshotPlanText(plan: CloudPlanSnapshot | null): string | null {
+  if (plan?.status === "paid") return t(trialRunning(plan.trial) ? "accounts.card.trial" : "accounts.card.plan", { plan: cloudPlanLabel(plan.tier) });
+  if (plan?.status === "attention") return t("accounts.card.inactive", { plan: cloudPlanLabel(plan.tier) });
+  return null;
+}
+
 /** The person's face in the sidebar: their photo or drawn head; initials only for a computer's name, an icon for nobody. */
-function ProfileFace({ face, initials, size, fallback, fontSize, className }: { face: PersonFace | null; initials: string; size: number; fallback?: ReactNode; fontSize?: number; className?: string }) {
+export function ProfileFace({ face, initials, size, fallback, fontSize, className }: { face: PersonFace | null; initials: string; size: number; fallback?: ReactNode; fontSize?: number; className?: string }) {
   if (face) return <UserFace account={face} size={size} className="inset-ring inset-ring-ink/[0.08]" />;
-  return <InitialsAvatar initials={initials} size={size} fallback={fallback} fontSize={fontSize} className={className} />;
+  const nameless = initials === "?" ? <UserRound size={Math.round(size * 0.5)} strokeWidth={1.75} aria-hidden /> : undefined;
+  return <InitialsAvatar initials={initials} size={size} fallback={fallback ?? nameless} fontSize={fontSize} className={className} />;
 }
 
 export function profileInitials(profile?: { name?: string; email?: string }): string {
@@ -188,13 +214,15 @@ interface UpdateEntry {
   pending: boolean;
   label: string;
   source?: "server";
+  check?: ServerUpdateCheck | null;
+  toggleAutomatic?: () => void;
 }
 
 /** The update a Simple account menu raises to its top row: one waiting to be installed, or one that failed. */
-export function simpleUpdateTop(entry: Pick<UpdateEntry, "phase" | "source"> | null): { label: string; action: string } | null {
+export function simpleUpdateTop(entry: Pick<UpdateEntry, "phase" | "source" | "check"> | null): { label: string; action: string } | null {
   const ready = () => t("sidebar.update.readyShort");
   if (entry?.source === "server") {
-    if (entry.phase === "available") return { label: ready(), action: t("sidebar.update.installAction") };
+    if (entry.phase === "available") return { label: ready(), action: t(entry.check?.install === "docker" && !entry.check.compose?.supported ? "settings.simple.updates.seeRelease" : "sidebar.update.installAction") };
     if (entry.phase === "reload") return { label: ready(), action: t("sidebar.update.restartAction") };
   }
   return null;
@@ -205,38 +233,92 @@ export function useServerUpdateItem(enabled: boolean): UpdateEntry | null {
   const [check, setCheck] = useState<ServerUpdateCheck | null>(null);
   const otherServer = useOtherServerName(enabled);
 
+  const [error, setError] = useState("");
+  const updating = check?.compose?.phase === "updating";
   useEffect(() => {
-    if (phase !== "up-to-date") return;
+    if (phase !== "up-to-date" || check?.compose) return;
     const timer = setTimeout(() => setPhase("idle"), 3000);
     return () => clearTimeout(timer);
-  }, [phase]);
+  }, [phase, check]);
+
+  useEffect(() => {
+    if (!updating || !check) return;
+    const target = check;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const deadline = Date.now() + 25 * 60_000;
+    let disconnected = 0;
+    async function refresh() {
+      try {
+        const status = await api<Pick<ServerUpdateCheck, "current" | "compose">>("/api/updates/compose", { timeoutMs: 15_000 });
+        if (!active) return;
+        if (!status.current || !status.compose || (!status.compose.supported && status.compose.phase !== "failed")) throw new Error("Reconnecting");
+        disconnected = 0;
+        if (status.compose.phase !== "updating") {
+          const next = { ...target, ...status, available: target.latest !== status.current && target.available };
+          setCheck(next);
+          setPhase(serverCheckPhase(next));
+          return;
+        }
+      } catch {
+        if (!active) return;
+        disconnected ||= Date.now();
+      }
+      if (Date.now() >= deadline || (disconnected && Date.now() - disconnected > 120_000)) {
+        setError(t("settings.updates.hostUnreachable"));
+        setPhase("error");
+        setCheck(null);
+        return;
+      }
+      timer = setTimeout(() => void refresh(), 4000);
+    }
+    timer = setTimeout(() => void refresh(), 4000);
+    return () => { active = false; clearTimeout(timer); };
+  }, [updating, check]);
 
   if (!enabled) return null;
+  const fail = (cause: unknown) => {
+    setError(friendlyError(cause));
+    setPhase("error");
+  };
+  const mutate = async (path: string, body: object) => {
+    if (!check) return;
+    setPhase("checking");
+    setError("");
+    try {
+      const compose = await api<NonNullable<ServerUpdateCheck["compose"]>>(path, { method: "POST", body: JSON.stringify(body), timeoutMs: 30_000 });
+      setCheck({ ...check, compose });
+      setPhase(serverCheckPhase(check));
+    } catch (cause) { fail(cause); }
+  };
   const row = serverUpdateRow(phase, check, appVersion(), otherServer);
+  const supported = check?.compose?.supported;
+  const install = phase === "available" && supported;
+  const label = updating ? t("settings.updates.updatingServer") : install
+    ? t("settings.updates.installServer", { name: otherServer ?? t("settings.updates.thisServer"), version: check!.latest! }) : row.label;
   return {
-    phase,
-    pending: false,
-    label: row.label,
-    source: "server",
+    phase, check, pending: updating, label, source: "server",
+    toggleAutomatic: supported ? () => void mutate("/api/updates/automatic", { enabled: !check.compose?.automatic }) : undefined,
     item: {
-      key: "update",
-      label: row.label,
-      subtitle: row.subtitle,
-      icon: <UpdateIcon phase={phase} pending={false} />,
-      disabled: phase === "checking",
+      key: "update", label,
+      subtitle: error || [check?.compose?.message, supported ? undefined : row.subtitle].filter(Boolean).join(" ") || undefined,
+      icon: <UpdateIcon phase={phase} pending={updating} />,
+      disabled: phase === "checking" || updating,
       keepOpen: true,
       attention: phase === "available" || phase === "reload" || phase === "error",
-      attentionTone: phase === "error" ? "danger" : "accent",
+      attentionTone: phase === "error" || check?.compose?.phase === "failed" ? "danger" : "accent",
       onSelect: () => {
+        if (install) return void mutate("/api/updates/apply", {});
         if (phase === "available" && check?.releaseUrl) return void openExternalLink(check.releaseUrl);
         if (phase === "reload") return window.location.reload();
         setPhase("checking");
+        setError("");
         void api<ServerUpdateCheck>("/api/updates/check", { timeoutMs: 20_000 })
           .then((next) => {
             setCheck(next);
             setPhase(serverCheckPhase(next));
           })
-          .catch(() => setPhase("error"));
+          .catch(fail);
       },
     },
   };
@@ -259,48 +341,24 @@ function useConnectPhoneEntry(cloudHome: boolean): ConnectPhoneEntry | null {
   return offered ? connectPhoneEntry(target, access) : null;
 }
 
-export function useCloudPhoneDestination(enabled: boolean): { cloud: CloudPhoneDestination; bridge?: CloudAccountBridge } {
-  const bridge = enabled && !window.duskDesktop?.remoteClient?.active ? window.duskDesktop?.cloudAccount : undefined;
-  const [account, setAccount] = useState<CloudAccountState | null>(null);
-  useEffect(() => {
-    if (!bridge) return;
-    let active = true, updated = false;
-    const unsubscribe = bridge.onState((next) => { updated = true; if (active) setAccount(next); });
-    void bridge.state().then((next) => { if (active && !updated) setAccount(next); }).catch(() => {});
-    return () => { active = false; unsubscribe(); };
-  }, [bridge]);
-  return bridge ? { cloud: cloudPhoneDestination(account), bridge } : { cloud: null };
-}
-
-export function selectPhoneDestination(destination: PhoneDestination, { bridge, dispatch }: { bridge?: Pick<CloudAccountBridge, "connectHomeForPhone">; dispatch: (action: Action) => void }): void {
-  if (destination.id !== "cloud" || !bridge) {
-    dispatch(phonePairingSettingsAction());
-    return;
-  }
-  void bridge.connectHomeForPhone().catch(() => dispatch({ type: "toggleAppSettings", open: true, section: "cloudAccount" }));
-}
-
 export function phoneMenuItems({
-  destinations,
+  entry,
   connected,
   onConnect,
 }: {
-  destinations: PhoneDestination[];
+  entry: ConnectPhoneEntry | null;
   connected: boolean;
-  onConnect: (destination: PhoneDestination) => void;
+  onConnect: () => void;
 }): SidebarMenuItem[] {
-  return destinations.map((destination) => ({
-    key: destination.id === "cloud" ? "connect-phone-cloud" : "connect-phone",
+  if (!entry) return [];
+  return [{
+    key: "connect-phone",
     label: t("sidebar.menu.connectPhone"),
-    subtitle: destination.team ? t("sidebar.menu.connectPhone.team", { team: destination.team }) : t(destination.subtitleKey),
-    ...(destination.noteKey ? { note: t(destination.noteKey) } : {}),
+    subtitle: entry.team ? t("sidebar.menu.connectPhone.team", { team: entry.team }) : t(entry.subtitleKey),
     icon: <Smartphone size={18} />,
-    trailing:
-      destination.id === "here" && destination.target === "computer" && connected ? (
-        <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-success" />
-      ) : undefined,
-    onSelect: () => onConnect(destination),
-  } satisfies SidebarMenuItem));
+    trailing: entry.target === "computer" && connected ? <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-success" /> : undefined,
+    onSelect: onConnect,
+  } satisfies SidebarMenuItem];
 }
 
 export function toolMenuItems({ archived }: { archived?: ArchivedBots }): SidebarMenuItem[] {
@@ -370,37 +428,40 @@ export function resetsIn(at: number | null, now: number): string | undefined {
   return t("sidebar.menu.resets", { when: hours < 24 ? format.format(Math.max(1, Math.round(hours)), "hour") : format.format(Math.round(hours / 24), "day") });
 }
 
-export function planUsageSummary(report: PlanUsageWindows | null, now = Date.now()): UsageSummary | null {
+const usageValue = (usedPercent: number, display: UsageDisplay) =>
+  t(display === "left" ? "sidebar.menu.usageLeft" : "sidebar.menu.usageUsed", { percent: shownShare(usedPercent, display) });
+
+export function planUsageSummary(report: PlanUsageWindows | null, now = Date.now(), display: UsageDisplay = "used"): UsageSummary | null {
   const signedIn = report?.providers.filter((provider) => provider.ok) ?? [];
   for (const window of ["weekly", "fiveHour"] as const) {
     const known = signedIn.map((provider) => provider[window]).filter((entry) => entry.available && entry.usedPercent !== null);
     if (known.length === 0) continue;
     const tightest = known.reduce((most, entry) => (entry.usedPercent! > most.usedPercent! ? entry : most));
     const resets = resetsIn(tightest.resetsAt ? Date.parse(tightest.resetsAt) : null, now);
-    return { value: t("sidebar.menu.usageUsed", { percent: Math.round(tightest.usedPercent!) }), weekly: window === "weekly", ...(resets ? { resets } : {}) };
+    return { value: usageValue(tightest.usedPercent!, display), weekly: window === "weekly", ...(resets ? { resets } : {}) };
   }
   const budgets = signedIn.flatMap((provider) => provider.extra?.filter((extra) => extra.label === "Monthly spend") ?? []);
-  return budgets.length ? { value: t("sidebar.menu.usageUsed", { percent: Math.round(Math.max(...budgets.map((budget) => budget.usedPercent))) }) } : null;
+  return budgets.length ? { value: usageValue(Math.max(...budgets.map((budget) => budget.usedPercent)), display) } : null;
 }
 
-export function cloudUsageSummary(plan: CloudPlanSnapshot | null): UsageSummary | null {
+export function cloudUsageSummary(plan: CloudPlanSnapshot | null, display: UsageDisplay = "used"): UsageSummary | null {
   if (plan?.status !== "paid") return null;
   const usage = plan.usage;
-  if (usage?.meters.length) return { value: t("sidebar.menu.usageUsed", { percent: Math.max(...usage.meters.map(meterPercent)) }), resets: resetLine(usage) };
+  if (usage?.meters.length) return { value: usageValue(Math.max(...usage.meters.map(meterPercent)), display), resets: resetLine(usage) };
   return null;
 }
 
-function usePlanUsageSummary(enabled: boolean): UsageSummary | null {
-  const [summary, setSummary] = useState<UsageSummary | null>(null);
+function usePlanUsageSummary(enabled: boolean, display: UsageDisplay): UsageSummary | null {
+  const [report, setReport] = useState<PlanUsageWindows | null>(null);
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
     void api<PlanUsageWindows>("/api/plan-usage", { background: true })
-      .then((report) => { if (alive) setSummary(planUsageSummary(report)); })
+      .then((next) => { if (alive) setReport(next); })
       .catch(() => {});
     return () => { alive = false; };
   }, [enabled]);
-  return summary;
+  return planUsageSummary(report, Date.now(), display);
 }
 
 export function profileMenuItems({
@@ -445,7 +506,6 @@ export function profileMenuItems({
 }): SidebarMenuItem[] {
   const help: SidebarMenuItem[] = [
     { key: "help", label: t("sidebar.menu.help"), icon: <HelpCircle size={18} />, onSelect: onHelp },
-    { key: "feedback", label: t("sidebar.menu.feedback"), icon: <MessageSquareText size={18} />, onSelect: onFeedback },
     ...(trailAvailable() ? [{ key: "usage-log", label: t("sidebar.menu.exportUsageLog"), icon: <FileText size={18} />, onSelect: () => void exportUsageLog("support").catch(() => {}) } satisfies SidebarMenuItem] : []),
     {
       key: "shortcuts",
@@ -468,11 +528,12 @@ export function profileMenuItems({
   } : null;
   const dashboardItem: SidebarMenuItem | null = onDashboard ? { key: "dashboard", label: t("sidebar.menu.accountDashboard"), icon: <LayoutDashboard size={18} />, onSelect: onDashboard } : null;
   const support: SidebarMenuItem = { key: "support", label: t("sidebar.menu.support"), icon: <LifeBuoy size={18} />, submenu: help, onSelect: () => {} };
+  const feedback: SidebarMenuItem = { key: "feedback", label: t("giveFeedback.card"), icon: <MessageSquareText size={18} />, onSelect: onFeedback };
   const settings: SidebarMenuItem = { key: "settings", label: t("sidebar.menu.settings"), icon: <SettingsIcon size={18} />, onSelect: onSettings };
   const accountItem: SidebarMenuItem | null = account ? { key: "account", label: account, icon: <CircleUserRound size={18} />, onSelect: onAccount } : null;
   const present = (...items: Array<SidebarMenuItem | null | false>) => items.filter((item): item is SidebarMenuItem => Boolean(item));
   if (!simple) {
-    const rest = [...present(usageItem, dashboardItem), ...phone, support, settings, ...present(update), ...(accountItem ? [{ ...accountItem, separatorBefore: true }] : []), ...accounts.map((item, index) => (index === 0 ? { ...item, separatorBefore: true } : item))];
+    const rest = [...present(usageItem, dashboardItem), ...phone, support, feedback, settings, ...present(update), ...(accountItem ? [{ ...accountItem, separatorBefore: true }] : []), ...accounts.map((item, index) => (index === 0 ? { ...item, separatorBefore: true } : item))];
     return [...move, ...rest.map((item, index) => (move.length && index === 0 ? { ...item, separatorBefore: true } : item))];
   }
   const raised: SidebarMenuItem | null = update && updateTop ? {
@@ -485,7 +546,7 @@ export function profileMenuItems({
   const groups = [
     move,
     present(raised),
-    [...present(usageItem, dashboardItem), ...phone, { ...support, submenu: raised ? help : [...help, ...present(update)] }, settings],
+    [...present(usageItem, dashboardItem), ...phone, { ...support, submenu: raised ? help : [...help, ...present(update)] }, feedback, settings],
     simple.tools,
     [...simple.places, ...present(accountItem)],
     accounts,
@@ -498,9 +559,20 @@ function devItems(icon: ReactNode): SidebarMenuItem[] {
   return devToolsShown() ? [{ key: "dev-fresh-install", label: t("startFresh.devMenu"), icon, separatorBefore: true, onSelect: openStartFresh }] : [];
 }
 
-/** Grok's profile menu, word for word: the phone app, Support (help, shortcuts, feedback, about) and Settings, then the
- * account's Add account and Log out. Everything else the menu once held is in Settings. */
-export function grokProfileMenuItems({ onGetApp, onHelp, onShortcuts, onFeedback, onAbout, onSettings, onAddAccount, onNeedsYou, onDashboard, accounts }: {
+/** The account's own block at the top of the menu: who is signed in, by address, with the plan below. */
+export interface MenuAccountHeader {
+  /** the person's own name when known: it leads the block, so a long address never has to */
+  name?: string | null;
+  email: string;
+  plan: string | null;
+  face: ReactNode;
+}
+
+/** Grok's profile menu: the account (address and plan) first, then the phone app, the account dashboard, Support (help,
+ * shortcuts, about), Give feedback and Settings, and Sign out on its own last row. Everything else the menu once held is in Settings. */
+export function grokProfileMenuItems({ onGetApp, onHelp, onShortcuts, onFeedback, onAbout, onSettings, onAddAccount, onNeedsYou, onDashboard, accounts, header = null }: {
+  /** the account block; this app's own page draws it from the account in use when none is given */
+  header?: MenuAccountHeader | null;
   onAddAccount: () => void;
   /** opens the hosted account dashboard for this workspace */
   onDashboard?: () => void;
@@ -517,34 +589,33 @@ export function grokProfileMenuItems({ onGetApp, onHelp, onShortcuts, onFeedback
 }): SidebarMenuItem[] {
   const icon = (name: IconName) => <Icon name={name} size={14} />;
   const active = accounts.view?.active;
-  const account: SidebarMenuItem[] = active
-    ? [
-      // who is signed in, first: the account's name and address, opening the account dashboard (Settings without one)
-      { key: "who", label: active.name?.trim() || active.email, ...(active.name?.trim() ? { subtitle: active.email } : {}), icon: <UserFace account={active} size={16} />, onSelect: onDashboard ?? onSettings },
-      { key: "log-out", label: t("accounts.signOut"), icon: icon("arrow-bracket-from-left"), onSelect: () => accounts.signOut(active.id) },
-    ]
-    : accounts.openSheet ? [{ key: "accounts-sheet", label: t("accounts.manage"), icon: icon("person"), onSelect: accounts.openSheet }]
-      // nobody signed in here: Sign in, at the account button where a person looks for it; it continues in the browser for its
-      // context (the account context redirect), where this app can; otherwise the sheet that signs in right there
-      : [{ key: "sign-in", label: t("accounts.signIn"), icon: icon("person"), onSelect: typeof window !== "undefined" && window.duskDesktop?.cloudAccount?.continueInBrowser ? () => openSignIn() : accounts.view ? () => accounts.add() : onAddAccount }];
+  // signing out works here on this app's own page; anywhere else the sheet on the rail's page does it
+  const signOut = active ? () => accounts.signOut(active.id) : accounts.openSheet;
+  const who: MenuAccountHeader | null = header ?? (active ? { name: active.name, email: active.email, plan: accountPlanText(active.plan), face: <UserFace account={active} size={32} /> } : null);
+  const named = who?.name?.trim();
+  const top: SidebarMenuItem[] = who
+    ? [{ key: "who", label: named || who.email, ...(who.plan ? { labelNote: who.plan.replace(/^dusk cloud · /, "").replace(/ free trial$/, " trial") } : {}), title: who.email, ...(named ? { subtitle: who.email } : {}), icon: who.face, large: true, onSelect: onDashboard ?? accounts.openSheet ?? onSettings }]
+    // nobody signed in here: Sign in, first, where the account would be; it continues in the browser for its context (the
+    // account context redirect), where this app can; otherwise the sheet that signs in right there
+    : signOut ? [] : [{ key: "sign-in", label: t("accounts.signIn"), icon: icon("person"), onSelect: typeof window !== "undefined" && window.duskDesktop?.cloudAccount?.continueInBrowser ? () => openSignIn() : accounts.view ? () => accounts.add() : onAddAccount }];
+  const last: SidebarMenuItem[] = signOut ? [{ key: "log-out", label: t("accounts.signOut"), icon: icon("arrow-bracket-from-left"), onSelect: signOut }] : [];
   const menu: SidebarMenuItem[] = [
     ...(onGetApp ? [{ key: "mobile", label: t("sidebar.menu.connectPhone"), icon: icon("device-mobile"), onSelect: onGetApp } satisfies SidebarMenuItem] : []),
     ...(onDashboard ? [{ key: "dashboard", label: t("sidebar.menu.accountDashboard"), icon: icon("chart-bars"), onSelect: onDashboard } satisfies SidebarMenuItem] : []),
     { key: "support", label: t("sidebar.grok.support"), icon: icon("book"), onSelect: () => {}, submenu: [
       { key: "help", label: t("sidebar.menu.help"), icon: icon("question-circle"), onSelect: onHelp },
       { key: "shortcuts", label: t("sidebar.menu.shortcuts"), icon: icon("keyboard"), onSelect: onShortcuts },
-      { key: "feedback", label: t("sidebar.menu.feedback"), icon: icon("mail"), onSelect: onFeedback },
       ...(trailAvailable() ? [{ key: "usage-log", label: t("sidebar.menu.exportUsageLog"), icon: icon("file-list"), onSelect: () => void exportUsageLog("support").catch(() => {}) } satisfies SidebarMenuItem] : []),
       { key: "about", label: t("sidebar.menu.about"), icon: icon("info"), onSelect: onAbout },
       ...devItems(icon("code")),
     ] },
+    { key: "feedback", label: t("giveFeedback.card"), icon: icon("mail"), onSelect: onFeedback },
     { key: "settings", label: t("sidebar.menu.settings"), icon: icon("gear"), onSelect: onSettings },
   ];
-  return [
-    ...(onNeedsYou ? [{ key: "needs-you", label: t("sidebar.account.automationsNeedYou"), icon: icon("alarm-clock"), attention: true, attentionTone: "danger", onSelect: onNeedsYou } satisfies SidebarMenuItem] : []),
-    ...menu.map((item, index) => (index === 0 && onNeedsYou ? { ...item, separatorBefore: true } : item)),
-    ...account.map((item, index) => (index === 0 ? { ...item, separatorBefore: true } : item)),
-  ];
+  const needsYou: SidebarMenuItem[] = onNeedsYou ? [{ key: "needs-you", label: t("sidebar.account.automationsNeedYou"), icon: icon("alarm-clock"), attention: true, attentionTone: "danger", onSelect: onNeedsYou }] : [];
+  return [needsYou, top, menu, last]
+    .filter((group) => group.length > 0)
+    .flatMap((group, at) => group.map((item, index) => (at > 0 && index === 0 ? { ...item, separatorBefore: true } : item)));
 }
 
 export interface ArchivedBots {
@@ -576,12 +647,12 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
   const { state, dispatch } = useStore();
   const simple = account !== undefined;
   const [menuOpen, setMenuOpen] = useState(false);
-  const cloudUsage = cloudUsageSummary(useCloudPlanSnapshot(simple ? usageBridge(state.config?.cloudHome === true) : undefined));
-  const engineUsage = usePlanUsageSummary(simple && menuOpen && cloudUsage === null && window.duskDesktop?.remoteClient?.active !== true);
+  const usageDisplay = useUsageDisplay();
+  const cloudPlan = useCloudPlanSnapshot(simple ? usageBridge(state.config?.cloudHome === true) : undefined);
+  const cloudUsage = cloudUsageSummary(cloudPlan, usageDisplay);
+  const engineUsage = usePlanUsageSummary(simple && menuOpen && cloudUsage === null && window.duskDesktop?.remoteClient?.active !== true, usageDisplay);
   const phone = useSidebarPhoneStatus();
   const connectPhone = useConnectPhoneEntry(state.config?.cloudHome === true);
-  const cloudPhone = useCloudPhoneDestination(connectPhone?.target === "computer");
-  const destinations = phoneDestinations(connectPhone, cloudPhone.cloud);
   const update = useServerUpdateItem(true);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [phoneAppOpen, setPhoneAppOpen] = useState(false);
@@ -597,28 +668,37 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
   }, []);
 
   const accounts = useAccounts();
-  const ownProfile = profileForSession(state.config?.profile, session);
+  const sessionProfile = profileForSession(state.config?.profile, session);
   useAccountName(localDesktopPage() && window.duskDesktop?.remoteClient?.active !== true && !state.config?.cloudHome && !state.config?.team,
     state.config?.profile, accounts.view?.active ?? null, dispatch);
-  const profile = withAccountFace(ownProfile, accounts.view?.active ?? null);
-  const face = personFace(ownProfile, accounts.view?.active ?? null);
+  const place = placeAccount(sessionProfile, { face: accounts.face ?? null, owner: state.config?.team ? null : account?.owner ?? null });
+  const ownProfile = place?.profile ?? sessionProfile;
+  const signedIn = accounts.view?.active ?? place?.account ?? null;
+  const profile = withAccountFace(ownProfile, signedIn);
+  const face = personFace(ownProfile, signedIn);
   // grok's footer falls back to the computer's account: its initial in the grey circle, its name beside it
   const computer = useComputerName(simple && !profile?.name?.trim() && !profile?.email?.trim());
   const name = computer ?? profileLabel(profile);
-  const connectTo = (destination: PhoneDestination) => selectPhoneDestination(destination, { bridge: cloudPhone.bridge, dispatch });
   const remote = window.duskDesktop?.remoteClient?.active === true;
   const cloudAccount = !remote && Boolean(window.duskDesktop?.cloudAccount || (window.duskDesktop?.cloudPlan && state.config?.cloudHome === true));
   const openCloudAccount = () => dispatch({ type: "toggleAppSettings", open: true, section: "cloudAccount" });
   const phoneApp = phoneAppEnabled();
   const move = useAccountMove(state.config?.cloudHome === true, { onOpen: openCloudAccount, onPairPhone: phoneApp ? () => dispatch(phonePairingSettingsAction()) : undefined });
 
-  // one place to connect the phone to opens its pairing at once; only a choice of places asks where
+  // a team's place pairs from Settings, where its policy is said; anywhere else the dialog shows the code at once
   const getApp = () => {
-    if (destinations.length > 1) setPhoneAppOpen(true);
-    else if (destinations[0]) connectTo(destinations[0]);
+    if (connectPhone && !connectPhone.team) setPhoneAppOpen(true);
     else dispatch(phonePairingSettingsAction());
   };
+  const headerEmail = accounts.view?.active?.email ?? place?.account?.email ?? null;
+  const header: MenuAccountHeader | null = headerEmail ? {
+    name: profile?.name ?? null,
+    email: headerEmail,
+    plan: accountPlanText(signedIn?.plan) ?? snapshotPlanText(cloudPlan),
+    face: <ProfileFace face={face} initials={profileInitials(profile)} size={32} fontSize={13} />,
+  } : null;
   const grokItems = simple ? grokProfileMenuItems({
+    header,
     onGetApp: phoneApp ? getApp : undefined,
     onHelp: () => void openExternalLink(HELP_CENTER_URL),
     onShortcuts: () => {
@@ -641,9 +721,9 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
       : simple
       ? simplePhoneItems({ connected: phone.kind === "connected", onGetApp: getApp })
       : phoneMenuItems({
-        destinations,
+        entry: connectPhone,
         connected: phone.kind === "connected",
-        onConnect: connectTo,
+        onConnect: getApp,
       }),
     usage: !remote,
     usageSummary: cloudUsage ?? engineUsage,
@@ -692,10 +772,10 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
         renderTrigger={({ open }) => simple ? (<>
           <span
             ref={triggerRef}
-            data-sidebar-account=""
-            className={cn("relative flex size-9 items-center justify-center rounded-full", !named && (open ? "bg-ink/[0.06]" : "hover:bg-ink/[0.06]"))}
+            data-sidebar-account="" data-morph="account"
+            className={cn("relative flex size-10 items-center justify-center rounded-full", !named && (open ? "bg-ink/[0.06]" : "hover:bg-ink/[0.06]"))}
           >
-            <ProfileFace face={computer ? null : face} initials={initials} size={face && !computer ? 32 : 36} fallback={nameless} fontSize={14} className="bg-composer leading-[14px] tracking-[-0.35px] text-ink-secondary inset-ring inset-ring-ink/[0.08] group-hover/acct:bg-[color-mix(in_srgb,var(--color-ink)_5%,var(--color-composer))] group-aria-expanded/acct:bg-[color-mix(in_srgb,var(--color-ink)_7%,var(--color-composer))]" />
+            <ProfileFace face={computer ? null : face} initials={initials} size={face && !computer ? 36 : 40} fallback={nameless} fontSize={14} className="bg-composer leading-[14px] tracking-[-0.35px] text-ink-secondary inset-ring inset-ring-ink/[0.08] group-hover/acct:bg-[color-mix(in_srgb,var(--color-ink)_5%,var(--color-composer))] group-aria-expanded/acct:bg-[color-mix(in_srgb,var(--color-ink)_7%,var(--color-composer))]" />
             {dot && <span aria-hidden data-account-dot={dot} className={cn("absolute -right-0.5 -top-0.5 size-2.5 rounded-full ring-2 ring-panel", DOT_COLOR[dot])} />}
           </span>
           {named && <span aria-hidden="true" data-sidebar-account-name="" className={cn("min-w-0 truncate text-[14px] font-medium leading-5 tracking-[0.01em] transition-[opacity,margin,max-width] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none",
@@ -745,18 +825,17 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
         )}
       />
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
-      {accounts.sheet && <AccountsSheet adding={accounts.sheet.email} note={accounts.sheet.note} onClose={accounts.closeSheet} />}
+      <AnimatePresence>{accounts.sheet && <AccountsSheet key="accounts" adding={accounts.sheet.email} note={accounts.sheet.note} onClose={accounts.closeSheet} />}</AnimatePresence>
       {accounts.signOutConfirm}
       {accounts.picking && accounts.view?.active && <AvatarPicker account={accounts.view.active} anchor={triggerRef.current?.closest("button") ?? null} onClose={accounts.closeAvatar} />}
-      {phoneAppOpen && <PhoneAppDialog
+      <AnimatePresence>{phoneAppOpen && <PhoneAppDialog
+        key="phone"
         open
         onClose={() => setPhoneAppOpen(false)}
-        connect={destinations.map((destination) => ({
-          key: destination.id,
-          subtitle: destination.team ? t("sidebar.menu.connectPhone.team", { team: destination.team }) : t(destination.subtitleKey),
-          onSelect: () => connectTo(destination),
-        }))}
-      />}
+        remote={remote}
+        cloudHome={state.config?.cloudHome === true}
+        email={state.config?.profile?.email}
+      />}</AnimatePresence>
     </>
   );
 }

@@ -3,6 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { StoreProvider, useStore, type Action, type AppState, type Bot, type Group, type Message } from "./store";
+import { forgetChatsInFront } from "../lib/chat-in-front";
 import { LAST_CONVERSATION_KEY } from "../lib/last-conversation";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -33,6 +34,7 @@ afterEach(() => {
   root = undefined;
   FixtureEventSource.opened = [];
   vi.unstubAllGlobals();
+  forgetChatsInFront();
 });
 
 async function fixture(transcripts?: (path: string) => unknown) {
@@ -204,4 +206,18 @@ it("loads every chat in one read once the snapshot lands, so opening any of them
   await app.select("two");
   await app.select("room");
   expect(app.request.mock.calls.filter(([path]) => path.startsWith("/api/threads/"))).toHaveLength(0);
+});
+
+it("reports a failing bulk read once, then retries further apart instead of every three seconds", async () => {
+  vi.useFakeTimers();
+  try {
+    const app = await fixture(() => { throw new Error("transcripts offline"); });
+    const attempts = () => app.request.mock.calls.filter(([path]) => String(path).startsWith("/api/transcripts?")).length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_100); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(6_100); });
+    expect(attempts()).toBe(3);
+    expect(app.state().error).toBeTruthy();
+  } finally {
+    vi.useRealTimers();
+  }
 });
