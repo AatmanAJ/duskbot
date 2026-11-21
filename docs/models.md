@@ -95,7 +95,7 @@ run.
 |---|---|---|---|
 | ChatGPT | Codex CLI, the npm package `@openai/codex` (from OpenAI, via the npm registry). Not downloaded when a copy is already there: one on your PATH, or the one inside ChatGPT.app (`/Applications/ChatGPT.app/Contents/Resources/codex-cli`) | dusk bot's `tools/npm` folder | On this computer: ChatGPT's own sign-in page, which comes back to the app by itself (the token is kept in dusk bot's own folder, `providers/chatgpt-plan`, apart from any other Codex login). On a server or dusk cloud: a code to enter at `auth.openai.com/codex/device`; the token is kept in Codex's own `~/.codex` on that machine. A Codex login that already works there is reused |
 | Claude | Claude Code, the npm package `@anthropic-ai/claude-code` (from Anthropic) | dusk bot's `tools/npm` folder | Claude's page opens; it shows a code, which you paste back into the card. Claude Code keeps the token |
-| Gemini | Google Antigravity's official ACP server, a zip from `dl.google.com` (checked against its pinned hash) | dusk bot's `tools/antigravity-acp` folder | Google's own page opens and returns to the app by itself. The token is kept in a Google profile of its own, apart from your browser's |
+| Gemini | Google's official Antigravity CLI (`agy acp`), downloaded from `storage.googleapis.com` (checked against its SHA-512 checksum) | dusk bot's `tools/antigravity-acp` folder | Google's own page opens and shows a code (or page URL) to paste back into the app. Each account's sign-in is kept in its own profile, and signing out calls the CLI's ACP `logout` method |
 | Grok | Grok Build, xAI's own installer (`x.ai/cli`) | `~/.grok` | A code to enter on xAI's page. Grok keeps the token in `~/.grok` |
 | GitHub Copilot | Copilot CLI, the npm package `@github/copilot` (from GitHub) | dusk bot's `tools/npm` folder | A code to enter at `github.com/login/device`. Copilot keeps the token in the system's credential store (or `~/.copilot`) |
 | Cursor | Cursor's CLI, Cursor's own installer (`cursor.com/install`) | `~/.local/bin` | A one-time link to Cursor's page; approve there. Cursor keeps the token |
@@ -139,6 +139,35 @@ licensed and is the same one OpenCode uses.
   `GET /v1/models` for Anthropic-style servers). The search shows those models
   first, with the catalog's badges added where the ids match.
 
+## Engine model lists (Codex, Claude Code, Grok)
+
+The picker for an engine is the engine's own list where it has one, with our
+names and order on top, so a new model shows up without an app release.
+
+- **Live first.** Codex's list is what the installed Codex CLI answers to
+  `model/list` (ChatGPT's own catalog for the signed-in account). The Grok API
+  engine reads xAI's `GET /models` with the saved key. Connected API-key
+  providers read their own `GET /models`. Claude Code has no list command, so
+  its list is ours.
+- **Read again every few hours.** Each list is saved per engine; a list older
+  than 6 hours is read again at start and, on a server that keeps running
+  (dusk cloud), every 3 hours.
+- **Our catalog on top.** `server/model-catalog/dusk-models.json` names each
+  engine's models, and a model marked `"add": true` is offered even when the
+  engine's own list leaves it out (an engine CLI older than the model). A model
+  the engine lists that we have not named gets a clean name from its id
+  (`gpt-6.2-astra` → "GPT-6.2 Astra"). A ChatGPT plan sign-in and company
+  models keep exactly their own list.
+- **Updated from dusk.bot without a release.** The server fetches
+  `https://dusk.bot/releases/models.json` at start and every 3 hours, keeps it
+  in `<data dir>/providers/model-providers/dusk-models.json`, and uses the
+  newer (by `updatedAt`) of that and the copy built into the app. To add a
+  model the same day: edit `server/model-catalog/dusk-models.json`, copy it to
+  `apps/site/public/landing/releases/models.json` (a test keeps them equal),
+  raise `updatedAt`, and deploy the site (`apps/site/deploy.sh landing`).
+  `DUSK_MODEL_CATALOG_URL` points at another https address;
+  `DUSK_DISABLE_MODEL_CATALOG_FETCH=1` turns the download off.
+
 ## Where a connection lives
 
 Each window of the app talks to one server: this computer, your dusk cloud, or
@@ -181,6 +210,12 @@ the bots run.
 
 How the free backup works:
 
+- **It is in the picker, by name.** Under **OpenCode**, **Free model** comes
+  first: it runs whichever free model OpenCode picks now, and it is the default
+  for a person with nothing connected. Below it, the models the CLI lists as
+  free (`-free` ids), by name. Pick one and the bot stays on it; a pick the CLI
+  stops listing falls back to the free model it lists now. OpenCode's paid
+  models are never listed: without a login or credits they answer HTTP 402.
 - **It is a backup chain.** A message goes to a free model. If that model sends
   nothing within 25 seconds, or answers with nothing, the same message goes to
   the next free model, with one line in the chat saying so. OpenCode's own
