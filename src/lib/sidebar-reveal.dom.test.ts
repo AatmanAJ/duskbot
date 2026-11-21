@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { revealSidebarRow } from "./sidebar-reveal";
+import { openRowRevealer, revealSidebarRow } from "./sidebar-reveal";
 
 function sidebar(): HTMLElement {
   const root = document.createElement("aside");
@@ -42,5 +42,32 @@ describe("revealSidebarRow", () => {
     expect(revealSidebarRow(root, "archived-bot")).toBe(false);
     expect(revealSidebarRow(null, "nova")).toBe(false);
     expect(scroll).not.toHaveBeenCalled();
+  });
+});
+
+describe("openRowRevealer", () => {
+  it("reveals an open chat once, so a list that changes later does not pull a scrolled list back", () => {
+    const root = sidebar();
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
+    const reveal = openRowRevealer();
+    reveal(root, "nova");
+    reveal(root, "nova");
+    expect(scroll).toHaveBeenCalledTimes(1);
+    reveal(root, "room-1");
+    expect(scroll).toHaveBeenCalledTimes(2);
+    reveal(root, null);
+    reveal(root, "nova");
+    expect(scroll).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps trying while the open chat's row is not drawn yet", () => {
+    const root = sidebar();
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
+    const reveal = openRowRevealer();
+    reveal(root, "late");
+    expect(scroll).not.toHaveBeenCalled();
+    root.insertAdjacentHTML("beforeend", '<div data-sidebar-bot-row="late" role="button"></div>');
+    reveal(root, "late");
+    expect(scroll).toHaveBeenCalledTimes(1);
   });
 });

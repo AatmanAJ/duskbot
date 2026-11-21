@@ -6,3 +6,14 @@ export function revealSidebarRow(root: ParentNode | null | undefined, id: string
   row?.scrollIntoView({ block: "nearest" });
   return row !== undefined;
 }
+
+/** Reveals an open chat's row once: again only when another chat opens, or while its row is not drawn yet. A list that
+ * changes afterwards leaves the person's own scroll position alone. */
+export function openRowRevealer(): (root: ParentNode | null | undefined, id: string | null | undefined) => void {
+  let revealed: string | null = null;
+  return (root, id) => {
+    const open = id ?? null;
+    if (open === revealed) return;
+    if (!open || revealSidebarRow(root, open)) revealed = open;
+  };
+}
