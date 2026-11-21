@@ -1926,6 +1926,8 @@
   "sidebar.searchAria": "Search bots and messages",
   "sidebar.searchClose": "Close search",
   "sidebar.noMatch": "Nothing matches “{query}”",
+  "sidebar.empty.title": "No bots in the sidebar.",
+  "sidebar.empty.show": "Show {name}",
   "sidebar.preview.waiting": "Needs you",
   "sidebar.preview.waitingOnTeammate": "Waiting on a teammate…",
   "sidebar.preview.working": "Working",
