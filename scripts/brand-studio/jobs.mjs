@@ -48,7 +48,7 @@ function readRaw(name) {
 }
 
 function framing(out, shotCount, given = {}) {
-  const unknown = Object.keys(given).filter((key) => !["shots", "crop", "arrange", "labels"].includes(key));
+  const unknown = Object.keys(given).filter((key) => !["shots", "crop", "arrange", "labels", "frames", "hold", "fade"].includes(key));
   if (unknown.length) throw new Error(`${OPTIONS_FILE}: ${out} has unknown option ${unknown.join(", ")}`);
   const texts = given.crop === undefined ? [] : [given.crop].flat();
   if (texts.length > 1 && texts.length !== shotCount) throw new Error(`${OPTIONS_FILE}: ${out} needs one crop, or one per shot (${shotCount})`);
@@ -69,6 +69,25 @@ function framing(out, shotCount, given = {}) {
   return { crops, ...(given.arrange ? { arrange: given.arrange } : {}), ...(given.labels ? { labels: given.labels.map(String) } : {}) };
 }
 
+function timing(out, given = {}) {
+  const read = (key, min) => {
+    if (given[key] === undefined) return {};
+    if (!Number.isFinite(given[key]) || given[key] < min) throw new Error(`${OPTIONS_FILE}: ${out} needs a ${key} of at least ${min} milliseconds`);
+    return { [`${key}Ms`]: given[key] };
+  };
+  return { ...read("hold", 20), ...read("fade", 0) };
+}
+
+function chosenFrames(out, frames, wanted) {
+  if (wanted === undefined) return frames;
+  const byName = new Map(frames.map((frame) => [frame.name, frame]));
+  const missing = Array.isArray(wanted) ? wanted.filter((name) => !byName.has(name)) : [];
+  if (!Array.isArray(wanted) || wanted.length < 2 || missing.length) {
+    throw new Error(`${OPTIONS_FILE}: ${out} needs frames that list at least two of its numbered raw files${missing.length ? `, which do not include ${missing.join(", ")}` : ""}`);
+  }
+  return wanted.map((name) => byName.get(name));
+}
+
 /**
  * The framed files a folder of raw captures yields:
  * - `<slug>.<state>.raw.png` gives `<slug>.<state>.png`;
@@ -78,7 +97,9 @@ function framing(out, shotCount, given = {}) {
  *   and a before with its after `pr-<n>-before-after[-<variant>].png`.
  *
  * `options` is the folder's `frame.json`: framed file name to
- * `{ crop, arrange, labels }`, where `crop` is one "x,y,width,height" in
+ * `{ crop, arrange, labels }` (a GIF also takes `frames`, the numbered raw
+ * files it shows in the order given, and `hold` and `fade` in milliseconds),
+ * where `crop` is one "x,y,width,height" in
  * points for every shot of that file or a list with one per shot (null leaves
  * a shot whole). An entry with `shots`, a list of raw files in the folder, is
  * one more still made from them, such as a second, closer crop of a pair.
@@ -90,11 +111,18 @@ export function planReframe(dir, names, options = {}) {
     if (!raw) continue;
     const entry = groups.get(raw.group) ?? { stills: new Map(), frames: [], pair: raw.pair, gif: raw.gif };
     groups.set(raw.group, entry);
-    if (raw.frame) entry.frames.push({ ...raw.frame, file: join(dir, name) });
+    if (raw.frame) entry.frames.push({ ...raw.frame, name, file: join(dir, name) });
     else entry.stills.set(raw.state, { file: join(dir, name), out: raw.still });
   }
   const jobs = [];
-  const add = (kind, out, shots, labels) => jobs.push({ kind, shots, labels, out: join(dir, out), ...framing(out, shots.length, options[out]) });
+  const add = (kind, out, shots, labels) => {
+    const given = options[out] ?? {};
+    const animated = kind === "animation";
+    const misplaced = ["frames", "hold", "fade"].filter((key) => !animated && given[key] !== undefined);
+    if (misplaced.length) throw new Error(`${OPTIONS_FILE}: ${out} is a still and takes no ${misplaced.join(", ")}`);
+    const { frames: _frames, hold: _hold, fade: _fade, ...shared } = given;
+    jobs.push({ kind, shots, labels, out: join(dir, out), ...framing(out, shots.length, shared), ...(animated ? timing(out, given) : {}) });
+  };
   for (const { stills, frames, pair, gif } of groups.values()) {
     for (const still of stills.values()) add("still", still.out, [still.file], []);
     if (stills.has("before") && stills.has("after")) {
@@ -102,7 +130,8 @@ export function planReframe(dir, names, options = {}) {
     }
     if (frames.length >= 2) {
       frames.sort((a, b) => a.order - b.order);
-      add("animation", gif, frames.map((frame) => frame.file), frames.some((frame) => frame.label) ? frames.map((frame) => frame.label) : []);
+      const shown = chosenFrames(gif, frames, options[gif]?.frames);
+      add("animation", gif, shown.map((frame) => frame.file), shown.some((frame) => frame.label) ? shown.map((frame) => frame.label) : []);
     }
   }
   const made = new Set(jobs.map((job) => job.out));

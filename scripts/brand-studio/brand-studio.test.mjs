@@ -284,4 +284,20 @@ describe("the naming convention", () => {
     expect(() => planReframe("/a", names, { "stop.after.png": { arrange: "pile" } })).toThrow(/arrange/);
     expect(() => planReframe("/a", names, { "stop.after.png": { zoom: 2 } })).toThrow(/unknown option zoom/);
   });
+
+  it("lets frame.json pick a GIF's frames and its timing", () => {
+    const names = ["tab.f01-search.raw.png", "tab.f02-new-bot.raw.png", "tab.f03-pepper.raw.png", "tab.after.raw.png"];
+    const gif = (options) => planReframe("/a", names, { "tab.gif": options }).find((job) => job.kind === "animation");
+    expect(gif({ frames: ["tab.f03-pepper.raw.png", "tab.f01-search.raw.png"], hold: 900, fade: 0, crop: "0,0,300,200" })).toMatchObject({
+      shots: ["/a/tab.f03-pepper.raw.png", "/a/tab.f01-search.raw.png"], labels: ["pepper", "search"], holdMs: 900, fadeMs: 0,
+      crops: [{ x: 0, y: 0, width: 300, height: 200 }, { x: 0, y: 0, width: 300, height: 200 }],
+    });
+    const whole = gif({});
+    expect(whole.shots).toHaveLength(3);
+    expect(whole).not.toHaveProperty("holdMs");
+    expect(() => gif({ frames: ["tab.f01-search.raw.png"] })).toThrow(/at least two/);
+    expect(() => gif({ frames: ["tab.f01-search.raw.png", "tab.after.raw.png"] })).toThrow(/do not include tab\.after\.raw\.png/);
+    expect(() => gif({ hold: 5 })).toThrow(/hold of at least 20/);
+    expect(() => planReframe("/a", names, { "tab.after.png": { hold: 900 } })).toThrow(/is a still and takes no hold/);
+  });
 });

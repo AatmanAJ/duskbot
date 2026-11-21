@@ -198,6 +198,7 @@ files, keyed by the framed file they apply to:
 {
   "chat-stop.before-after.png": { "crop": ["66,186,360,140", "66,288,360,140"] },
   "chat-stop.gif": { "crop": "40,120,560,360", "labels": ["ask", "working", "stopped"] },
+  "tab-ring.gif": { "frames": ["tab-ring.f04-search.raw.png", "tab-ring.f05-new-bot.raw.png"], "hold": 900, "fade": 200 },
   "chat-stop.after.png": { "arrange": "stack" },
   "chat-stop.close-up.png": { "shots": ["chat-stop.before.raw.png", "chat-stop.after.raw.png"], "crop": "300,80,200,90", "labels": ["before", "after"] }
 }
@@ -209,6 +210,8 @@ files, keyed by the framed file they apply to:
 | `arrange` | `auto`, `row` or `stack` for that file |
 | `labels` | one per shot, instead of the ones the names give |
 | `shots` | raw files in the folder: one more still made from them, such as a closer crop of the same pair |
+| `frames` | a GIF only: the numbered raw files it shows, in the order given, when a shorter loop of a few of them reads better than all of them |
+| `hold`, `fade` | a GIF only: how long it rests on each frame and how long it cross-fades, in milliseconds, instead of `--hold` and `--fade` |
 
 A file with no entry is framed whole, so a pair can be cropped to the changed
 control while each single shot still shows the whole window. An entry for a
