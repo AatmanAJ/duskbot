@@ -128,12 +128,29 @@ linuxBox("the box plan", () => {
     }
   });
 
-  it("Antigravity's own profile (GEMINI_HOME) goes back read-write, and no other account's", () => {
+  it("Antigravity's own profile (GEMINI_HOME and --gemini-dir) goes back read-write, and no other account's", () => {
     const profile = join(dataDir, "providers", "antigravity", "a".repeat(64));
-    const plan = planBox(setup(), { command: join(dataDir, "tools", "antigravity-acp", "linux-x64", "versions", "abc", "agy_acp_server"), args: ["--uid="], cwd, env: { HOME: home, GEMINI_HOME: profile } });
-    expect(visibleInBox(plan, join(profile, "antigravity-acp", "acp_token.json"))).toBe("rw");
-    expect(visibleInBox(plan, join(dataDir, "providers", "antigravity", "b".repeat(64), "antigravity-acp", "acp_token.json"))).toBe("none");
+    const plan = planBox(setup(), {
+      command: join(dataDir, "tools", "antigravity-acp", "linux-x64", "versions", "abc", "antigravity"),
+      args: ["acp", "--gemini-dir", profile, "--app-data-dir", "antigravity-acp"],
+      cwd,
+      env: { HOME: home, GEMINI_HOME: profile },
+    });
+    expect(visibleInBox(plan, join(profile, "antigravity-acp", "antigravity-oauth-token"))).toBe("rw");
+    expect(visibleInBox(plan, join(dataDir, "providers", "antigravity", "b".repeat(64), "antigravity-acp", "antigravity-oauth-token"))).toBe("none");
     expect(visibleInBox(plan, join(dataDir, "providers", "key"))).toBe("none");
+  });
+
+  it("a folder the engine's command line names (Claude Code's --add-dir) stays writable when the turn may write it", () => {
+    const own = join(dataDir, "workspaces", "bot-a"), chats = join(dataDir, "task-workspaces", "bot-a");
+    const plan = planBox(setup(), {
+      command: "/usr/local/bin/claude", args: ["-p", "--add-dir", own, "--add-dir", chats, "--add-dir", join(dataDir, "skills-library", "s")],
+      cwd, env: { HOME: home }, rw: [chats],
+    });
+    expect(visibleInBox(plan, join(own, "accesstest"))).toBe("rw");
+    expect(visibleInBox(plan, join(chats, "thread-0", "cloudflare", "wr.sh"))).toBe("rw");
+    expect(visibleInBox(plan, cwd)).toBe("rw");
+    expect(visibleInBox(plan, join(dataDir, "skills-library", "s", "SKILL.md"))).toBe("ro");
   });
 
   it("a cwd outside the data folder is the turn's folder; a bot named by the caller gets its own folder", () => {

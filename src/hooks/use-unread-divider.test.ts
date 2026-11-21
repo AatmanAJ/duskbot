@@ -68,4 +68,21 @@ describe("useUnreadDivider", () => {
     expect(shown.fading).toBe(false);
     expect(dispatched).toEqual([{ type: "unreadDividerDone", threadId: "t" }]);
   });
+
+  it("on the phone fades in place and folds only when the chat closes, so no row under it moves", async () => {
+    document.documentElement.dataset.mobileApp = "ios";
+    try {
+      await draw(false);
+      await draw(true);
+      await wait(UNREAD_DIVIDER_LINGER_MS);
+      expect(shown).toEqual({ messageId: "b2", fading: true });
+      await wait(10 * UNREAD_DIVIDER_FADE_MS);
+      expect(dispatched).toEqual([]);
+      act(() => root.unmount());
+      root = createRoot(document.createElement("div"));
+      expect(dispatched).toEqual([{ type: "unreadDividerDone", threadId: "t" }]);
+    } finally {
+      delete document.documentElement.dataset.mobileApp;
+    }
+  });
 });

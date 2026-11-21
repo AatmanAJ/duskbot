@@ -9,13 +9,14 @@
 //     api_error_status; FAKE_CLAUDE_NO_TERMINAL_REASON=1: the result has no terminal_reason, only stop_reason "stop_sequence"
 //   FAKE_CLAUDE_RATE_LIMIT  JSON rate_limit_info reported in a `rate_limit_event` after init
 //   FAKE_CLAUDE_LIMITED_FILE  path: while it exists, every turn plays usage-limit with the file's JSON rate_limit_info
+//   FAKE_CLAUDE_API_ERROR_FILE  path: while it exists, every turn plays api-error with the file's text
 //   FAKE_CLAUDE_MCP_FAILED  comma list of MCP servers init reports as failed (`mcp_servers`)
 //   FAKE_CLAUDE_ANSWER_MODEL  the `model` of its assistant frames, as when the CLI answers with another model than asked
 //   FAKE_CLAUDE_RELEASE  with hang: the turn ends normally once this file exists; a scripted call's `hold` ends then too
 //   FAKE_CLAUDE_DUMP  path for the latest turn's {argv, env, cwd, prompt, systemPrompt, mcpConfig}
 //   FAKE_CLAUDE_ELICIT  JSON request body: a "hang" turn (or a failing FAKE_CLAUDE_TRANSIENTS launch) first asks it
 //     as control_request "elicit-1"
-//   FAKE_CLAUDE_CONTROL_LOG  JSON-lines file every control_response the host writes is appended to
+//   FAKE_CLAUDE_CONTROL_LOG  JSON-lines file every control_response and control_request the host writes is appended to
 //   FAKE_CLAUDE_EXIT_AFTER_TURN  1: exit once the turn is answered, so later turns relaunch with --resume
 //   FAKE_CLAUDE_AUTH_AFTER_TURN  1: from the second turn, answer as not-logged-in; FAKE_CLAUDE_AUTH_AFTER_WORK  1: not-logged-in
 //     calls a tool first
@@ -43,7 +44,8 @@
 //   FAKE_CLAUDE_TOOL_CALLS_BY_TURN  JSON array, one FAKE_CLAUDE_TOOL_CALLS list per reply of FAKE_CLAUDE_REPLIES (by its REPLY_STATE)
 //   FAKE_CLAUDE_SCRIPT  JSON array of steps each happy turn plays in order instead of its replies and tool calls:
 //     {"text": "..."} is an assistant message of its own, {"tool": {name, input?, ok?, output?}} a tool_use answered by its
-//     tool_result (output default "ok"), {"waitMs": n} a pause; e.g. an ack, set_status with a search, a plan, a wait, a result
+//     tool_result (output default "ok"), {"waitMs": n} a pause; e.g. an ack, set_status with a search, a plan, a wait, a result;
+//     {"ifSteered": "..."} reads the messages steered in so far and says its text, only when there were any
 //   FAKE_CLAUDE_STREAM_CADENCE  "chars:ms" (happy mode): stream each scripted reply as
 //     text_delta chunks of `chars` chars every `ms` ms before its assistant message, after FAKE_CLAUDE_TOOL_CALLS_FILE's calls
 //   FAKE_CLAUDE_USES_CLOUD_COMPUTER  1: claim the mounted computer's control gate before continuing
@@ -73,6 +75,7 @@
 //   FAKE_CLAUDE_LATE_STEER_INIT_GATE  path: that late turn's `init` also waits for it
 //   FAKE_CLAUDE_LATE_STEER_SILENT  1: the late turn prints `init` and nothing else
 //   FAKE_CLAUDE_SLOW_FINISH_GATE  path: `slow` replies once it exists; a body of "fail" ends as is_error
+//   FAKE_CLAUDE_SLOW_ACK  text `slow` says as soon as its turn starts, before it waits
 //   FAKE_CLAUDE_SLOW_TAIL_TOOL  1: `slow` makes one more tool call right before its reply
 //   FAKE_CLAUDE_QUEUED_TURN_COUNT  unset | zero (what 2.1.282 reports for stdin words) | count
 //   FAKE_CLAUDE_COST_STATE  dir of each session's running cost, restored on --resume as 2.1.282 does
@@ -182,7 +185,7 @@ const parseToolCalls = (raw: string | undefined): ScriptedToolCall[] | null => {
   }
 };
 const scriptedToolCallsAtStart = parseToolCalls(process.env.FAKE_CLAUDE_TOOL_CALLS);
-type ScriptStep = { text: string } | { tool: ScriptedToolCall } | { waitMs: number };
+type ScriptStep = { text: string } | { tool: ScriptedToolCall } | { waitMs: number } | { ifSteered: string };
 const turnScript = ((): ScriptStep[] | null => {
   const raw = process.env.FAKE_CLAUDE_SCRIPT;
   if (!raw) return null;
@@ -191,6 +194,7 @@ const turnScript = ((): ScriptStep[] | null => {
   if (!Array.isArray(parsed)) throw new Error("FAKE_CLAUDE_SCRIPT must be a JSON array of steps");
   return parsed.map((step, index): ScriptStep => {
     if (typeof step?.text === "string") return { text: step.text };
+    if (typeof step?.ifSteered === "string") return { ifSteered: step.ifSteered };
     if (Number.isSafeInteger(step?.waitMs) && step.waitMs >= 0) return { waitMs: step.waitMs };
     const call = typeof step?.tool?.name === "string" ? parseToolCalls(JSON.stringify([step.tool]))?.[0] : undefined;
     if (call) return { tool: call };
@@ -871,6 +875,13 @@ const playScript = (steps: ScriptStep[], usage: object, done: () => void) => {
     const step = steps[index];
     if (!step) return done();
     if ("waitMs" in step) return void setTimeout(() => next(index + 1), step.waitMs);
+    if ("ifSteered" in step) {
+      if (!steered.length) return next(index + 1);
+      steered = [];
+      replaySteered();
+      out({ type: "assistant", message: { id: `msg-script-${process.pid}-${++toolUseCount}`, content: [{ type: "text", text: step.ifSteered }], usage } });
+      return next(index + 1);
+    }
     if ("text" in step) {
       out({ type: "assistant", message: { id: `msg-script-${process.pid}-${++toolUseCount}`, content: [{ type: "text", text: step.text }], usage } });
       return next(index + 1);
@@ -1005,8 +1016,10 @@ const playTurn = (prompt: JsonValue, late = false) => {
     finishIfDone();
     return;
   }
-  if (mode === "api-error" || resumedError) {
-    const text = process.env.FAKE_CLAUDE_API_ERROR ?? "API Error: 529 Overloaded. This is a server-side issue, usually temporary.";
+  const apiErrorFile = process.env.FAKE_CLAUDE_API_ERROR_FILE;
+  const filedError = apiErrorFile && existsSync(apiErrorFile) ? readFileSync(apiErrorFile, "utf8") : null;
+  if (mode === "api-error" || resumedError || filedError !== null) {
+    const text = filedError ?? process.env.FAKE_CLAUDE_API_ERROR ??"API Error: 529 Overloaded. This is a server-side issue, usually temporary.";
     out({ type: "assistant", message: { model: "<synthetic>", stop_reason: "stop_sequence", content: [{ type: "text", text }] }, error: process.env.FAKE_CLAUDE_API_ERROR_KIND ?? "unknown", is_api_error_message: true });
     const status = Number(process.env.FAKE_CLAUDE_API_ERROR_STATUS) || undefined;
     out({ type: "result", subtype: "success", is_error: true, stop_reason: "stop_sequence", ...(process.env.FAKE_CLAUDE_NO_TERMINAL_REASON === "1" ? {} : { terminal_reason: "api_error" }), ...(status ? { api_error_status: status } : {}), result: text });
@@ -1287,6 +1300,7 @@ const playTurn = (prompt: JsonValue, late = false) => {
     return;
   }
   if (mode === "slow") {
+    if (process.env.FAKE_CLAUDE_SLOW_ACK && !lateContinuation) out({ type: "assistant", message: { content: [{ type: "text", text: process.env.FAKE_CLAUDE_SLOW_ACK }] } });
     const finishSlowTurn = () => {
       if (process.env.FAKE_CLAUDE_SLOW_TAIL_TOOL) {
         const id = `tu-${process.pid}-${++toolUseCount}`;
@@ -1334,6 +1348,12 @@ process.stdin.on("data", (c) => {
     try {
       prompt = JSON.parse(line);
     } catch {
+      continue;
+    }
+    if ((prompt as { type?: unknown } | null)?.type === "control_request") {
+      const request = prompt as { request_id?: unknown };
+      if (process.env.FAKE_CLAUDE_CONTROL_LOG) appendFileSync(process.env.FAKE_CLAUDE_CONTROL_LOG, `${line}\n`);
+      out({ type: "control_response", response: { subtype: "success", request_id: request.request_id } });
       continue;
     }
     if ((prompt as { type?: unknown } | null)?.type === "control_response") {

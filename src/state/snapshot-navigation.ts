@@ -56,6 +56,11 @@ export function keepBotNavigation(previous: Bot | undefined, incoming: Bot, pres
   };
 }
 
+export function openElsewhere(previous: Bot | undefined, incoming: Pick<Bot, "threadId" | "tasks">): previous is Bot {
+  return previous !== undefined && previous.transcriptLoaded !== false && previous.threadId !== incoming.threadId
+    && Boolean(incoming.tasks?.some((task) => task.threadId === previous.threadId));
+}
+
 export function keepGroupNavigation(previous: Group | undefined, incoming: Group, preserve: boolean, taskIdsAtStart?: ReadonlySet<string>): Group {
   if (!preserve || !previous) return incoming;
   return {

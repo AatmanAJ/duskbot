@@ -59,3 +59,38 @@
 @media (forced-colors: active) {
   .computer-waking-line { color: CanvasText; background-image: none; }
 }
+
+/* the bot's tabs scroll sideways, fading out at an edge with more tabs beyond it */
+.browser-strip {
+  --fade-start: 0px;
+  --fade-end: 0px;
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent 100%);
+}
+.browser-strip[data-more-start] { --fade-start: 20px; }
+.browser-strip[data-more-end] { --fade-end: 20px; }
+
+/* the expanded browser: chat and panel move as snapshots on one spring (stiffness 300, damping ratio 0.82), each cut by its
+   moving box instead of stretched, so nothing double-exposes and the live page never lays out mid-motion */
+:root.panel-widening [data-panel-slot] { view-transition-name: side-panel; }
+:root.panel-widening main:has(~ [data-panel-slot]) { view-transition-name: panel-chat; }
+:root.panel-widening::view-transition-group(side-panel),
+:root.panel-widening::view-transition-group(panel-chat) {
+  animation-duration: 440ms;
+  animation-timing-function: linear(0, 0.028, 0.098, 0.191, 0.295, 0.4, 0.501, 0.594, 0.677, 0.748, 0.808, 0.858, 0.898, 0.93, 0.955, 0.974, 0.987, 0.997, 1.003, 1.008, 1.01, 1.011, 1.011, 1.011, 1.01, 1.009, 1.007, 1.006, 1.005, 1.004, 1);
+}
+:root.panel-widening::view-transition-old(side-panel),
+:root.panel-widening::view-transition-new(side-panel),
+:root.panel-widening::view-transition-old(panel-chat),
+:root.panel-widening::view-transition-new(panel-chat) {
+  block-size: 100%;
+  inline-size: 100%;
+  object-fit: none;
+  object-position: left top;
+}
+:root.panel-widening::view-transition-old(side-panel) { animation: browser-fade-out 120ms ease-out both; }
+:root.panel-widening::view-transition-new(side-panel),
+:root.panel-widening::view-transition-new(panel-chat) { animation: none; opacity: 1; }
+:root.panel-widening::view-transition-old(panel-chat) { animation: none; opacity: 0; }
+:root.panel-widening::view-transition-old(root),
+:root.panel-widening::view-transition-new(root) { animation: none; }
+@keyframes browser-fade-out { to { opacity: 0; } }
