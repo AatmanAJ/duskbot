@@ -91,6 +91,9 @@ export interface InstanceConfig {
   enabled?: boolean;
   /** Left out of every model list, picker and automatic choice; the engine itself (its CLI and sign-in) is untouched. */
   hidden?: boolean;
+  /** The person said to use this provider. One found on this computer (its CLI and sign-in) without it is offered, never
+   * picked on its own; one with a CLI path set, or that a bot, a conversation or the default already uses, counts as chosen. */
+  chosen?: boolean;
   /** Picker group over the driver's default: an `openai-compat` instance on a provider's own key is "api". */
   access?: EngineAccess;
   config?: unknown;
@@ -107,6 +110,8 @@ export interface SendTurnInput {
   /** Drivers namespace process-level resources (broker socket, CLI session) by botId too: threadIds may coincide across bots. */
   botId?: string;
   text: string;
+  /** A run of a routine, trigger or webhook rather than the person's own message: its replies never set up more later work. */
+  automationRun?: boolean;
   /** The recall block the harness put in front of `text`; it informs this turn only, so a replay can leave it out. */
   recalled?: string;
   /** Reasserted every turn so a resumed native session cannot keep a stale, more permissive mode. */
@@ -174,6 +179,8 @@ export interface SendTurnInput {
     phone?: { command: string; args: string[]; env: Record<string, string> };
     /** The built-in browser's MCP proxy: one tab per bot, in its own persistent partition. */
     browser?: { command: string; args: string[]; env: Record<string, string> };
+    /** This computer's shell (run_command, find_files) for an engine with none of its own, on the desktop app's own server. */
+    shell?: { command: string; args: string[]; env: Record<string, string> };
     /** The Data tools' MCP proxy: DuckDB on this bot's own database. */
     data?: { command: string; args: string[]; env: Record<string, string> };
     /** The Email tools' MCP proxy: the harness holds the passwords and the per-bot verdict. */
@@ -255,6 +262,11 @@ export interface ProviderAdapter {
     nativeImageInput?: boolean;
     /** Effort levels the driver can pass to its CLI, ascending; absent hides the control. */
     effortLevels?: readonly EffortLevel[];
+    /** Only a model whose catalog entry lists `effortLevels` takes one, and only those levels. */
+    effortByModel?: boolean;
+    /** A turn's effort is applied to that turn alone: an unset one is the engine's default again, and a change costs no
+     *  relaunch or prompt cache. Quick questions then run at low effort (turn-route.ts). */
+    effortPerTurn?: boolean;
     /** The driver validates and applies model-specific variant IDs per session. */
     modelVariants?: boolean;
     /** The driver keeps a live session and can take a user message mid-turn (steer). */
@@ -272,6 +284,8 @@ export interface ProviderAdapter {
     hooks?: boolean;
     /** "confined": sendTurn honours `guestConfined`; absent, a guest turn is refused. */
     guestTurns?: "confined";
+    /** false: the engine may stream no reasoning before its first tool call, so a turn's silence is not a sign it is idle. */
+    thinkingSignal?: false;
     /** "meter": `contextTokens` / `contextWindow` are the engine's own report, shown on the context meter but never used to time compaction. */
     contextReading?: "meter";
     /** sendTurn calls `engineAdmission` itself before it starts an engine process or joins one. */
@@ -472,6 +486,8 @@ export interface ModelCatalog {
     contextWindow?: number;
     /** Discovery hints; the native session revalidates these before each turn. */
     variants?: ModelVariantOption[];
+    /** The levels this model takes, on an engine whose `effortByModel` capability is set. */
+    effortLevels?: readonly EffortLevel[];
     /** The organization of the signed-in account turned this model off: the engine would answer with another. */
     orgBlocked?: true;
   }>;
@@ -544,10 +560,15 @@ export interface ProviderInstance {
   readonly models: ModelCatalog;
   /** True while the catalog is the driver's fixed list or a failed read's leftover, not a list the engine gave. */
   readonly modelsUnconfirmed?: boolean;
+  /** The engine in dusk.bot's model catalog (server/model-catalog/dusk-models.json) whose names and additions apply to
+   * `models`; unset where the list is fixed by someone else (a company's models, a ChatGPT plan's own list). */
+  readonly modelCatalogKey?: string;
   /** False while the sign-in can refuse a model its catalog lists (Codex on a ChatGPT account): a short message and background text then stay on the bot's own model. */
   readonly quickModelsUsable?: () => boolean;
   /** Refresh a live catalog without recreating the provider instance. */
   readonly refreshModels?: () => Promise<void>;
+  /** Reset an account-scoped catalog back to the driver's fixed fallback after sign-out. */
+  readonly resetModels?: () => void;
   /** Set while the last run's catalog is still refreshing; a turn awaits it, listen does not. */
   readonly startupModelRefresh?: Promise<void>;
   /** Optional first-party runtime installation and account setup. */

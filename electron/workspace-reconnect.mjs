@@ -5,7 +5,7 @@
 //
 // Privacy: the frame keeps bot names and chat titles only, no message text, on this computer, for FRAME_MAX_AGE_MS,
 // and goes when the server is forgotten.
-import { serverAnswers } from "./saved-server.mjs";
+import { serverLook } from "./saved-server.mjs";
 
 export const RECONNECT_PATH = "/reconnect";
 /** Waits between looks: quick at first (a service restart takes seconds), then every 30 s for as long as it takes. */
@@ -13,6 +13,9 @@ export const RETRY_MS = Object.freeze([2_000, 4_000, 8_000, 15_000, 30_000]);
 export const FRAME_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 /** A frame is fetched again at most this often while the server's page is open. */
 export const FRAME_EVERY_MS = 5 * 60 * 1000;
+/** A status a proxy in front of the server answers with its own page when the server is gone: a 502 to 504 from any
+ * proxy, and Cloudflare's 520 to 530 (a tunnel with no connector, as after uninstall.sh, is 530 "Error 1033"). */
+export const proxyAnswersForDownServer = (code) => (code >= 502 && code <= 504) || (code >= 520 && code <= 530);
 const FRAME_FETCH_MS = 5_000;
 const LIMITS = Object.freeze({ bots: 60, groups: 30, chats: 25, text: 120 });
 
@@ -95,9 +98,17 @@ export function createWorkspaceReconnect(deps) {
     lost = { ...lost, attempt: lost.attempt + 1, checking: true, nextAt: null };
     tell();
     const entry = lost;
-    const answers = await serverAnswers(entry.origin, fetchImpl);
+    const look = await serverLook(entry.origin, fetchImpl);
     if (lost !== entry || !still()) return lost === entry ? stop() : undefined;
-    if (answers) {
+    // a deleted dusk cloud never comes back: said once, with Remove and the other places, and never looked at again
+    if (look === "gone") {
+      log(`workspace: ${entry.name} was deleted; it is no longer looked at`);
+      lost = { ...lost, gone: true, checking: false, nextAt: null };
+      showPage();
+      tell();
+      return;
+    }
+    if (look === "yes") {
       log(`workspace: ${entry.name} answers again; opening it`);
       const win = window();
       // its page loading is what ends the wait (loaded()); a load that fails comes back through lost()
@@ -124,6 +135,7 @@ export function createWorkspaceReconnect(deps) {
     let host = "";
     try { host = new URL(lost.origin).host; } catch {}
     return { name: lost.name, host, attempt: lost.attempt, nextAt: lost.nextAt ?? null, checking: lost.checking === true,
+      ...(lost.gone ? { gone: true } : {}),
       ...(neverConnected ? { neverConnected: true } : {}),
       ...(fresh(frame) ? { frame: { at: frame.at, bots: frame.bots ?? [], groups: frame.groups ?? [] } } : {}),
       places: places().filter((place) => place.id !== lost.id) };
@@ -155,7 +167,9 @@ export function createWorkspaceReconnect(deps) {
       if (!again) log(`workspace: ${entry.name} isn't answering; it stays chosen and is looked at again`);
       lost = again ? lost : { id: entry.id, name: entry.name, origin: entry.origin, kept: keeps(entry) === true, attempt: 0, nextAt: null, checking: false };
       showPage();
-      if (!lost.checking) schedule();
+      if (lost.gone || lost.checking) return;
+      // a page that answered "gone" is looked at now, so the deleted state shows at once
+      if (entry.gone) void look(); else schedule();
     },
     /** A page of the main frame finished loading: the chosen server's own ends the wait and refreshes its frame. */
     loaded(url) {
@@ -172,7 +186,7 @@ export function createWorkspaceReconnect(deps) {
     },
     /** The person asked to look again now (the page's button, back online, the window focused). */
     retry() {
-      if (lost && !lost.checking) void look();
+      if (lost && !lost.checking && !lost.gone) void look();
       return view();
     },
     stop,

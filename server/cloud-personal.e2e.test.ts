@@ -564,7 +564,7 @@ it("a routine of the owner's not yet cleared for the Mac can't clear itself: its
   const tuned = JSON.stringify(await (await agentTools())("manage_trigger", { trigger_id: before.fullApproved, action: "update",
     changes: { schedule: { type: "cron", expression: "0 3 * * *", timeZone: "America/New_York" } } }));
   expect(tuned).not.toContain("isError\":true");
-  expect((await api("GET", "/api/routines", { token: owner })).body.routines.find((routine: any) => routine.id === before.fullApproved).schedule.expression, tuned).toBe("0 3 * * *");
+  expect((await api("GET", "/api/routines", { token: owner })).body.routines.find((routine: any) => routine.id === before.fullApproved).schedule.expression, tuned).toMatch(/^[2-7] 3 \* \* \*$/);
   expect(authors().routines[before.fullApproved]).toBeUndefined();
   for (const active of (await api("GET", "/api/routines", { token: owner })).body.runs ?? []) await api("POST", `/api/routine-runs/${active.id}/cancel`, { token: owner });
   await idle(before.full, owner);
@@ -595,7 +595,8 @@ it("a follow-up from the same conversation continues the teammate's thread inste
     return JSON.parse(result.content[0].text).receipts[0];
   };
   const first = await send("Get the writer drafting.", "Draft the launch post.");
-  expect(first).toMatchObject({ outcome: "queued", threadId: expect.any(String) });
+  // one chat per bot: the writer works in its own chat, which already runs in this folder
+  expect(first).toMatchObject({ outcome: "queued", threadId: writer.threadId });
   await until(async () => (await writerTasks()).find((task) => task.threadId === first.threadId)?.busy === true, "the writer to start");
   // Every held engine writes the one dump: wait for the writer's, so turn() below cannot read it as the lead's.
   const engine = () => { try { return JSON.parse(readFileSync(held(), "utf8")); } catch { return undefined; } };
@@ -607,8 +608,8 @@ it("a follow-up from the same conversation continues the teammate's thread inste
   await until(async () => ((await api("GET", "/api/bots", { token: owner })).body.bots as any[]).find((bot) => bot.id === before.lead.id)?.busy === false, "the lead to stop");
   const followUp = await send("Change of plan: keep it short.", "Keep the launch post under 100 words.");
   expect(followUp).toMatchObject({ outcome: "queued", threadId: first.threadId });
-  expect(followUp.detail).toContain('sent to "@');
-  expect(await writerTasks()).toHaveLength(opened + 1);
+  expect(followUp.detail).toContain('sent to "');
+  expect(await writerTasks()).toHaveLength(opened);
   await settleAll(owner);
 }, 60_000);
 

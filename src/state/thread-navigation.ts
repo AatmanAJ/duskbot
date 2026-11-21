@@ -47,22 +47,33 @@ export function openBot(
   else openBotThread(dispatch, bot, opened, threadsShown);
 }
 
-export function markedThread(bot: Pick<NotificationThreadOwner, "threadId" | "mainThreadId" | "tasks">): string | null {
+const threadStamp = (task: RowThread) => task.updatedAt ?? task.createdAt ?? 0;
+
+function newestOf(bot: Pick<NotificationThreadOwner, "threadId" | "mainThreadId" | "tasks">, picked: (task: RowThread) => boolean): string | null {
   const home = botOpensTo(bot);
-  const stamp = (task: RowThread) => task.updatedAt ?? task.createdAt ?? 0;
-  const marked = (bot.tasks ?? []).filter((task) => !task.routineRunId && task.activity === "waiting-on-you")
-    .sort((a, b) => Number(b.threadId === home) - Number(a.threadId === home) || stamp(b) - stamp(a));
-  return marked[0]?.threadId ?? null;
+  const found = (bot.tasks ?? []).filter((task) => !task.routineRunId && picked(task))
+    .sort((a, b) => Number(b.threadId === home) - Number(a.threadId === home) || threadStamp(b) - threadStamp(a));
+  return found[0]?.threadId ?? null;
 }
 
-/** A click on a bot's row or tile opens the thread its mark is about; with no mark, or with that thread already on screen,
- * the bot as ever. Every other way into a bot is `openBot`. On a team a bot's row is the person's own chat. */
+export function markedThread(bot: Pick<NotificationThreadOwner, "threadId" | "mainThreadId" | "tasks">): string | null {
+  return newestOf(bot, (task) => task.activity === "waiting-on-you");
+}
+
+/** The conversation the bot is busy in right now, such as a job another bot handed it; the one it opens to when that one is busy. */
+export function workingThread(bot: Pick<NotificationThreadOwner, "threadId" | "mainThreadId" | "tasks">): string | null {
+  return newestOf(bot, (task) => task.archivedAt === undefined && (task.busy === true || task.activity === "working"));
+}
+
+/** A click on a bot's row or tile opens the thread its mark is about, else the one it is working in; with neither, or with
+ * that thread already on screen, the bot as ever. Every other way into a bot is `openBot`. On a team a bot's row is the
+ * person's own chat. */
 export function openBotRow(
   dispatch: (action: Action) => void,
   bot: Pick<NotificationThreadOwner, "id" | "threadId" | "mainThreadId" | "tasks"> & { yourAccess?: string },
   onScreen: boolean,
 ) {
-  const marked = teamChats() ? null : markedThread(bot);
+  const marked = teamChats() ? null : markedThread(bot) ?? workingThread(bot);
   if (!marked || marked === botOpensTo(bot) || (onScreen && marked === bot.threadId)) openBot(dispatch, bot);
   else openBotThread(dispatch, bot, marked);
 }

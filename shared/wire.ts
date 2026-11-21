@@ -13,7 +13,7 @@ import type { CredentialTargetId, CUSTOM_SECRET_TARGET, SecretDelivery } from ".
 import type { TeamSetupRequest } from "./team-setup.ts"; import type { DefaultBotFields, HelperIntroField } from "./default-bot.ts";
 import type { SetupCardFields } from "./setup-card.ts"; import type { BugReportField } from "./devs-report-status.ts"; import type { AccessRequestCardField, BotAccessFields } from "./bot-access.ts";
 import type { RoutineRequestCardData } from "./routine-request.ts";
-import type { WebhookRequestCardData } from "./webhook-request.ts"; import type { WaitCardField, WaitLineField } from "./wait-request.ts";
+import type { WebhookRequestCardData } from "./webhook-request.ts"; import type { WaitCardField, WaitLineField } from "./wait-request.ts"; import type { PurchaseCardField } from "./purchase.ts"; import type { EmailCardField } from "./email-review.ts"; import type { ProductsField } from "./products.ts"; import type { OfferField } from "./offer.ts";
 import type { AppEventAttempt, AppTrigger, AppTriggerRequestCardData, AppTriggerService } from "./app-triggers.ts";
 import type { ProfileRequestCardData } from "./profile-request.ts";
 import type { PlaceRow } from "./place-view.ts";
@@ -350,7 +350,7 @@ export interface WireBot extends DefaultBotFields, BotAccessFields {
    * Absent/false = off: the person turns it on per bot. */
   xResearch?: boolean;
   /** On a linked VPS: whether this bot may use the owner's Mac (the mac_ tools). Absent/true = allowed. */
-  macControl?: boolean;
+  macControl?: boolean; /** Whether this bot suggests things on its own and is handed suggested work. Absent/true = yes. */ suggestions?: boolean;
   /** Whether this bot uses native memory. Absent/true = enabled. */
   memoryEnabled?: boolean;
   /** Queue direct-chat messages behind outstanding delegated work. */
@@ -387,8 +387,11 @@ export interface WireBot extends DefaultBotFields, BotAccessFields {
   outbound?: { policy: "ask" | "allow"; dailyCap: number };
   /** Which of a paired phone's apps this bot may use; absent: every bot may use what the phone allows (shared/phone-apps.ts). */
   phoneApps?: import("./phone-apps.ts").PhoneApps;
-  /** Ordered backups used only by opt-in, pre-prompt startup recovery. */
+  /** Backups for a limited, signed-out or failing AI, in order. Absent: automatic; empty: No backup (patch null: automatic). */
   fallback?: Array<{ instanceId: string; model: string }>;
+  /** What a turn does when its AI's usage limit refuses it and no backup can take over: "wait" (absent) holds it and
+   * carries on by itself at the reset, "ask" offers the free model or the wait on a card, "free" moves to the free model. */
+  limitMode?: LimitMode;
   /** Whether this bot gets the app's built-in browser. */
   browser?: boolean;
   /** Record a screenshot and a short note of each browser action, kept with
@@ -459,7 +462,7 @@ export interface MediaSize { w: number; h: number }
 /** One transcript line, serialized as stored. */
 /** An outbound action a reply can claim: a send, a booking, a purchase, a saved file or a download. */
 export type ActionKind = "send" | "book" | "buy" | "file" | "download";
-export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLineField, BugReportField {
+export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLineField, BugReportField, ProductsField, OfferField {
   roomRequest?: { id: string; phase: "request" | "result" }; handoff?: import("./handoff-line.ts").HandoffLine;
   /** The coordinator's "resumed with X's results" row: the chat folds it into the reply line it follows. */
   peerResume?: true;
@@ -479,7 +482,7 @@ export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLine
    * entries are opened through the message-scoped file route, never by path. */
   attachments?: Array<
     | { kind: "image"; path: string; mime: string; name?: string }
-    | { kind: "file"; path: string; mime: string; name: string }
+    | { kind: "file"; path: string; mime: string; name: string; /** the stored copy's size; older messages have none */ bytes?: number }
     /** `text` is the words the note speaks (secret-redacted when stored): clients show it behind a
      * collapsed transcript, never as message body, and the model's replay folds it back after `text`. */
     | { kind: "audio"; path: string; mime: string; durationMs?: number; text?: string }
@@ -526,7 +529,9 @@ export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLine
     name: string; ok?: boolean; spoken?: string; setup?: boolean; terminal?: boolean; summary?: string;
     /** A notice whose way out is signing in to an AI: the chat offers Sign in beside it. */
     signIn?: boolean;
-    input?: string; output?: string; clipped?: boolean;
+    /** error rows: the turn waits for its AI's usage limit to reset and carries on by itself; Stop ends the wait. */
+    limitHold?: LimitHoldState;
+    input?: string; output?: string; clipped?: boolean; ms?: number;
     /** What the call works on, as its live status said it: the chip's and the "Now" card's specific words. `whose`: the person whose own app or MCP server the call used. */
     step?: import("./turn-progress.ts").LiveStep; whose?: { person: string; app: string };
     /** Words the harness wrote for what the call did, shown in place of `name`; `name` stays the tool's own. */
@@ -540,9 +545,9 @@ export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLine
     resolvedAt?: number;
     /** error rows: epoch ms when the usage limit that stopped the turn resets. */
     limitResetsAt?: number;
-    /** error rows: the reply came back; only a step the turn ran failed or wasn't allowed. */
-    partial?: boolean;
-    reason?: import("./failed-turn.ts").FailedReplyReason; blocker?: import("./failed-turn.ts").BrowserBlocker; // error rows: what stopped the reply, when the server could tell
+    /** error rows: the reply came back; only a step the turn ran failed or wasn't allowed (`owned`: and it says so itself, so no card repeats it). */
+    partial?: boolean; owned?: boolean;
+    reason?: import("./failed-turn.ts").FailedReplyReason; blocker?: import("./failed-turn.ts").BrowserBlocker; errorRef?: string; // error rows: what stopped the reply, when the server could tell, and the code it logged beside the real cause
     /** Provider item identity, scoped to the owning turn. */
     itemId?: string;
     /** Whether the harness captured the full redacted result. Private
@@ -552,13 +557,17 @@ export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLine
   /** A bot line a "post" webhook wrote: whoever called the webhook chose
    * its words. On a room line this also carries `from`, so the room renders
    * the webhook's bot as the speaker. */
-  webhookPost?: boolean;
+  webhookPost?: boolean; /** A routine run's NOTHING NEW reply in the chat it worked in: kept for its session, never shown. */ quietRun?: true;
   /** user messages sent INTO a running turn (capabilities.queueing). */
   steered?: boolean;
   /** user messages a peer bot handed to this thread's RUNNING turn: peer
    * context folded in mid-turn, never a new request. The text is stored
    * enveloped exactly as injected. */
   aside?: boolean;
+  /** bot text rows: the quick reply to a person's message sent while a
+   * turn worked, written outside that turn (no turnId), so it never takes
+   * the turn's result, receipts or "Worked for" fold. */
+  sideReply?: boolean;
   /** A user-role message that arrived through the server's HTTP API
    * ("api"), or a request a person spoke on a Live call ("call"). */
   via?: "api" | "call";
@@ -581,7 +590,7 @@ export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLine
   /** Provider completion outcome, independent of whether it emitted text. */
   turnSucceeded?: boolean;
   /** An exact request was stopped; a restart must not revive an old result. */
-  requestCancelled?: boolean;
+  requestCancelled?: boolean; /** user messages: one ask of the person's in a one-on-one chat as the open-item ledger keeps it: `open` is not yet delivered, set waiting (a wait, routine, job or handed-off work exists) or said to be blocked; `dropped` the person stopped it; `nudged` the bot was sent back once for it while open. */ ask?: { state: "open" | "delivered" | "waiting" | "blocked" | "dropped"; nudged?: true };
   /** Set before execution and cleared only after the request's verified
    * final turn and dependencies settle. A restart never clears it. */
   requestPending?: boolean;
@@ -642,10 +651,10 @@ export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLine
   sentDirectly?: { name: string; room?: string };
   /** A page the bot published to a public link (publish_page), or why it couldn't. `text` carries the link too. */
   publishedPage?: PublishedPageCard;
+  /** A document the bot made or changed (create_document, update_document): its file card. */ document?: import("./documents.ts").ChatDocumentCard;
   /** A published Data result, linked to its bot's main viewer. */
   dataResult?: { botId: string; cardId: string; title: string; kind: "table" | "chart" | "text"; sql?: string };
-  /** user messages: the Data result the person was viewing when they sent
-   * this. `text` stays exactly what they typed. */
+  /** user messages: the Data result the person was viewing when they sent this. `text` stays exactly what they typed. */
   dataContext?: { cardId: string; draftSql?: string };
   /** user messages waiting in the steer-queue while the bot is mid-turn. */
   queued?: boolean;
@@ -683,9 +692,9 @@ export function nextOpenThread<T extends OpenThreadCandidate>(tasks: readonly T[
   return [listed, open, own].map((candidates) => orderedThreadList(candidates)[0]).find((task) => task !== undefined);
 }
 
-export interface OptionCardData extends WaitCardField, AccessRequestCardField, OutsideWriteCardField {
-  /** calls: one per outbound call the card covers, in subtitle order. */
-  outboundRequest?: { tool: string; app: string | null; calls?: Array<{ app: string | null; label: string }> };
+export interface OptionCardData extends WaitCardField, AccessRequestCardField, OutsideWriteCardField, PurchaseCardField, EmailCardField {
+  /** calls: one per outbound call the card covers, in subtitle order. purchase: it buys, books, subscribes or moves money. */
+  outboundRequest?: { tool: string; app: string | null; calls?: Array<{ app: string | null; label: string }>; purchase?: true }; /** A card asking to send: `key` hashes exactly what would go out (shared/declined-sends.ts), never the content; `declined`: the person said no, so the same send is refused in this chat until they ask again. */ send?: { key: string; declined?: true };
   /** @deprecated team memory is retired; only older messages carry this. */
   teamMemoryRequest?: { section: string; entryId: string; kind: string; revision?: string };
   title: string;
@@ -719,8 +728,8 @@ export interface OptionCardData extends WaitCardField, AccessRequestCardField, O
   heldCode?: string;
   /** the narrow grant "always allow" remembers for a harness-native card. */
   allowKey?: string;
-  /** the provider can remember an allow for the rest of its session. */
-  allowSession?: boolean;
+  /** allowSession: the provider remembers an allow for its session; allowTask: the rest of the task's outside-content asks. */
+  allowSession?: boolean; allowTask?: boolean;
   /** Exact native command offered for an owner/admin to remember. */
   commandAllowlist?: CommandAllowlistCandidate;
   /** Local actions never share remembered grants with cloud/tool approvals. */
@@ -757,10 +766,18 @@ export interface OptionCardData extends WaitCardField, AccessRequestCardField, O
 
 /** Kept on the card so the offer survives a restart. `engines` follow the card's options; `messageId` is the
  * message to resend, `rootId` the failed request's job-runtime root. */
+/** A held turn as its card shows it: when the limit resets, when known, and when a resumed turn refused again tries next. */
+export interface LimitHoldState { resetsAt?: number; retryAt?: number }
+
+export const LIMIT_MODES = ["wait", "ask", "free"] as const;
+export type LimitMode = (typeof LIMIT_MODES)[number];
+
 export interface QuotaSwitchCardData {
   engines: Array<{ instanceId: string; name: string }>;
   messageId?: string;
   rootId?: string;
+  /** The option after `engines` waits for the limit to reset instead; `resetsAt` when the engine said. */
+  wait?: { resetsAt?: number };
 }
 
 export interface SecretRequestCardData {
@@ -1012,6 +1029,9 @@ export type ServerFrame =
    * computer (absent: a Local VM). */
   | { kind: "computer"; botId: string; state: "provisioning" | "waking"; place?: "cloud" }
   | { kind: "computer-state"; botId: string; resourceKey: string; state: "starting" | "ready" | "stopped" | "failed"; problem?: string }
+  /** A bot on this Mac asked for screen control (request_screen_access): the chat shows the Allow access notice. `missing`
+   * names the macOS grants still off. */
+  | { kind: "screen-access"; botId: string; threadId: string; missing: string[]; reason?: string }
   | { kind: "computer-control"; botId: string; held: boolean; helpReason: string | null; help?: ComputerHelpRef | null }
   /** The desktop app's built-in browser is still downloading (server/app-parts.ts): `botIds` are the bots that needed it
    * since, whose chats show one progress line until `phase` is "ready". */

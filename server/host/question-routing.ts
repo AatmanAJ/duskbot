@@ -97,8 +97,10 @@ export function createQuestionRouting(deps: QuestionRoutingDeps) {
     threadId?: string; sentThisTurn?: ReadonlySet<string> }): Promise<PeerDeliveryReceipt | undefined> {
     const { sender, target, message } = input;
     const waiting = waitingOn(target).filter((one) => deps.mayReach(input.senderThreadId, one.threadId));
+    // only work this very conversation handed on: a bot's one chat also runs what the sender's other conversations sent
     const ownWork = (node: HandoffView | undefined): node is HandoffView => node !== undefined && node.threadId === input.threadId
-      && !input.sentThisTurn?.has(node.id) && handedOnBy(node, sender.id) && deps.mayReach(input.senderThreadId, node.threadId);
+      && !input.sentThisTurn?.has(node.id) && handedOnBy(node, sender.id) && deps.node(node.parentId!)?.threadId === input.senderThreadId
+      && deps.mayReach(input.senderThreadId, node.threadId);
     const pick = input.answers !== undefined ? waiting.find((one) => one.node?.id === input.answers)
       : waiting.find((one) => one.node !== undefined && input.senderNode?.carrying?.includes(one.node.id) === true)
         ?? waiting.find((one) => ownWork(one.node) && (one.card !== undefined || !one.node.cards?.length));
@@ -117,7 +119,10 @@ export function createQuestionRouting(deps: QuestionRoutingDeps) {
       if (card) store.patchMessage(pick.threadId, pick.card.id, { card: { ...card, answered: "answer", answeredText: message, answeredBy: { kind: "bot", name: sender.name } } });
     } else {
       const node = pick.node!;
-      if (!deps.answerNode(node.id, message, by)) return refused();
+      if (!deps.answerNode(node.id, message, by)) {
+        return deps.node(node.id)?.status === "waiting" ? peerDeliveryReceipt({ botId: target.id, botName: target.name, outcome: "failed",
+          detail: `${target.name} already had two answers from bots and asked again, so "${pick.question}" now waits on the person where it was asked. Tell them in one line what is blocked and what they can do` }) : refused();
+      }
       if (node.cards?.length) deps.settleSignIns(node);
       const asked = store.messagesFor(node.threadId).find((row) => row.card?.requestId?.startsWith(`needs-input-${node.id}-`) && !row.inbox
         && (!row.card.answered || (row.card.answeredBy?.kind === "bot" && row.card.answeredText === undefined)));
