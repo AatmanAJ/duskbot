@@ -194,17 +194,11 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
     gateFile = join(home, "helper-gate");
     holdFile = join(home, "helper-hold");
     const antigravityDirectory = join(home, "fake-antigravity");
-    const antigravityCli = join(antigravityDirectory, "agy_acp_server.ts");
-    const antigravityHarness = join(
-      antigravityDirectory,
-      process.platform === "win32" ? "localharness_external.exe" : "localharness_external",
-    );
+    const antigravityCli = join(antigravityDirectory, "antigravity.ts");
     mkdirSync(antigravityDirectory, { recursive: true });
     copyFileSync(FAKE_CLI, antigravityCli);
-    copyFileSync(FAKE_CLI, antigravityHarness);
     if (process.platform !== "win32") {
       chmodSync(antigravityCli, 0o755);
-      chmodSync(antigravityHarness, 0o755);
     }
     const antigravityProfile = join(
       home,
@@ -215,7 +209,7 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
       "antigravity-acp",
     );
     mkdirSync(antigravityProfile, { recursive: true });
-    writeFileSync(join(antigravityProfile, "acp_token.json"), "{}\n");
+    writeFileSync(join(antigravityProfile, "antigravity-oauth-token"), JSON.stringify({ token: { access_token: "ok" } }) + "\n");
     compat = createServer(async (req, res) => {
       for await (const _ of req) {}
       if (req.url?.endsWith("/models")) {
@@ -598,7 +592,7 @@ describe("routine comms e2e on the job runtime (fake ACP fleet)", () => {
       expect(replied.tool.output).toBe("hello from fake acp");
       expect(chip(askerBot.messages, "Resumed with Helper results, reviewing")).toBeTruthy();
 
-      expect(helperBot.tasks.find((task: any) => task.threadId === work.threadId)?.title).toBe("@Asker · work");
+      expect(helperBot.tasks.map((task: any) => task.threadId)).toEqual([work.threadId]);
       const workMessages = await threadMessages(work.threadId);
       const inbound = workMessages.find((m: any) => m.roomRequest?.id === work.id && m.roomRequest.phase === "request");
       expect(inbound.from?.botId).toBe(asker.id);

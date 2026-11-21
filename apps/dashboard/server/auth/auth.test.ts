@@ -368,6 +368,57 @@ describe("local account service", () => {
     expect(await body(poll(authorization))).toEqual({ error: "invalid_grant" });
   });
 
+  it("an account made by the app's browser sign-in stays open for the website's first steps, and the app's session says so until they end", async () => {
+    const authorization = await authorize();
+    time += 1_000;
+    const browser = await login("new@example.test");
+    expect((await call("/v1/auth/device/approve", { userCode: authorization.userCode }, browserHeaders(browser))).status).toBe(200);
+    time += 10_000;
+    const grant = await body<AppGrant>(poll(authorization));
+    const session = () => body<{ websiteSetup?: string }>(call("/api/cloud/desktop/session", undefined, bearer(grant)));
+    expect((await session()).websiteSetup).toBe("open");
+    expect((await call("/v1/account/onboarded", { home: "anywhere" }, browserHeaders(browser))).status).toBe(400);
+    expect((await call("/v1/account/onboarded", { home: "free" }, browserHeaders(browser))).status).toBe(200);
+    expect((await session()).websiteSetup).toBe("free");
+    // done once: a later finish never rewrites where the bots went
+    await call("/v1/account/onboarded", { home: "cloud" }, browserHeaders(browser));
+    expect((await session()).websiteSetup).toBe("free");
+  });
+
+  it("the app's way back to the browser (a handoff) leaves the website's first steps open for the account it made", async () => {
+    const authorization = await authorize();
+    time += 1_000;
+    const browser = await login("again@example.test");
+    await call("/v1/auth/device/approve", { userCode: authorization.userCode }, browserHeaders(browser));
+    time += 10_000;
+    const grant = await body<AppGrant>(poll(authorization));
+    const answer = await body<WebHandoffAnswer>(call("/v1/app/web-handoff", { next: "home" }, bearer(grant)));
+    const redeemed = await call("/v1/auth/handoff", { token: answer.url.split("#t=")[1]!, confirm: true }, { origin: options.publicUrl });
+    expect(redeemed.status).toBe(200);
+    expect((await body<{ websiteSetup?: string }>(call("/api/cloud/desktop/session", undefined, bearer(grant)))).websiteSetup).toBe("open");
+  });
+
+  it("an existing account signing in to the app is never sent through the website's first steps", async () => {
+    const browser = await login();
+    time += 1_000;
+    const authorization = await authorize();
+    expect((await call("/v1/auth/device/approve", { userCode: authorization.userCode }, browserHeaders(browser))).status).toBe(200);
+    time += 10_000;
+    const grant = await body<AppGrant>(poll(authorization));
+    expect(await body(call("/api/cloud/desktop/session", undefined, bearer(grant)))).not.toHaveProperty("websiteSetup");
+  });
+
+  it("before launch the website has no first steps, so an app-made account is onboarded at its grant", async () => {
+    restart({ waitlistOnly: true, pageBase: "/dashboard" });
+    const authorization = await authorize();
+    time += 1_000;
+    const browser = await login("early@example.test");
+    expect((await call("/v1/auth/device/approve", { userCode: authorization.userCode }, browserHeaders(browser))).status).toBe(200);
+    time += 10_000;
+    const grant = await body<AppGrant>(poll(authorization));
+    expect(await body(call("/api/cloud/desktop/session", undefined, bearer(grant)))).not.toHaveProperty("websiteSetup");
+  });
+
   it("denies and expires authorizations, validates devices and limits authorization requests", async () => {
     const browser = await login(), authorization = await authorize();
     expect((await call("/v1/auth/device/deny", { userCode: authorization.userCode }, { cookie: browser.cookie })).status).toBe(403);
@@ -729,8 +780,10 @@ describe("local account service", () => {
     const saved = readFileSync(`${dataDir}/auth.json`, "utf8");
     for (const value of [grant.accessToken, browser.cookie.split("=")[1]!, browser.csrfToken, enroll.enrollToken, authorization.deviceCode, ...mailer.outbox.flatMap(item => item.text.match(/\b\d{8}\b/) ?? [])]) expect(saved).not.toContain(value);
     expect(JSON.parse(saved).sessions.every((item: { tokenHash: string }) => /^[a-f0-9]{64}$/.test(item.tokenHash))).toBe(true);
-    expect(statSync(`${dataDir}/auth.json`).mode & 0o777).toBe(0o600);
-    expect(statSync(`${dataDir}/auth-secret`).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(statSync(`${dataDir}/auth.json`).mode & 0o777).toBe(0o600);
+      expect(statSync(`${dataDir}/auth-secret`).mode & 0o777).toBe(0o600);
+    }
     const secret = readFileSync(`${dataDir}/auth-secret`, "utf8");
     restart();
     expect(readFileSync(`${dataDir}/auth-secret`, "utf8")).toBe(secret);

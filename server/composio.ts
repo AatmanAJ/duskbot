@@ -55,6 +55,7 @@ export interface ConnectorServiceState {
 interface AccountLinkRequest {
   toolkit: string;
   alias?: string;
+  callback_url?: string;
 }
 
 const connectedAccountResponseSchema = z.object({
@@ -90,7 +91,7 @@ const connectorServiceSchema = z.object({
 });
 const connectorServicesResponseSchema = z.object({ services: z.record(z.string(), connectorServiceSchema).optional() });
 const removalResponseSchema = z.object({ removed: z.number() });
-const authUrlResponseSchema = z.object({ url: z.string().optional() });
+const authUrlResponseSchema = z.object({ url: z.string().optional(), returnsHere: z.boolean().optional() });
 const linkResponseSchema = z.object({ redirect_url: z.string().optional() });
 
 const MAX_CONNECTED_ACCOUNT_PAGES = 100;
@@ -842,7 +843,10 @@ export async function prepareConnectionAuthConfigs(
  *  connects it (Composio Connect, a sign-in in the browser on that computer); a dusk cloud uses cloud-composio-connect.ts */
 export const NO_APPS_SERVICE = "Connect this app from the dusk bot app on this computer, under apps. It signs in to your own Composio there.";
 
-export async function authorizeService(cfg: AppConfig, slug: string, requestedAlias?: string | null, as?: BrokerAccess) {
+/** `callbackUrl`: where Composio sends the browser once the sign-in ends (status=success|failed appended); the answer says
+ *  `returnsHere` only when the way used honours it */
+export async function authorizeService(cfg: AppConfig, slug: string, requestedAlias?: string | null, as?: BrokerAccess, callbackUrl?: string | null):
+  Promise<{ url: string; returnsHere?: true }> {
   const alias = normalizeAccountAlias(requestedAlias);
   const toolkit = canonicalToolkitSlug(slug);
   const unavailable = managedConnectorUnavailableReason(as ? "managed" : connectionMode(cfg), toolkit);
@@ -852,14 +856,14 @@ export async function authorizeService(cfg: AppConfig, slug: string, requestedAl
   if (!apiKey && !as && !brokerAccess()) throw inputError(NO_APPS_SERVICE, 409);
   if (!apiKey) {
     const request: RequestInit = { method: "POST" };
-    if (alias) request.body = JSON.stringify({ alias });
+    if (alias || callbackUrl) request.body = JSON.stringify({ ...(alias ? { alias } : {}), ...(callbackUrl ? { callbackUrl } : {}) });
     const response = await brokerRequest(`/v1/connectors/${encodeURIComponent(toolkit)}/authorize`, request, as);
     if (!response.ok && noManagedAuthToolkit(await response.clone().text().catch(() => ""))) {
       throw inputError(managedCustomAuthReason(toolkit), 409);
     }
     if (!response.ok) await throwBrokerError(response, `Connected apps: HTTP ${response.status}`);
     const body = authUrlResponseSchema.parse(await response.json());
-    return { url: trustedAuthUrl(body.url, toolkit) };
+    return { url: trustedAuthUrl(body.url, toolkit), ...(callbackUrl && body.returnsHere === true ? { returnsHere: true as const } : {}) };
   }
   const { session } = await sessionForToolkit(cfg, toolkit);
   const userId = session.config?.user_id ?? cfg.composio?.userId;
@@ -873,6 +877,7 @@ export async function authorizeService(cfg: AppConfig, slug: string, requestedAl
   for (const id of plan.replace) await deleteConnectedAccount(apiKey, id);
   const linkRequest: AccountLinkRequest = { toolkit };
   if (plan.alias) linkRequest.alias = plan.alias;
+  if (callbackUrl) linkRequest.callback_url = callbackUrl;
   const link = (sessionId: string) =>
     fetch(`${apiBase()}/tool_router/session/${encodeURIComponent(sessionId)}/link`, {
       method: "POST",
@@ -897,7 +902,7 @@ export async function authorizeService(cfg: AppConfig, slug: string, requestedAl
     }
   }
   const body = linkResponseSchema.parse(await res.json());
-  return { url: trustedAuthUrl(body.redirect_url, toolkit) };
+  return { url: trustedAuthUrl(body.redirect_url, toolkit), ...(callbackUrl ? { returnsHere: true as const } : {}) };
 }
 
 export interface ToolkitCard {

@@ -16,12 +16,11 @@ describe("store app", () => {
     }
   });
 
-  it("drops the computer tab, and with it the screen view, on the iPhone only", () => {
-    expect(panelTabs()).toEqual(PANEL_TABS);
-    document.documentElement.dataset.mobileApp = "android";
-    expect(screenViewAllowed()).toBe(true);
-    document.documentElement.dataset.mobileApp = "ios";
-    expect(screenViewAllowed()).toBe(false);
-    expect(panelTabs()).toEqual(["details", "advanced"]);
+  it("keeps the computer tab, and with it the screen view, everywhere, the iPhone included", () => {
+    for (const kind of ["web", "android", "ios"]) {
+      document.documentElement.dataset.mobileApp = kind;
+      expect(screenViewAllowed()).toBe(true);
+      expect(panelTabs()).toEqual(PANEL_TABS);
+    }
   });
 });

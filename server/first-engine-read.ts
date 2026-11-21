@@ -12,3 +12,19 @@ export function holdUntilFirstEngineRead(): () => void {
 export function afterFirstEngineRead(): Promise<void> {
   return held;
 }
+
+/** The longest a brand-new workspace's start waits on reading its engines before it listens. The desktop app stops a
+ * server that has not answered within a minute, one engine's read may take that long, and the first bot is saved only
+ * after this wait, so a longer wait would make every relaunch a first start that is stopped again. */
+export const FIRST_START_ENGINE_WAIT_MS = 10_000;
+
+/** Whether `work` settled within `ms`; it keeps running either way. */
+export function settledBefore(work: Promise<unknown>, ms: number): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined;
+  return Promise.race([
+    work.then(() => true, () => true),
+    new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}

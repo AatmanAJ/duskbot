@@ -40,8 +40,9 @@ function welcomedByTheApp(): boolean {
     return true;
   } catch { return false; }
 }
+const FROM_APP = "dusk.cloudWelcome.fromApp";
 const initial = (): Snapshot => {
-  if (welcomedByTheApp()) store(DONE_HERE, "1");
+  if (welcomedByTheApp()) { store(DONE_HERE, "1"); store(FROM_APP, "1"); }
   const doneHere = stored(DONE_HERE) !== null;
   return { aside: false, ended: doneHere, early: doneHere ? [CLOUD_WELCOME_DONE] : [], requested: null, seen: false, doneHere };
 };
@@ -51,6 +52,11 @@ const listeners = new Set<() => void>();
 function update(next: Partial<Snapshot>) {
   snapshot = { ...snapshot, ...next };
   listeners.forEach((listener) => listener());
+}
+
+/** The desktop app opened this cloud on this device (WELCOMED_QUERY), now or before. */
+export function openedFromTheApp(): boolean {
+  return stored(FROM_APP) !== null;
 }
 
 export function useCloudWelcome(): Snapshot {
