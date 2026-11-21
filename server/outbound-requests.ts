@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ConnectorCall } from "../shared/outbound.ts";
 import { describeTool } from "./activity.ts";
+import { normalizeEmailEdits, type EmailEdits } from "../shared/email-review.ts";
 
 export type OutboundAnswer = "allow" | "deny" | "timeout";
 
@@ -10,6 +11,7 @@ interface Held {
   tool: string;
   settle: (answer: OutboundAnswer) => void;
   answered?: OutboundAnswer;
+  edits?: EmailEdits;
   timer: ReturnType<typeof setTimeout>;
 }
 
@@ -44,11 +46,14 @@ export class OutboundRequestService {
     entry.settle(answer);
   }
 
-  resolve(input: { threadId: string; requestId: string; behavior: "allow" | "deny" | "answer" }): OutboundResolution {
+  /** `edits`: what the person changed on an email card before Send; edits that do not read as a valid set send nothing: the card is denied rather than sent as the bot wrote it. */
+  resolve(input: { threadId: string; requestId: string; behavior: "allow" | "deny" | "answer"; edits?: unknown }): OutboundResolution {
     const entry = this.held.get(input.requestId);
     if (!entry || entry.threadId !== input.threadId) return { claimed: false };
     if (entry.answered) return { claimed: true, state: "already_settled", behavior: entry.answered };
-    const answer: OutboundAnswer = input.behavior === "allow" ? "allow" : "deny";
+    const edits = input.behavior === "allow" && input.edits !== undefined ? normalizeEmailEdits(input.edits) : null;
+    const answer: OutboundAnswer = input.behavior === "allow" && (input.edits === undefined || edits) ? "allow" : "deny";
+    if (edits) entry.edits = edits;
     this.settle(input.requestId, answer);
     return { claimed: true, state: answer === "allow" ? "allowed" : "denied" };
   }
@@ -57,6 +62,10 @@ export class OutboundRequestService {
     return [...this.held.entries()]
       .filter(([, entry]) => entry.threadId === threadId && !entry.answered)
       .map(([requestId]) => requestId);
+  }
+
+  edits(requestId: string): EmailEdits | null {
+    return this.held.get(requestId)?.edits ?? null;
   }
 
   forget(requestId: string): void {

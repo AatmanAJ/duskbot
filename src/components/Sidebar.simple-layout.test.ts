@@ -117,7 +117,8 @@ describe("Simple-mode sidebar layout", () => {
     expect(tree.some((node) => node.type === SidebarTileGrid)).toBe(false);
   });
 
-  it("keeps the order the person dragged the bots into, as Discord's channels do: a turn starting or a message arriving moves no row", () => {
+  it("in the person's own order, keeps the order they dragged the bots into, as Discord's channels do: a turn starting or a message arriving moves no row", () => {
+    fixture.storage.set("duskbot.sidebarBotOrder", "custom");
     const at = Date.now() - 60_000;
     const said = (id: string, when: number): Message => ({ id, at: when, role: "bot", kind: "text", text: id });
     fixture.state = { ...fixture.state, sections: [], groups: [], bots: [
@@ -135,6 +136,20 @@ describe("Simple-mode sidebar layout", () => {
     expect(listedBots(render().tree)).toEqual(["atlas", "bea", "cora"]);
   });
 
+  it("by recent activity, puts the bot with a new message first and the latest chats next, pinned ones still above", () => {
+    const at = Date.now() - 60_000;
+    const thread = (id: string, when: number) => [{ threadId: `${id}-thread`, title: "Chat", createdAt: at, updatedAt: when, lastThreadOrderAt: when }];
+    fixture.state = { ...fixture.state, sections: [], groups: [], bots: [
+      bot("atlas", { tasks: thread("atlas", at + 1) }),
+      bot("bea", { tasks: thread("bea", at + 3) }),
+      bot("cora", { tasks: thread("cora", at + 2) }),
+      bot("dodo", { tasks: thread("dodo", at), pinned: true }),
+    ] };
+    expect(listedBots(render().tree)).toEqual(["bea", "cora", "atlas"]);
+    fixture.state = { ...fixture.state, bots: fixture.state.bots.map((one) => one.id === "atlas" ? { ...one, unread: true, tasks: one.tasks?.map((task) => ({ ...task, unread: true })) } : one) };
+    expect(listedBots(render().tree)).toEqual(["atlas", "bea", "cora"]);
+  });
+
   it("leads with the main bot, headless, when it is the only bot outside every department", () => {
     fixture.state = { ...fixture.state, bots: [bot("chief", { chiefOfStaff: true }), bot("dodo", { section: "Work" })] };
     const { tree } = render();
@@ -143,8 +158,8 @@ describe("Simple-mode sidebar layout", () => {
     expect(headers(tree).map((header) => header.props.name)).toEqual(["Work", "Group chats"]);
   });
 
-  it("shows the pinned bots as tiles above the rows and the Chief as the first row, with no Pinned or Bots heading", () => {
-    fixture.state = { ...fixture.state, bots: [bot("chief", { chiefOfStaff: true, pinned: true }), bot("atlas", { pinned: true }), bot("bea"), bot("dodo", { section: "Work", pinned: true })] };
+  it("shows the pinned bots as tiles above the rows and the unpinned Chief as the first row, with no Pinned or Bots heading", () => {
+    fixture.state = { ...fixture.state, bots: [bot("chief", { chiefOfStaff: true }), bot("atlas", { pinned: true }), bot("bea"), bot("dodo", { section: "Work", pinned: true })] };
     const { tree } = render();
     const grid = tree.find((node) => node.type === SidebarTileGrid)!.props as Parameters<typeof SidebarTileGrid>[0];
     expect(grid.primary).toBeNull();
@@ -152,6 +167,14 @@ describe("Simple-mode sidebar layout", () => {
     expect(sectionOrder(tree)).toEqual([userSectionId("Work"), BOTS_SECTION_ID, CHANNELS_SECTION_ID]);
     expect(listedBots(tree)).toEqual(["chief", "bea"]);
     expect(headers(tree).map((header) => header.props.name)).toEqual(["Work", "Unassigned", "Group chats"]);
+  });
+
+  it("lifts a pinned unassigned Chief into the tiles with the other pinned bots", () => {
+    fixture.state = { ...fixture.state, bots: [bot("chief", { chiefOfStaff: true, pinned: true }), bot("atlas", { pinned: true }), bot("bea")] };
+    const { tree } = render();
+    const grid = tree.find((node) => node.type === SidebarTileGrid)!.props as Parameters<typeof SidebarTileGrid>[0];
+    expect(grid.pinned.map((candidate) => candidate.id)).toEqual(["chief", "atlas"]);
+    expect(listedBots(tree)).toEqual(["bea"]);
   });
 
   it("fades the list's edges in both modes, with the top buttons and the tiles fixed above it", () => {
@@ -241,10 +264,10 @@ describe("Simple-mode sidebar layout", () => {
     expect(listedBots(render().tree)).toHaveLength(3);
   });
 
-  it("opens at 280px in Simple and 320px in Advanced, each remembering its own resized width", () => {
+  it("opens at 288px in Simple and 320px in Advanced, each remembering its own resized width", () => {
     const width = () => render().root.props.style!["--sidebar-width"];
-    expect(width()).toBe("280px");
-    expect(render().root.props.className).toContain("w-[280px]");
+    expect(width()).toBe("288px");
+    expect(render().root.props.className).toContain("w-[288px]");
     fixture.values = [];
   });
   const edge = (tree: ReactElement<Props>[]) => tree.find((node) => node.type === SidebarResizeHandle)?.props as Parameters<typeof SidebarResizeHandle>[0] | undefined;
@@ -255,27 +278,28 @@ describe("Simple-mode sidebar layout", () => {
     handle.onAvatars(true);
     expect(fixture.storage.get(SIDEBAR_DENSITY_KEY)).toBe("avatars");
     const { root, tree } = render();
-    expect(root.props.className).toContain("w-[92px]");
+    expect(root.props.className).toContain("w-[80px]");
     expect(sectionOrder(tree)).toEqual([userSectionId("Work"), BOTS_SECTION_ID, CHANNELS_SECTION_ID]);
     expect(listedBots(tree)).toEqual(["dodo", "atlas", "bea"]);
     expect(headers(tree)).toEqual([]);
     expect(tree.filter((node) => node.type === SidebarRailSeparator)).toHaveLength(2);
     expect(tree.some((node) => node.type === SidebarSearchToggle)).toBe(false);
     expect(edge(tree)?.avatars, "the rail keeps its edge, to drag it open again").toBe(true);
-    expect(edge(tree)?.avatarsWidth).toBe(92);
+    expect(edge(tree)?.avatarsWidth).toBe(80);
     expect(tree.some((node) => node.props["data-sidebar-top-buttons"] !== undefined)).toBe(false);
   });
 
-  it("puts round search and the same + menu at the top of the rail, and dragging its edge out opens it again", () => {
+  it("puts the same + menu at the foot of the rail, opening upward, and dragging its edge out opens it again", () => {
     setSidebarDensity("icons");
-    const top = () => render().tree.find((node) => node.props["data-sidebar-rail-top"] !== undefined)!;
-    const plus = () => nodes(top().props.children).find((node) => node.type === "button" && node.props["aria-label"] === "New or share")!;
-    expect(plus().props.className).toEqual(expect.stringContaining("size-9"));
+    const plusSlot = () => render().tree.find((node) => node.type === SimpleRailFooter)!.props.plus as ReactElement<Props>;
+    const top = () => nodes(plusSlot());
+    const plus = () => top().find((node) => node.type === "button" && node.props["aria-label"] === "New or share")!;
+    expect(plus().props.className).toEqual(expect.stringContaining("size-10"));
     (plus().props.onClick as () => void)();
-    const menu = nodes(top().props.children).find((node) => /\bmin-w-\[200px\]/.test(node.props.className ?? ""))!;
-    expect(menu.props.className).toEqual(expect.stringContaining("left-full top-0"));
+    const menu = top().find((node) => /\bmin-w-\[200px\]/.test(node.props.className ?? ""))!;
+    expect(menu.props.className).toEqual(expect.stringContaining("left-full bottom-0"));
     expect(menu.props.className).toEqual(expect.stringContaining("rounded-[var(--radius-menu)]"));
-    const item = (label: string) => nodes(top().props.children).find((node) => node.type === "button" && nodes(node.props.children).concat(node).some((part) => Children.toArray(part.props.children).includes(label)));
+    const item = (label: string) => top().find((node) => node.type === "button" && nodes(node.props.children).concat(node).some((part) => Children.toArray(part.props.children).includes(label)));
     expect(item("Create department"), "Simple makes a department from its bots, by dragging one onto another or from a bot's menu").toBeUndefined();
     expect(item("New chat"), "a new conversation starts from the bot panel").toBeUndefined();
     expect(item("New bot")).toBeDefined();
@@ -296,24 +320,11 @@ describe("Simple-mode sidebar layout", () => {
     fixture.values = [];
   });
 
-  const railSearch = (tree: ReactElement<Props>[]) => tree.find((node) => node.type === "button" && node.props["aria-label"] === "Search bots and messages")!.props.onClick as () => void;
-
-  it("opens the search pill from the rail's search button by expanding the sidebar", () => {
+  it("keeps no search button on the rail, collapsed by hand or by a side panel", () => {
     setSidebarDensity("icons");
-    expect(render().tree.some((node) => node.type === SidebarSearchPill)).toBe(false);
-    railSearch(render().tree)();
-    const { tree } = render();
-    expect(tree.some((node) => node.type === SimpleRailFooter)).toBe(false);
-    expect(tree.some((node) => node.type === SidebarSearchPill)).toBe(true);
-  });
-
-  it("opens the command palette instead when a side panel holds the sidebar collapsed", () => {
-    const opened = vi.fn();
-    window.addEventListener("dusk:open-command-palette", opened);
-    const search = railSearch(render(true).tree);
-    expect(edge(render(true).tree), "no edge to drag while a side panel holds it collapsed").toBeUndefined();
-    search();
-    expect(opened).toHaveBeenCalledOnce();
+    const searchButton = (tree: ReactElement<Props>[]) => tree.some((node) => node.type === "button" && node.props["aria-label"] === "Search bots and messages");
+    expect(searchButton(render().tree)).toBe(false);
+    expect(searchButton(render(true).tree)).toBe(false);
     expect(render(true).tree.some((node) => node.type === SimpleRailFooter)).toBe(true);
   });
 });
