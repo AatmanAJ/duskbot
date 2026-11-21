@@ -177,7 +177,7 @@ export function createLifecycle(deps: LifecycleDeps) {
   const dayOf = (at: number) => new Date(at).toISOString().slice(0, 10);
   /** awake time with a reason: work of any kind, a run or check due soon, a wake for the person's own routines (that
    *  whole stretch), staying up for a run ahead, or the person using it in the last half hour or with the app open */
-  const EXPLAINED_BUSY = new Set(["turn", "run", "live-call", "computer", "maintenance", "due-soon", "recent-work", "focus"]);
+  const EXPLAINED_BUSY = new Set(["turn", "run", "job", "live-call", "computer", "maintenance", "due-soon", "recent-work", "focus"]);
   const EXPLAINED_STAY = new Set(["run_soon_cheaper_awake", "cheaper_awake_until_run", "routine_due", "work_buffer"]);
   const explained = (b: HomeLifecycleState, power: HomePower) =>
     power.busy.some(code => EXPLAINED_BUSY.has(code)) || b.wokeFor === "routine" || EXPLAINED_STAY.has(b.stayReason ?? "")
@@ -607,7 +607,7 @@ export function createLifecycle(deps: LifecycleDeps) {
       if (!rereadStored(c)) return;
       const again = verdictFor(c);
       if (!again.delete) { log(c, "delete_refused", "reconciler", again.reason); return; }
-      if (again.reason === "retention_over" && !neverSetUp(c) && !(await finalBackupOpens(c))) return;
+      if (again.reason === "retention_over" && !neverSetUp(c) && !deps.entitlement(c).unpaid?.trial && !(await finalBackupOpens(c))) return;
       // recorded before the call, so a lost answer is never read as a lost machine (and rebuilt)
       c.status = "destroying"; b.deletion = { serverId: c.serverId, operationId: null, at: now(), reason: verdict.reason, sent: false }; deps.save(c);
       log(c, "delete_requested", "reconciler", verdict.reason);
@@ -627,7 +627,7 @@ export function createLifecycle(deps: LifecycleDeps) {
       if (!rereadStored(c)) return;
       const again = verdictFor(c);
       if (!again.delete) { log(c, "delete_refused", "reconciler", again.reason); return; }
-      if (again.reason === "retention_over" && !neverSetUp(c) && !(await finalBackupOpens(c))) return;
+      if (again.reason === "retention_over" && !neverSetUp(c) && !deps.entitlement(c).unpaid?.trial && !(await finalBackupOpens(c))) return;
       await provider.deleteSnapshot(b.archive.snapshotId);
       log(c, "snapshot_deleted", "reconciler", verdict.reason, { snapshot: b.archive.snapshotId });
       b.archive = null; deps.save(c);
@@ -744,7 +744,7 @@ export function createLifecycle(deps: LifecycleDeps) {
       if (c.origin && up) await deps.home.plan?.(homeOrigin(c), secret(c), { cancelled: true }).catch(() => {});
       deps.save(c);
     }
-    if (verdict.earliestAt !== null) { const kind = dueNotice({ now: now(), earliestAt: verdict.earliestAt, sent: b.notices.map(n => n.kind as NoticeKind) }); if (kind) notice(c, kind, verdict.earliestAt); }
+    if (verdict.earliestAt !== null) { const kind = dueNotice({ now: now(), earliestAt: verdict.earliestAt, sent: b.notices.map(n => n.kind as NoticeKind), quiet: !!entitlement.unpaid }); if (kind) notice(c, kind, verdict.earliestAt); }
   }
 
   /** one step; a step that ran through ends a streak of provider limits */

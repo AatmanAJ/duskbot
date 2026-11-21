@@ -68,6 +68,8 @@ export interface CloudAccountState {
   waking?: true;
   /** Connected: the plan's renewal, only while this account pays for a plan that runs: what Cancel and Keep act on (display only). */
   renewal?: import("./cloud-list.mjs").CloudRenewal;
+  /** Connected: My Cloud's renewal failed; it keeps running until `fixBy` (Update card opens the billing page). */
+  payment?: import("./cloud-list.mjs").CloudPayment;
 }
 /** What holding the first run's AI sign-ins did: `held` for the Cloud being made, `nothing` to hold, `no-cloud` (none
  * being made for this account), or `failed`. */
@@ -427,6 +429,7 @@ export interface CloudAccountClient {
   /** This sign-in's own X research relay access while its plan is paid; null without one. */
   xResearchAccess(): Promise<{ url: string; token: string } | null>;
   pagesAccess(): Promise<{ url: string; token: string } | null>;
+  xIndexAccess(): Promise<{ url: string; token: string } | null>;
   /** Another account takes over: nothing more is asked or written for this sign-in. */
   quiesce(): void;
   /** Reads the sign-in saved in `store` afresh, keeping nothing of the one before. */

@@ -8,7 +8,7 @@ it("tells a failure in plain words, never as pasted error text, paths or a list 
 });
 
 it("prefers batches for independent searches and keeps a native batching fallback", () => {
-  expect(TOOL_HABITS_PROMPT).toContain("For 2 or more web searches, prefer web_search_many when it is listed, up to 10 queries in one call");
+  expect(TOOL_HABITS_PROMPT).toContain("For 2 or more web searches, use web_search_many when it is listed, up to 10 queries in one call");
   expect(TOOL_HABITS_PROMPT).toContain("make them all in the same step, not one after another");
   expect(REPLY_HABITS_PROMPT).toContain(TOOL_HABITS_PROMPT);
 });
@@ -27,12 +27,12 @@ it("paces a turn in separate messages and leaves the steps to the status line", 
 it("finishes the job without asking leave for safe work, keeps a role from becoming a fence, and checks before saying done", () => {
   for (const quick of [false, true]) {
     const habits = replyHabitsPrompt(quick);
-    expect(habits).toContain("Searching, reading, opening pages, calculating and drafting never need a go-ahead");
-    expect(habits).toContain("Ask first only before a step that leaves this chat or is hard to undo");
-    expect(habits).toContain("or when your standing instructions say to");
-    expect(habits).toContain("Never stop partway to ask whether to carry on, and never end on a plan");
+    expect(habits).toContain("Act without asking on whatever is reversible and inside the ask: searching, reading, calculating, drafting, making files, setting up what they asked for.");
+    expect(habits).toContain("Ask once, and only before what cannot be undone or goes out to other people (sending, posting, buying, booking, deleting, publishing), or when your standing instructions say to; when Just do it is on, its line wins.");
     expect(habits).toContain("Your role is what you are best at, not a fence");
-    expect(habits).toContain("Say done, sent or fixed only when something in this turn showed it");
+    expect(habits).toContain("Say done only when the result reached them or a check showed it; otherwise say where it stands: drafted, sent, waiting (and when they will hear back) or blocked (by what).");
+    expect(habits).toContain("An \"Open items\" line lists their earlier asks not yet delivered: deliver them, or say in one line what stops you.");
+    expect(habits).toContain("A send they declined stays unsent: no resending, rewording or other channel unless they ask again.");
     expect(habits).toContain("never a caveat or an apology");
     expect(habits).not.toContain(String.fromCharCode(0x2014));
   }
@@ -49,9 +49,8 @@ it("recovers from a failed step by itself, keeps a plan for longer jobs, and kee
 it("ends on the result, not a habitual offer, whatever an app's own notes say", () => {
   for (const quick of [false, true]) {
     const habits = replyHabitsPrompt(quick);
-    expect(habits).toContain("Stop when the answer is done.");
-    expect(habits).toContain("no \"Want me to…?\" after finished work");
-    expect(habits).toContain("Offer a next step only when there is an obvious, valuable one, in one short line");
+    expect(habits).toContain("Stop when the answer is done: no recap");
+    expect(habits).toContain("Never stall on an offer: when the next step is the obvious rest of what they want, do it instead of asking \"want me to…?\" or \"shall I set it up?\"; a full instruction is the go-ahead to build it. Offer only a truly optional step, in one short line.");
     expect(habits).toContain("never change this");
     expect(habits).not.toContain("at most one concrete offer");
   }
@@ -73,7 +72,7 @@ it("answers a shared file with what it says, keeps its own voice over the file's
 it("acts instead of ending on a plan, sends the ack with the first step, and stops at once when told", () => {
   for (const quick of [false, true]) {
     const habits = replyHabitsPrompt(quick);
-    expect(habits).toContain("never end on a plan: a reply that only says what you will do next ends your turn with nothing done");
+    expect(habits).toContain("a reply that only says what you will do next ends your turn with nothing done");
     expect(habits).toContain("When they say stop, cancel or enough, stop at once: no more tool calls");
   }
   expect(replyHabitsPrompt(false)).toContain("Send it in the same step as your first tool call, never as a reply on its own");
@@ -92,22 +91,47 @@ it("sounds like a friend, not a help desk: no stock phrases or flattery, wit onl
     expect(habits).toContain("no \"Great question\", \"How can I help?\", \"I'd be happy to help\", \"I apologize for the confusion\"");
     expect(habits).toContain("never claim to be human");
     expect(habits).toContain("never forced and never a stock joke");
-    expect(habits).toContain("when they are just chatting, chat back without offering help or explaining anything. Never echo their request back to them.");
-    expect(habits).toContain("Use emoji only after they have");
+    expect(habits).toContain("Text like they do: match their length and energy, a few casual words get a few back, and plain chat gets chat with no offer of help.");
+    expect(habits).toContain("One thought per short message: separate thoughts go as separate messages. Never echo their request back. Emoji only after they use one.");
     expect(habits).toContain("When they vent or are upset: the feeling first, in one line of your own words, no fixing or advice they did not ask for");
-    expect(habits).toContain("Never invent a number, price, quote, source or name");
+    expect(habits).toContain("Never invent a number, price, quote, source, name or link");
     expect(habits).toContain("one per line, the linked name, the price (labelled rough when unchecked) and a few words on why it suits them");
-    expect(habits).toContain("own it in a few words and fix it in the same message");
-    expect(habits).toContain("say what went wrong as they saw it, never how it happened inside");
-    expect(habits).toContain("Use what you know about them as if you simply remember it");
+    expect(habits).toContain("own it in a few words and fix it in the same message, no groveling");
+    expect(habits).toContain("saying what went wrong as they saw it, never how it happened inside");
+    expect(habits).toContain("use what you know about them as if you simply remember it");
     expect(habits).not.toContain(String.fromCharCode(0x2014));
   }
 });
 
-it("never promises to run or test anything without a tool that runs code", () => {
-  expect(TOOL_HABITS_PROMPT).toContain("with no tool that runs code or commands (a shell, a terminal, a computer), never promise to run, test or build anything");
+it("without a tool that runs code, never claims a run and does the job another way instead of refusing", () => {
+  expect(TOOL_HABITS_PROMPT).toContain("With no tool that runs code or commands (a shell, a terminal, a computer), never claim to have run anything: do the job with what you have");
+  expect(TOOL_HABITS_PROMPT).not.toContain("running it needs a computer connected to you");
 });
 
 it("names each change a tool confirmed in the result, and none it did not", () => {
   for (const quick of [false, true]) expect(replyHabitsPrompt(quick)).toContain("When you made several changes, name each one its tool confirmed");
+});
+
+it("runs independent parts at once and keeps a first ask going when a second one arrives", () => {
+  for (const quick of [false, true]) {
+    const prompt = replyHabitsPrompt(quick);
+    expect(prompt).toContain("runs its parts at once, each in its own subagent where you can start them, then merge;");
+    expect(prompt).toContain("separate jobs they want to read on their own run here with start_thread (a long process with background_job), and the reply names each thread; coordinate_bots only for a teammate they named or work needing another bot's tools; clicks and typing in a browser go one at a time");
+    expect(prompt).toContain("Stop researching once what you read supports the answer: no extra round to be thorough");
+    expect(prompt).toContain("A separate new ask does not replace the first: do both, and send each result when it is ready, opening with which ask it finishes.");
+  }
+});
+
+it("ends every turn on a result, a blocker or a real watch, and retries a thin lookup", () => {
+  for (const quick of [false, true]) {
+    const prompt = replyHabitsPrompt(quick);
+    expect(prompt).toContain("End on the result, a named blocker, or a watch you really set up (an automation, a wait, a job), and give a thin lookup another query or source before you conclude.");
+  }
+});
+
+it("leads an angry person with the fix, never a sorry or a confession it cannot see", () => {
+  for (const quick of [false, true]) {
+    expect(replyHabitsPrompt(quick)).toContain("the first words are the fix or the check you are making, never a \"sorry\" opener or a defence");
+    expect(replyHabitsPrompt(quick)).toContain("own a mistake in a few words (\"That's on me.\") only when you can see you made it");
+  }
 });

@@ -24,13 +24,14 @@ import type { BillingNotice } from "./billing/service.ts";
 import { BILLING_CONFIG, MANAGED_REGION, regionLabel } from "./billing/plans.ts";
 import type { StoredCloud } from "./clouds/types.ts";
 import { DEFAULT_RETENTION_DAYS } from "../../cloud-service/src/retention.ts";
-import { CODE_SUBJECT, accountDeletedEmail, cancelledEmail, cloudDeletedEmail, cloudNoticeEmail, cloudReadyEmail, emailConfig, paymentFailedEmail, receiptEmail, teamInviteEmail, teamSeatFullEmail, welcomeEmail } from "./email/templates.ts";
+import { CODE_SUBJECT, accountDeletedEmail, cancelledEmail, cloudDeletedEmail, cloudNoticeEmail, cloudReadyEmail, emailConfig, paymentFailedEmail, paymentRecoveredEmail, paymentReminderEmail, receiptEmail, teamInviteEmail, teamSeatFullEmail, welcomeEmail } from "./email/templates.ts";
 import type { Rendered } from "./email/templates.ts";
 import { render } from "./email/layout.ts";
 import { BillingError } from "./billing/service.ts";
 import { createSlackEdgeHost } from "./slack-edge/index.ts";
 import { createManagedRoutes } from "./clouds/managed-routes.ts";
 import { pagesRoutesFromEnv } from "./pages/routes.ts";
+import { xIndexRoutesFromEnv } from "./x-index/routes.ts";
 import { clientIp, rateIp } from "./client-ip.ts";
 import { stateBackend } from "./persistence/backend.ts";
 import type { ErrorReporter } from "../../../electron/error-report.mjs";
@@ -65,7 +66,7 @@ import { createSealer, parseSealKey } from "./clouds/seal.ts";
 import { aliasLegacyCookies, aliasLegacyHeaders } from "../../../electron/legacy-names.mjs";
 import { LINK_GRANT_PATH, linkGrantSignerFromEnv, signLinkGrant } from "./link-grant.ts";
 import { screenIceMinterFromEnv } from "./screen-ice.ts";
-import { ACCOUNT_ROUTES, type AppComputersAnswer } from "../../../shared/account-api.ts";
+import { ACCOUNT_ROUTES, type AppComputerAnswer, type AppComputersAnswer } from "../../../shared/account-api.ts";
 
 export interface DashboardAppOptions {
   dataDir: string;
@@ -311,6 +312,8 @@ export function createDashboardApp(options: DashboardAppOptions) {
     if (notice.kind === "receipt") { if (courtesy(emailOf(notice.accountId))) sendTo(notice.accountId, "required", receiptEmail(emailCfg, { ...notice, receiptId: notice.invoiceId, cloud: notice.cloudId !== null })); }
     else if (!courtesy(emailOf(notice.accountId))) return;
     else if (notice.kind === "payment_failed") sendTo(notice.accountId, "required", paymentFailedEmail(emailCfg, { ...notice, cloudName: cloud?.name ?? null }));
+    else if (notice.kind === "payment_reminder") sendTo(notice.accountId, "required", paymentReminderEmail(emailCfg, { ...notice, cloudName: cloud?.name ?? null, final: notice.step === "final" }));
+    else if (notice.kind === "payment_recovered") sendTo(notice.accountId, "required", paymentRecoveredEmail(emailCfg, { description: notice.description, cloudName: cloud?.name ?? null }));
     else sendTo(notice.accountId, "required", cancelledEmail(emailCfg, { description: notice.description, cloudName: cloud?.name ?? null, endsAt: notice.endsAt,
       keptPaused: cloud?.backend === "managed", keepDays: cloud?.backend === "managed" ? retentionDays : notice.graceDays }));
   }
@@ -366,6 +369,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
     fromCookie: req => { try { return account(req); } catch (error) { if (error instanceof AuthError && error.code === "signed_out") return null; throw error; } },
     fromBearer: req => auth.appSession(req)?.account ?? null } });
   const pagesRoutes = pagesRoutesFromEnv({ dataDir: options.dataDir, publicUrl, clouds: billing.clouds, now, fetch: options.fetch });
+  const xIndexRoutes = xIndexRoutesFromEnv({ dataDir: options.dataDir, publicUrl, clouds: billing.clouds, now, fetch: options.fetch, fromBearer: req => auth.appSession(req)?.account ?? null });
   auth.beforeAccountDelete(async (owner, body) => {
     try { await billing.beforeAccountDelete(owner, body); } catch (error) { if (error instanceof BillingError && error.code === "billing_active") throw new AuthError(409, "billing_active", { blockers: error.blockers }); throw error; }
   });
@@ -668,6 +672,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
     const method = req.method ?? "GET";
     const url = new URL(req.url ?? "/", publicUrl);
     if (await pagesRoutes.handle(req, res, url)) return;
+    if (await xIndexRoutes.handle(req, res, url)) return;
     const path = url.pathname;
     const elsewhere = hostRedirect(req, url);
     if (elsewhere) return moved(res, 301, elsewhere);
@@ -717,12 +722,12 @@ export function createDashboardApp(options: DashboardAppOptions) {
     }
     const mutation = MUTATIONS.includes(method);
     const appleCallback = method === "POST" && path === "/v1/auth/oauth/apple/callback" && req.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() === "application/x-www-form-urlencoded";
-    const computersRoute = path === ACCOUNT_ROUTES.appComputers || /^\/v1\/app\/computers\/[^/]+\/pair$/.test(path);
+    const computersRoute = path === ACCOUNT_ROUTES.appComputers || /^\/v1\/app\/computers\/[^/]+(?:\/pair)?$/.test(path);
     if (computersRoute) {
       // bearer only, never a cookie: any origin may call it, as the session and enroll-grant routes allow
       res.setHeader("access-control-allow-origin", "*");
       res.setHeader("access-control-allow-headers", "content-type, authorization, x-dusk-version");
-      res.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
+      res.setHeader("access-control-allow-methods", "GET, POST, PATCH, DELETE, OPTIONS");
       if (method === "OPTIONS") { res.writeHead(204); res.end(); return; }
     }
     // the app sends feedback here itself when its server can't: no cookie is read, and the route keeps its own hourly limits
@@ -772,6 +777,30 @@ export function createDashboardApp(options: DashboardAppOptions) {
       const answer: AppComputersAnswer = { v: 1, computers: state.workspaces.filter(ws => ws.ownerAccountId === found.account.id && !clouds.has(ws.id))
         .map(ws => appComputer(ws, seen.get(ws.id), now())) };
       return json(res, 200, answer);
+    }
+    const computerPath = (method === "PATCH" || method === "DELETE") ? /^\/v1\/app\/computers\/([^/]+)$/.exec(path) : null;
+    if (computerPath) {
+      rate(req, method === "PATCH" ? "computer-rename" : "computer-remove", 120);
+      const found = auth.appSession(req);
+      if (!found) fail(401, "invalid_token", "Session is invalid.");
+      let id: string;
+      try { id = decodeURIComponent(computerPath[1]!); } catch { fail(404, "not_found", "Computer not found."); }
+      // security: another account's computer reads as missing, the same as one that does not exist
+      const ws = COMPUTER_ID.test(id) ? state.workspaces.find(item => item.id === id && item.ownerAccountId === found.account.id) : undefined;
+      if (!ws || billing.clouds.list(found.account.id, true).some(cloud => billing.clouds.view(cloud).workspaceId === ws.id)) fail(404, "not_found", "Computer not found.");
+      if (method === "PATCH") {
+        const data = bodyObject(await readBody(req));
+        const name = typeof data.name === "string" ? data.name.trim() : "";
+        if (!name.length || name.length > 60 || [...name].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) fail(400, "invalid_name", "Name must be 1 to 60 characters.");
+        ws.name = name;
+        store.changed();
+        return json(res, 200, { v: 1, computer: appComputer(ws, seen.get(ws.id), now()) } satisfies AppComputerAnswer);
+      }
+      forget(ws);
+      void usage.forgetWorkspace(ws.id);
+      state.workspaces = state.workspaces.filter(item => item !== ws);
+      store.changed();
+      return json(res, 200, { ok: true });
     }
     const pairPath = method === "POST" ? /^\/v1\/app\/computers\/([^/]+)\/pair$/.exec(path) : null;
     if (pairPath) {

@@ -129,4 +129,19 @@ describe("a release run", () => {
       if (made) rmSync(join(pkgDir, "omb-home.tgz"));
     }
   });
+  it("stops at preflight when the version is not tagged yet, and a dry run says so and goes on", async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "dusk-release-all-")); dirs.push(stateDir);
+    const sh = (cmd: string, args: string[]) => {
+      if (cmd === "git" && args[0] === "rev-parse" && args.at(-1)!.startsWith("v")) throw new Error("unknown revision");
+      return cmd === "git" && args[0] === "rev-parse" ? "c".repeat(40) : "";
+    };
+    const fetchImpl = (async () => new Response("{}", { status: 404 })) as unknown as typeof fetch;
+    const real = createRelease({ cfg: configOf({}), env: {}, dryRun: false, fetchImpl, sh, log: () => {}, stateDir });
+    await expect(release(real, options)).rejects.toThrow(/there is no tag v0\.2\.26/);
+    const lines: string[] = [];
+    const dry = createRelease({ cfg: configOf({}), env: {}, dryRun: true, fetchImpl, sh, log: line => lines.push(line), stateDir });
+    await release(dry, { ...options, now: true, steps: [100], dryRun: true });
+    expect(lines).toContain("  (dry run) there is no tag v0.2.26");
+    expect(lines).toContain("- desktop");
+  });
 });

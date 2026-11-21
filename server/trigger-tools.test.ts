@@ -62,6 +62,24 @@ describe("parseTriggerRequest", () => {
       .toMatchObject({ ok: true, kind: "app", operation: { action: "update", triggerId: "a1", changes: { filter: { from: "acme" } } } });
   });
 
+  it("carries a test run to a schedule, and sends an app event or webhook its usual test event", () => {
+    expect(parseTriggerRequest({ ...source, action: "run_now", triggerId: "r1", test: true }, isSchedule))
+      .toEqual({ ok: true, kind: "schedule", forBotId: undefined, proposal: { action: "run_now", routineId: "r1", test: true } });
+    expect(parseTriggerRequest({ ...source, action: "run_now", triggerId: "w1", test: true }, isSchedule))
+      .toEqual({ ok: true, kind: "webhook", forBotId: undefined, operation: { action: "run_now", webhookId: "w1" } });
+    expect(parseTriggerRequest({ ...source, action: "pause", triggerId: "r1", test: true }, isSchedule)).toMatchObject({ ok: false });
+  });
+
+  it("hands a webhook's run_now the bot's sample body, and refuses one elsewhere", () => {
+    const lead = { data: { fields: [{ label: "Email", value: "maya@loomware.co" }] } };
+    expect(parseTriggerRequest({ ...source, action: "run_now", triggerId: "w1", payload: lead }, isSchedule))
+      .toEqual({ ok: true, kind: "webhook", forBotId: undefined, operation: { action: "run_now", webhookId: "w1" }, payload: lead });
+    expect(parseTriggerRequest({ ...source, action: "run_now", triggerId: "r1", payload: lead }, isSchedule)).toMatchObject({ ok: false, error: expect.stringContaining("webhook") });
+    expect(parseTriggerRequest({ ...source, action: "run_now", triggerId: "w1", payload: "hi" }, isSchedule)).toMatchObject({ ok: false });
+    expect(parseTriggerRequest({ ...source, action: "run_now", triggerId: "w1", payload: lead, test: true }, isSchedule)).toMatchObject({ ok: false });
+    expect(parseTriggerRequest({ ...source, action: "run_now", triggerId: "w1", payload: { big: "x".repeat(40_000) } }, isSchedule)).toMatchObject({ ok: false });
+  });
+
   it("refuses a field the trigger's kind does not have, and unknown shapes", () => {
     expect(parseTriggerRequest({ ...source, action: "update", triggerId: "w1", changes: { schedule: {} } }, isSchedule))
       .toMatchObject({ ok: false, error: expect.stringContaining("has no schedule") });

@@ -1,7 +1,7 @@
 {
   "default": {
-    "bytes": 67679,
-    "sha256": "f773c996ff1c25a87ebf07b221bdde9fd4a0c167190e7d7916c6b333d758340b",
+    "bytes": 72950,
+    "sha256": "ade375aa4c197df4722cbae41b09976d034055229ac3287019bf55d207908302",
     "tools": [
       "set_status",
       "send_message",
@@ -44,6 +44,7 @@
       "message_person",
       "report_bug",
       "app_settings",
+      "chat_app_bots",
       "memory_update",
       "retry_thread",
       "memory_log",
@@ -54,14 +55,15 @@
       "wait_until",
       "list_waits",
       "cancel_wait",
+      "background_job",
       "propose_profile",
       "propose_model",
       "mcp_server"
     ]
   },
   "voice": {
-    "bytes": 68457,
-    "sha256": "00a948ba591825ddfeea87161c1067d79561567f252acf93b093a70367e6f8d0",
+    "bytes": 73728,
+    "sha256": "0550652b27d718cc71ec8de38ad78aec0d5438752d31464d54ae5fe237d68089",
     "tools": [
       "set_status",
       "send_message",
@@ -105,6 +107,7 @@
       "message_person",
       "report_bug",
       "app_settings",
+      "chat_app_bots",
       "memory_update",
       "retry_thread",
       "memory_log",
@@ -115,14 +118,15 @@
       "wait_until",
       "list_waits",
       "cancel_wait",
+      "background_job",
       "propose_profile",
       "propose_model",
       "mcp_server"
     ]
   },
   "skills": {
-    "bytes": 70498,
-    "sha256": "3a68bf225533fad80b88d70c70d6039316c150123a10e25982c3a0148a6a6c02",
+    "bytes": 75769,
+    "sha256": "7c37aaa49389e8517446c612e56faaf0eccdec6d98302fb8c9c1de6fe92ac65f",
     "tools": [
       "set_status",
       "send_message",
@@ -165,6 +169,7 @@
       "message_person",
       "report_bug",
       "app_settings",
+      "chat_app_bots",
       "memory_update",
       "retry_thread",
       "memory_log",
@@ -175,6 +180,7 @@
       "wait_until",
       "list_waits",
       "cancel_wait",
+      "background_job",
       "propose_profile",
       "propose_model",
       "skills_list",
@@ -183,8 +189,8 @@
     ]
   },
   "skills+voice": {
-    "bytes": 71276,
-    "sha256": "09ab8d1d394d0120be266111ee9c2ce561b3202edd7367fdde4fa99c2ab1cb25",
+    "bytes": 76547,
+    "sha256": "638288f3407403e6c97617a1bd4fd0cb79e585833533a3019a7c1f696a156f4e",
     "tools": [
       "set_status",
       "send_message",
@@ -228,6 +234,7 @@
       "message_person",
       "report_bug",
       "app_settings",
+      "chat_app_bots",
       "memory_update",
       "retry_thread",
       "memory_log",
@@ -238,6 +245,7 @@
       "wait_until",
       "list_waits",
       "cancel_wait",
+      "background_job",
       "propose_profile",
       "propose_model",
       "skills_list",
@@ -246,8 +254,8 @@
     ]
   },
   "non-chief": {
-    "bytes": 59661,
-    "sha256": "a79caebf45ea6d08ff6d437e3262594fc8a1a1ba45519869a04cc58666a66c6f",
+    "bytes": 64932,
+    "sha256": "fddbbd3d5328255b5afada4e66ce03d4b74ea8d99ecab8b1b1cb3e04027b038d",
     "tools": [
       "set_status",
       "send_message",
@@ -286,6 +294,7 @@
       "message_person",
       "report_bug",
       "app_settings",
+      "chat_app_bots",
       "memory_update",
       "memory_log",
       "session_search",
@@ -295,14 +304,15 @@
       "wait_until",
       "list_waits",
       "cancel_wait",
+      "background_job",
       "propose_profile",
       "propose_model",
       "mcp_server"
     ]
   },
   "voice+non-chief": {
-    "bytes": 60439,
-    "sha256": "e5dc8a7566009cb3e2833a666605e9f7b599fcd8ec001f0d790349ca29751959",
+    "bytes": 65710,
+    "sha256": "7798d5ce264d81a56134f8642f2b45fdd72c97d6b2637667687ec619b4c24be0",
     "tools": [
       "set_status",
       "send_message",
@@ -342,6 +352,7 @@
       "message_person",
       "report_bug",
       "app_settings",
+      "chat_app_bots",
       "memory_update",
       "memory_log",
       "session_search",
@@ -351,14 +362,15 @@
       "wait_until",
       "list_waits",
       "cancel_wait",
+      "background_job",
       "propose_profile",
       "propose_model",
       "mcp_server"
     ]
   },
   "skills+non-chief": {
-    "bytes": 62480,
-    "sha256": "f1c3ec226d638f5a1156fe73a4dada04770cf08d9d30bc5631ddc661ad085044",
+    "bytes": 67751,
+    "sha256": "ce5ed91cb48adc58c2f45831c7108e99dc9ad40f94a40eb24f0f205fcc92b4f9",
     "tools": [
       "set_status",
       "send_message",
@@ -397,6 +409,7 @@
       "message_person",
       "report_bug",
       "app_settings",
+      "chat_app_bots",
       "memory_update",
       "memory_log",
       "session_search",
@@ -406,6 +419,7 @@
       "wait_until",
       "list_waits",
       "cancel_wait",
+      "background_job",
       "propose_profile",
       "propose_model",
       "skills_list",
@@ -414,8 +428,8 @@
     ]
   },
   "skills+voice+non-chief": {
-    "bytes": 63258,
-    "sha256": "3775b3cf7e06a3bf8b065f91c8d6977572ce5e2c6461e6e3c30096bc51eda175",
+    "bytes": 68529,
+    "sha256": "edbad6ab95c47803aee97e3243717cde8736331a1376a9a3e39558a4c1ccd2e8",
     "tools": [
       "set_status",
       "send_message",
@@ -455,6 +469,7 @@
       "message_person",
       "report_bug",
       "app_settings",
+      "chat_app_bots",
       "memory_update",
       "memory_log",
       "session_search",
@@ -464,6 +479,7 @@
       "wait_until",
       "list_waits",
       "cancel_wait",
+      "background_job",
       "propose_profile",
       "propose_model",
       "skills_list",
@@ -472,8 +488,8 @@
     ]
   },
   "skills+voice+cloud-home": {
-    "bytes": 70297,
-    "sha256": "655fd21ff699d78171e4de5d9aa4d81cbd10be26c8ffc6d8d19350e847a7ce21",
+    "bytes": 75568,
+    "sha256": "2ffa1dfb05be7f65d941e72304e5fdfe7b5f067cf7b9d46ede13fe716c35e433",
     "tools": [
       "set_status",
       "send_message",
@@ -516,6 +532,7 @@
       "message_person",
       "report_bug",
       "app_settings",
+      "chat_app_bots",
       "memory_update",
       "retry_thread",
       "memory_log",
@@ -526,6 +543,7 @@
       "wait_until",
       "list_waits",
       "cancel_wait",
+      "background_job",
       "propose_profile",
       "propose_model",
       "skills_list",
@@ -534,8 +552,8 @@
     ]
   },
   "skills+voice+non-chief+cloud-home": {
-    "bytes": 62279,
-    "sha256": "2cb5c43bf0d1715699181c76d360760d43dad4fbd0197a6abcb18fe795731f35",
+    "bytes": 67550,
+    "sha256": "7daa410d2db4e955af4df4a8f8e2eedeb040ad62a35ae3c819231fbcdfdf8d26",
     "tools": [
       "set_status",
       "send_message",
@@ -574,6 +592,7 @@
       "message_person",
       "report_bug",
       "app_settings",
+      "chat_app_bots",
       "memory_update",
       "memory_log",
       "session_search",
@@ -583,6 +602,7 @@
       "wait_until",
       "list_waits",
       "cancel_wait",
+      "background_job",
       "propose_profile",
       "propose_model",
       "skills_list",
@@ -591,8 +611,8 @@
     ]
   },
   "skills+voice+x": {
-    "bytes": 76287,
-    "sha256": "e5fe6f1684e5ae9574822405075a0bfa1bba448121575c57118930fd7cc62e84",
+    "bytes": 81981,
+    "sha256": "05b5643520238eac0ca0b2a015e35207f5589e35e367375538d1d2c8cf0b44e7",
     "tools": [
       "set_status",
       "send_message",
@@ -641,6 +661,7 @@
       "message_person",
       "report_bug",
       "app_settings",
+      "chat_app_bots",
       "memory_update",
       "retry_thread",
       "memory_log",
@@ -651,6 +672,7 @@
       "wait_until",
       "list_waits",
       "cancel_wait",
+      "background_job",
       "propose_profile",
       "propose_model",
       "skills_list",
@@ -659,8 +681,8 @@
     ]
   },
   "skills+voice+x+team": {
-    "bytes": 76287,
-    "sha256": "e5fe6f1684e5ae9574822405075a0bfa1bba448121575c57118930fd7cc62e84",
+    "bytes": 82397,
+    "sha256": "77a3c1aecf0e05b9e47cca3cec85e0b3c91d71dba842d0941406f3d6806e4137",
     "tools": [
       "set_status",
       "send_message",
@@ -709,6 +731,7 @@
       "message_person",
       "report_bug",
       "app_settings",
+      "chat_app_bots",
       "memory_update",
       "retry_thread",
       "memory_log",
@@ -719,16 +742,83 @@
       "wait_until",
       "list_waits",
       "cancel_wait",
+      "background_job",
       "propose_profile",
       "propose_model",
+      "read_skill",
+      "skills_list",
+      "skill_manage",
+      "mcp_server"
+    ]
+  },
+  "skills+skill-reader": {
+    "bytes": 76185,
+    "sha256": "005021bec0a3e6850ebcb104eb49cd7c5303334d1456cf5b9531b389fc8165e4",
+    "tools": [
+      "set_status",
+      "send_message",
+      "tool_result_read",
+      "list_room_targets",
+      "coordinate_bots",
+      "assignment_status",
+      "list_bots",
+      "usage_limits",
+      "checklist",
+      "react",
+      "create_document",
+      "update_document",
+      "list_documents",
+      "list_rooms",
+      "select_computer",
+      "list_threads",
+      "close_thread",
+      "start_thread",
+      "vm_exec",
+      "attach_file",
+      "show_widget",
+      "show_html",
+      "publish_page",
+      "unpublish_page",
+      "confirm_purchase",
+      "show_products",
+      "post_to_room",
+      "create_bot",
+      "list_team_setup",
+      "list_team_library",
+      "propose_team_setup",
+      "propose_bot_deletion",
+      "manage_room",
+      "request_credential",
+      "request_sign_in",
+      "fill_login",
+      "decide",
+      "extract",
+      "message_person",
+      "report_bug",
+      "app_settings",
+      "chat_app_bots",
+      "memory_update",
+      "retry_thread",
+      "memory_log",
+      "session_search",
+      "trigger_info",
+      "trigger",
+      "delete_trigger",
+      "wait_until",
+      "list_waits",
+      "cancel_wait",
+      "background_job",
+      "propose_profile",
+      "propose_model",
+      "read_skill",
       "skills_list",
       "skill_manage",
       "mcp_server"
     ]
   },
   "default+legacy-switches": {
-    "bytes": 67679,
-    "sha256": "f773c996ff1c25a87ebf07b221bdde9fd4a0c167190e7d7916c6b333d758340b",
+    "bytes": 72950,
+    "sha256": "ade375aa4c197df4722cbae41b09976d034055229ac3287019bf55d207908302",
     "tools": [
       "set_status",
       "send_message",
@@ -771,6 +861,7 @@
       "message_person",
       "report_bug",
       "app_settings",
+      "chat_app_bots",
       "memory_update",
       "retry_thread",
       "memory_log",
@@ -781,14 +872,15 @@
       "wait_until",
       "list_waits",
       "cancel_wait",
+      "background_job",
       "propose_profile",
       "propose_model",
       "mcp_server"
     ]
   },
   "default+dusk": {
-    "bytes": 68330,
-    "sha256": "60e34cd2f0d3f0dd2d84bd84fdd25569eb7fe702fc704f2fa3dc9f032338008a",
+    "bytes": 73601,
+    "sha256": "419b76f251d542b54f87dccf6a247ed14718056e95e18ba522fdd030d1380106",
     "tools": [
       "set_status",
       "send_message",
@@ -831,6 +923,7 @@
       "message_person",
       "report_bug",
       "app_settings",
+      "chat_app_bots",
       "memory_update",
       "retry_thread",
       "memory_log",
@@ -841,6 +934,7 @@
       "wait_until",
       "list_waits",
       "cancel_wait",
+      "background_job",
       "propose_profile",
       "propose_model",
       "mcp_server",
@@ -849,8 +943,8 @@
     ]
   },
   "skills+voice+dusk": {
-    "bytes": 71927,
-    "sha256": "acb21d16778233c077b0bb9d05050dde021ce27a007c373f4f2fdb2b9549ced3",
+    "bytes": 77198,
+    "sha256": "e68147ae34b197e84fc99904d829fdc714cf385f2d506564675829e58efb0dfb",
     "tools": [
       "set_status",
       "send_message",
@@ -894,6 +988,7 @@
       "message_person",
       "report_bug",
       "app_settings",
+      "chat_app_bots",
       "memory_update",
       "retry_thread",
       "memory_log",
@@ -904,6 +999,7 @@
       "wait_until",
       "list_waits",
       "cancel_wait",
+      "background_job",
       "propose_profile",
       "propose_model",
       "skills_list",
@@ -914,8 +1010,8 @@
     ]
   },
   "default+no-computer-pick": {
-    "bytes": 66472,
-    "sha256": "85a7c2f578ed1ed7df3af2eb0e8a79f1d5ea626ed0dbbfe280e60ecb798177f1",
+    "bytes": 71743,
+    "sha256": "711a4f849f462f2379196dc13e4f6e1a32823bc97133e97d84380dad50129c69",
     "tools": [
       "set_status",
       "send_message",
@@ -957,6 +1053,7 @@
       "message_person",
       "report_bug",
       "app_settings",
+      "chat_app_bots",
       "memory_update",
       "retry_thread",
       "memory_log",
@@ -967,14 +1064,15 @@
       "wait_until",
       "list_waits",
       "cancel_wait",
+      "background_job",
       "propose_profile",
       "propose_model",
       "mcp_server"
     ]
   },
   "default+room": {
-    "bytes": 58240,
-    "sha256": "06423d6f7dad84b6a0d1085907ef1e460267bc26b28a4ce9fc2db88a615511f1",
+    "bytes": 62189,
+    "sha256": "e365e91a5f910f8e75f7fd9ef286ebe046114ff1b76e60a094600a75a04127d7",
     "tools": [
       "set_status",
       "send_message",
@@ -1012,6 +1110,7 @@
       "message_person",
       "report_bug",
       "app_settings",
+      "chat_app_bots",
       "memory_update",
       "retry_thread",
       "memory_log",
@@ -1025,8 +1124,8 @@
     ]
   },
   "non-chief+room": {
-    "bytes": 50222,
-    "sha256": "566cc1d50f43318d8eceed454455f37ee1647c1649ebfa84c3b9654cba2d940a",
+    "bytes": 54171,
+    "sha256": "73ce79ecb32276a2cb4619c2f07cf87b542a419c2097b4710245346f93caee7b",
     "tools": [
       "set_status",
       "send_message",
@@ -1060,6 +1159,7 @@
       "message_person",
       "report_bug",
       "app_settings",
+      "chat_app_bots",
       "memory_update",
       "memory_log",
       "session_search",

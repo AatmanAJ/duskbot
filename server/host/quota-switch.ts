@@ -25,6 +25,7 @@ export interface QuotaSwitchHostDeps extends Pick<QuotaSwitchDeps, "store" | "co
   startOrQueueDirectMessage(
     botId: string, threadId: string, text: string, replyTo?: Message, sendId?: string, sender?: ResolvedSender,
     trigger?: UsageTrigger, via?: "call", callId?: string, dataContext?: DataContext,
+    app?: undefined, mentions?: undefined, relayed?: undefined, recorded?: Message,
   ): Promise<unknown>;
 }
 
@@ -42,13 +43,13 @@ export function createQuotaSwitchHost(deps: QuotaSwitchHostDeps) {
     gate: (thread, selection) => checkedTaskModelSwitch(thread, selection, false, false, true),
     busy: threadBusy,
     request: threadId => directRequestOwners.get(threadId),
-    resend: (botId, threadId, message, replyTo, spoken) => startOrQueueDirectMessage(botId, threadId, message.text ?? "", replyTo, undefined, message.sender, undefined, spoken.via, spoken.callId, message.dataContext),
+    resend: (botId, threadId, message, replyTo, spoken) => startOrQueueDirectMessage(botId, threadId, message.text ?? "", replyTo, undefined, message.sender, undefined, spoken.via, spoken.callId, message.dataContext, undefined, undefined, undefined, message),
   });
 
   /** Settles a card the harness raised itself (a peer approval, a use-your-computer ask or a quota-switch offer); undefined for any other card. */
-  async function harnessCardOutcome(threadId: string, requestId: string, behavior: "allow" | "deny" | "answer", message: unknown): Promise<string | undefined> {
+  async function harnessCardOutcome(threadId: string, requestId: string, behavior: "allow" | "deny" | "answer", message: unknown, always = false): Promise<string | undefined> {
     if (!store.messagesFor(threadId).some(candidate => candidate.card?.requestId === requestId)) return undefined;
-    if (resolvePeerComms(approvalBus, requestId, behavior) || resolveYourComputerAsk(requestId, behavior) || resolveMacAsk(requestId, behavior) || deps.ownCards?.(requestId, behavior)) return behavior === "allow" ? "allowed-once" : "rejected";
+    if (resolvePeerComms(approvalBus, requestId, behavior) || resolveYourComputerAsk(requestId, behavior) || resolveMacAsk(requestId, behavior, always) || deps.ownCards?.(requestId, behavior)) return behavior === "allow" ? "allowed-once" : "rejected";
     return await quotaSwitch.answer(threadId, requestId, behavior, message) ?? undefined;
   }
 

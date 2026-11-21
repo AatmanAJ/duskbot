@@ -3,7 +3,8 @@ import type { ConnectorCall } from "../shared/outbound.ts";
 import { describeTool } from "./activity.ts";
 import { normalizeEmailEdits, type EmailEdits } from "../shared/email-review.ts";
 
-export type OutboundAnswer = "allow" | "deny" | "timeout";
+/** replied: the person wrote in the chat while the card waited, so the turn reads their words instead of waiting on. */
+export type OutboundAnswer = "allow" | "deny" | "timeout" | "replied";
 
 interface Held {
   botId: string;
@@ -56,6 +57,13 @@ export class OutboundRequestService {
     if (edits) entry.edits = edits;
     this.settle(input.requestId, answer);
     return { claimed: true, state: answer === "allow" ? "allowed" : "denied" };
+  }
+
+  /** Settles every card still waiting in this thread as replied; returns their request ids. */
+  replied(threadId: string): string[] {
+    const ids = this.pending(threadId);
+    for (const requestId of ids) this.settle(requestId, "replied");
+    return ids;
   }
 
   pending(threadId: string): string[] {

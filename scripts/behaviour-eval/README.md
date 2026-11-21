@@ -128,3 +128,36 @@ stop 60/60, voice 26 to 24/48, no false done 38 to 36/48. Re-runs on the final b
 (`round7-lean2-dipped-x3.json`, `round7-lean3-hey-x3.json`): rename-folder 12/12, post-x 12/12, cancel-summary 9/12
 (back to round 6), email-landlord 7/12 (round 6: 5), thanks 7 and vent 9 (round 6: 6 and 8), hello 8/12 (round 6:
 11; the misses are gpt-oss and gemini ending a hello with an offer of help).
+
+### Capability round (`--suite capable`), 2026-11-20
+
+Does a bot take real work on instead of refusing it? 27 jobs from the Grok task library (`GROK-DISTILL.md` section 9)
+and from prod frustration notes and bug reports: a Telegram group watch (the cofounder's refused request), watching a
+page or a price, a check every hour, an always-on loop, "use my Mac" and "use your computer", research, csv, xlsx, a
+web app, a script, a lead list, inbox triage, a weekly report, a marketing department, a site QA, connected apps,
+sign-ins, a purchase, a model switch, memory, language, an angry person and a bot with Works on Off. Cases run with
+Works on Auto (`place: "auto"`; no computer is set up in the sandbox) unless they say otherwise, and are judged for
+doing the job, picking the right capability, asking at most one real question, one concrete offer and honest limits.
+Bot and judge: `gpt-6.2-sol`. Every run was judged again from its saved transcripts with the final pass conditions
+(`rejudge.ts`), so the numbers below compare like with like.
+
+| build | runs | passed |
+| --- | --- | --- |
+| before: dev at `6142d184f`, when this round started (`capable-before-x2-judged.json`) | 2 | 24/54 |
+| mid: dev at `97178ba1e`, background jobs and chat apps landed, none of this round's fixes (`capable-mid-x1-judged.json`) | 1 | 10/27 |
+| after: dev at `ec3136180` (`capable-after-x2-judged.json`) | 2 | 33/54 |
+
+By case, before to after (of 2): always-on 0 to 2, hourly script 0 to 2, model switch 0 to 2, Works on Off 1 to 2,
+leads 0 to 1, use your computer 0 to 1; csv, inbox, research, script, web app, weekly report, memory and language
+stay 2/2. Down: site change and price watch 2 to 0 on the live judge, both set up as background jobs, which the first
+pass conditions did not name; they pass under the final ones only when the job is confirmed. The Telegram watch now
+starts and is refused by Telegram for the made-up token, then asks once for a real one.
+
+A targeted rerun of six cases on dev at `4be02d1e3` (`capable-after2-targeted-x2-judged.json`), after the no-computer
+note and the beat and angry fixes: use your computer 2/2, QA a site 2/2, angry person 1/2, use my Mac 0/2, lead list
+0/2, marketing department 0/2 (5/12, as in the after run, with a different mix).
+
+Still failing and why: the lead list reads 25+ pages and passes the eval's 240 s wait before it answers; the marketing
+department now designs before it builds (a later prompt change), which this case's pass condition does not credit;
+sign-in, purchase, Gmail and Calendar have no browser or connected-app tools in the sandbox, so the bot says what is
+missing, which the judge holds as too little; the xlsx case wants the departure city named.

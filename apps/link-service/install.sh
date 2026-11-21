@@ -774,6 +774,9 @@ do_basics() {
   # the bot browser's live view goes as H.264 through this ffmpeg (server/browser/viewers/h264-encoder.ts); best effort:
   # without it the view stays JPEG, so it never fails the install
   apt_install ffmpeg || echo "ffmpeg could not be installed; the live browser view stays JPEG"
+  # pdftotext and pdftoppm: a PDF someone sends a bot is read as text, and a scanned one rendered to pictures for engines
+  # that see images; best effort: without them such a PDF reaches the bot as a file only
+  apt_install poppler-utils || echo "poppler-utils could not be installed; bots get scanned PDFs as files only"
   bwrap_userns
 }
 
@@ -1123,6 +1126,7 @@ put_command() {
 #!/bin/sh
 # managed by duskbot-link: this server's dusk bot, run as $SVC_USER
 if [ "\$(id -un)" = $SVC_USER ]; then exec $_run "\$@"; fi
+cd / || exit 1
 if [ "\$(id -u)" -eq 0 ]; then exec runuser -u $SVC_USER -- $_run "\$@"; fi
 exec sudo -u $SVC_USER -- $_run "\$@"
 EOF
@@ -2448,6 +2452,9 @@ main() {
     fail_line "This line is missing its code. Copy the whole line from the app."; exit 1
   fi
   [ -n "$DEMO" ] || become_root
+  # node 24 reads package.json files up from the working directory and throws on one it may not read, and npm and node
+  # run here as the server and link accounts, which cannot read /root or a 0750 home (ubuntu 21.04 and newer)
+  cd /
   [ -n "$DEMO" ] || take_lock
   umask 022
   TMP=$(mktemp -d)

@@ -3,6 +3,7 @@
 // session/load replays history as ordinary session/update notifications, so nothing emits before
 // the prompt is sent and `_meta.isReplay` updates are dropped. Permissions fail closed: only an
 // `allow`-kind option approves, and option order is never a security contract.
+import { outboundSendKey } from "../../../shared/declined-sends.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { lstat, mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
@@ -16,7 +17,7 @@ import { decodeInjectId } from "../local-inject.ts";
 import { DeviceAuthController, type DeviceSignIn } from "../device-auth.ts";
 import { deletePromptSplitReceipt, promptHalves, readPromptSplitReceipt, splitSessionPrompt, writePromptSplitReceipt } from "../prompt-split.ts";
 import type { PromptSplitReceipt } from "../prompt-split.ts";
-import { describeSpawnFailure, execCli, killCliTree, readOnlyBotFolders, spawnCli } from "../../procs.ts";
+import { closedOrKilled, describeSpawnFailure, execCli, killCliTree, readOnlyBotFolders, spawnCli } from "../../procs.ts";
 import { runAcpOneShot } from "./background-text.ts";
 import { sanitizeAcpToolMessage } from "./tool-log.ts";
 import { stripLeakedSystemHarnessMessages } from "../../../shared/system-message-guard.ts";
@@ -27,7 +28,7 @@ import {
 import { readSessionReport } from "./session-reports.ts";
 import { pickSessionModel, SessionModelControls, type AcpModelSelection } from "./session-model-controls.ts";
 import { acpVariantOption } from "./config-options.ts";
-import { coolFreeRung, FREE_POOL_LIMIT, FREE_PROBE_MS, FREE_PROBE_PROMPT, freeFailure, freeLadder, probeFreeLadder, warmFreeModel, warmFreeRung, type FreeFailure, type FreeRung } from "./free-ladder.ts";
+import { advertisedVariant, coolFreeRung, FREE_POOL_LIMIT, FREE_PROBE_MS, FREE_PROBE_PROMPT, freeFailure, freeLadder, probeFreeLadder, warmFreeModel, warmFreeRung, type FreeFailure, type FreeRung } from "./free-ladder.ts";
 import { trail } from "../../trail.ts";
 import { versionFromProbe } from "./version-probe.ts"; import { engineHomes } from "../../engine-homes/engine-homes.ts";
 
@@ -235,7 +236,7 @@ export interface AcpSupport {
   classifyError?(error: unknown): ProviderErrorCode | undefined;
   /** Plain words for an account failure (bad key, no credit, a used-up
    * quota, no subscription) in place of the provider's raw RPC text. */
-  describeAccountError?(code: AccountErrorCode, model?: string): string;
+  describeAccountError?(code: AccountErrorCode, model?: string): string | undefined;
   /** Compose the session/prompt text. Default prepends the persona. */
   buildPromptText?(turn: SendTurnInput): string;
   /** Rewrite a picker id (`omlx::model`) into the CLI-native id before spawn and session/select. */
@@ -872,6 +873,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             requestType: isQuestion ? "question" : "permission",
             tool,
             summary,
+            ...(!isQuestion && outboundSendKey(tool, toolCall.rawInput) ? { sendKey: outboundSendKey(tool, toolCall.rawInput) } : {}),
             ...acpShellRequest(isShellCommand, isQuestion ? undefined : toolCall.rawInput, commandCwd), ...(!isQuestion && acpReadPaths(toolCall) ? { reads: acpReadPaths(toolCall) } : {}),
             requiresExplicitApproval: isShellCommand && (
               toolCall.rawInput?.dangerouslyDisableSandbox === true || toolCall.rawInput?.sandbox_permissions === "require_escalated"
@@ -1455,9 +1457,12 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
                 // initialize's currentModelId is the CLI default, not this turn's model.
                 if (!selectedModel && cliTurn.model) selectedModel = cliTurn.model;
               }
-              // a free rung's lighter setting is a preference: a model that does not offer it runs at its own
-              if (variant !== undefined && ladder && !acpVariantOption(session.sessionConfigResult)?.options.some((entry) => entry.id === variant)) {
-                variant = undefined;
+              // a free rung's lighter setting is a preference: use one the model advertises, else its default, else none
+              if (variant !== undefined && ladder) {
+                variant = advertisedVariant(catalog.models.options.find((option) => option.id === cliTurn.model)?.variants, variant);
+                if (variant !== undefined && !acpVariantOption(session.sessionConfigResult)?.options.some((entry) => entry.id === variant)) {
+                  variant = undefined;
+                }
               }
               if (variant !== undefined) {
                 const option = requestedVariantOption();
@@ -1622,7 +1627,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             const freeError = e instanceof Error ? e.message : String(e);
             // a free model's request refused outright (busy, rate limited, unavailable) before anything reached the person
             const freeRefused = ladder && state.promptSent && !state.text && !state.producedItem && !current.runningTools.size && !asks.size
-              && ["pool_limit", "rate_limited", "busy", "timeout"].includes(freeFailure(freeError));
+              && ["pool_limit", "rate_limited", "busy", "timeout", "unavailable"].includes(freeFailure(freeError));
             if (!state.settled && !state.cancelling && ((e as any)?.acpFirstReplyStall === true || freeRefused) && ladder && !state.stopped) {
               // nothing reached the person and no tool ran, so the same message goes to the next free model in this turn
               state.settled = true; session.current = null; active.delete(threadId); current.stopQuietWatch?.();
@@ -1652,7 +1657,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
                 }
               }
               emit({ ...base(threadId, turnId), type: "runtime.error", message: serverLine(language, limited ? "server.freeModel.limit" : "server.freeModel.noReply"),
-                errorCode: limited ? "free_pool_limit" : `free_${failure}` });
+                errorCode: limited ? "free_pool_limit" : `free_${failure}`, ...(limited ? { limit: "engine" as const } : {}) });
               emit({ ...base(threadId, turnId), type: "turn.completed", ok: false, stopReason: "no_reply", cost: null });
               return;
             }
@@ -1839,6 +1844,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           return catalog.unconfirmed;
         },
         refreshModels: support.resolveModels ? () => refreshModels(true) : undefined,
+        resetModels: support.resolveModels ? () => catalog.reset() : undefined,
         ...(startupModelRefresh ? { startupModelRefresh } : {}),
         ...(deviceSignIn ? {
           startAuthentication: (options?: ProviderAuthenticationOptions) => deviceSignIn.start(options),
@@ -1877,10 +1883,16 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           enginePid: (threadId) => (active.has(threadId) ? sessions.get(threadId)?.child.pid : undefined),
           stopAll: async () => {
             for (const { stop } of active.values()) stop();
+            const children = new Set<ReturnType<typeof spawnCli>>();
+            for (const session of sessions.values()) children.add(session.child);
             for (const threadId of Array.from(sessions.keys())) closeSession(threadId, "stopAll");
-            for (const [threadId, children] of retiring) {
-              for (const child of children) void retireChild(threadId, child);
+            for (const [threadId, set] of retiring) {
+              for (const child of set) {
+                children.add(child);
+                void retireChild(threadId, child);
+              }
             }
+            await Promise.allSettled([...children].map((child) => closedOrKilled(child)));
           },
           onEvent: (listener) => {
             listeners.add(listener);

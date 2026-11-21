@@ -73,7 +73,7 @@ import { callReplyEvent, callReplyOwner, callReplyStream, speechOwner, spokenRep
 import { t } from "@/lib/i18n";
 import { createBotPatchQueue, flushWhenLeaving, keepaliveFits, type BotUpdatePatch } from "./bot-patch-queue"; import { createNewTaskOnce } from "./new-task-once";
 import { liveCallFromFrame, nextLiveCallLookup } from "./live-call";
-import { isNoAiRefusal, refusalFoundAi, useChatErrorClear } from "./chat-error";
+import { isNoAiRefusal, refusalConnects, refusalFoundAi, useChatErrorClear } from "./chat-error";
 import { openLiveEvents, publishLiveFrame, publishMissedFrames, withoutScreenPixels } from "@/lib/live-events";
 import { unlessRefused } from "@/lib/admin-scope";
 import { olderRunsSince, ROUTINE_RUNS_WINDOW_MS, trimRoutineRuns, withOlderRoutineRuns } from "./routine-runs";
@@ -84,7 +84,7 @@ import { useTranscriptCache } from "./use-transcript-cache";
 export type { MausColor } from "@/lib/mascot";
 export type { RoutineRunCardData } from "../../shared/routine-run";
 
-export interface OptionCardData extends Pick<WireOptionCard, "fixedOptions" | "webhookRequest" | "appTriggerRequest" | "yourComputer" | "waitRequest" | "stopped" | "accessRequest" | "mcpRequest" | "appAction" | "email" | "purchase"> {
+export interface OptionCardData extends Pick<WireOptionCard, "fixedOptions" | "webhookRequest" | "appTriggerRequest" | "yourComputer" | "waitRequest" | "stopped" | "accessRequest" | "mcpRequest" | "appAction" | "email" | "purchase" | "allowTask"> {
   title: string;
   subtitle: string;
   options: string[];
@@ -123,7 +123,7 @@ export type SecretRequestCardData = Omit<import("../../shared/wire").SecretReque
 
 export type ComputerControlState = { held: boolean; helpReason: string | null; help?: import("../../shared/wire").ComputerHelpRef | null };
 
-export interface Message extends Pick<import("../../shared/wire").WireMessage, "widget" | "app" | "fromApp" | "pointed" | "routedBy" | "quickModel" | "automation" | "routineStart" | "publishedPage" | "products" | "document" | "sender" | "setupSuggestion" | "helperIntro" | "helperFollowup" | "setupOffer" | "setupChoices" | "setupChoicesPending" | "setupChoicesUpdating" | "setupRequest" | "relay" | "inbox" | "sentDirectly" | "doneWhen" | "bugReport" | "media" | "unconfirmed" | "peerResume"> {
+export interface Message extends Pick<import("../../shared/wire").WireMessage, "widget" | "app" | "fromApp" | "pointed" | "routedBy" | "quickModel" | "automation" | "routineStart" | "publishedPage" | "products" | "document" | "sender" | "setupSuggestion" | "offer" | "helperIntro" | "helperFollowup" | "setupOffer" | "setupChoices" | "setupChoicesPending" | "setupChoicesUpdating" | "setupRequest" | "relay" | "inbox" | "sentDirectly" | "doneWhen" | "bugReport" | "media" | "unconfirmed" | "peerResume" | "quietRun"> {
   id: string;
   role: "bot" | "user";
   kind: "text" | "options" | "activity" | "screen" | "connector" | "secret" | "signin" | "routine.run" | "goal.run" | "digest" | "compaction" | "call" | "widget" | "app";
@@ -139,7 +139,7 @@ export interface Message extends Pick<import("../../shared/wire").WireMessage, "
   goalRun?: GroupGoalRunCardData;
   call?: import("../../shared/wire").LiveCallRecord;
   channelMode?: "chat" | "goal";
-  tool?: { name: string; ok?: boolean; spoken?: string; setup?: boolean; signIn?: boolean; claudeUpdate?: boolean; place?: PlaceRow; resolvedAt?: number; limitResetsAt?: number; limitHold?: import("../../shared/wire").LimitHoldState; partial?: boolean; owned?: boolean; reason?: import("../../shared/failed-turn").FailedReplyReason; blocker?: import("../../shared/failed-turn").BrowserBlocker; summary?: string; input?: string; output?: string ; itemId?: string; outputPath?: string; fullResult?: boolean; clipped?: boolean; rescue?: import("../../shared/first-reply-rescue").FirstReplyRescue; step?: import("../../shared/turn-progress").LiveStep; whose?: { person: string; app: string }; label?: string };
+  tool?: { name: string; ok?: boolean; spoken?: string; setup?: boolean; signIn?: boolean; claudeUpdate?: boolean; place?: PlaceRow; resolvedAt?: number; limitResetsAt?: number; limitHold?: import("../../shared/wire").LimitHoldState; partial?: boolean; owned?: boolean; reason?: import("../../shared/failed-turn").FailedReplyReason; blocker?: import("../../shared/failed-turn").BrowserBlocker; errorRef?: string; summary?: string; input?: string; output?: string ; itemId?: string; outputPath?: string; fullResult?: boolean; clipped?: boolean; ms?: number; rescue?: import("../../shared/first-reply-rescue").FirstReplyRescue; step?: import("../../shared/turn-progress").LiveStep; whose?: { person: string; app: string }; label?: string };
   steered?: boolean;
   via?: "api" | "call";
   callId?: string;
@@ -321,7 +321,7 @@ export interface Bot extends DefaultBotFields, Pick<WireBot, "mascotFaceColor" |
   speakReplies?: boolean;
   replyStyle?: import("../../shared/wire").WireBot["replyStyle"];
   voice?: string;
-  voiceNotes?: boolean; xResearch?: boolean; macControl?: boolean;
+  voiceNotes?: boolean; xResearch?: boolean; macControl?: boolean; suggestions?: boolean;
   memoryEnabled?: boolean;
   pinned?: boolean;
   hidden?: boolean;
@@ -581,8 +581,8 @@ export interface AppState {
   loadWaking?: true;
   error: string | null;
   notice: { kind: "thread-gone" | "bot-gone" | "steer-images" | "note"; botName: string | null; text?: string;
-    /** an AI found on this computer the note offers to turn on */
-    found?: { instanceId: string; name: string } } | null;
+    /** an AI found on this computer the note offers to turn on; `connect`: none, so the note opens the connect flow */
+    found?: { instanceId: string; name: string }; connect?: true } | null;
   revealThread: { threadId: string; nonce: number } | null;
   mascotMotion: {
     botId: string;
@@ -1565,10 +1565,10 @@ export function reducer(state: AppState, action: Action): AppState {
         keepThreadModels: _keepThreadModels, threadId: _threadId, mainThreadChoice,
         computer,
         connectorTools,
-        connectorScopes, phoneApps, peers,
+        connectorScopes, phoneApps, peers, fallback,
         ...rest
       } = action.patch;
-      const botPatch: Partial<Bot> = { ...rest, ...(phoneApps !== undefined && { phoneApps: phoneApps ?? undefined }), ...(peers !== undefined && { peers: peers ?? undefined }), ...(typeof mainThreadChoice === "string" && { mainThreadId: mainThreadChoice }) };
+      const botPatch: Partial<Bot> = { ...rest, ...(phoneApps !== undefined && { phoneApps: phoneApps ?? undefined }), ...(peers !== undefined && { peers: peers ?? undefined }), ...(fallback !== undefined && { fallback: fallback ?? undefined }), ...(typeof mainThreadChoice === "string" && { mainThreadId: mainThreadChoice }) };
       if (computer === null) botPatch.computer = undefined;
       else if (computer !== undefined) botPatch.computer = computer;
       if (connectorTools === null) botPatch.connectorTools = undefined;
@@ -2187,7 +2187,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const olderPagesInFlight = new Set<string>();
     const newTaskOnce = createNewTaskOnce();
     let creatingBot = false;
-    const showError = (e: unknown) => { if (isBotLimitRefusal(e)) return; if (isNoAiRefusal(e)) { const found = refusalFoundAi(e); wrapped({ type: "notice", notice: { kind: "note", botName: null, text: e.message, ...(found ? { found } : {}) } }); } else rawDispatch({ type: "error", message: friendlyError(e) }); };
+    const showError = (e: unknown) => { if (isBotLimitRefusal(e)) return; if (isNoAiRefusal(e)) { const found = refusalFoundAi(e); wrapped({ type: "notice", notice: { kind: "note", botName: null, text: e.message, ...(found ? { found } : refusalConnects(e) ? { connect: true as const } : {}) } }); } else rawDispatch({ type: "error", message: friendlyError(e) }); };
     const showSavedState = (owner: SavedOwner) => (error: unknown) => {
       showError(error);
       void api<SavedSnapshot>("/api/bots?messages=0").then((snapshot) => {

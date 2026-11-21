@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { installAiConsentGate } from "@/lib/ai-consent-gate";
 import { useStore } from "@/state/store";
@@ -83,6 +84,8 @@ export function AiConsentProvider({ children }: { children: ReactNode }) {
 
 function ConsentBody({ providers, covered, onAllow, onDecline, onDone }: { providers: string[]; covered: boolean; onAllow: () => void; onDecline: () => void; onDone: () => void }) {
   const platform = usePlatform();
+  const nativeSheet = Boolean(platform.chrome);
+  const shortNativeScreen = nativeSheet && typeof window !== "undefined" && window.screen.height > 0 && window.screen.height <= 700;
   const { connections, activeId } = useConnections();
   const computer = connections.find((one) => one.id === activeId)?.label?.trim() || t("mobile.consent.yourComputer");
   const items = [
@@ -93,7 +96,7 @@ function ConsentBody({ providers, covered, onAllow, onDecline, onDone }: { provi
   ];
   return (
     <div className="px-5 pb-4" data-ai-consent>
-      <PixelArt name="key" size={52} className="mb-3 [@media(max-height:700px)]:hidden" />
+      {!shortNativeScreen && <PixelArt name="key" size={52} className={cn("mb-3", !nativeSheet && "[@media(max-height:700px)]:hidden")} />}
       <p className="text-[16px] leading-6 text-ink">{t("mobile.consent.lead")}</p>
       <ul className="mt-3 flex flex-col gap-2.5">
         {items.map((item) => (
@@ -107,7 +110,7 @@ function ConsentBody({ providers, covered, onAllow, onDecline, onDone }: { provi
       <div className="mt-6 flex flex-col gap-1">
         {covered ? <>
           <button type="button" className={PRIMARY} onClick={onDone}>{t("mobile.consent.done")}</button>
-          <button type="button" className={`${QUIET} text-danger`} onClick={onDecline}>{t("mobile.consent.turnOff")}</button>
+          <button type="button" className={cn(QUIET, "text-danger")} onClick={onDecline}>{t("mobile.consent.turnOff")}</button>
         </> : <>
           <button type="button" className={PRIMARY} onClick={onAllow}>{t("mobile.consent.allow")}</button>
           <button type="button" className={QUIET} onClick={onDecline}>{t("mobile.consent.decline")}</button>

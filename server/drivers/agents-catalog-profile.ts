@@ -5,10 +5,9 @@
 export interface CatalogProfile {
   skillAuthoring: boolean;
   voiceNotes: boolean;
-  /** A treg key or a Cloud plan's research credential is held and this bot's research switch is on: x_search is mounted.
-   * Absent means off. */
+  /** This bot's research switch is on: x_search is mounted (its free routes need no key). Absent means off. */
   xResearch?: boolean;
-  /** As xResearch, and research works for that credential (the person's treg key, or a plan whose relay has research
+  /** As xResearch, and research works for a held credential (the person's treg key, or a plan whose relay has research
    * on): research_search, research_endpoint and research_call are mounted too. Absent means off. */
   research?: boolean;
   /** This bot holds its own Slack app with a bot token: the slack_* tools are mounted. Absent means off. */
@@ -36,6 +35,8 @@ export interface CatalogProfile {
   nativeWeb?: boolean;
   /** The engine has no fetch of its own: read_pages is mounted. Absent means off. */
   pageReader?: boolean;
+  /** The engine has no file tools (an OpenAI-compatible API engine): read_skill is mounted. Absent means off. */
+  skillReader?: boolean;
 }
 
 /** Everything is off unless the harness says "1". */
@@ -57,5 +58,6 @@ export function catalogProfileFromEnv(env: NodeJS.ProcessEnv): CatalogProfile {
     room: env.DUSK_ROOM === "1",
     nativeWeb: env.DUSK_NATIVE_WEB === "1",
     pageReader: env.DUSK_PAGE_READER === "1",
+    skillReader: env.DUSK_SKILL_READER === "1",
   };
 }

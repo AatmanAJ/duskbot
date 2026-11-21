@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -150,14 +150,41 @@ linuxBox("a required box runs engines in their own home", () => {
       setup: { dataDir: data, home: serverHome, codeRoots: ["/app"], engineRoots: engineInstallRoots(data), fence: requiredFence(serverHome, data), bridges: [] },
     });
     const profile = antigravityProfileDirectory("antigravity", data);
-    const executable = join(data, "tools", "antigravity-acp", "linux-x64", "versions", "abc", "agy");
-    const wrapped = runner.wrap({ command: executable, args: ["--uid="], cwd: profile, env: { HOME: serverHome, GEMINI_HOME: profile } });
+    const executable = join(data, "tools", "antigravity-acp", "linux-x64", "versions", "abc", "antigravity");
+    const wrapped = runner.wrap({ command: executable, args: ["acp", "--gemini-dir", profile, "--app-data-dir", "antigravity-acp"], cwd: profile, env: { HOME: serverHome, GEMINI_HOME: profile } });
     expect(wrapped.env.GEMINI_HOME).toBe(profile);
-    expect(visibleInBox(wrapped.plan, join(profile, "antigravity-acp", "acp_token.json"))).toBe("rw");
+    expect(visibleInBox(wrapped.plan, join(profile, "antigravity-acp", "antigravity-oauth-token"))).toBe("rw");
     expect(visibleInBox(wrapped.plan, executable)).toBe("ro");
     for (const hidden of [antigravityProfileDirectory("antigravity-2", data), join(data, "providers", "claude-2"), join(data, "config.json"), join(data, "workspaces", "bot-a")]) {
       expect(visibleInBox(wrapped.plan, hidden), hidden).toBe("none");
     }
-    expect(() => runner.wrap({ command: executable, args: ["--uid="], cwd: profile, env: { HOME: serverHome } })).toThrow(BoxFenceError);
+    expect(() => runner.wrap({ command: executable, args: ["acp", "--gemini-dir", profile, "--app-data-dir", "antigravity-acp"], cwd: profile, env: { HOME: serverHome } })).toThrow(BoxFenceError);
+  });
+
+  it("runs Cursor from its own installer's folder, signed in, and nothing else of HOME's .local or .config", async () => {
+    const root = mkdtempSync(join(tmpdir(), "dusk-required-box-"));
+    dirs.push(root);
+    const serverHome = join(root, "home"), data = join(serverHome, ".duskbot");
+    mkdirSync(data, { recursive: true });
+    const box = new BotBox();
+    try {
+      await box.start({
+        dataDir: data, home: serverHome, port: 8799, denyEnv: new Set(), log: () => {},
+        env: { DUSK_BOT_BOX: "required", DUSK_BOX_CODE_ROOTS: join(serverHome, ".local", "bin") },
+        detect: () => ({ box: "bwrap", reason: null, tools: { bwrap: "/usr/bin/bwrap", socat: null } }),
+      });
+      const turnCwd = join(data, "task-workspaces", "bot-a", "thread-1");
+      const wrapped = box.wrap({ command: join(serverHome, ".local", "bin", "cursor-agent"), args: ["acp"], cwd: turnCwd, env: { HOME: serverHome, PATH: `${serverHome}/.local/bin:/usr/bin` } })!;
+      const engineHome = engineHomeDir(data);
+      expect(visibleInBox(wrapped.plan, join(serverHome, ".local", "share", "cursor-agent", "versions", "2026.11.19-f005e9d", "cursor-agent"))).toBe("ro");
+      expect(visibleInBox(wrapped.plan, join(engineHome, ".config", "cursor", "auth.json")), "the sign-in, refreshed in place").toBe("rw");
+      const auth = wrapped.plan.mounts.find((mount) => "target" in mount && mount.target === join(engineHome, ".config", "cursor", "auth.json"));
+      expect(auth && "source" in auth ? auth.source : null).toBe(join(serverHome, ".config", "cursor", "auth.json"));
+      for (const hidden of [".local/share/keyrings/login.keyring", ".config/cursor/cli-config.json", ".config/duskbot-link/tunnel.json", ".local/lib/x"]) {
+        expect(visibleInBox(wrapped.plan, join(serverHome, hidden)), hidden).toBe("none");
+      }
+    } finally {
+      await box.stop();
+    }
   });
 });

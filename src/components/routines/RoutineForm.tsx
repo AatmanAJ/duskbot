@@ -4,9 +4,11 @@ import { isDone, plainWhen } from "@/lib/automations";
 import { cn } from "@/lib/cn";
 import { activeLocale, t } from "@/lib/i18n";
 import { upperFirst } from "@/lib/lower-first";
+import { probeLine } from "@/lib/routine-display";
 import type { Routine, RoutineInput, RoutineProbe, RoutineRunOn } from "@/lib/routines";
 import { autoRoutineName, newWhenDraft, scheduleFromDraft, whenDraftFor, type WhenDraft, type WhenPreset } from "@/lib/routine-when";
 import { imeComposing } from "@/lib/send-key";
+import { phoneApp } from "@/lib/store-app";
 import { useStore, type Bot } from "@/state/store";
 import { useBotEditor } from "../bot-settings/BotEditorContext";
 import { buttonCls, fieldCls, Segmented } from "../bot-panel/rows";
@@ -74,7 +76,7 @@ function TimeField({ value, onChange }: { value: string; onChange: (time: string
 
 const dayName = (day: number) => new Date(2026, 0, 4 + day).toLocaleDateString(activeLocale(), { weekday: "long" });
 
-const PROBE_KINDS: readonly RoutineProbe["kind"][] = ["page", "feed", "price"];
+const PROBE_KINDS: readonly Exclude<RoutineProbe["kind"], "script">[] = ["page", "feed", "price"];
 const WAKING = { start: "07:00", end: "23:00" };
 
 /** One routine's name, when and what, edited in place: a new one for `bot`, or `routine` as it is saved, with how exact
@@ -114,7 +116,9 @@ export function RoutineForm({ bot, routine, defaultRunOn, onDone }: {
     if (whenError) { setError(t(whenError)); return; }
     const named = name.trim() || autoRoutineName(what);
     const timed = when.preset !== "hourly" && when.preset !== "keep" ? { timing: timing === "around" ? "around" as const : null } : {};
-    const watched = watching && probe?.url.trim() ? { probe: { kind: probe.kind, url: probe.url.trim() } } : routine?.probe ? { probe: null } : {};
+    const kept = routine?.probe;
+    const unchanged = watching && kept && probe && probe.kind === kept.kind && probe.url.trim() === kept.url;
+    const watched = unchanged ? {} : watching && probe?.url.trim() ? { probe: { kind: probe.kind, url: probe.url.trim() } } : kept ? { probe: null } : {};
     const body: Partial<RoutineInput> = routine
       ? { name: named, prompt: what, ...(schedule ? { schedule } : {}), ...timed, ...watched, ...(schedule && !routine.enabled && isDone(routine) ? { enabled: true } : {}) }
       : { name: named, prompt: what, botId: bot.id, enabled: true, schedule, ...timed, ...watched, ...(defaultRunOn ? { runOn: defaultRunOn } : {}) };
@@ -140,7 +144,7 @@ export function RoutineForm({ bot, routine, defaultRunOn, onDone }: {
         <label htmlFor={`${id}-name`} className={labelCls}>{upperFirst(t("routines.inline.name"))}</label>
         <input
           id={`${id}-name`}
-          autoFocus={Boolean(routine)}
+          autoFocus={Boolean(routine) && !phoneApp()}
           value={name}
           maxLength={80}
           placeholder={autoRoutineName(prompt) || upperFirst(t("routines.inline.namePlaceholder"))}
@@ -190,7 +194,7 @@ export function RoutineForm({ bot, routine, defaultRunOn, onDone }: {
         <label htmlFor={`${id}-what`} className={labelCls}>{upperFirst(t("routines.inline.what"))}</label>
         <textarea
           id={`${id}-what`}
-          autoFocus={!routine}
+          autoFocus={!routine && !phoneApp()}
           rows={3}
           value={prompt}
           placeholder={upperFirst(t("routines.inline.whatPlaceholder"))}
@@ -204,7 +208,8 @@ export function RoutineForm({ bot, routine, defaultRunOn, onDone }: {
             <input type="checkbox" checked={watching} onChange={(event) => { setWatching(event.target.checked); if (event.target.checked && !probe) setProbe({ kind: "page", url: "" }); }} />
             {upperFirst(t("routines.probe.toggle"))}
           </label>
-          {watching && probe && (
+          {watching && probe?.kind === "script" && <p className="m-0 mt-1 text-[13px] leading-[18px] text-ink">{upperFirst(probeLine(probe))}</p>}
+          {watching && probe && probe.kind !== "script" && (
             <div className="mt-1 flex items-center gap-1.5">
               <SelectPill aria-label={t("routines.probe.kind")} value={probe.kind} options={PROBE_KINDS.map((kind) => ({ value: kind, label: t(`routines.probe.kind.${kind}`) }))}
                 onChange={(kind) => setProbe({ ...probe, kind })} />

@@ -227,4 +227,49 @@ describe("a bot's routines in its panel", () => {
     expect(container.textContent).toContain("Ask it in chat to set one up");
     expect(container.querySelector("[data-panel-action=new-routine]")).toBeNull();
   });
+
+  it("shows its 7- and 30-day usage, slows a spiking poller with one tap, and gives the routine its own address", async () => {
+    const poller = { ...routine, schedule: { type: "interval" as const, everyMinutes: 15, anchorAt: now } };
+    fixture.state.routines = [poller];
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+    fixture.api.mockImplementation(async (...args: unknown[]) => {
+      const [path, init] = args as [string, { method?: string; body?: string } | undefined];
+      if (path.endsWith("/forecast")) return { runsPerWeek: 672, perRunUsd: 0.02, weekUsd: 13.44, shareOfWeek: 0.4, warnings: ["frequent", "spike"], runCosts: {}, spentUsd: 2,
+        usage: { week: { runs: 96, usd: 1.92, tokens: 1 }, month: { runs: 300, usd: 6, tokens: 1 } } };
+      if (path.startsWith("/api/webhooks/mail/")) return { mail: { address: "scout-1@in.dusk.bot", routes: [{ alias: "receipts", targetId: "routine-1", from: ["@shop.example"], address: "scout-1+receipts@in.dusk.bot" }] } };
+      if (path === "/api/webhooks" && init?.method === "POST") return { webhook: { ...webhook, id: "hook-r", routineId: "routine-1" }, credential: { url: "https://home.example/hooks/wh_r/whsec_r", endpointUrl: "https://home.example/hooks/wh_r", secret: "whsec_r" } };
+      if (path === "/api/routines/routine-1" && init?.method === "PATCH") return { routine: { ...poller, schedule: JSON.parse(init.body!).schedule } };
+      return {};
+    });
+    mount();
+    open("routine-1");
+    await settle(); render(); await settle();
+    const text = sheet().textContent!;
+    for (const part of ["Usage", "Last 7 days: 96 runs", "Last 30 days: 300 runs", "Used far more today than it usually does.", "scout-1+receipts@in.dusk.bot", "from @shop.example"]) expect(text).toContain(part);
+    flushSync(() => action("routine-1", "less-often").click());
+    await settle();
+    expect(writes()).toContainEqual(["/api/routines/routine-1", "PATCH", { schedule: { type: "interval", everyMinutes: 30, anchorAt: now } }]);
+    flushSync(() => action("routine-1", "address").click());
+    await settle(); await settle();
+    expect(writes()).toContainEqual(["/api/webhooks", "POST", { name: "Morning summary", prompt: "", botId: "bot-a", routineId: "routine-1" }]);
+    expect(copied.texts).toEqual(["https://home.example/hooks/wh_r/whsec_r"]);
+  });
+
+  it("pushes routine detail and edit pages natively on the phone instead of opening a desktop dialog", () => {
+    document.documentElement.dataset.mobileApp = "ios";
+    const shell = document.createElement("div");
+    shell.className = "dusk-mobile";
+    document.body.append(shell);
+    try {
+      mount();
+      open("routine-1");
+      expect(document.querySelector('[data-phone-pushed-page="routine"]')).not.toBeNull();
+      expect(document.querySelector("[data-phone-modal-layer]")).toBeNull();
+      flushSync(() => document.querySelector<HTMLButtonElement>('[data-phone-pushed-page="routine"] [data-routine-action="edit"]')!.click());
+      expect(document.querySelector('[data-phone-pushed-page="routine-edit"] form')).not.toBeNull();
+    } finally {
+      delete document.documentElement.dataset.mobileApp;
+      shell.remove();
+    }
+  });
 });

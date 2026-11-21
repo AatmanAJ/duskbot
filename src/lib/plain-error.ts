@@ -26,6 +26,8 @@ const TECHNICAL: RegExp[] = [
   /^[a-z]+(?:_[a-z0-9]+)+$/,
   // a JSON-RPC -32603 from an engine's agent server: what follows is its own internals (once, the whole prompt it was sent)
   /^Internal error\b/i,
+  // the chat-completions drivers' own protocol failures (server/drivers/openai-chat*.ts)
+  /^provider (?:stream|returned|reasoning|tool calls)\b/i,
   // nobody reads a wall of engine text in a one-line card
   /^[\s\S]{280,}$/,
 ];

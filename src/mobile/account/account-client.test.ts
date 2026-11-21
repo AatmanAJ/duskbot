@@ -188,6 +188,11 @@ describe("own clouds", () => {
     expect(clouds?.map((cloud) => [cloud.id, cloud.asleep])).toEqual([["c0123456789abcdef01234567", false], ["second", true]]);
     expect(fetcher.mock.calls[0][0]).toBe(`${origin}/api/cloud/desktop/session`);
   });
+  it("keeps a cloud's failed renewal date, and nothing malformed", async () => {
+    await signIn();
+    fetcher.mockResolvedValueOnce(response({ clouds: [listed({ payment: { fixBy: 1_900_000_000_000 } }), listed({ id: "second", primary: false, payment: { fixBy: "x" } })] }));
+    expect((await client.clouds())?.map((cloud) => cloud.payment ?? null)).toEqual([{ fixBy: 1_900_000_000_000 }, null]);
+  });
   it("drops an origin that is not plain https", async () => {
     await signIn();
     fetcher.mockResolvedValueOnce(response({ clouds: [listed({ origin: "http://d1.dusk.bot" })] }));
@@ -248,6 +253,30 @@ describe("own clouds", () => {
     }
     fetcher.mockResolvedValueOnce(response({ v: 1, link: "https://elsewhere.example", expiresAt: Date.now() + 300_000 }));
     expect(await client.pairComputer({ id: "ws_mac" })).toEqual({ outcome: "failed" });
+  });
+  it("renames and removes an account computer through the app computers route", async () => {
+    await signIn();
+    fetcher.mockResolvedValueOnce(response({ v: 1, computer: { id: "ws_mac", name: "Work Mac", kind: "mac", presence: "online", lastSeenAt: 1, environmentId: "env-1" } }));
+    expect(await client.renameComputer({ id: "ws_mac" }, "  Work Mac  ")).toEqual({ outcome: "ok" });
+    expect(fetcher.mock.calls.at(-1)).toEqual([
+      `${origin}/v1/app/computers/ws_mac`,
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ name: "Work Mac" }), headers: expect.objectContaining({ authorization: `Bearer ${token}` }) }),
+    ]);
+    expect(await client.renameComputer({ id: "ws_mac" }, "   ")).toEqual({ outcome: "invalid" });
+    for (const [status, outcome] of [[400, "invalid"], [401, "signed-out"], [404, "not-found"], [500, "failed"]] as const) {
+      fetcher.mockResolvedValueOnce(response({ error: "words", code: "err" }, status));
+      expect(await client.renameComputer({ id: "ws_mac" }, "Work Mac")).toEqual({ outcome });
+    }
+    fetcher.mockResolvedValueOnce(response({ ok: true }));
+    expect(await client.removeComputer({ id: "ws_mac" })).toEqual({ outcome: "ok" });
+    expect(fetcher.mock.calls.at(-1)).toEqual([
+      `${origin}/v1/app/computers/ws_mac`,
+      expect.objectContaining({ method: "DELETE", headers: expect.objectContaining({ authorization: `Bearer ${token}` }) }),
+    ]);
+    for (const [status, outcome] of [[401, "signed-out"], [404, "not-found"], [500, "failed"]] as const) {
+      fetcher.mockResolvedValueOnce(response({ error: "words", code: "err" }, status));
+      expect(await client.removeComputer({ id: "ws_mac" })).toEqual({ outcome });
+    }
   });
   it("pairs with a team's cloud through that team's pairing route", async () => {
     await signIn();

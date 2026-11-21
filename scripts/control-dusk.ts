@@ -13,6 +13,7 @@ import { runHeadlessCommand } from "../server/headless/main.ts";
 import type { handleToolCall, request } from "./mcp-server.ts";
 import { launchUi, runControlDuskUi } from "./testing/control-dusk-ui.ts";
 import { removeTempDir, waitForExit } from "../server/testing/cleanup.ts";
+import { nodeOnlyFolder } from "../server/testing/engine-free-path.ts";
 import { hostTimeout } from "../server/testing/host-timeout.ts";
 import { freePortBlock } from "../server/testing/ports.ts";
 
@@ -145,6 +146,7 @@ export function verificationServerEnvironment(parentEnv: NodeJS.ProcessEnv, data
   const fixtureTemp = join(dataDir, "tmp");
   const home = verificationHome(parentEnv, dataDir);
   Object.assign(childEnv, {
+    DUSK_ZEN_LIVE_MODELS: "0",
     HOME: home,
     USERPROFILE: home,
     APPDATA: join(home, "AppData", "Roaming"),
@@ -164,7 +166,7 @@ export function verificationServerEnvironment(parentEnv: NodeJS.ProcessEnv, data
     FAKE_CLAUDE_DUMP: join(dataDir, "fake-claude-dump.json"),
     // POSIX resolves the fake CLI's `#!/usr/bin/env node` shebang through PATH;
     // Windows resolves it through spawnCli without a shell.
-    PATH: dirname(process.execPath),
+    PATH: nodeOnlyFolder(fixtureTemp),
     // Without it the server also scans /opt/homebrew/bin, /usr/local/bin and the
     // login shell's PATH, finding a developer's own engine CLIs that CI lacks.
     DUSK_TEST_SEALED_PATH: "1",
@@ -179,7 +181,7 @@ export function verificationServerEnvironment(parentEnv: NodeJS.ProcessEnv, data
   // One log line per browser call and preview frame.
   if (parentEnv.DUSK_BROWSER_TIMING === "1") childEnv.DUSK_BROWSER_TIMING = "1";
   // Warm summaries' minutes as seconds (server/warm-summary.ts), and the switch that turns them off.
-  for (const key of ["DUSK_WARM_SUMMARY_TIME_SCALE", "DUSK_WARM_SUMMARY", "DUSK_CODEX_WARM"]) if (parentEnv[key]) childEnv[key] = parentEnv[key];
+  for (const key of ["DUSK_WARM_SUMMARY_TIME_SCALE", "DUSK_WARM_SUMMARY", "DUSK_CODEX_WARM", "DUSK_QUOTA_SWITCH"]) if (parentEnv[key]) childEnv[key] = parentEnv[key];
   // The built-in voice's downloaded models, so a fixture with a throwaway home does not fetch them again.
   if (parentEnv.DUSK_VOICE_MODELS_DIR) childEnv.DUSK_VOICE_MODELS_DIR = parentEnv.DUSK_VOICE_MODELS_DIR;
   // A loopback fake only: the key never reaches a real provider.
@@ -188,6 +190,9 @@ export function verificationServerEnvironment(parentEnv: NodeJS.ProcessEnv, data
     childEnv.DUSK_OPENAI_LIVE_URL = liveUrl;
     if (parentEnv.DUSK_OPENAI_LIVE_KEY) childEnv.DUSK_OPENAI_LIVE_KEY = parentEnv.DUSK_OPENAI_LIVE_KEY;
   }
+  // Loopback chat-app fakes only (server/testing/fake-telegram.ts, fake-discord.ts): a test token never reaches the real ones.
+  for (const key of ["DUSK_TELEGRAM_API_URL", "DUSK_DISCORD_API_URL"]) if (/^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(parentEnv[key]?.trim() ?? "")) childEnv[key] = parentEnv[key]!.trim();
+  if (/^\d{1,2}$/.test(parentEnv.DUSK_TELEGRAM_POLL_SECONDS ?? "")) childEnv.DUSK_TELEGRAM_POLL_SECONDS = parentEnv.DUSK_TELEGRAM_POLL_SECONDS!;
   // A loopback account service only (apps/dashboard/scripts/fixture.ts): a fixture's reports and feedback never reach dusk.bot.
   const reportUrl = parentEnv.DUSK_BUG_REPORT_URL?.trim() ?? "";
   if (/^http:\/\/127\.0\.0\.1:\d{1,5}\/api\/bug-reports$/.test(reportUrl)) childEnv.DUSK_BUG_REPORT_URL = reportUrl;
@@ -318,7 +323,7 @@ export async function launchVerificationServer(
     features: { smartSetupChoices: false },
     instances: {
       // the engines every server lists by default, off unless a fixture stands in below: never the real CLIs on PATH
-      ...Object.fromEntries(["codex", "cursor", "githubCopilot", "openaiCompat", "qwen", "hermes", "pi"].map((id) => [id, { driver: "not-a-real-driver" }])),
+      ...Object.fromEntries(["codex", "cursor", "githubCopilot", "qwen", "hermes", "pi"].map((id) => [id, { driver: "not-a-real-driver" }])),
       ...(extraProviders.includes("codex") ? { codex: {
         driver: "codex", displayName: "Verification Codex", config: { cli: fileURLToPath(new URL("../server/testing/fake-codex-app-server.ts", import.meta.url)) },
       } } : {}),

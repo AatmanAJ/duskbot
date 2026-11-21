@@ -5,8 +5,8 @@ import { problemLine } from "@/components/cloud-buy/SignInScreen";
 import { t } from "@/lib/i18n";
 import type { CloudSignInStart } from "../../../electron/cloud-account.mjs";
 import type { OAuthProvider } from "../../../shared/account-api";
-import { usePlatform, type MobilePlatform } from "../platform";
-import { createMobileAccount, isAccountAuthUrl, keptSignInOrigin, type AppleProblem, type AccountPlaces, type AuthResult, type CloudPairResult, type ComputerPairResult, type MobileAccount, type MobileComputer, type MobileCloud, type MobileTeamCloud, type PhoneCodeResult } from "./account-client";
+import { SecretsLocked, usePlatform, waitForFront, type MobilePlatform } from "../platform";
+import { createMobileAccount, isAccountAuthUrl, keptSignInOrigin, type AppleProblem, type AccountPlaces, type AuthResult, type CloudPairResult, type ComputerActionResult, type ComputerPairResult, type MobileAccount, type MobileComputer, type MobileCloud, type MobileTeamCloud, type PhoneCodeResult } from "./account-client";
 import { setTurnSource } from "../transport/direct-rtc";
 import { chooseAccountOrigin, chosenAccountOrigin, PREVIEW_ORIGIN, PRODUCTION_ORIGIN } from "./environment";
 import { claimFreshInstall } from "./install";
@@ -33,6 +33,8 @@ type AccountContextValue = { account: MobileAccount | null; origin: string;
   /** `accountId`: another account signed in on the phone; the one in use without it */
   places(accountId?: string): Promise<AccountPlaces | null>; pairTeamCloud(cloud: MobileTeamCloud, accountId?: string): Promise<CloudPairResult>;
   pairComputer(computer: MobileComputer, accountId?: string): Promise<ComputerPairResult>;
+  renameComputer(computer: Pick<MobileComputer, "id">, name: string, accountId?: string): Promise<ComputerActionResult>;
+  removeComputer(computer: Pick<MobileComputer, "id">, accountId?: string): Promise<ComputerActionResult>;
   /** what the sign-in screen asks of the account service */
   signIn: {
     providers(): Promise<OAuthProvider[]>; emailStart(email: string): Promise<CloudSignInStart>; emailVerify(code: string): Promise<SignInVerify>;
@@ -130,7 +132,8 @@ export function AccountGate({ children }: { children: ReactNode }) {
     });
     // the Keychain's sign-in shows at once and the service's check runs behind it, where only a gone session signs out;
     // a new install waits for the check, so a sign-in left from before the app was deleted shows only while it works
-    if (wanted && !pendingAuth.current) void (async () => {
+    let stopWaiting: (() => void) | undefined;
+    const load = async () => {
       const kept = follows ? await keptSignInOrigin(platform) : null;
       if (kept && kept !== origin && (kept === PRODUCTION_ORIGIN || kept === PREVIEW_ORIGIN)) {
         chooseAccountOrigin(kept);
@@ -145,7 +148,15 @@ export function AccountGate({ children }: { children: ReactNode }) {
       const value = await client.restore();
       if (active && stamp === revision) setAccount(value);
       if (active) setRestoring(false);
-    })().catch(() => { if (active) setRestoring(false); });
+    };
+    // a locked Keychain is no answer: the sign-in screen never shows over a session it could not read, it reads again
+    // once the app is back in front
+    const attempt = () => void load().catch((error: unknown) => {
+      if (!active) return;
+      if (!(error instanceof SecretsLocked)) { setRestoring(false); return; }
+      stopWaiting = waitForFront(platform, () => { stopWaiting = undefined; if (active) attempt(); });
+    });
+    if (wanted && !pendingAuth.current) attempt();
     else if (!pendingAuth.current) setRestoring(false);
     // signed out or deleted somewhere else (the website, another device): the app finds out when it comes back
     const stopResume = wanted ? platform.onResume?.(() => {
@@ -153,7 +164,7 @@ export function AccountGate({ children }: { children: ReactNode }) {
       const resumed = revision;
       void client.restore().then(value => { if (active && resumed === revision) setAccount(value); }).catch(() => {});
     }) : undefined;
-    return () => { active = false; stop?.(); stopResume?.(); };
+    return () => { active = false; stop?.(); stopResume?.(); stopWaiting?.(); };
   }, [client, platform, wanted, origin, follows]);
   const context = useMemo<AccountContextValue>(() => {
     const signedIn = () => { setAccount(client.account()); setSignIns((count) => count + 1); };
@@ -190,6 +201,7 @@ export function AccountGate({ children }: { children: ReactNode }) {
       enrollGrant: () => client.enrollGrant(),
       clouds: () => client.clouds(), pairCloud: (cloud, id) => client.pairCloud(cloud, id), wakeCloud: id => client.wakeCloud(id),
       places: id => client.places(id), pairTeamCloud: (cloud, id) => client.pairTeamCloud(cloud, id), pairComputer: (computer, id) => client.pairComputer(computer, id),
+      renameComputer: (computer, name, id) => client.renameComputer(computer, name, id), removeComputer: (computer, id) => client.removeComputer(computer, id),
       signIn: {
         providers: async () => providersFor(platform.kind, await client.providers()),
         emailStart: email => client.emailStart(email), emailVerify: code => client.emailVerify(code), cancelEmail: () => client.cancelEmail(),

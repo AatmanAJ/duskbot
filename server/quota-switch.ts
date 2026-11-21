@@ -21,6 +21,7 @@ import type { BotRecord, Message, Store, TaskRecord } from "./store.ts";
 import type { TurnStops } from "./turn-outcome.ts";
 import { signedOutStop, type LimitTakeover, type TakeoverScope } from "./host/limit-takeover.ts";
 import { aiProductName } from "./limit-resets.ts";
+import { failoverLine } from "./limit-failover.ts";
 import { resumeNote } from "./host/limit-hold.ts";
 import { TAKEOVER_CAUSE } from "./limit-resume.ts";
 import { serverLine } from "./server-lines.ts";
@@ -132,8 +133,12 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
   const building = new Set<{ threadId: string; stale: boolean }>();
   /** A second press while the engine is read is the same answer, never another. */
   const answering = new Map<string, Promise<QuotaAnswer>>();
-  /** Messages already sent again after a provider failure: a second one on the backup is reported, not rerun. */
-  const rerun = new Set<string>();
+  /** Each message sent again after a provider failure, with every AI it failed on: it goes on only to an AI it has not
+   * failed on yet, and once none is left the failure is reported, not rerun. */
+  const rerun = new Map<string, Set<string>>();
+  const aiKey = (selection: ModelSelection) => `${selection.instanceId}\n${selection.model}`;
+  /** Messages already sent once more on the same AI after it quit or failed unreadably. */
+  const retried = new Set<string>();
 
   const notice = (threadId: string, text: string, ok: boolean, setup = false): void => {
     // `notice:` makes it a status row every client shows, never a folded tool step; `setup`: signing in fixes it.
@@ -183,8 +188,8 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
     .sort((a, b) => a.createdAt - b.createdAt).at(-1)?.id;
 
   /** The backup picks the limited turn up where it was cut off: the conversation and the steps it ran stay its context. */
-  const carryOnWith = async (botId: string, threadId: string, limited: QuotaSwitchEngine, name: string, asked: string | undefined): Promise<void> => {
-    notice(threadId, `continuing on ${name} after hitting the usage limit`, true);
+  const carryOnWith = async (botId: string, threadId: string, limited: QuotaSwitchEngine, name: string, line: string, asked: string | undefined): Promise<void> => {
+    notice(threadId, line, true);
     try {
       await deps.carryOn!(botId, threadId, resumeNote({ engineName: aiProductName(limited, limited.instanceId), ...(asked ? { request: asked } : {}) }, null, TAKEOVER_CAUSE), asked);
     } catch (error) {
@@ -214,12 +219,13 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
     }
     deps.takeover?.moved(botId, threadId, before.modelSelection, checked.selection, resetsAt, scope);
     const name = engine.instanceId === current.instanceId ? `${nameOf(engine)} ${checked.selection.model}` : nameOf(engine);
-    const why = scope === "signed-out" ? `while ${nameOf(current)} is signed out`
-      : scope === "provider" ? `because ${nameOf(current)} did not answer` : "after hitting the usage limit";
+    const limitedName = scope === "model" || scope === "credits" ? `${nameOf(current)} ${before.modelSelection.model}` : nameOf(current);
+    const why = scope === "signed-out" ? `while ${nameOf(current)} is signed out` : `because ${nameOf(current)} did not answer`;
+    const line = LIMITS.has(scope) ? failoverLine(limitedName, name, resetsAt, deps.language?.(threadId)) : `continuing on ${name} ${why}`;
     const held = heldBy(botId, threadId, rootOf(threadId, request));
     const original = held ? undefined : resendable(store, threadId, request.messageId);
     if (!held && acted && LIMITS.has(scope) && deps.carryOn) {
-      await carryOnWith(botId, threadId, current, name, request.origin?.kind === "user" ? request.origin.request : original?.text);
+      await carryOnWith(botId, threadId, current, name, line, request.origin?.kind === "user" ? request.origin.request : original?.text);
     } else if (held === "card") notice(threadId, `switched to ${name}. Your request waits on a card above and continues on ${name} once you act on it.`, true);
     else if (held === "runtime") notice(threadId, `switched to ${name}. Your request is still under way here and continues on ${name}.`, true);
     else if (held === "busy") notice(threadId, `switched to ${name}. This conversation is working, so your message was not sent again.`, true);
@@ -228,7 +234,7 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
     } else if (!original) {
       notice(threadId, `switched to ${name}, but your message could not be found to send again. Send it again.`, false);
     } else {
-      notice(threadId, `continuing on ${name} ${why}`, true);
+      notice(threadId, line, true);
       try {
         await deps.resend(botId, threadId, original, original.replyToId ? store.messagesFor(threadId).find((message) => message.id === original.replyToId) : undefined, spokenLineFields(original.via, original.callId));
       } catch (error) {
@@ -238,16 +244,20 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
     return true;
   };
 
-  /** An engine that quit before it showed or did anything gets the person's message once more, on the same AI, with no
-   * card and no line; a second crash of the same message fails as before. */
+  /** An engine that quit, or failed in words nobody could read, before it showed or did anything gets the person's
+   * message once more, on the same AI, with no card and no line; a second failure of the same message goes to the bot's
+   * backup, or fails as before. */
   const retriedCrash = async (bot: BotRecord, threadId: string, internal: boolean, request: QuotaRequest | undefined,
-    stop: { acted?: boolean } | undefined, cause: string | undefined): Promise<boolean> => {
+    stop: { acted?: boolean; flags?: { limit?: string; limitResetsAt?: number } } | undefined, cause: string | undefined, stopReason: string | null | undefined): Promise<boolean> => {
     if (!enabled() || internal || !stop || stop.acted || !request?.messageId || request.stopped || request.origin?.kind !== "user") return false;
-    if (failedReplyReason(cause ?? "", {}) !== "cli_exit" || rerun.has(request.messageId)) return false;
+    const reason = failedReplyReason(cause ?? "", stop.flags ?? {});
+    const quietly = reason === "cli_exit" || (reason === undefined && (!cause || providerFailure(cause, stopReason)));
+    if (!quietly || retried.has(request.messageId) || rerun.has(request.messageId)) return false;
     if (heldBy(bot.id, threadId, rootOf(threadId, request)) || openCard(threadId)) return false;
     const original = resendable(store, threadId, request.messageId);
     if (!original) return false;
-    rerun.add(request.messageId);
+    retried.add(request.messageId);
+    if (retried.size > 500) retried.delete(retried.values().next().value!);
     const failure = turnFailureRow(store.messagesTail(threadId, FAILURE_SCAN).messages, request.messageId);
     if (failure) store.patchMessage(threadId, failure.id, { tool: { ...failure.tool!, resolvedAt: Date.now() } });
     try {
@@ -271,19 +281,23 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
       const stop = deps.turnStops.read?.(threadId, event.turnId);
       const flags = stop?.flags;
       const cause = deps.turnStops.failureCause(event);
-      if (await retriedCrash(bot, threadId, internal, request, stop, cause)) return null;
+      if (await retriedCrash(bot, threadId, internal, request, stop, cause, event.stopReason)) return null;
       // A tool call's failure names the tool, never the engine's own limit, whatever its words.
       const scope: TakeoverScope | undefined = signedOutStop(event.stopReason, cause) ? "signed-out"
         : flags?.limit ?? (event.stopReason !== "tool_error" && classifyError({ text: cause ?? "" }).reason === "quota" ? "engine"
         // Only a turn that showed and ran nothing: rerunning it elsewhere can repeat no words and no action.
-        : stop && !stop.acted && providerFailure(cause, event.stopReason) && !(request?.messageId && rerun.has(request.messageId)) ? "provider" : undefined);
+        : stop && !stop.acted && providerFailure(cause, event.stopReason) ? "provider" : undefined);
       if (!scope) return null;
       const thread = store.projectBotForTask(bot.id, threadId) ?? bot;
       const from = thread.modelSelection;
+      const failedOn = scope === "provider" && request?.messageId ? rerun.get(request.messageId) : undefined;
+      if (failedOn) failedOn.add(aiKey(from));
       if (scope === "engine") limited.add(from.instanceId);
       const providerUntil = scope === "provider" ? deps.takeover?.holdProvider?.(from) : undefined;
       // DUSK_QUOTA_SWITCH=0: nothing carries on by itself; the person still hears once that the bot waits.
-      const backups = enabled() ? deps.takeover?.backups(bot.id, from, scope, approvalModeFor(thread)) ?? [] : [];
+      const backups = (enabled() ? deps.takeover?.backups(bot.id, from, scope, approvalModeFor(thread)) ?? [] : [])
+        .filter((backup) => !failedOn?.has(aiKey(backup)));
+      if (failedOn && !backups.length) return null;
       const resetsAt = scope === "signed-out" ? undefined : scope === "provider" ? providerUntil : flags?.limitResetsAt ?? (RESETS.has(scope) ? limitResetFromWords(cause ?? "") : undefined);
       // A sign-out is told once, first and without a backup's name: what the person must do is sign in again.
       const told = scope === "signed-out" ? deps.takeover?.tell(thread, from, { scope }) : undefined;
@@ -307,9 +321,9 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
         if (failure) store.patchMessage(threadId, failure.id, { tool: { ...failure.tool!, resolvedAt: Date.now() } });
         let carried = false;
         try {
-          if (scope === "provider" && request.messageId) {
-            rerun.add(request.messageId);
-            if (rerun.size > 500) rerun.delete(rerun.values().next().value!);
+          if (scope === "provider" && request.messageId && !failedOn) {
+            rerun.set(request.messageId, new Set([aiKey(from)]));
+            if (rerun.size > 500) rerun.delete(rerun.keys().next().value!);
           }
           for (const selection of backups) {
             if (await continueOn(bot.id, threadId, selection, request, build, resetsAt, scope, stop?.acted === true)) {
@@ -442,7 +456,7 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
       notice(threadId, `${now}. A teammate's question is waiting for your answer in this conversation, so your message was not sent again: answer it, then send your message again.`, false);
     } else if (card.quotaSwitch!.wait && deps.carryOn) {
       const origin = deps.request(threadId)?.origin;
-      await carryOnWith(botId, threadId, current, chosen.name, original?.text ?? (origin?.kind === "user" ? origin.request : undefined));
+      await carryOnWith(botId, threadId, current, chosen.name, failoverLine(nameOf(current), chosen.name, card.quotaSwitch!.wait.resetsAt, deps.language?.(threadId)), original?.text ?? (origin?.kind === "user" ? origin.request : undefined));
     } else if (!original) {
       notice(threadId, `${now}, but the message that hit quota could not be found to resend: send it again.`, false);
     } else {

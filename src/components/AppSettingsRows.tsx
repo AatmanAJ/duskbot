@@ -14,7 +14,9 @@ import { effectiveLanguage, setLanguageChoice, useLanguageChoice } from "@/lib/l
 import { SettingsSelect } from "./SettingsSelect";
 import { TALKING_STYLES, talkingStyleOf } from "../../shared/talking-style";
 import { friendlyError } from "@/lib/plain-error";
-import { parseSidebarBotOrder, setSidebarBotOrder, useSidebarBotOrder } from "@/lib/sidebar-preferences";
+import {
+  parseSidebarBotOrder, setSidebarBotOrder, setSidebarFeedbackHidden, useSidebarBotOrder, useSidebarFeedbackHidden,
+} from "@/lib/sidebar-preferences";
 
 export function NewBotEffortRow() {
   const { state, dispatch } = useStore();
@@ -138,6 +140,33 @@ export function QuickUpdatesRow() {
   );
 }
 
+/** Suggestions from the bots, on unless switched off here or per bot. */
+export function SuggestionsRow() {
+  const { state, dispatch } = useStore();
+  const enabled = state.config?.features?.suggestions !== false;
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const save = async (next: boolean) => {
+    if (saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      const config: ConfigStatus = await api("/api/config", { method: "PATCH", body: JSON.stringify({ features: { suggestions: next } }) });
+      dispatch({ type: "configStatus", config });
+    } catch (cause) {
+      setError(friendlyError(cause, t("settings.suggestions.error")));
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <SettingRow icon="sparkle" title={t("settings.suggestions.title")} subtitle={t("settings.suggestions.subtitle")}
+      message={error ? <p role="alert" className="text-danger">{error}</p> : null}>
+      <Switch checked={enabled} aria-label={t("settings.suggestions.title")} disabled={saving} onClick={() => void save(!enabled)} />
+    </SettingRow>
+  );
+}
+
 export function LanguageRow({ simple = false }: { simple?: boolean }) {
   const { state } = useStore();
   const current = effectiveLanguage(useLanguageChoice(), state.config?.language);
@@ -191,6 +220,20 @@ export function BotOrderRow() {
         <option value="recent">{t("settings.botOrder.recent")}</option>
         <option value="custom">{t("settings.botOrder.custom")}</option>
       </SettingsSelect>
+    </SettingRow>
+  );
+}
+
+export function SidebarFeedbackRow() {
+  const hidden = useSidebarFeedbackHidden();
+  const title = t("settings.sidebarFeedback.title");
+  return (
+    <SettingRow icon="bubble" title={title} subtitle={t("settings.sidebarFeedback.hint")}>
+      <Switch
+        checked={!hidden}
+        aria-label={title}
+        onClick={() => setSidebarFeedbackHidden(!hidden)}
+      />
     </SettingRow>
   );
 }

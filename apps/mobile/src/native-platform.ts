@@ -14,13 +14,19 @@ import { SecureStorage } from "@aparajita/capacitor-secure-storage";
  * loaded wrapper that never answers on Android with Capacitor 8.6, so the phone keeps tokens through these directly. */
 const keystore = SecureStorage as unknown as {
   internalGetItem(options: { prefixedKey: string; sync: boolean }): Promise<{ data: string | null }>;
-  internalSetItem(options: { prefixedKey: string; data: string; sync: boolean }): Promise<void>;
+  internalSetItem(options: { prefixedKey: string; data: string; sync: boolean; access?: number }): Promise<void>;
   internalRemoveItem(options: { prefixedKey: string; sync: boolean }): Promise<{ success: boolean }>;
+  internalGetPrefixedKeys(options: { prefix: string; sync: boolean }): Promise<{ keys: string[] }>;
 };
 const SECRET_PREFIX = "dusk.";
+/** the prefix every Keychain/Keystore item had under the app's first name */
+const LEGACY_SECRET_PREFIX = "omb.";
 import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState } from "@capacitor-mlkit/barcode-scanning";
-import { handleBack, type AppleCredential, type BackGestureEvent, type CameraPermission, type CameraScanner, type DeliveredNotification, type MobilePlatform, type OrientationBridge, type ScanOverlay, type TurnActivityBridge } from "@/mobile/platform";
+import { keychainSecrets } from "@/mobile/keychain";
+import { handleBack, type AppleCredential, type BackGestureEvent, type BarConfig, type CameraPermission, type CameraScanner, type DeliveredNotification, type MobileChrome, type MobilePlatform, type OrientationBridge, type ScanOverlay, type SystemMenuAction, type TurnActivityBridge } from "@/mobile/platform";
+import type { ControlPlace, SystemControl } from "@/lib/system-control";
 import type { NativeAction } from "@/mobile/phone-actions";
+import { shortcutAction, type ShortcutBot, type ShortcutsBridge } from "@/mobile/shortcuts";
 import type { TurnActivityAttributes, TurnActivityState } from "../../../shared/phone-activity";
 import type { GlassBridge, GlassEvent, GlassGlyphs, GlassState } from "@/mobile/native-glass";
 import type { HomeGlassState } from "@/mobile/native-home-glass";
@@ -30,6 +36,7 @@ import { createVoiceEvents, type VoiceBridge, type VoiceEnd } from "@/lib/voice-
 import { registerPhoneVoice } from "@/lib/voice-input/device";
 import { attachToComposer, setNativeAttach } from "@/lib/native-attach";
 import { appLinkFromUniversal, type MobileOpenTarget } from "../../../shared/mobile-link";
+import { t } from "@/lib/i18n";
 
 /** The app's own scanner on ios (ios/App/App/QrScannerPlugin.swift): the ML Kit plugin ships for CocoaPods only, and this
  * project links its plugins as Swift packages. */
@@ -74,7 +81,69 @@ async function shareFileNatively(file: File): Promise<void> {
   }
 }
 
-/** The app's own dictation (ios/App/App/SpeechRecognizerPlugin.swift, android .../SpeechRecognizerPlugin.java): the
+/** The app's own pull-down menu (ios/App/App/PulldownMenuPlugin.swift): a UIMenu opened over a control in the page. */
+const DuskPulldown = registerPlugin<{ show(options: { x: number; y: number; width: number; height: number; items: SystemMenuAction[]; cancel: string }): Promise<{ key?: string } | undefined> }>("DuskPulldown");
+/** The app's own bar and sheet (ios/App/App/Chrome.swift): the web view's controller in the system's navigation bar and
+ * sheet presentation. */
+interface ChromePlugin {
+  info(): Promise<{ native?: boolean; push?: boolean }>;
+  reset(): Promise<void>;
+  setBar(options: Partial<BarConfig> & { hidden: boolean }): Promise<void>;
+  freeze(): Promise<void>;
+  thaw(): Promise<void>;
+  presentSheet(options: { height?: number }): Promise<void>;
+  resizeSheet(options: { height: number }): Promise<void>;
+  dismissSheet(): Promise<void>;
+  beginPush(): Promise<{ ok?: boolean }>;
+  commitPush(options: { token: string }): Promise<{ ok?: boolean }>;
+  cancelPush(): Promise<void>;
+  popPage(options: { token: string; animated?: boolean }): Promise<{ popped?: boolean }>;
+  finishPop(): Promise<void>;
+  resetPushStack(): Promise<void>;
+  addListener(event: "barPress", listener: (event: { id?: string }) => void): Promise<PluginListenerHandle>;
+  addListener(event: "pictureTaken", listener: (event: { key?: string }) => void): Promise<PluginListenerHandle>;
+  addListener(event: "sheetDismissed", listener: () => void): Promise<PluginListenerHandle>;
+  addListener(event: "pagePopped", listener: (event: { tokens?: string[] }) => void): Promise<PluginListenerHandle>;
+}
+const DuskChrome = registerPlugin<ChromePlugin>("DuskChrome");
+
+function nativeChrome(plugin: ChromePlugin, push = false): MobileChrome {
+  const quiet = (work: Promise<unknown>) => work.then(() => {}, () => {});
+  return {
+    setBar: (config) => { void quiet(plugin.setBar(config ? { ...config, hidden: false } : { hidden: true, leading: [], trailing: [] })); },
+    onBarPress: (listener) => unsubscribe([plugin.addListener("barPress", ({ id }) => { if (typeof id === "string") listener(id); })]),
+    onPictureTaken: (listener) => unsubscribe([plugin.addListener("pictureTaken", ({ key }) => { if (typeof key === "string") listener(key); })]),
+    freeze: () => quiet(plugin.freeze()),
+    thaw: () => quiet(plugin.thaw()),
+    presentSheet: (height) => quiet(plugin.presentSheet(height === null ? {} : { height })),
+    resizeSheet: (height) => { void quiet(plugin.resizeSheet({ height })); },
+    dismissSheet: () => quiet(plugin.dismissSheet()),
+    onSheetDismissed: (listener) => unsubscribe([plugin.addListener("sheetDismissed", listener)]),
+    ...(push ? {
+      beginPush: () => plugin.beginPush().then((result) => result.ok === true, () => false),
+      commitPush: (token) => plugin.commitPush({ token }).then((result) => result.ok === true, () => false),
+      cancelPush: () => quiet(plugin.cancelPush()),
+      popPage: (token, options) => plugin.popPage({ token, ...(options?.animated === false ? { animated: false } : {}) }).then((result) => result.popped === true, () => false),
+      finishPop: () => quiet(plugin.finishPop()),
+      resetPushStack: () => quiet(plugin.resetPushStack()),
+      onPagePopped: (listener) => unsubscribe([plugin.addListener("pagePopped", ({ tokens }) => { if (Array.isArray(tokens) && tokens.length > 0) listener(tokens); })]),
+    } : {}),
+  };
+}
+
+/** The app's own controls (ios/App/App/ControlsPlugin.swift): UISegmentedControl, UISwitch and UIButton pop-ups over the page. */
+const DuskControls = registerPlugin<{
+  place(options: { id: string } & SystemControl & ControlPlace): Promise<{ tracked?: boolean }>;
+  trigger(options: { id: string }): Promise<{ triggered?: boolean }>;
+  remove(options: { id: string }): Promise<void>;
+  reset(): Promise<void>;
+  addListener(event: "change", listener: (event: { id?: string; selected?: number; on?: boolean; value?: string }) => void): Promise<PluginListenerHandle>;
+}>("DuskControls");
+
+/** The app's own look on the system's surfaces (ios/App/App/AppearancePlugin.swift). */
+const DuskAppearance = registerPlugin<{ set(options: { scheme: "system" | "light" | "dark" }): Promise<void> }>("DuskAppearance");
+
+/** The app's own dictation(ios/App/App/SpeechRecognizerPlugin.swift, android .../SpeechRecognizerPlugin.java): the
  * phone's recognizer, offline where it can be. Events carry the session number `start` was given. */
 export interface SpeechPermissions { microphone: string; speech?: string }
 export interface SpeechPlugin {
@@ -92,7 +161,7 @@ const DuskSpeech = registerPlugin<SpeechPlugin>("DuskSpeech");
 
 /** The app's own Liquid Glass chat chrome (ios/App/App/GlassChromePlugin.swift), iOS 26 and later. */
 interface GlassPlugin {
-  supported(): Promise<{ supported: boolean; acks?: boolean }>;
+  supported(): Promise<{ supported: boolean; acks?: boolean; jump?: boolean; reply?: boolean }>;
   update(state: GlassState): Promise<void>;
   setText(options: { text: string; seq: number }): Promise<void>;
   clearText(options: { id: number }): Promise<void>;
@@ -113,6 +182,7 @@ interface NativeFile { path: string; name: string; type: string }
 const DuskPicker = registerPlugin<{
   photos(options: { multiple: boolean }): Promise<{ files: NativeFile[] }>;
   files(options: { multiple: boolean }): Promise<{ files: NativeFile[] }>;
+  camera(): Promise<{ files: NativeFile[] }>;
 }>("DuskPicker");
 
 export async function nativeFiles(list: readonly NativeFile[], read: typeof fetch = fetch): Promise<File[]> {
@@ -127,10 +197,12 @@ export async function nativeFiles(list: readonly NativeFile[], read: typeof fetc
   return files.filter((file): file is File => file !== null);
 }
 
-export function glassBridge(plugin: GlassPlugin, acks = false): GlassBridge {
+export function glassBridge(plugin: GlassPlugin, acks = false, jump = false, reply = false): GlassBridge {
   const quiet = (work: Promise<unknown>) => { void work.catch(() => {}); };
   return {
     acks,
+    jump,
+    reply,
     update: (state) => quiet(plugin.update(state)),
     setText: (text, seq) => quiet(plugin.setText({ text, seq })),
     clearText: (id) => quiet(plugin.clearText({ id })),
@@ -198,6 +270,29 @@ const DuskNotifications = registerPlugin<NotificationsPlugin>("DuskNotifications
  * registration crashes the app */
 const DuskPushSetup = registerPlugin<{ configured(): Promise<{ configured: boolean }> }>("DuskPushSetup");
 const DuskHaptics = registerPlugin<{ play(options: { kind: string }): Promise<void> }>("DuskHaptics");
+interface ShortcutsPlugin {
+  setBots(options: { place: string; placeName: string; bots: ShortcutBot[]; places: string[] }): Promise<void>;
+  forget(): Promise<void>;
+  take(): Promise<{ actions: unknown[] }>;
+  addListener(event: "arrived", listener: () => void): Promise<PluginListenerHandle>;
+}
+const DuskShortcuts = registerPlugin<ShortcutsPlugin>("DuskShortcuts");
+
+/** Each run the native inbox holds goes to `listener` once; a run made before the page loaded is waiting there. */
+function shortcutsBridge(): ShortcutsBridge {
+  return {
+    setBots: (update) => { void DuskShortcuts.setBots(update).catch(() => {}); },
+    forget: () => { void DuskShortcuts.forget().catch(() => {}); },
+    onAction(listener) {
+      const take = () => void DuskShortcuts.take().then(({ actions }) => {
+        for (const raw of actions) { const action = shortcutAction(raw); if (action) listener(action); }
+      }).catch(() => {});
+      const stop = unsubscribe([DuskShortcuts.addListener("arrived", take)]);
+      take();
+      return stop;
+    },
+  };
+}
 /** android only (android/.../InsetsPlugin.java): the window's insets edge to edge, and the keyboard's for the page */
 interface InsetsPlugin {
   setMode(options: { ride: boolean }): Promise<void>;
@@ -207,6 +302,161 @@ interface InsetsPlugin {
   addListener(event: "back", listener: (event: { phase: "start" | "progress" | "cancel" | "commit"; progress?: number }) => void): Promise<PluginListenerHandle>;
 }
 const DuskInsets = registerPlugin<InsetsPlugin>("DuskInsets");
+/** android only (android/.../SseStreamPlugin.java): native HttpURLConnection streaming for cross-origin
+ * SSE (/api/events) and relay NDJSON (/to-app?wait=25&stream=1) reads that Android WebView blocks as mixed content
+ * or CORS preflights from https://localhost. */
+export interface StreamPlugin {
+  open(options: {
+    id: string;
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    connectTimeout?: number;
+    readTimeout?: number;
+    stream?: boolean;
+    followRedirects?: boolean;
+  }): Promise<{ status: number; headers: Record<string, string>; body?: string }>;
+  close(options: { id: string }): Promise<void>;
+  addListener(event: "chunk", listener: (event: { id: string; data: string }) => void): Promise<PluginListenerHandle>;
+  addListener(event: "end", listener: (event: { id: string; error?: string }) => void): Promise<PluginListenerHandle>;
+}
+const DuskStream = registerPlugin<StreamPlugin>("DuskStream");
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function fromBase64(b64: string): Uint8Array<ArrayBuffer> {
+  const binary = atob(b64);
+  const out = new Uint8Array(new ArrayBuffer(binary.length));
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
+export function createNativeStreamFetch(plugin: StreamPlugin, webFetch?: typeof fetch): typeof fetch {
+  let nextId = 0;
+  let listening: Promise<void> | null = null;
+  const active = new Map<string, { chunk(data: string): void; end(error?: string): void }>();
+  const ensureListeners = () => {
+    listening ??= Promise.all([
+      plugin.addListener("chunk", ({ id, data }) => active.get(id)?.chunk(data)),
+      plugin.addListener("end", ({ id, error }) => active.get(id)?.end(error)),
+    ]).then(() => {}).catch((error) => {
+      listening = null;
+      throw error;
+    });
+    return listening;
+  };
+  return async (input, init) => {
+    const request = new Request(input, init);
+    const parsed = new URL(request.url);
+    const sameOrigin = typeof window !== "undefined" && Boolean(window.location?.origin) && parsed.origin === window.location.origin;
+    if (webFetch && ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || sameOrigin)) {
+      return webFetch(input, init);
+    }
+    request.signal.throwIfAborted();
+    await ensureListeners();
+    request.signal.throwIfAborted();
+    const id = `s${++nextId}`;
+    const headers: Record<string, string> = {};
+    request.headers.forEach((value, key) => { headers[key] = value; });
+    const rawBody = request.body ? new Uint8Array(await request.arrayBuffer()) : null;
+    request.signal.throwIfAborted();
+    let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
+    let rejectOpen: ((reason: unknown) => void) | null = null;
+    let finished = false;
+    const onAbort = () => {
+      const reason = request.signal.reason ?? new DOMException("Aborted", "AbortError");
+      cleanup(true);
+      rejectOpen?.(reason);
+      try { streamController?.error(reason); } catch {}
+    };
+    const cleanup = (closeRemote: boolean) => {
+      if (finished) return;
+      finished = true;
+      request.signal.removeEventListener("abort", onAbort);
+      active.delete(id);
+      if (closeRemote) void plugin.close({ id }).catch(() => {});
+    };
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        streamController = controller;
+        active.set(id, {
+          chunk(data) {
+            if (finished) return;
+            try { controller.enqueue(fromBase64(data)); } catch {}
+          },
+          end(error) {
+            if (finished) return;
+            cleanup(false);
+            try {
+              if (error) controller.error(new TypeError(error));
+              else controller.close();
+            } catch {}
+          },
+        });
+      },
+      cancel() {
+        cleanup(true);
+      },
+    });
+    request.signal.addEventListener("abort", onAbort, { once: true });
+    const accept = (request.headers.get("accept") ?? "").toLowerCase();
+    const isStream =
+      accept.includes("text/event-stream") ||
+      accept.includes("application/x-ndjson") ||
+      parsed.pathname.endsWith("/api/events") ||
+      parsed.pathname.endsWith("/stream") ||
+      parsed.searchParams.get("stream") === "1";
+    try {
+      const openPromise = plugin.open({
+        id,
+        url: request.url,
+        method: request.method,
+        headers,
+        connectTimeout: isStream ? 10_000 : 8_000,
+        stream: isStream,
+        followRedirects: request.redirect !== "error" && request.redirect !== "manual",
+        ...(rawBody && rawBody.length ? { body: toBase64(rawBody) } : {}),
+      });
+      const abortPromise = new Promise<never>((_, reject) => {
+        rejectOpen = reject;
+        if (request.signal.aborted) {
+          reject(request.signal.reason ?? new DOMException("Aborted", "AbortError"));
+        }
+      });
+      const { status, headers: resHeaders, body: inlineBody } = await Promise.race([openPromise, abortPromise]);
+      if (request.signal.aborted) {
+        cleanup(true);
+        throw request.signal.reason ?? new DOMException("Aborted", "AbortError");
+      }
+      if (request.redirect === "error" && status >= 300 && status < 400) {
+        cleanup(true);
+        throw new TypeError(`Unexpected redirect (HTTP ${status})`);
+      }
+      const nullBody = status === 204 || status === 205 || status === 304 || request.method === "HEAD";
+      if (typeof inlineBody === "string") {
+        cleanup(false);
+        return new Response(nullBody ? null : fromBase64(inlineBody), { status, headers: resHeaders });
+      }
+      if (nullBody) cleanup(true);
+      return new Response(nullBody ? null : stream, { status, headers: resHeaders });
+    } catch (error) {
+      cleanup(true);
+      if (request.signal.aborted) throw request.signal.reason ?? error;
+      if (error instanceof TypeError) throw error;
+      const msg = error instanceof Error ? error.message : typeof error === "string" ? error : "Network request failed";
+      throw new TypeError(msg);
+    }
+  };
+}
+
 
 async function groundHex(): Promise<string> {
   const { cssHex } = await import("@/mobile/native-glass");
@@ -253,20 +503,42 @@ const UNSUPPORTED = new Set(["recognizer-unavailable", "unsupported-locale"]);
 // android has no separate speech permission, so `speech` is absent there
 const speechAllowed = (state: SpeechPermissions) => state.microphone === "granted" && (state.speech === undefined || state.speech === "granted");
 
-/** The VoiceBridge over the native recognizer. Permissions are asked on the first start; a refusal ends the session. */
+/** The VoiceBridge over the native recognizer. Permissions are asked on the first start; a refusal ends the session.
+ * The recognizers only end a session when asked, so a call's `endpointMs` is kept here: that long with no new words
+ * finishes the turn. */
 export function phoneSpeech(plugin: SpeechPlugin): VoiceBridge {
   const events = createVoiceEvents();
   let session = 0;
   let live = false;
   let listening: Promise<unknown> | undefined;
+  let endpointMs = 0;
+  let quiet: ReturnType<typeof setTimeout> | undefined;
+  const hold = () => {
+    if (quiet !== undefined) clearTimeout(quiet);
+    quiet = undefined;
+  };
   const ours = (event: { session?: number }) => live && event.session === session;
   const ended = (info: VoiceEnd) => {
+    hold();
     live = false;
     events.end(info);
   };
+  const finish = async () => {
+    hold();
+    if (!live) return;
+    try {
+      await plugin.finish();
+    } catch {
+      if (live) ended({ code: 0, reason: "completed" });
+    }
+  };
   const listen = () => listening ??= Promise.all([
     plugin.addListener("transcript", (event) => {
-      if (ours(event) && typeof event.text === "string") events.transcript({ partial: event.partial !== false, text: event.text });
+      if (!ours(event) || typeof event.text !== "string") return;
+      const partial = event.partial !== false;
+      events.transcript({ partial, text: event.text });
+      hold();
+      if (partial && endpointMs > 0 && event.text.trim()) quiet = setTimeout(() => void finish(), endpointMs);
     }),
     plugin.addListener("level", (event) => {
       if (ours(event) && typeof event.level === "number") events.level(Math.min(1, Math.max(0, event.level)));
@@ -283,6 +555,8 @@ export function phoneSpeech(plugin: SpeechPlugin): VoiceBridge {
     async speechStart(options) {
       session += 1;
       live = false;
+      hold();
+      endpointMs = options?.endpointMs && options.endpointMs > 0 ? options.endpointMs : 0;
       const mine = session;
       try {
         await listen();
@@ -307,16 +581,10 @@ export function phoneSpeech(plugin: SpeechPlugin): VoiceBridge {
     async speechStop() {
       session += 1;
       live = false;
+      hold();
       await plugin.stop().catch(() => {});
     },
-    async speechFinish() {
-      if (!live) return;
-      try {
-        await plugin.finish();
-      } catch {
-        if (live) ended({ code: 0, reason: "completed" });
-      }
-    },
+    speechFinish: finish,
     onSpeechTranscript: events.onSpeechTranscript,
     onSpeechEnd: events.onSpeechEnd,
     onSpeechLevel: events.onSpeechLevel,
@@ -433,6 +701,7 @@ export function scannerCamera(driver: ScanDriver, scanning: (on: boolean) => voi
 
 type PendingHandle = Promise<PluginListenerHandle>;
 let overlayReady: Promise<void> | undefined;
+let streamInstalled = false;
 
 export function cameraPermission(value: string): CameraPermission {
   return value === "granted" || value === "limited" ? "granted" : value === "denied" ? "denied" : "prompt";
@@ -505,6 +774,12 @@ export async function nativePlatform(): Promise<MobilePlatform> {
   const kind = Capacitor.getPlatform() as "ios" | "android";
   if (kind === "android") {
     overlayReady ??= StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
+    if (!streamInstalled && Capacitor.isPluginAvailable("DuskStream")) {
+      streamInstalled = true;
+      const win = window as Window & { CapacitorWebFetch?: typeof fetch };
+      const origWebFetch = (win.CapacitorWebFetch ?? window.fetch).bind(window);
+      win.CapacitorWebFetch = createNativeStreamFetch(DuskStream, origWebFetch);
+    }
   } else {
     // WKWebView draws a form bar (previous, next, Done) over the keyboard; a chat has one field and its own send
     void Keyboard.setAccessoryBarVisible({ isVisible: false }).catch(() => {});
@@ -514,23 +789,40 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     const timer = setTimeout(() => { console.warn(`startup: ${label} did not answer`); resolve(undefined); }, 2000);
     work.then(resolve, () => resolve(undefined)).finally(() => clearTimeout(timer));
   });
-  const [info, launch, , glass, menu, pushSetup] = await Promise.all([
+  const [info, launch, chrome, , , glass, menu, pushSetup] = await Promise.all([
     bounded(App.getInfo(), "app info"),
     bounded(App.getLaunchUrl(), "launch url"),
+    bounded(kind === "ios" && Capacitor.isPluginAvailable("DuskChrome") ? DuskChrome.reset().then(() => DuskChrome.info()) : Promise.resolve(undefined), "chrome"),
+    bounded(kind === "ios" && Capacitor.isPluginAvailable("DuskControls") ? DuskControls.reset() : Promise.resolve(), "controls"),
     bounded(overlayReady ?? Promise.resolve(), "status bar"),
-    kind === "ios" && Capacitor.isPluginAvailable("DuskGlass") ? bounded(DuskGlass.supported(), "glass") : undefined,
+    kind === "ios" && Capacitor.isPluginAvailable("DuskGlass") ? bounded(DuskGlass.clear().then(() => DuskGlass.supported(), () => DuskGlass.supported()), "glass") : undefined,
     kind === "ios" && Capacitor.isPluginAvailable("DuskMenu") ? bounded(DuskMenu.supported(), "menu") : undefined,
     kind === "android" && Capacitor.isPluginAvailable("DuskPushSetup") ? bounded(DuskPushSetup.configured(), "push setup") : undefined,
   ]);
   const pushOn = kind === "ios" || Boolean(pushSetup?.configured);
   let pendingLaunchUrl = launch?.url;
-  const secrets: MobilePlatform["secrets"] = {
+  const prefs: MobilePlatform["prefs"] = {
+    get: async (key) => (await Preferences.get({ key })).value,
+    set: (key, value) => Preferences.set({ key, value }),
+    remove: (key) => Preferences.remove({ key }),
+    keys: async () => (await Preferences.keys()).keys,
+  };
+  const secrets = keychainSecrets({
+    store: {
+      get: async (key) => { const { data } = await keystore.internalGetItem({ prefixedKey: key, sync: false }); return typeof data === "string" ? data : null; },
+      set: (key, value, access) => keystore.internalSetItem({ prefixedKey: key, data: value, sync: false, ...(access === undefined ? {} : { access }) }),
+      remove: async (key) => { await keystore.internalRemoveItem({ prefixedKey: key, sync: false }); },
+    },
+    prefix: SECRET_PREFIX, ios: kind === "ios", active: async () => (await App.getState()).isActive, prefs,
+  });
+  const legacySecrets: MobilePlatform["legacySecrets"] = {
+    keys: async () => (await keystore.internalGetPrefixedKeys({ prefix: LEGACY_SECRET_PREFIX, sync: false })).keys
+      .filter((key) => key.startsWith(LEGACY_SECRET_PREFIX)).map((key) => key.slice(LEGACY_SECRET_PREFIX.length)),
     get: async (key) => {
-      const { data } = await keystore.internalGetItem({ prefixedKey: SECRET_PREFIX + key, sync: false });
+      const { data } = await keystore.internalGetItem({ prefixedKey: LEGACY_SECRET_PREFIX + key, sync: false });
       return typeof data === "string" ? data : null;
     },
-    set: (key, value) => keystore.internalSetItem({ prefixedKey: SECRET_PREFIX + key, data: value, sync: false }),
-    remove: async (key) => { await keystore.internalRemoveItem({ prefixedKey: SECRET_PREFIX + key, sync: false }); },
+    remove: async (key) => { await keystore.internalRemoveItem({ prefixedKey: LEGACY_SECRET_PREFIX + key, sync: false }); },
   };
   const speech = Capacitor.isPluginAvailable("DuskSpeech");
   const turnActivityOn = kind === "ios" && Capacitor.isPluginAvailable("DuskTurnActivity");
@@ -565,6 +857,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     setNativeAttach({
       photos: async () => nativeFiles((await DuskPicker.photos({ multiple: true })).files),
       files: async () => nativeFiles((await DuskPicker.files({ multiple: true })).files),
+      camera: async () => nativeFiles((await DuskPicker.camera()).files),
     });
   }
   registerPhoneVoice({
@@ -579,7 +872,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     native: true,
     appVersion: info?.version || __APP_VERSION__,
     deviceName: () => kind === "ios" ? "iPhone" : "Android phone",
-    glass: glass?.supported ? glassBridge(DuskGlass, glass.acks === true) : undefined,
+    glass: glass?.supported ? glassBridge(DuskGlass, glass.acks === true, glass.jump === true, glass.reply === true) : undefined,
     menu: menu?.supported ? menuBridge(DuskMenu) : undefined,
     orientation: Capacitor.isPluginAvailable("DuskOrientation") ? orientationBridge(DuskOrientation) : undefined,
     haptic(type) {
@@ -640,6 +933,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
       }
       void StatusBar.setStyle({ style: style === "dark" ? Style.Light : Style.Dark }).catch(() => {});
     },
+    setAppearance: kind === "ios" && Capacitor.isPluginAvailable("DuskAppearance") ? (scheme) => { void DuskAppearance.set({ scheme }).catch(() => {}); } : undefined,
     onBack(listener) {
       backs.push(listener);
       backButton ??= App.addListener("backButton", () => {
@@ -680,13 +974,22 @@ export async function nativePlatform(): Promise<MobilePlatform> {
         if (now !== last) { last = now; listener(); }
       })]);
     },
-    prefs: {
-      get: async (key) => (await Preferences.get({ key })).value,
-      set: (key, value) => Preferences.set({ key, value }),
-      remove: (key) => Preferences.remove({ key }),
-      keys: async () => (await Preferences.keys()).keys,
-    },
+    prefs,
     secrets,
+    legacySecrets,
+    chrome: chrome?.native ? nativeChrome(DuskChrome, chrome.push === true) : undefined,
+    controls: chrome?.native && Capacitor.isPluginAvailable("DuskControls") ? {
+      place: async (id, control, place) => { try { return (await DuskControls.place({ id, ...control, ...place })).tracked === true; } catch { return false; } },
+      trigger: async (id) => { try { return (await DuskControls.trigger({ id })).triggered === true; } catch { return false; } },
+      remove: (id) => { void DuskControls.remove({ id }).catch(() => {}); },
+      onChange: (listener) => unsubscribe([DuskControls.addListener("change", ({ id, selected, on, value }) => {
+        const next = typeof selected === "number" ? selected : typeof on === "boolean" ? on : value;
+        if (typeof id === "string" && next !== undefined) listener(id, next);
+      })]),
+    } : undefined,
+    showMenu: kind === "ios" && Capacitor.isPluginAvailable("DuskPulldown") ? async (anchor, items) => {
+      try { return (await DuskPulldown.show({ ...anchor, items, cancel: t("mobile.settings.cancel") }))?.key ?? null; } catch { return null; }
+    } : undefined,
     scanQr: kind === "android" ? async () => {
       try {
         let permission = await BarcodeScanner.checkPermissions();
@@ -785,5 +1088,6 @@ export async function nativePlatform(): Promise<MobilePlatform> {
       return unsubscribe(handles);
     },
     turnActivity: turnActivityOn ? turnActivityBridge() : undefined,
+    shortcuts: Capacitor.isPluginAvailable("DuskShortcuts") ? shortcutsBridge() : undefined,
   };
 }

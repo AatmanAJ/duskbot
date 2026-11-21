@@ -1676,6 +1676,24 @@ describe("ClaudeDriver turns (fake CLI)", () => {
       expect(added(seen.argv)).not.toContain(cwd);
     });
 
+    it("reads the chat's own folder, where compaction archives tool results, while it works in a project folder", async () => {
+      const dump = join(scratch, "read-scope-project.json");
+      process.env.FAKE_CLAUDE_DUMP = dump;
+      await create();
+      const { cwd: chat } = folders("b-project", "t-project");
+      mkdirSync(join(chat, "context-archive"), { recursive: true });
+      const project = mkdtempSync(join(scratch, "project-"));
+      await instance.adapter.sendTurn({ threadId: "t-project", botId: "b-project", text: "hi", cwd: project, approvalMode: "full" });
+      await recorder.until((e) => e.type === "turn.completed");
+      const seen = JSON.parse(readFileSync(dump, "utf8"));
+      expect(added(seen.argv)).toContain(chat);
+      const deny: string[] = seen.settings.permissions.deny;
+      for (const path of [chat, join(chat, "context-archive"), join(DATA_DIR, "task-workspaces"), join(DATA_DIR, "task-workspaces", "b-project")]) {
+        expect(deny).not.toContain(rule("Read", path));
+        expect(deny).not.toContain(rule("Read", path, true));
+      }
+    });
+
     it("in the bot box, adds the conversation's uploads instead of every upload", async () => {
       const dump = join(scratch, "read-scope-boxed.json");
       process.env.FAKE_CLAUDE_DUMP = dump;
@@ -4032,6 +4050,43 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     expect(seen.argv).toContain("--effort");
     expect(seen.argv[seen.argv.indexOf("--effort") + 1]).toBe("xhigh");
     expect(seen.argv.filter((a: string) => a === "--effort")).toHaveLength(1);
+  });
+
+  it("sets each turn's effort on the live process, so a changed effort keeps it and an unset one is the default again", async () => {
+    await create(undefined, { FAKE_CLAUDE_VERSION: "2.1.314" });
+    const dump = join(scratch, "effort-control.json");
+    const controls = join(scratch, "effort-control.ndjson");
+    process.env.FAKE_CLAUDE_DUMP = dump;
+    process.env.FAKE_CLAUDE_CONTROL_LOG = controls;
+    try {
+      const pids: number[] = [];
+      for (const effort of ["low", undefined, undefined, "high"] as const) {
+        const completed = recorder.events.filter((e) => e.type === "turn.completed").length;
+        await instance.adapter.sendTurn({ threadId: "t-effort-control", text: "hi", ...(effort ? { effort } : {}) });
+        await recorder.until(() => recorder.events.filter((e) => e.type === "turn.completed").length > completed);
+        const seen = JSON.parse(readFileSync(dump, "utf8"));
+        expect(seen.argv).not.toContain("--effort");
+        pids.push(seen.pid);
+      }
+      expect(new Set(pids).size).toBe(1);
+      expect(instance.adapter.capabilities.effortPerTurn).toBe(true);
+      const levels = readFileSync(controls, "utf8").trim().split("\n").map((line) => JSON.parse(line))
+        .filter((frame) => frame.request?.subtype === "apply_flag_settings").map((frame) => frame.request.settings.effortLevel);
+      expect(levels).toEqual(["low", null, "high"]);
+    } finally {
+      delete process.env.FAKE_CLAUDE_CONTROL_LOG;
+    }
+  });
+
+  it("keeps effort on the command line for a CLI that cannot change it mid-session", async () => {
+    await create(undefined, { FAKE_CLAUDE_VERSION: "2.1.287" });
+    const dump = join(scratch, "effort-argv.json");
+    process.env.FAKE_CLAUDE_DUMP = dump;
+    await instance.adapter.sendTurn({ threadId: "t-effort-argv", text: "hi", effort: "low" });
+    await recorder.until((e) => e.type === "turn.completed");
+    const seen = JSON.parse(readFileSync(dump, "utf8"));
+    expect(seen.argv[seen.argv.indexOf("--effort") + 1]).toBe("low");
+    expect(instance.adapter.capabilities.effortPerTurn).toBe(false);
   });
 
   it("adds no effort flag when the turn has none", async () => {

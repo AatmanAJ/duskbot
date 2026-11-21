@@ -12,6 +12,7 @@ import {
   pinSource,
   placeUnavailable,
   resolveSurface,
+  screenAccessMissingNote,
   surfaceOfComputerKind,
   surfacePrompt,
 } from "./surface.ts";
@@ -127,11 +128,21 @@ describe("resolveSurface", () => {
     const plan = resolveSurface({ destination: "off", browserOn: true });
     expect(plan).toMatchObject({ computer: "off", browser: false, pinned: null });
     expect(plan.note).toMatch(/"Works on" setting is Off/);
-    expect(plan.note).toMatch(/no computer and no built-in browser/);
-    expect(plan.note).toContain("Everything else still works (reminders, automations, memory, connected apps, teammates)");
+    expect(plan.note).toMatch(/no computer or built-in browser is mounted/);
+    expect(plan.note).toContain("Everything else works (automations, waits, memory, connected apps, teammates, files you make here): do the job with those.");
+    expect(plan.note).toContain("give the person that step's exact command or clicks");
     expect(plan.note).not.toContain("tell them Works on is Off");
     expect(resolveSurface({ destination: "off", browserOn: false })).toEqual(plan);
     expect(surfacePrompt({ computer: null, browser: false }, { note: plan.note })).toBe(plan.note);
+  });
+
+  it("Off on an engine with its own shell keeps that shell and says so", () => {
+    const plan = resolveSurface({ destination: "off", browserOn: true, engineShell: true });
+    expect(plan).toMatchObject({ computer: "off", browser: false, pinned: null });
+    expect(plan.note).toMatch(/"Works on" setting is Off/);
+    expect(plan.note).toContain("Your own shell and files in your working folder still work");
+    expect(plan.note).not.toContain("needs a screen or a shell is out");
+    expect(resolveSurface({ destination: "off", browserOn: true }).note).toContain("needs a screen or a shell is out");
   });
 
   it("a Problems to look at turn that lost its computer is told why and that it has none", () => {
@@ -444,5 +455,14 @@ describe("a connected app before any screen", () => {
   });
   it("is not said where nothing on a screen can be done", () => {
     expect(surfacePrompt({ computer: null, browser: false })).not.toContain(RULE);
+  });
+});
+
+describe("screenAccessMissingNote", () => {
+  it("tells a bot with a shell that files and commands on this computer need no screen control", () => {
+    const shell = screenAccessMissingNote(false, ["Accessibility"], false, true);
+    expect(shell).toContain("Files and commands on this computer need no screen control");
+    expect(shell).not.toContain("files outside the browser");
+    expect(screenAccessMissingNote(false, ["Accessibility"])).toContain("or files outside the browser, needs screen control");
   });
 });

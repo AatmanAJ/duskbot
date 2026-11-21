@@ -48,8 +48,10 @@ function profiles(): Record<string, Profile> {
   }
   // Research is on only with a treg key or a Cloud plan and the bot's switch; the fullest profile carries it.
   all["skills+voice+x"] = { env: { ...all["skills+voice"]!.env, DUSK_X_RESEARCH: "1", DUSK_RESEARCH: "1" } };
-  // A Team Cloud mounts message_person; the fullest profile carries it.
-  all["skills+voice+x+team"] = { env: { ...all["skills+voice+x"]!.env, DUSK_TEAM_PEOPLE: "1" } };
+  // A Team Cloud mounts message_person, and an engine with no file tools read_skill; the fullest profile carries both.
+  all["skills+voice+x+team"] = { env: { ...all["skills+voice+x"]!.env, DUSK_TEAM_PEOPLE: "1", DUSK_SKILL_READER: "1" } };
+  // An engine with no file tools (an OpenAI-compatible API engine) loads skills with read_skill.
+  all["skills+skill-reader"] = { env: { ...all.skills!.env, DUSK_SKILL_READER: "1" } };
   all["default+legacy-switches"] = {
     env: { ...all.default!.env, DUSK_ROOM_TURN: "1", DUSK_OWN_THREAD_CREATION: "1", DUSK_EXTERNAL_RUNTIME: "1", DUSK_ACTIVE_WAITS: "0" },
   };
@@ -75,24 +77,25 @@ const FULL = "skills+voice+x+team";
 
 /** Bytes when the budget was last set; a profile may move at most 2% either way (lower it to lock in a win). */
 const BUDGET_BASELINE: Record<string, number> = {
-  "default": 67679,
-  "voice": 68457,
-  "skills": 70498,
-  "skills+voice": 71276,
-  "non-chief": 59661,
-  "voice+non-chief": 60439,
-  "skills+non-chief": 62480,
-  "skills+voice+non-chief": 63258,
-  "skills+voice+cloud-home": 70297,
-  "skills+voice+non-chief+cloud-home": 62279,
-  "default+legacy-switches": 67679,
-  "default+dusk": 68330,
-  "skills+voice+dusk": 71927,
-  "skills+voice+x": 76287,
-  "skills+voice+x+team": 76287,
-  "default+no-computer-pick": 66472,
-  "default+room": 58240,
-  "non-chief+room": 50222,
+  "default": 71833,
+  "voice": 72611,
+  "skills": 74652,
+  "skills+voice": 75430,
+  "non-chief": 63815,
+  "voice+non-chief": 64593,
+  "skills+non-chief": 66634,
+  "skills+voice+non-chief": 67412,
+  "skills+voice+cloud-home": 74451,
+  "skills+voice+non-chief+cloud-home": 66433,
+  "skills+voice+x": 80441,
+  "skills+voice+x+team": 80940,
+  "skills+skill-reader": 75151,
+  "default+legacy-switches": 71833,
+  "default+dusk": 72484,
+  "skills+voice+dusk": 76081,
+  "default+no-computer-pick": 70626,
+  "default+room": 61107,
+  "non-chief+room": 54171,
 };
 
 const RPC_PREFIX = '{"jsonrpc":"2.0","id":1,"result":';
@@ -290,7 +293,7 @@ describe("agents proxy tools/list golden", () => {
     const names = (name: string) => toolsOf(wires[name]!).map((tool) => tool.name);
     expect(names("default+no-computer-pick")).toEqual(names("default").filter((tool) => tool !== "select_computer"));
     for (const name of ["default", "non-chief"]) {
-      expect(names(`${name}+room`), name).toEqual(names(name).filter((tool) => !["select_computer", "show_widget", "show_html", "show_products", "react", "wait_until", "list_waits", "cancel_wait"].includes(tool)));
+      expect(names(`${name}+room`), name).toEqual(names(name).filter((tool) => !["select_computer", "show_widget", "show_html", "show_products", "react", "wait_until", "list_waits", "cancel_wait", "background_job"].includes(tool)));
     }
     for (const [name, profile] of Object.entries(PROFILES)) {
       expect(names(name).includes("select_computer"), name).toBe(profile.env.DUSK_COMPUTER_SELECTION === "1");

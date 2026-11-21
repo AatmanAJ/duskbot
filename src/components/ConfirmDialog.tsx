@@ -4,7 +4,10 @@ import { createRoot } from "react-dom/client";
 import { AnimatePresence, useIsPresent, type HTMLMotionProps } from "motion/react";
 
 import { t } from "@/lib/i18n";
-import { dialogMotion } from "@/lib/motion-presets";
+import { dialogMotion, phoneDialogMotion } from "@/lib/motion-presets";
+import { phoneApp } from "@/lib/store-app";
+import { flushSystemControls, wakeSystemControls } from "@/lib/system-control";
+import { closesOnBack } from "@/mobile/Sheet";
 import { confirmCancelCls, mdDangerCls, mdPrimaryCls } from "./ui/GrokDialog";
 import { ScrimMotion, SheetMotion, useMotionReduced } from "./ui/SheetMotion";
 
@@ -82,31 +85,45 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
     else confirmRef.current?.focus();
   }, [open, props.pending]);
 
-  const motion = dialogMotion(useMotionReduced());
+  const reduced = useMotionReduced();
+  const phone = phoneApp();
+  const motion = phone ? phoneDialogMotion(reduced) : dialogMotion(reduced);
   const [opened, setOpened] = useState(open);
   useEffect(() => { if (open) setOpened(true); }, [open]);
+  useEffect(() => (phone && open ? closesOnBack(() => cancelAction.current()) : undefined), [phone, open]);
   if ((!open && !opened) || typeof document === "undefined" || !document.body) return null;
+  const portalRoot = phone ? (document.querySelector(".dusk-mobile") ?? document.body) : document.body;
   return createPortal(
-    <AnimatePresence onExitComplete={() => { setOpened(false); props.onClosed?.(); }}>
+    <AnimatePresence onExitComplete={() => { setOpened(false); if (phone) void flushSystemControls(); else wakeSystemControls(); props.onClosed?.(); }}>
       {open && (
-        <ConfirmLayer key="confirm" layer={props.layer} onCancel={onCancel} scrim={motion.scrim}>
+        <ConfirmLayer key="confirm" phone={phone} layer={props.layer} onCancel={onCancel} scrim={motion.scrim}>
           <ConfirmDialogCard ref={dialogRef} confirmRef={confirmRef} animated enter={motion.sheet} {...props} />
         </ConfirmLayer>
       )}
     </AnimatePresence>,
-    document.body,
+    portalRoot,
   );
 }
 
 /** The dialog's layer, still drawn while it leaves but no longer taking presses or focus. */
-function ConfirmLayer({ layer, onCancel, scrim, children }: { layer?: string; onCancel: () => void; scrim: HTMLMotionProps<"div">; children: ReactNode }) {
+function ConfirmLayer({ phone, layer, onCancel, scrim, children }: { phone: boolean; layer?: string; onCancel: () => void; scrim: HTMLMotionProps<"div">; children: ReactNode }) {
   const leaving = !useIsPresent();
+  useEffect(() => {
+    if (!phone) return;
+    wakeSystemControls();
+    return () => { void flushSystemControls(); };
+  }, [phone]);
+  useEffect(() => {
+    if (phone && leaving) wakeSystemControls();
+  }, [phone, leaving]);
   return (
     <div
-      className={`fixed inset-0 ${layer ?? "z-50"} flex items-center justify-center p-6`}
+      data-phone-modal-layer={phone ? "" : undefined}
+      className={`fixed inset-0 ${phone ? (layer ?? "z-[85]") : (layer ?? "z-50")} flex items-center justify-center p-6`}
       inert={leaving || undefined}
       data-leaving={leaving ? "" : undefined}
       onMouseDown={(event) => !leaving && event.target === event.currentTarget && onCancel()}
+      onClick={(event) => phone && !leaving && event.target === event.currentTarget && onCancel()}
     >
       <ScrimMotion aria-hidden="true" data-raw-dialog="" className="ui-dialog-scrim pointer-events-none absolute inset-0" {...scrim} />
       {children}

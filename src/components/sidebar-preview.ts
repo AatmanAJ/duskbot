@@ -12,9 +12,15 @@ import { isClientCancellation, isStoppedTurnName } from "../../shared/client-can
 import { roomWorkingPreview } from "@/lib/room-threads";
 import { openPersonWait } from "../../shared/person-wait";
 
-/** The newest message a preview can show. A receipt or a screen frame says nothing about the conversation on its own. */
-export function lastPreviewable<T extends { kind: string }>(messages: readonly T[] | undefined): T | undefined {
-  return messages?.findLast((message) => !isReceipt(message) && message.kind !== "screen");
+const AUTO_APPROVAL_CHIP = /^approved \S+ \((?:full access|saved command|always allowed|its own files|reads only|web search)\)(?::|$)/;
+
+function isAutoApprovalReceipt(message: { kind: string; tool?: { name?: string } }): boolean {
+  return message.kind === "activity" && typeof message.tool?.name === "string" && AUTO_APPROVAL_CHIP.test(message.tool.name);
+}
+
+/** The newest message a preview can show. A receipt, auto-approval audit chip, or screen frame says nothing about the conversation on its own. */
+export function lastPreviewable<T extends { kind: string; tool?: { name?: string } }>(messages: readonly T[] | undefined): T | undefined {
+  return messages?.findLast((message) => !isReceipt(message) && message.kind !== "screen" && !isAutoApprovalReceipt(message));
 }
 
 export function sidebarPreviewMessages(owner: { messages: Message[]; previewMessages?: Message[]; transcriptLoaded?: boolean; transcriptStale?: boolean }): Message[] {
@@ -69,8 +75,8 @@ export function lastLine(bot: Bot, visible: Message[], instances: InstanceInfo[]
   if (!newest) return "";
   const last = quotedLine(visible, newest);
   if (last.kind === "options" && last.card) {
-    // Dusk's intro by its first line.
-    if (last.helperIntro) return t(bot.chiefOfStaff ? "helperIntro.hello" : "helperIntro.hi.helper", { name: bot.name });
+    // Dusk's intro by the line its chat opens with
+    if (last.helperIntro) return t(bot.chiefOfStaff ? "helperIntro.single" : "helperIntro.hi.helper", { name: bot.name });
     return (last.card.requestId && last.card.tool && !last.card.questionRequest && approvalCardOutcome(last.card)) || last.card.title;
   }
   if (last.kind === "activity" && last.tool) return activityPreview(last.tool, botEngine(bot, instances), last.dataResult);

@@ -18,7 +18,8 @@ export function mobileFace(account: unknown): Pick<MobileAccount, "avatarUrl" | 
   const choice = parseUserAvatarChoice(avatar);
   return { ...(photo ? { avatarUrl: photo } : {}), ...(choice ? { avatar: choice } : {}) };
 }
-export type MobileCloud = { id: string; name: string; status: string; origin: string | null; primary: boolean; asleep: boolean };
+/** `payment`: its renewal failed; it keeps running until `fixBy` */
+export type MobileCloud = { id: string; name: string; status: string; origin: string | null; primary: boolean; asleep: boolean; payment?: { fixBy: number; trial?: true } };
 /** a team's dusk cloud this account is a member of, as the session lists it */
 export type MobileTeamCloud = { id: string; name: string; status: string; origin: string | null; asleep: boolean };
 /** one of the account's computers (a Mac, a pc or a server it linked), as the service lists it */
@@ -27,6 +28,7 @@ export type MobileComputer = { id: string; name: string; kind: "vps" | "mac" | "
 export type AccountPlaces = { clouds: MobileCloud[]; teams: MobileTeamCloud[]; computers: MobileComputer[] };
 /** `asleep`: the computer is not online to answer; `unavailable`: it answered but made no pairing a phone can use */
 export type ComputerPairResult = { outcome: "paired"; link: string } | { outcome: "asleep" | "unavailable" | "limited" | "signed-out" | "failed" };
+export type ComputerActionResult = { outcome: "ok" | "signed-out" | "not-found" | "invalid" | "failed" };
 export type CloudPairGrant = { origin: string; code: string; expiresAt: number };
 export type CloudPairResult = { outcome: "paired"; grant: CloudPairGrant } | { outcome: "asleep" | "unavailable" | "signed-out" | "failed" };
 type StoredGrant = { origin: string; token: string; expiresAt: number; account: MobileAccount; deviceId: string };
@@ -90,7 +92,9 @@ export function parseOwnClouds(input: unknown): MobileCloud[] {
     seen.add(entry.id);
     const name = typeof entry.name === "string" && entry.name.trim() ? entry.name.trim().slice(0, 40) : "my cloud";
     const asleep = entry.status === "ready" && object(entry.power) && (entry.power.state === "asleep" || entry.power.state === "waking");
-    clouds.push({ id: entry.id, name, status: entry.status, origin: httpsOrigin(entry.origin), primary: entry.primary === true, asleep });
+    const fixBy = object(entry.payment) && Number.isSafeInteger(entry.payment.fixBy) && (entry.payment.fixBy as number) > 0 ? entry.payment.fixBy as number : null;
+    const trial = object(entry.payment) && entry.payment.trial === true;
+    clouds.push({ id: entry.id, name, status: entry.status, origin: httpsOrigin(entry.origin), primary: entry.primary === true, asleep, ...(fixBy ? { payment: { fixBy, ...(trial ? { trial: true as const } : {}) } } : {}) });
   }
   return clouds.sort((a, b) => Number(b.primary) - Number(a.primary));
 }
@@ -123,7 +127,7 @@ export function parseComputers(input: unknown): MobileComputer[] {
     if (!object(entry) || typeof entry.id !== "string" || !WORKSPACE_ID.test(entry.id) || seen.has(entry.id)) continue;
     if (typeof entry.kind !== "string" || !COMPUTER_KINDS.includes(entry.kind) || typeof entry.presence !== "string" || !PRESENCE.includes(entry.presence)) continue;
     seen.add(entry.id);
-    const name = typeof entry.name === "string" && entry.name.trim() ? entry.name.trim().slice(0, 40) : entry.kind === "vps" ? "server" : "computer";
+    const name = typeof entry.name === "string" && entry.name.trim() ? entry.name.trim().slice(0, 60) : entry.kind === "vps" ? "server" : "computer";
     const environmentId = typeof entry.environmentId === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(entry.environmentId) ? entry.environmentId : null;
     computers.push({ id: entry.id, name, kind: entry.kind as MobileComputer["kind"], presence: entry.presence as MobileComputer["presence"], environmentId });
   }
@@ -198,7 +202,8 @@ export function createMobileAccount({ platform, origin, fetch: requestFetch = gl
     if (!response.ok) throw new AccountRequestError(response.status, object(result) ? typeof result.code === "string" ? result.code : typeof result.error === "string" ? result.error : undefined : undefined);
     return result;
   };
-  const readOthers = async () => savedOthers(parse(await platform.secrets.get(OTHERS).catch(() => null)));
+  // a Keychain that cannot be read now throws here, so nothing is written back over the accounts it holds
+  const readOthers = async () => savedOthers(parse(await platform.secrets.get(OTHERS)));
   const writeOthers = async (next: StoredGrant[]) => {
     others = next.slice(0, MAX_OTHERS);
     if (others.length) await platform.secrets.set(OTHERS, JSON.stringify(others));
@@ -482,6 +487,35 @@ export function createMobileAccount({ platform, origin, fetch: requestFetch = gl
         if (error.status === 429) return { outcome: "limited" };
         if (error.status === 409 && error.code === "computer_offline") return { outcome: "asleep" };
         if (error.status === 409 || error.status === 404) return { outcome: "unavailable" };
+        return { outcome: "failed" };
+      }
+    },
+    async renameComputer(computer: Pick<MobileComputer, "id">, name: string, accountId?: string): Promise<ComputerActionResult> {
+      const token = tokenOf(accountId);
+      if (!token) return { outcome: "signed-out" };
+      const trimmed = name.trim();
+      if (!trimmed || trimmed.length > 60) return { outcome: "invalid" };
+      try {
+        await request(ACCOUNT_ROUTES.appComputer(computer.id), "PATCH", { name: trimmed }, token);
+        return { outcome: "ok" };
+      } catch (error) {
+        if (!(error instanceof AccountRequestError) || error.opaque) return { outcome: "failed" };
+        if (error.status === 401) return { outcome: "signed-out" };
+        if (error.status === 404) return { outcome: "not-found" };
+        if (error.status === 400) return { outcome: "invalid" };
+        return { outcome: "failed" };
+      }
+    },
+    async removeComputer(computer: Pick<MobileComputer, "id">, accountId?: string): Promise<ComputerActionResult> {
+      const token = tokenOf(accountId);
+      if (!token) return { outcome: "signed-out" };
+      try {
+        await request(ACCOUNT_ROUTES.appComputer(computer.id), "DELETE", undefined, token);
+        return { outcome: "ok" };
+      } catch (error) {
+        if (!(error instanceof AccountRequestError) || error.opaque) return { outcome: "failed" };
+        if (error.status === 401) return { outcome: "signed-out" };
+        if (error.status === 404) return { outcome: "not-found" };
         return { outcome: "failed" };
       }
     },

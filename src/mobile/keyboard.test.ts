@@ -108,6 +108,31 @@ describe("the phone keyboard", () => {
     (host.querySelector("#bubble") as HTMLElement).click();
     expect(document.activeElement).not.toBe(field());
   });
+
+  it("keeps the keyboard open through a sideways swipe even if the finger drifts down or a click follows", () => {
+    flushSync(() => root.render(createElement(Shell, { platform: platform(true) })));
+    field().focus();
+    const bubble = host.querySelector("#bubble") as HTMLElement;
+    touch(bubble, "touchstart", 300, 100);
+    touch(bubble, "touchmove", 302, 160);
+    touch(bubble, "touchmove", 330, 110);
+    touch(bubble, "touchend", 0, 0);
+    bubble.click();
+    expect(document.activeElement).toBe(field());
+    expect(hideKeyboard).not.toHaveBeenCalled();
+
+    // a gesture that claimed touchmove (such as swipe-to-reply) also keeps the keyboard open
+    touch(bubble, "touchstart", 300, 100);
+    const claimed = new Event("touchmove", { bubbles: true, cancelable: true }) as Event & { touches: Array<{ clientX: number; clientY: number }> };
+    Object.defineProperty(claimed, "touches", { value: [{ clientX: 112, clientY: 300 }] });
+    claimed.preventDefault();
+    bubble.dispatchEvent(claimed);
+    touch(bubble, "touchmove", 330, 112);
+    touch(bubble, "touchend", 0, 0);
+    bubble.click();
+    expect(document.activeElement).toBe(field());
+    expect(hideKeyboard).not.toHaveBeenCalled();
+  });
 });
 
 describe("riding the keyboard with the native composer", () => {
@@ -179,6 +204,39 @@ describe("a keyboard the native side lifts the page for", () => {
     keyboard!({ height: 0, phase: "did", lift: 0 });
     keyboard!({ height: 336, phase: "will", duration: 0.38, at: Date.now() });
     expect(shell.dataset.kbMoving).toBe("");
+  });
+});
+
+describe("a field in a dialog on the page", () => {
+  const dialogField = (id: string) => {
+    const input = document.createElement("input");
+    input.id = id;
+    host.querySelector(".dusk-mobile")!.append(input);
+    return Object.assign(input, { scrollIntoView: vi.fn() });
+  };
+
+  it("is scrolled into the space left above the keyboard once it settles, and again for the next field", () => {
+    flushSync(() => root.render(createElement(Shell, { platform: platform(true) })));
+    const url = dialogField("url"), key = dialogField("key");
+    url.focus();
+    keyboard!({ height: 336, phase: "will", duration: 0.38, at: Date.now() });
+    expect(url.scrollIntoView).not.toHaveBeenCalled();
+    keyboard!({ height: 336, phase: "did" });
+    expect(url.scrollIntoView).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
+    key.focus();
+    expect(key.scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it("is left where it is for the chat's own composer", () => {
+    flushSync(() => root.render(createElement(Shell, { platform: platform(true) })));
+    const composer = document.createElement("div");
+    composer.dataset.tour = "composer";
+    const own = Object.assign(document.createElement("textarea"), { scrollIntoView: vi.fn() });
+    composer.append(own);
+    host.querySelector("[data-mobile-chat]")!.append(composer);
+    own.focus();
+    keyboard!({ height: 336, phase: "did" });
+    expect(own.scrollIntoView).not.toHaveBeenCalled();
   });
 });
 

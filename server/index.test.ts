@@ -4657,7 +4657,8 @@ describe("harness HTTP API", () => {
     })).body.bot;
     try {
       const cases: Array<{ body: unknown; error: RegExp }> = [
-        { body: { instanceId: "missing", model: "anything" }, error: /instance .* unavailable/i },
+        { body: { instanceId: "missing", model: "anything" }, error: /instance "missing" is unavailable; no instance offers "anything"/i },
+        { body: { instanceId: "missing", model: selection.model }, error: new RegExp(`is offered by instance "${selection.instanceId}"`) },
         { body: { ...selection, model: `${selection.model}-not-offered` }, error: /not offered/i },
         { body: { ...selection, effort: "turbo" }, error: /not recognized/i },
         { body: { ...selection, effort: "none" }, error: /not offered/i },
@@ -7097,9 +7098,9 @@ describe("harness HTTP API", () => {
     let id = "";
     try {
       await stream.until((frame) => frame.kind === "hello");
-      const bot = (await api("POST", "/api/bots", { name: "Scout", useDefaults: false, settings: { color: "purple", mascotBody: "star" } })).body.bot;
+      const bot = (await api("POST", "/api/bots", { name: "Sorrel", useDefaults: false, settings: { color: "purple", mascotBody: "star" } })).body.bot;
       id = bot.id;
-      expect(bot.messages[0].text).toBe("Hi Milind, I'm Scout. What would you like me to do?");
+      expect(bot.messages[0].text).toBe("Hi Milind, I'm Sorrel. What would you like me to do?");
       const announced = await stream.until((frame) => frame.kind === "bot" && frame.bot?.id === id);
       // "star" is the old name of the starry body
       expect(announced.bot).toMatchObject({ color: "purple", mascotBody: "starry" });
@@ -8339,7 +8340,7 @@ describe("harness HTTP API", () => {
       expect(ids).not.toContain("browser");
       const text = await previewText();
       expect(text).toContain("\"Works on\" setting is Off");
-      expect(text).toContain("no computer and no built-in browser");
+      expect(text).toContain("no computer or built-in browser is mounted this turn");
 
       rmSync(fakeClaudeDump, { force: true });
       expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "open a browser and check my calendar" })).status).toBe(202);
@@ -8728,7 +8729,7 @@ describe("harness HTTP API", () => {
   it("keeps skill authoring on by default and persists an explicit opt-out", async () => {
     const before = await api("GET", "/api/config");
     expect(before.status).toBe(200);
-    expect(before.body.features).toEqual({ browser: false, skillAuthoring: true, skillReview: false, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true, quickUpdates: true });
+    expect(before.body.features).toEqual({ browser: false, skillAuthoring: true, skillReview: true, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true, quickUpdates: true, suggestions: true });
     const untouched = JSON.parse(readFileSync(join(home, ".duskbot", "config.json"), "utf8"));
     expect(untouched.features?.skillAuthoring).toBeUndefined();
     expect(untouched.features?.skillReview).toBeUndefined();
@@ -8737,7 +8738,7 @@ describe("harness HTTP API", () => {
       features: { skillAuthoring: false },
     });
     expect(saved.status).toBe(200);
-    expect(saved.body.features).toEqual({ browser: false, skillAuthoring: false, skillReview: false, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true, quickUpdates: true });
+    expect(saved.body.features).toEqual({ browser: false, skillAuthoring: false, skillReview: true, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true, quickUpdates: true, suggestions: true });
 
     const disk = JSON.parse(readFileSync(join(home, ".duskbot", "config.json"), "utf8"));
     // Earlier browser coverage may have persisted its own toggle: opting out must preserve sibling settings.
@@ -8745,7 +8746,7 @@ describe("harness HTTP API", () => {
 
     const tools = await api("PATCH", "/api/config", { features: { showToolCalls: true } });
     expect(tools.status).toBe(200);
-    expect(tools.body.features).toEqual({ browser: false, skillAuthoring: false, skillReview: false, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true, quickUpdates: true });
+    expect(tools.body.features).toEqual({ browser: false, skillAuthoring: false, skillReview: true, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true, quickUpdates: true, suggestions: true });
 
     const bot = (await api("POST", "/api/bots", {})).body.bot;
     try {
@@ -10199,7 +10200,9 @@ describe("harness HTTP API", () => {
         expect(chatLines.filter((message) => message.automation?.runId === queued.body.run.id && message.automation?.failed)).toHaveLength(1);
         const failedRun = (await api("GET", "/api/routines")).body.runs.find((run: { id: string }) => run.id === queued.body.run.id);
         expect(failedRun).toMatchObject({ routineId, routineName: "Weekday brief", status: "failed" });
-        expect(failedRun.threadId).toBe(bot.threadId);
+        // the run itself works in this chat only while every session is the owner's (earlier tests pair members), but its
+        // report always comes back here
+        expect(failedRun).toMatchObject({ resultsThreadId: bot.threadId, report: { threadId: bot.threadId } });
 
         expect((await api("POST", `/api/bots/${bot.id}/read`, { threadId: bot.threadId })).status).toBe(200);
         expect((await api("POST", `/api/routine-runs/${queued.body.run.id}/seen`)).status).toBe(200);
@@ -12035,7 +12038,7 @@ describe("bot memory API", () => {
       expect(created.status).toBe(201);
       routineId = created.body.routine.id as string;
       const soon = await api("GET", "/api/routines/wake");
-      expect(soon.body).toEqual({ hold: true, reason: "due", at });
+      expect(soon.body).toEqual({ hold: true, reason: "due", at, routines: 1 });
     } finally {
       if (routineId) await api("DELETE", `/api/routines/${routineId}`).catch(() => undefined);
       await api("DELETE", `/api/bots/${bot.id}`);

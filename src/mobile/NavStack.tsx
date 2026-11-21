@@ -1,14 +1,31 @@
-import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion, useMotionValue, useTransform, type MotionValue } from "motion/react";
 import { TranscriptStaging } from "@/components/transcript-staging";
+import { wakeSystemControls } from "@/lib/system-control";
 import { canScroll, ownsDrag, useDrag } from "./gesture";
 import { replyRowAt } from "./swipe-reply";
-import { prefersReducedMotion, projectRelease, settleTo, springPath, system } from "./motion";
+import { prefersReducedMotion, projectRelease, settleTo, sheetNav, springPath, system } from "./motion";
 import { PlatformContext } from "./platform";
+
+const NavLeavingContext = createContext(false);
+
+export function useNavLeaving(): boolean {
+  return useContext(NavLeavingContext);
+}
+
+function readSafeTop(el: HTMLElement): number {
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:absolute;visibility:hidden;height:var(--m-safe-top)";
+  el.appendChild(probe);
+  const height = probe.getBoundingClientRect().height;
+  probe.remove();
+  return height;
+}
 
 /** Parallax of the page underneath, as a share of the width: UIKit's navigation push moves it a third as far. */
 const UNDER_SHIFT = 0.3;
 const NAV = { stiffness: system.stiffness, damping: system.damping };
+const SNAPPY_NAV = { stiffness: sheetNav.stiffness, damping: sheetNav.damping };
 /** A chat still loading its transcript slides in once it has it, or after this long with its loading rows. */
 const LOAD_WAIT_MS = 150;
 
@@ -75,7 +92,7 @@ function slideLayers(layers: { page: HTMLElement; base: HTMLElement | null; dim:
 
 /** Two layers: the list, and a page pushed over it. The page follows the finger back to the list from anywhere on it
  * (a horizontal scroller inside keeps its own drag), and a release finishes or returns by where the flick would land. */
-export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLeave }: {
+export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLeave, snappy = false }: {
   base: ReactNode;
   /** The pushed page, or null for the list alone. */
   page: ReactNode | null;
@@ -88,6 +105,8 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
   onSlide?: (path: SlidePath | null) => void;
   /** The page starts back to the list (a back tap, or a finger taking it), before the slide's first frame. */
   onLeave?: () => void;
+  /** Use UIKit's unscaled navigation push spring (for sheet sub-pages on non-native platforms). */
+  snappy?: boolean;
 }) {
   const width = useWidth();
   const x = useMotionValue(width);
@@ -97,6 +116,7 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
   const [shownKey, setShownKey] = useState<string | null>(null);
   const lastPage = useRef<ReactNode>(null);
   const [moving, setMoving] = useState(false);
+  const [leavingPage, setLeavingPage] = useState(false);
   const run = useRef<Run | null>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const baseRef = useRef<HTMLDivElement>(null);
@@ -138,7 +158,8 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
   const go = useCallback((target: number, velocity: number | null, done?: () => void) => {
     const carried = run.current?.stop() ?? 0;
     setMoving(true);
-    const finish = () => { setMoving(false); done?.(); };
+    wakeSystemControls();
+    const finish = () => { setMoving(false); wakeSystemControls(); done?.(); };
     if (prefersReducedMotion()) {
       x.set(0);
       const fade = settleTo(pageOpacity, target === 0 ? 1 : 0, 0, () => { x.set(target); finish(); });
@@ -146,25 +167,39 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
       return;
     }
     const page = pageRef.current;
+    const springConfig = snappy ? SNAPPY_NAV : NAV;
+    const pushSpeed = snappy ? sheetNav.push : system.push;
     const toward = Math.sign(target - x.get());
-    const speed = velocity ?? (carried !== 0 ? carried : toward * width * system.push);
+    const speed = velocity ?? (carried !== 0 ? carried : toward * width * pushSpeed);
     if (!page || typeof page.animate !== "function") {
       run.current = { stop: () => { controls.stop(); return 0; } };
-      const controls = settleTo(x, target, speed, finish, NAV);
+      const controls = settleTo(x, target, speed, finish, springConfig);
       return;
     }
-    const path = springPath(x.get(), target, speed, NAV);
+    const path = springPath(x.get(), target, speed, springConfig);
     run.current = slideLayers({ page, base: baseRef.current, dim: dimRef.current }, x, width, path, finish, () => slid.current?.(null));
     slid.current?.(path);
-  }, [x, pageOpacity, width]);
+  }, [x, pageOpacity, width, snappy]);
 
-  // the page mounts offscreen with its newest rows, and slides once it has painted them
+  const lockSafeTop = useCallback(() => {
+    const el = pageRef.current;
+    if (!el) return;
+    const top = readSafeTop(el);
+    if (top > 0) el.style.setProperty("--m-safe-top", `${top}px`);
+  }, []);
+
+  const unlockSafeTop = useCallback(() => {
+    pageRef.current?.style.removeProperty("--m-safe-top");
+  }, []);
+
   const preparing = useRef<{ cancelled: boolean } | null>(null);
   const push = useCallback(() => {
     if (preparing.current) preparing.current.cancelled = true;
     const signal = { cancelled: false };
     preparing.current = signal;
     sliding.current = true;
+    setLeavingPage(false);
+    unlockSafeTop();
     run.current?.stop();
     x.set(width);
     pageOpacity.set(prefersReducedMotion() ? 0 : 1);
@@ -178,25 +213,27 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
         go(0, null, () => { landed(); settled.current?.(true); });
       });
     });
-  }, [go, landed, x, pageOpacity, width]);
+  }, [go, landed, unlockSafeTop, x, pageOpacity, width]);
 
-  // a pop starts on the next frame like a push, so the commit that asked for it never eats its first frames, and the
-  // native chrome told to start then starts with it
   const popping = useRef(false);
   const popped = useCallback(() => {
     popping.current = false;
+    setLeavingPage(false);
+    unlockSafeTop();
     setCovered(false);
     setShownKey(null);
     lastPage.current = null;
     gone();
     settled.current?.(false);
-  }, [gone]);
+  }, [gone, unlockSafeTop]);
   const pop = useCallback(() => {
     if (preparing.current) preparing.current.cancelled = true;
     const signal = { cancelled: false };
     preparing.current = signal;
     popping.current = true;
     sliding.current = true;
+    lockSafeTop();
+    setLeavingPage(true);
     leaving.current?.();
     setMoving(true);
     requestAnimationFrame(() => {
@@ -204,20 +241,22 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
       preparing.current = null;
       go(width, null, popped);
     });
-  }, [go, popped, width]);
+  }, [go, lockSafeTop, popped, width]);
   const unpop = useCallback(() => {
     if (preparing.current) preparing.current.cancelled = true;
     const signal = { cancelled: false };
     preparing.current = signal;
     popping.current = false;
     sliding.current = true;
+    setLeavingPage(false);
+    unlockSafeTop();
     run.current?.stop();
     requestAnimationFrame(() => {
       if (signal.cancelled) return;
       preparing.current = null;
       go(0, null, () => { landed(); settled.current?.(true); });
     });
-  }, [go, landed]);
+  }, [go, landed, unlockSafeTop]);
 
   useLayoutEffect(() => {
     if (pageKey && page) {
@@ -239,14 +278,17 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
   const takeHold = useCallback(() => {
     run.current?.stop();
     popping.current = false;
+    setLeavingPage(false);
+    unlockSafeTop();
     // a slide that already landed is over for the chrome too: from here it follows the finger
     slid.current?.(null);
     sliding.current = true;
     setMoving(true);
+    wakeSystemControls();
     leaving.current?.();
     const active = document.activeElement;
     if (active instanceof HTMLElement && pageRef.current?.contains(active)) active.blur();
-  }, []);
+  }, [unlockSafeTop]);
 
   // Android 14+'s back gesture moves the page as a finger on it does, and lands or returns on the same spring
   const platform = useContext(PlatformContext);
@@ -273,21 +315,25 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
       case "commit":
         gesture.current = false;
         popping.current = true;
+        lockSafeTop();
+        setLeavingPage(true);
         go(width, null, () => { popped(); backed.current(); });
         return true;
     }
-  }), [platform, takeHold, go, landed, popped, x, width]);
+  }), [platform, takeHold, go, landed, lockSafeTop, popped, x, width]);
 
   useDrag(pageRef, {
     axis: "x",
     enabled: Boolean(shownKey),
     claim: (s, start) => s.dx > 0 && !ownsDrag(s.target) && !canScroll(s.target, pageRef.current!, "x", -1) && !replyRowAt(s.target, start.x),
     onStart: takeHold,
-    onMove: (s) => x.set(Math.max(0, s.dx)),
+    onMove: (s) => { x.set(Math.max(0, s.dx)); wakeSystemControls(); },
     onEnd: (s) => {
       const landing = projectRelease(x.get(), s.vx);
       if ((landing > width / 2 && s.vx > -200) || s.vx > 500) {
         popping.current = true;
+        lockSafeTop();
+        setLeavingPage(true);
         go(width, Math.max(s.vx, 0), () => { popped(); onBack(); });
       } else {
         go(0, s.vx, landed);
@@ -316,9 +362,12 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
           key={shownKey}
           className="mobile-page absolute inset-0 bg-app"
           data-moving={moving ? "" : undefined}
+          data-leaving={leavingPage ? "" : undefined}
           style={{ x, opacity: pageOpacity, willChange: moving ? "transform" : undefined }}
         >
-          <TranscriptStaging value={staging}>{page ?? lastPage.current}</TranscriptStaging>
+          <NavLeavingContext.Provider value={leavingPage}>
+            <TranscriptStaging value={staging}>{page ?? lastPage.current}</TranscriptStaging>
+          </NavLeavingContext.Provider>
         </motion.div>
       )}
     </div>

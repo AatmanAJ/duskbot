@@ -1,5 +1,5 @@
 import { feature } from "@/lib/product-analytics";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import type { MobileConnectionRecord, MobileRelayChannel, MobileTransport } from "../../../shared/mobile-link";
 import { usePlatform, type MobilePlatform } from "../platform";
 import { deviceChannelKey, type RelaySecrets } from "../transport/link-crypto";
@@ -104,15 +104,17 @@ function sameInstallation(a: MobileConnectionRecord, b: MobileConnectionRecord):
   return a.transport === "https" && b.transport === "https" && ownId(a) && ownId(b);
 }
 
-const CONNECTIONS_KEY = "dusk.mobile.connections.v1";
+export const CONNECTIONS_KEY = "dusk.mobile.connections.v1";
 const ACTIVE_KEY = "dusk.mobile.active.v1";
 type ActiveConnection = { record: MobileConnectionRecord; token: string };
 type ConnectionStore = {
   list(): Promise<MobileConnectionRecord[]>;
   active(): Promise<ActiveConnection | null>;
-  save(record: MobileConnectionRecord, token: string): Promise<void>;
+  /** `open: false` keeps the link without making it the place the app opens on */
+  save(record: MobileConnectionRecord, token: string, options?: { open?: boolean }): Promise<void>;
   setActive(id: string): Promise<void>;
   remove(id: string): Promise<void>;
+  rename(id: string, label: string): Promise<void>;
   touch(id: string): Promise<void>;
   /** `relay`: the phone's own relay channel as the place serves it now */
   setRoutes(id: string, via: MobileTransport[], relay?: MobileRelayChannel): Promise<void>;
@@ -148,14 +150,14 @@ export function createConnectionStore(platform: MobilePlatform): ConnectionStore
       const token = await platform.secrets.get(record.sessionRef);
       return token ? { record, token } : null;
     },
-    save(record, token) {
+    save(record, token, { open = true } = {}) {
       return serialize(async () => {
         const records = await read();
         const replaced = records.filter((entry) => entry.id === record.id || sameInstallation(entry, record));
         const saved = { ...record, sessionRef: `token.${record.id}` };
         await platform.secrets.set(saved.sessionRef, token);
         await write([...records.filter((entry) => !replaced.includes(entry)), saved]);
-        await platform.prefs.set(ACTIVE_KEY, saved.id);
+        if (open) await platform.prefs.set(ACTIVE_KEY, saved.id);
         feature("phone_paired");
         for (const old of replaced) if (old.sessionRef !== saved.sessionRef) {
           await platform.secrets.remove(old.sessionRef);
@@ -188,6 +190,11 @@ export function createConnectionStore(platform: MobilePlatform): ConnectionStore
         await write(records.filter((entry) => entry.id !== id));
       });
     },
+    rename(id, label) {
+      const next = label.trim().slice(0, 60);
+      if (!next) return Promise.resolve();
+      return serialize(async () => write((await read()).map((entry) => entry.id === id ? { ...entry, label: next } : entry)));
+    },
     touch(id) {
       return serialize(async () => write((await read()).map((entry) => entry.id === id ? { ...entry, lastUsedAt: Date.now() } : entry)));
     },
@@ -209,22 +216,52 @@ export type ConnectionsApi = {
   loaded: boolean;
   switchTo(id: string): Promise<void>;
   remove(id: string): Promise<void>;
+  rename(id: string, label: string): Promise<void>;
   refresh(): Promise<void>;
 };
+
+type ConnectionsSnapshot = { connections: MobileConnectionRecord[]; activeId: string | null; loaded: boolean };
+type SavedConnections = { snapshot: ConnectionsSnapshot; watchers: Set<() => void>; reading: Promise<void> | null };
+const UNREAD: ConnectionsSnapshot = { connections: [], activeId: null, loaded: false };
+const saved = new WeakMap<MobilePlatform, SavedConnections>();
+
+function savedConnections(platform: MobilePlatform): SavedConnections {
+  let entry = saved.get(platform);
+  if (!entry) saved.set(platform, entry = { snapshot: UNREAD, watchers: new Set(), reading: null });
+  return entry;
+}
+
+/** `after`: read again once the read under way is done, for a caller that just wrote */
+function readConnections(platform: MobilePlatform, after = false): Promise<void> {
+  const entry = savedConnections(platform);
+  if (entry.reading) return after ? entry.reading.then(() => readConnections(platform)) : entry.reading;
+  entry.reading = (async () => {
+    try {
+      const store = createConnectionStore(platform);
+      const connections = await store.list();
+      const activeId = await platform.prefs.get(ACTIVE_KEY);
+      const before = entry.snapshot;
+      if (before.loaded && before.activeId === activeId && JSON.stringify(before.connections) === JSON.stringify(connections)) return;
+      entry.snapshot = { connections, activeId, loaded: true };
+    } catch {
+      if (entry.snapshot.loaded) return;
+      entry.snapshot = { ...entry.snapshot, loaded: true };
+    } finally {
+      entry.reading = null;
+    }
+    for (const watcher of entry.watchers) watcher();
+  })();
+  return entry.reading;
+}
 
 export function useConnections(): ConnectionsApi {
   const platform = usePlatform();
   const store = useMemo(() => createConnectionStore(platform), [platform]);
-  const [connections, setConnections] = useState<MobileConnectionRecord[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [loaded, setLoaded] = useState(false);
-  const refresh = useCallback(async () => {
-    const records = await store.list();
-    const id = await platform.prefs.get(ACTIVE_KEY);
-    setConnections(records);
-    setActiveId(id);
-  }, [platform, store]);
-  useEffect(() => { void refresh().catch(() => {}).finally(() => setLoaded(true)); }, [refresh]);
+  const entry = savedConnections(platform);
+  const subscribe = useCallback((watcher: () => void) => { entry.watchers.add(watcher); return () => { entry.watchers.delete(watcher); }; }, [entry]);
+  const { connections, activeId, loaded } = useSyncExternalStore(subscribe, () => entry.snapshot, () => entry.snapshot);
+  const refresh = useCallback(() => readConnections(platform, true), [platform]);
+  useEffect(() => { void readConnections(platform); }, [platform]);
   const switchTo = useCallback(async (id: string) => {
     await store.setActive(id);
     window.location.reload();
@@ -235,5 +272,9 @@ export function useConnections(): ConnectionsApi {
     if (wasActive) window.location.reload();
     else await refresh();
   }, [platform, store, refresh]);
-  return { connections, activeId, loaded, switchTo, remove, refresh };
+  const rename = useCallback(async (id: string, label: string) => {
+    await store.rename(id, label);
+    await refresh();
+  }, [store, refresh]);
+  return { connections, activeId, loaded, switchTo, remove, rename, refresh };
 }

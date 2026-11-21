@@ -27,6 +27,14 @@ function isComposerField(field: HTMLElement): boolean {
   return Boolean(field.closest("[data-mobile-chat] [data-tour=composer]"));
 }
 
+/** The system scrolls only the document to a focused field, and the page's document never scrolls: once the layout has
+ * made room for the keyboard, a field on the page (a dialog's or a sheet's) is scrolled into what is left above it. */
+function revealField(root: HTMLElement): void {
+  const field = document.activeElement;
+  if (!(field instanceof HTMLElement) || !root.contains(field) || !field.matches(TEXT_FIELD) || isComposerField(field)) return;
+  requestAnimationFrame(() => field.scrollIntoView({ block: "nearest", inline: "nearest" }));
+}
+
 /** The composer's field, when it holds focus (the keyboard is up for it). */
 function composerField(root: HTMLElement): HTMLElement | null {
   const active = document.activeElement;
@@ -53,20 +61,36 @@ export function useKeyboardDismiss(platform: MobilePlatform, rootRef: RefObject<
     const root = rootRef.current;
     if (!root) return;
     let start: { x: number; y: number } | null = null;
+    let dragged = false;
+    let clearDragTimer = 0;
     const inTranscript = (target: EventTarget | null) => target instanceof Element && Boolean(target.closest("[data-mobile-chat] .glass-scroller"));
     const dismiss = () => dismissKeyboard(platform, root, root.dataset.glassFocused !== undefined ? null : composerField(root));
     const down = (event: TouchEvent) => {
+      window.clearTimeout(clearDragTimer);
+      clearDragTimer = 0;
+      dragged = false;
       const touch = event.touches[0];
       start = touch && event.touches.length === 1 && inTranscript(event.target) ? { x: touch.clientX, y: touch.clientY } : null;
     };
     const move = (event: TouchEvent) => {
       const touch = event.touches[0];
       if (!start || !touch) return;
+      if (event.defaultPrevented) { dragged = true; start = null; return; }
+      const dx = touch.clientX - start.x;
       const dy = touch.clientY - start.y;
-      if (dy > 16 && dy > Math.abs(touch.clientX - start.x) * 1.5) { start = null; dismiss(); }
+      if (Math.hypot(dx, dy) > 10) dragged = true;
+      if (Math.abs(dx) > 16 && Math.abs(dx) > Math.abs(dy) * 1.5) { start = null; return; }
+      if (dy > 16 && dy > Math.abs(dx) * 1.5) { start = null; dismiss(); }
     };
-    const up = () => { start = null; };
+    const up = () => {
+      start = null;
+      if (dragged) {
+        window.clearTimeout(clearDragTimer);
+        clearDragTimer = window.setTimeout(() => { dragged = false; clearDragTimer = 0; }, 400);
+      }
+    };
     const tap = (event: MouseEvent) => {
+      if (dragged) { dragged = false; return; }
       if (!inTranscript(event.target) || (event.target as Element).closest(INTERACTIVE)) return;
       if (window.getSelection()?.toString()) return;
       dismiss();
@@ -77,6 +101,7 @@ export function useKeyboardDismiss(platform: MobilePlatform, rootRef: RefObject<
     root.addEventListener("touchcancel", up, { passive: true });
     root.addEventListener("click", tap);
     return () => {
+      window.clearTimeout(clearDragTimer);
       root.removeEventListener("touchstart", down);
       root.removeEventListener("touchmove", move);
       root.removeEventListener("touchend", up);
@@ -153,13 +178,16 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
       set(height, 0);
       if (list) list.scrollTop = top + shift - Math.max(0, committed - safeBottom(root));
       committed = height;
+      revealField(root);
     };
 
     const mode = platform.keyboardMode;
     const focused = (event: FocusEvent) => {
-      if (event.target instanceof HTMLElement && event.target.matches(TEXT_FIELD)) mode?.(isComposerField(event.target));
+      if (!(event.target instanceof HTMLElement) || !event.target.matches(TEXT_FIELD)) return;
+      mode?.(isComposerField(event.target));
+      if (committed > 0) revealField(root);
     };
-    if (mode) root.addEventListener("focusin", focused);
+    root.addEventListener("focusin", focused);
     let nativeRide = false;
     /** The page's own share of a keyboard the native side lifts it for: only the part the lift leaves covered (a short
      * chat's empty space), so its layout never moves anything on screen and nothing scrolls. */
@@ -234,7 +262,7 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
     }
 
     const vv = window.visualViewport;
-    if (!vv) return;
+    if (!vv) return () => root.removeEventListener("focusin", focused);
     let frame = 0;
     const sync = () => {
       cancelAnimationFrame(frame);
@@ -248,7 +276,7 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
         committed = inset;
         set(inset, 0);
         if (pin) toLatest(root);
-        if (inset) root.dataset.keyboard = "open";
+        if (inset) { root.dataset.keyboard = "open"; revealField(root); }
         else delete root.dataset.keyboard;
         if (inset && (window.scrollY > 0 || vv.offsetTop > 0)) window.scrollTo(0, 0);
       });
@@ -257,6 +285,7 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
     vv.addEventListener("resize", sync);
     vv.addEventListener("scroll", sync);
     return () => {
+      root.removeEventListener("focusin", focused);
       cancelAnimationFrame(frame);
       vv.removeEventListener("resize", sync);
       vv.removeEventListener("scroll", sync);
