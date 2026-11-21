@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* the composer's live height (src/lib/composer-dock.ts): set on each element that reads it, never inherited, so a change
+   restyles those elements alone instead of the whole transcript under the scroller */
+@property --composer-dock { syntax: "*"; inherits: false; }
+
 /* Phones and tablets have no hover, and Tailwind only applies `hover:` and
    `group-hover:` under `@media (hover: hover)`. A control revealed on hover
    (`opacity-0 group-hover:opacity-100`) is therefore invisible there. Pair
@@ -10,6 +14,8 @@
     @slot;
   }
 }
+/* the phone app answers a press with its own scale or ripple (src/mobile/press.ts), never a pressed fill */
+@custom-variant active (&:active:where(:not(html[data-mobile-app] *)));
 
 /* Inline mentions keep the surrounding font metrics, including in the
    textarea mirror. No padding/border/font-weight changes that shift the caret. */
@@ -120,7 +126,7 @@ a.link-pill:focus-visible {
   color: var(--color-ink-secondary);
   cursor: pointer;
 }
-.table-action:hover, .table-action[aria-pressed="true"] { background: var(--color-raised); color: var(--color-ink); }
+.table-action:hover:where(:not(html[data-mobile-app] *)), .table-action[aria-pressed="true"] { background: var(--color-raised); color: var(--color-ink); }
 .table-action:focus-visible { outline: none; outline-offset: 1px; }
 @media (pointer: coarse) { .table-action { min-width: 40px; min-height: 40px; } }
 /* inside a 28px file pill under a reply, the table preview is a 24px circle */
@@ -196,7 +202,7 @@ a.link-pill:focus-visible {
   --color-accent-border: #459ffe;
   /* the ring a keyboard user follows: a neutral grey at 3:1 on every surface,
      never the accent or a browser blue */
-  --color-focus: #6d6d6d;
+  --color-focus: #767676;
   --color-accent-text: #7fc0ff;
   --color-bubble-user: #5a5a5a;
   --color-success: #38d591;
@@ -324,19 +330,19 @@ a.link-pill:focus-visible {
   --radius-2xl: 14px;
   --radius-3xl: 16px;
   --radius-4xl: 18px;
-  --identity-green: #009957;
-  --identity-blue: #377FE6;
-  --identity-red: #D94B52;
-  --identity-orange: #E78531;
-  --identity-purple: #8d69ce;
-  --identity-cyan: #0EA5C6;
-  --identity-pink: #D84F8B;
-  --identity-yellow: #D8A729;
-  --identity-teal: #01A492;
-  --identity-coral: #E5634E;
-  --identity-brown: #a8703c;
-  --identity-silver: #A8ADB4;
-  --identity-chrome: #B3BAC4;
+  --identity-green: #10a760;
+  --identity-blue: #3275f9;
+  --identity-red: #ef3a3f;
+  --identity-orange: #fb7c01;
+  --identity-purple: #935df1;
+  --identity-cyan: #04a2ed;
+  --identity-pink: #f12b93;
+  --identity-yellow: #e5a915;
+  --identity-teal: #26cb96;
+  --identity-coral: #f75e51;
+  --identity-brown: #b16c31;
+  --identity-silver: #a3aab3;
+  --identity-chrome: #b3bac4;
 }
 
 /* ── Atelier ───────────────────────────────────────────────────────────────
@@ -375,7 +381,7 @@ a.link-pill:focus-visible {
   --color-accent: #a05f25;        /* #b06a2c darkened → 5.05:1 */
   --color-accent-border: #b06a2c; /* the original tone lives on as the border */
   --color-accent-text: #96551f;   /* for links on a light ground, 5.81:1 */
-  --color-focus: #8a8884;
+  --color-focus: #83817d;
   --color-accent-ink: #ffffff;
   --color-bubble-user: #f2e9dc;   /* your own messages in the badge beige */
   --color-bubble-user-ink: #1a1a18;   /* = ink: unchanged */
@@ -396,18 +402,18 @@ a.link-pill:focus-visible {
   --radius-xs: 2px; --radius-sm: 4px; --radius-md: 6px;
   --radius-2xl: 16px; --radius-3xl: 24px; --radius-4xl: 32px;
   --color-edge: color-mix(in srgb, var(--color-ink) 8%, transparent);
-  --identity-green: #007f48;
-  --identity-blue: #1b6adc;
-  --identity-red: #d12c34;
-  --identity-orange: #a95914;
-  --identity-purple: #8057C8;
-  --identity-cyan: #0a7891;
-  --identity-pink: #ca2d72;
-  --identity-yellow: #896a19;
-  --identity-teal: #017c6f;
-  --identity-coral: #cd361e;
-  --identity-brown: #956335;
-  --identity-silver: #686f79;
+  --identity-green: #0c7f49;
+  --identity-blue: #1662f8;
+  --identity-red: #dc1218;
+  --identity-orange: #ae5601;
+  --identity-purple: #8547ef;
+  --identity-cyan: #0375ac;
+  --identity-pink: #d40e76;
+  --identity-yellow: #8e680d;
+  --identity-teal: #177d5d;
+  --identity-coral: #da1a0a;
+  --identity-brown: #9d602c;
+  --identity-silver: #666f7c;
   --identity-chrome: #646f80;
 }
 
@@ -472,19 +478,19 @@ a.link-pill:focus-visible {
   --radius-xs: 2px; --radius-sm: 4px; --radius-md: 6px;
   --radius-2xl: 16px; --radius-3xl: 24px; --radius-4xl: 32px;
   --color-edge: color-mix(in srgb, var(--color-ink) 8%, transparent);
-  --identity-green: #009957;
-  --identity-blue: #377FE6;
-  --identity-red: #D94B52;
-  --identity-orange: #E78531;
-  --identity-purple: #8c67cd;
-  --identity-cyan: #0EA5C6;
-  --identity-pink: #D84F8B;
-  --identity-yellow: #D8A729;
-  --identity-teal: #01A492;
-  --identity-coral: #E5634E;
-  --identity-brown: #a56f3b;
-  --identity-silver: #A8ADB4;
-  --identity-chrome: #B3BAC4;
+  --identity-green: #10a760;
+  --identity-blue: #2f73f9;
+  --identity-red: #ef3a3f;
+  --identity-orange: #fb7c01;
+  --identity-purple: #915af1;
+  --identity-cyan: #04a2ed;
+  --identity-pink: #f12b93;
+  --identity-yellow: #e5a915;
+  --identity-teal: #26cb96;
+  --identity-coral: #f75e51;
+  --identity-brown: #ae6a31;
+  --identity-silver: #a3aab3;
+  --identity-chrome: #b3bac4;
 }
 
 /* ── Lagoon ────────────────────────────────────────────────────────────────
@@ -536,7 +542,7 @@ a.link-pill:focus-visible {
   --color-accent: #11736d;        /* deep teal, carries white at 5.68:1 */
   --color-accent-border: #14807a;
   --color-accent-text: #0d5f5a;   /* 7.5:1 on a card */
-  --color-focus: #798685;
+  --color-focus: #6d7a79;
   --color-accent-ink: #ffffff;
   --color-bubble-user: #cfe4e1;
   --color-bubble-user-ink: #14201f;   /* = ink: unchanged */
@@ -556,18 +562,18 @@ a.link-pill:focus-visible {
   --radius-xs: 2px; --radius-sm: 4px; --radius-md: 6px;
   --radius-2xl: 16px; --radius-3xl: 24px; --radius-4xl: 32px;
   --color-edge: color-mix(in srgb, var(--color-ink) 8%, transparent);
-  --identity-green: #007945;
-  --identity-blue: #1a65d1;
-  --identity-red: #c82a32;
-  --identity-orange: #a25513;
-  --identity-purple: #7c51c6;
-  --identity-cyan: #0a738b;
-  --identity-pink: #c12b6d;
-  --identity-yellow: #836518;
-  --identity-teal: #01776a;
-  --identity-coral: #c3341d;
-  --identity-brown: #8e5f33;
-  --identity-silver: #646a73;
+  --identity-green: #0c7946;
+  --identity-blue: #0b5af8;
+  --identity-red: #d21116;
+  --identity-orange: #a75201;
+  --identity-purple: #7f3eef;
+  --identity-cyan: #0370a3;
+  --identity-pink: #cb0d71;
+  --identity-yellow: #87630c;
+  --identity-teal: #167758;
+  --identity-coral: #d0190a;
+  --identity-brown: #955c2a;
+  --identity-silver: #626a76;
   --identity-chrome: #5f6a7b;
 }
 
@@ -619,19 +625,19 @@ a.link-pill:focus-visible {
   --radius-xs: 2px; --radius-sm: 4px; --radius-md: 6px;
   --radius-2xl: 16px; --radius-3xl: 24px; --radius-4xl: 32px;
   --color-edge: color-mix(in srgb, var(--color-ink) 8%, transparent);
-  --identity-green: #009957;
-  --identity-blue: #377FE6;
-  --identity-red: #D94B52;
-  --identity-orange: #E78531;
-  --identity-purple: #8d69ce;
-  --identity-cyan: #0EA5C6;
-  --identity-pink: #D84F8B;
-  --identity-yellow: #D8A729;
-  --identity-teal: #01A492;
-  --identity-coral: #E5634E;
-  --identity-brown: #a8703c;
-  --identity-silver: #A8ADB4;
-  --identity-chrome: #B3BAC4;
+  --identity-green: #10a760;
+  --identity-blue: #3275f9;
+  --identity-red: #ef3a3f;
+  --identity-orange: #fb7c01;
+  --identity-purple: #935df1;
+  --identity-cyan: #04a2ed;
+  --identity-pink: #f12b93;
+  --identity-yellow: #e5a915;
+  --identity-teal: #26cb96;
+  --identity-coral: #f75e51;
+  --identity-brown: #b16c31;
+  --identity-silver: #a3aab3;
+  --identity-chrome: #b3bac4;
 }
 
 /* ── Linen ────────────────────────────────────────────────────────────────
@@ -663,7 +669,7 @@ a.link-pill:focus-visible {
   --color-accent: #355f8a;
   --color-accent-border: #4978a6;
   --color-accent-text: #2c5680;
-  --color-focus: #82868c;
+  --color-focus: #75797f;
   --color-accent-ink: #ffffff;
   --color-bubble-user: #e1e6ed;
   --color-bubble-user-ink: #1d2229;   /* = ink: unchanged */
@@ -683,18 +689,18 @@ a.link-pill:focus-visible {
   --radius-xs: 2px; --radius-sm: 4px; --radius-md: 6px;
   --radius-2xl: 16px; --radius-3xl: 24px; --radius-4xl: 32px;
   --color-edge: color-mix(in srgb, var(--color-ink) 8%, transparent);
-  --identity-green: #007d47;
-  --identity-blue: #1b68d7;
-  --identity-red: #ce2c34;
-  --identity-orange: #a75713;
-  --identity-purple: #7f55c8;
-  --identity-cyan: #0a778e;
-  --identity-pink: #c72c70;
-  --identity-yellow: #886819;
-  --identity-teal: #017a6d;
-  --identity-coral: #c9361e;
-  --identity-brown: #936234;
-  --identity-silver: #676d77;
+  --identity-green: #0c7d48;
+  --identity-blue: #125ff8;
+  --identity-red: #d81217;
+  --identity-orange: #ab5501;
+  --identity-purple: #8344ef;
+  --identity-cyan: #0373a9;
+  --identity-pink: #d10e75;
+  --identity-yellow: #8b670d;
+  --identity-teal: #177b5b;
+  --identity-coral: #d71a0a;
+  --identity-brown: #9a5f2b;
+  --identity-silver: #646d79;
   --identity-chrome: #626d7e;
 }
 
@@ -745,19 +751,19 @@ a.link-pill:focus-visible {
   --radius-xs: 2px; --radius-sm: 4px; --radius-md: 6px;
   --radius-2xl: 16px; --radius-3xl: 24px; --radius-4xl: 32px;
   --color-edge: color-mix(in srgb, var(--color-ink) 8%, transparent);
-  --identity-green: #009957;
-  --identity-blue: #377FE6;
-  --identity-red: #D94B52;
-  --identity-orange: #E78531;
-  --identity-purple: #8d68ce;
-  --identity-cyan: #0EA5C6;
-  --identity-pink: #D84F8B;
-  --identity-yellow: #D8A729;
-  --identity-teal: #01A492;
-  --identity-coral: #E5634E;
-  --identity-brown: #a7703b;
-  --identity-silver: #A8ADB4;
-  --identity-chrome: #B3BAC4;
+  --identity-green: #10a760;
+  --identity-blue: #3174f9;
+  --identity-red: #ef3a3f;
+  --identity-orange: #fb7c01;
+  --identity-purple: #925cf1;
+  --identity-cyan: #04a2ed;
+  --identity-pink: #f12b93;
+  --identity-yellow: #e5a915;
+  --identity-teal: #26cb96;
+  --identity-coral: #f75e51;
+  --identity-brown: #af6c31;
+  --identity-silver: #a3aab3;
+  --identity-chrome: #b3bac4;
 }
 
 /* ── Daylight ─────────────────────────────────────────────────────────────
@@ -827,18 +833,18 @@ a.link-pill:focus-visible {
   --radius-2xl: 14px;
   --radius-3xl: 16px;
   --radius-4xl: 18px;
-  --identity-green: #00874d;
-  --identity-blue: #2372e3;
-  --identity-red: #d63c43;
-  --identity-orange: #b45e15;
-  --identity-purple: #8057C8;
-  --identity-cyan: #0b809a;
-  --identity-pink: #d3367b;
-  --identity-yellow: #92701b;
-  --identity-teal: #018476;
-  --identity-coral: #d93a20;
-  --identity-brown: #9e6a38;
-  --identity-silver: #6f7681;
+  --identity-green: #0d864d;
+  --identity-blue: #246bf9;
+  --identity-red: #e91319;
+  --identity-orange: #b95b01;
+  --identity-purple: #894ef0;
+  --identity-cyan: #037cb6;
+  --identity-pink: #e10f7e;
+  --identity-yellow: #966f0e;
+  --identity-teal: #198563;
+  --identity-coral: #e71c0b;
+  --identity-brown: #a7662f;
+  --identity-silver: #6d7683;
   --identity-chrome: #6a7688;
   --shadow-float: 0 4px 12px -1px rgb(28 28 28 / 0.08), 0 2px 4px -2px rgb(28 28 28 / 0.06);
 }
@@ -903,18 +909,18 @@ a.link-pill:focus-visible {
   --radius-2xl: 14px;
   --radius-3xl: 16px;
   --radius-4xl: 18px;
-  --identity-green: #00874d;
-  --identity-blue: #2372e3;
-  --identity-red: #d63c43;
-  --identity-orange: #b45e15;
-  --identity-purple: #8057C8;
-  --identity-cyan: #0b809a;
-  --identity-pink: #d3367b;
-  --identity-yellow: #92701b;
-  --identity-teal: #018476;
-  --identity-coral: #d93a20;
-  --identity-brown: #9e6a38;
-  --identity-silver: #6f7681;
+  --identity-green: #0d864d;
+  --identity-blue: #246bf9;
+  --identity-red: #e91319;
+  --identity-orange: #b95b01;
+  --identity-purple: #894ef0;
+  --identity-cyan: #037cb6;
+  --identity-pink: #e10f7e;
+  --identity-yellow: #966f0e;
+  --identity-teal: #198563;
+  --identity-coral: #e71c0b;
+  --identity-brown: #a7662f;
+  --identity-silver: #6d7683;
   --identity-chrome: #6a7688;
   --shadow-float: 0 4px 12px -1px rgb(28 28 28 / 0.08), 0 2px 4px -2px rgb(28 28 28 / 0.06);
 }
@@ -949,7 +955,7 @@ a.link-pill:focus-visible {
   --color-accent: #116dd2;        /* sand-bg-accent-primary */
   --color-accent-border: #116dd2; /* the switch blue, as in light */
   --color-accent-text: #4d9bff;   /* sand-text-accent-primary */
-  --color-focus: #6d6d6d;
+  --color-focus: #727272;
   --color-accent-ink: #ffffff;
   --color-bubble-user: #3b3b3b;   /* sand-fill-bubble-user (#f5f5f52e) on the thread */
   --color-bubble-user-ink: #f5f5f5;
@@ -975,19 +981,19 @@ a.link-pill:focus-visible {
   --radius-2xl: 14px;
   --radius-3xl: 16px;
   --radius-4xl: 18px;
-  --identity-green: #009957;
-  --identity-blue: #377FE6;
-  --identity-red: #D94B52;
-  --identity-orange: #E78531;
-  --identity-purple: #8d69ce;
-  --identity-cyan: #0EA5C6;
-  --identity-pink: #D84F8B;
-  --identity-yellow: #D8A729;
-  --identity-teal: #01A492;
-  --identity-coral: #E5634E;
-  --identity-brown: #a8703c;
-  --identity-silver: #A8ADB4;
-  --identity-chrome: #B3BAC4;
+  --identity-green: #10a760;
+  --identity-blue: #3275f9;
+  --identity-red: #ef3a3f;
+  --identity-orange: #fb7c01;
+  --identity-purple: #935df1;
+  --identity-cyan: #04a2ed;
+  --identity-pink: #f12b93;
+  --identity-yellow: #e5a915;
+  --identity-teal: #26cb96;
+  --identity-coral: #f75e51;
+  --identity-brown: #b16c31;
+  --identity-silver: #a3aab3;
+  --identity-chrome: #b3bac4;
 }
 
 /* ── Meadow ───────────────────────────────────────────────────────────────
@@ -1015,7 +1021,7 @@ a.link-pill:focus-visible {
   --color-accent: #1a7a48;
   --color-accent-border: #1f8a52;
   --color-accent-text: #176b3f;
-  --color-focus: #878c89;
+  --color-focus: #7b807d;
   --color-accent-ink: #ffffff;
   --color-composer: #ffffff;
   --color-composer-ring: #e3e9e4;
@@ -1040,18 +1046,18 @@ a.link-pill:focus-visible {
   --radius-xs: 2px; --radius-sm: 4px; --radius-md: 6px;
   --radius-2xl: 16px; --radius-3xl: 24px; --radius-4xl: 32px;
   --color-edge: color-mix(in srgb, var(--color-ink) 8%, transparent);
-  --identity-green: #00884e;
-  --identity-blue: #2573e4;
-  --identity-red: #d63f47;
-  --identity-orange: #b65f15;
-  --identity-purple: #8057C8;
-  --identity-cyan: #0b819b;
-  --identity-pink: #d3397d;
-  --identity-yellow: #93721b;
-  --identity-teal: #018577;
-  --identity-coral: #db3a20;
-  --identity-brown: #a06b39;
-  --identity-silver: #707782;
+  --identity-green: #0d884e;
+  --identity-blue: #276df9;
+  --identity-red: #eb1319;
+  --identity-orange: #bb5c01;
+  --identity-purple: #894ef0;
+  --identity-cyan: #037db8;
+  --identity-pink: #e30f7f;
+  --identity-yellow: #98700e;
+  --identity-teal: #198663;
+  --identity-coral: #e91c0b;
+  --identity-brown: #a8672f;
+  --identity-silver: #6d7784;
   --identity-chrome: #6b778a;
 }
 
@@ -1081,7 +1087,7 @@ a.link-pill:focus-visible {
   --color-accent: #7f52f0;
   --color-accent-border: #8b5cf6;
   --color-accent-text: #6d28d9;
-  --color-focus: #8a837c;
+  --color-focus: #857e77;
   --color-accent-ink: #ffffff;
   --color-composer: #ffffff;
   --color-composer-ring: #1b1613;
@@ -1106,18 +1112,18 @@ a.link-pill:focus-visible {
   --radius-xs: 2px; --radius-sm: 4px; --radius-md: 6px;
   --radius-2xl: 16px; --radius-3xl: 24px; --radius-4xl: 32px;
   --color-edge: color-mix(in srgb, var(--color-ink) 8%, transparent);
-  --identity-green: #00824a;
-  --identity-blue: #1c6de0;
-  --identity-red: #d4323a;
-  --identity-orange: #ae5b14;
-  --identity-purple: #8057C8;
-  --identity-cyan: #0a7b94;
-  --identity-pink: #cf2e75;
-  --identity-yellow: #8d6c1a;
-  --identity-teal: #017f72;
-  --identity-coral: #d1381f;
-  --identity-brown: #996637;
-  --identity-silver: #6a727c;
+  --identity-green: #0d824b;
+  --identity-blue: #1b66f9;
+  --identity-red: #e11218;
+  --identity-orange: #b35801;
+  --identity-purple: #874bf0;
+  --identity-cyan: #0378af;
+  --identity-pink: #d90e79;
+  --identity-yellow: #916b0d;
+  --identity-teal: #18805f;
+  --identity-coral: #df1b0a;
+  --identity-brown: #a1622d;
+  --identity-silver: #69727f;
   --identity-chrome: #667284;
 }
 
@@ -1144,7 +1150,7 @@ a.link-pill:focus-visible {
   --color-accent: #ff7f1f;
   --color-accent-border: #ff8f3a;
   --color-accent-text: #ffa060;
-  --color-focus: #706a6a;
+  --color-focus: #726c6c;
   --color-accent-ink: #1d0e02;
   --color-bubble-user: #3d2818;
   --color-bubble-user-ink: #fff1e2;
@@ -1164,19 +1170,19 @@ a.link-pill:focus-visible {
   --radius-xs: 2px; --radius-sm: 4px; --radius-md: 6px;
   --radius-2xl: 16px; --radius-3xl: 24px; --radius-4xl: 32px;
   --color-edge: color-mix(in srgb, var(--color-ink) 8%, transparent);
-  --identity-green: #009957;
-  --identity-blue: #377FE6;
-  --identity-red: #D94B52;
-  --identity-orange: #E78531;
-  --identity-purple: #8c67cd;
-  --identity-cyan: #0EA5C6;
-  --identity-pink: #D84F8B;
-  --identity-yellow: #D8A729;
-  --identity-teal: #01A492;
-  --identity-coral: #E5634E;
-  --identity-brown: #a56f3b;
-  --identity-silver: #A8ADB4;
-  --identity-chrome: #B3BAC4;
+  --identity-green: #10a760;
+  --identity-blue: #2f73f9;
+  --identity-red: #ef3a3f;
+  --identity-orange: #fb7c01;
+  --identity-purple: #915af1;
+  --identity-cyan: #04a2ed;
+  --identity-pink: #f12b93;
+  --identity-yellow: #e5a915;
+  --identity-teal: #26cb96;
+  --identity-coral: #f75e51;
+  --identity-brown: #ae6b31;
+  --identity-silver: #a3aab3;
+  --identity-chrome: #b3bac4;
 }
 
 /* Every popover and menu in the menu tone, flat in Midnight and on a soft lift in Daylight. A popover's rim is its
@@ -1202,7 +1208,7 @@ a.link-pill:focus-visible {
   background: var(--color-ink);
   color: var(--color-app);
 }
-:root:is([data-skin="midnight"], [data-skin="daylight"], [data-skin="grok"], [data-skin="grok-dark"]) .ui-button-primary:not(:disabled):is(:hover, :active) {
+:root:is([data-skin="midnight"], [data-skin="daylight"], [data-skin="grok"], [data-skin="grok-dark"]) .ui-button-primary:not(:disabled):is(:hover, :active):where(:not(html[data-mobile-app] *)) {
   background: color-mix(in srgb, var(--color-ink) 88.5%, var(--color-app));
   color: var(--color-app);
   filter: none;
@@ -1224,10 +1230,10 @@ a.link-pill:focus-visible {
   background-color: var(--bot-button);
   color: var(--bot-button-ink);
 }
-.bot-button:enabled:hover {
+.bot-button:enabled:hover:where(:not(html[data-mobile-app] *)) {
   background-color: var(--bot-button-hover);
 }
-.bot-button:enabled:active {
+.bot-button:enabled:active:where(:not(html[data-mobile-app] *)) {
   background-color: var(--bot-button-pressed);
 }
 .bot-button:disabled {
@@ -1299,7 +1305,10 @@ a.link-pill:focus-visible {
 [data-chat-bubble="simple"].chat-text {
   line-height: 22px;
 }
-[data-chat-bubble="simple"] .chat-md > * + * {
+[data-chat-bubble="simple"][data-emoji-only] :is(.chat-md, .chat-text) {
+  line-height: inherit;
+}
+[data-chat-bubble="simple"] .chat-md > :where(:not(:first-child)) {
   margin-top: 10px;
 }
 /* A card under its own bot's bubble (and a bubble under its card) sits 12px below it, not the 16px between senders. */
@@ -1483,8 +1492,8 @@ body {
     background: var(--color-accent);
     color: var(--color-accent-ink);
   }
-  .ui-button-primary:enabled:hover,
-  a.ui-button-primary:hover {
+  .ui-button-primary:enabled:hover:where(:not(html[data-mobile-app] *)),
+  a.ui-button-primary:hover:where(:not(html[data-mobile-app] *)) {
     background: var(--color-accent);
     color: var(--color-accent-ink);
     filter: brightness(1.1);
@@ -1508,8 +1517,8 @@ body {
     line-height: 1.25rem;
     transition: background-color 120ms ease, color 120ms ease;
   }
-  button.ui-pill:enabled:hover,
-  a.ui-pill:hover {
+  button.ui-pill:enabled:hover:where(:not(html[data-mobile-app] *)),
+  a.ui-pill:hover:where(:not(html[data-mobile-app] *)) {
     background: var(--color-raised-hover);
     color: var(--color-ink);
   }
@@ -1557,15 +1566,15 @@ body {
     font-weight: 400;
     line-height: 18px;
   }
-  .ui-menu-row:enabled:hover { background: var(--color-menu-hover); }
+  .ui-menu-row:enabled:hover:where(:not(html[data-mobile-app] *)) { background: var(--color-menu-hover); }
   .ui-menu-row:disabled { opacity: 0.6; }
-  .ui-button:enabled:hover,
-  .ui-icon-button:enabled:hover {
+  .ui-button:enabled:hover:where(:not(html[data-mobile-app] *)),
+  .ui-icon-button:enabled:hover:where(:not(html[data-mobile-app] *)) {
     background: var(--color-raised-hover);
     color: var(--color-ink);
   }
-  .ui-button:enabled:active,
-  .ui-icon-button:enabled:active {
+  .ui-button:enabled:active:where(:not(html[data-mobile-app] *)),
+  .ui-icon-button:enabled:active:where(:not(html[data-mobile-app] *)) {
     background: var(--color-raised);
   }
   .ui-button:disabled,
@@ -1579,7 +1588,7 @@ body {
     border-color: transparent;
     background: color-mix(in srgb, var(--color-ink) 8%, transparent);
   }
-  :root:is([data-skin="midnight"], [data-skin="grok-dark"]) .ui-button:enabled:is(:hover, :active) {
+  :root:is([data-skin="midnight"], [data-skin="grok-dark"]) .ui-button:enabled:is(:hover, :active):where(:not(html[data-mobile-app] *)) {
     background: color-mix(in srgb, var(--color-ink) 12%, transparent);
   }
   :root:is([data-skin="midnight"], [data-skin="daylight"], [data-skin="grok"], [data-skin="grok-dark"]) :is(.ui-button, .ui-icon-button) {
@@ -1589,7 +1598,7 @@ body {
     border-color: transparent;
     background: color-mix(in srgb, var(--color-ink) 9%, transparent);
   }
-  :root:is([data-skin="daylight"], [data-skin="grok"]) .ui-button:enabled:is(:hover, :active) {
+  :root:is([data-skin="daylight"], [data-skin="grok"]) .ui-button:enabled:is(:hover, :active):where(:not(html[data-mobile-app] *)) {
     background: color-mix(in srgb, var(--color-ink) 13%, transparent);
   }
   /* A dialog for the first-run surfaces: the menu tone on a hairline of ink, lifted only in Daylight. */
@@ -1918,7 +1927,8 @@ body {
   --card-lift: transparent;
 }
 :root:is([data-skin="atelier"], [data-skin="lagoon"], [data-skin="linen"], [data-skin="daylight"], [data-skin="grok"], [data-skin="meadow"], [data-skin="pop"]) {
-  --chat-card: var(--color-card);
+  /* a touch lighter than the bot bubble: 70% of its tone over the page */
+  --chat-card: color-mix(in srgb, var(--color-card) 70%, var(--color-app));
   --card-ring: color-mix(in srgb, var(--color-ink) 12%, transparent);
   --card-fill: color-mix(in srgb, var(--color-ink) 6%, transparent);
   --card-code-fill: color-mix(in srgb, var(--color-ink) 4%, transparent);
@@ -1928,11 +1938,15 @@ body {
   --chat-card: var(--color-composer);
   --card-lift: color-mix(in srgb, var(--color-ink) 3.5%, transparent);
 }
+/* A table's header band is opaque, so a sticky first column's header cell covers the cells scrolling under it. */
+:root {
+  --table-head: color-mix(in srgb, var(--color-ink) 5%, var(--chat-card));
+  --table-line: color-mix(in srgb, var(--color-ink) 7%, transparent);
+}
 
-/* The brand draws no lines, so keyboard focus is a tint, never a ring: the focused control darkens (or, on a dark
-   skin, lightens) by a tenth of the ink over its own fill. Unlayered and !important on the line colours, so no
-   outline-*, ring-* or inset-ring-* utility, nor a component's own focus outline, can draw one. Forced colours keep
-   the system ring, which is what those users rely on. */
+/* The brand draws no lines for the mouse: no outline-*, ring-* or inset-ring-* utility, nor a component's own focus
+   outline, draws one. Unlayered and !important on the line colours so nothing below can bring one back. Forced
+   colours keep the system ring, which is what those users rely on. */
 @media not (forced-colors: active) {
   :focus-visible,
   :focus-visible::before,
@@ -1958,19 +1972,28 @@ body {
     background-color: color-mix(in oklab, var(--color-ink) 6%, transparent);
   }
 }
-/* the tint shows only while someone moves with the keyboard (lib/focus-nav sets the flag on Tab or an arrow key):
-   focus a dialog puts on its first button when it opens, or that a click or Enter leaves behind, draws nothing.
-   Text fields keep the caret as their only cue. */
-:root[data-focus-nav] :focus-visible:not(:is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea, select, [contenteditable="true"], [role="textbox"])) {
-  background-image: linear-gradient(color-mix(in srgb, var(--color-ink) 10%, transparent), color-mix(in srgb, var(--color-ink) 10%, transparent));
+/* While someone moves with the keyboard (lib/focus-nav sets the flag on Tab or an arrow key), every focused control
+   draws a ring in --color-focus, which holds 3:1 on every surface (WCAG 1.4.11). Focus a dialog puts on its first
+   button when it opens, or that a click or Enter leaves behind, draws nothing. */
+@media not (forced-colors: active) {
+  :root[data-focus-nav] :focus-visible {
+    outline: 2px solid var(--color-focus) !important;
+    outline-offset: 2px !important;
+  }
+  :root[data-focus-nav] :is([role="menu"], [role="listbox"], [role="tree"], [role="grid"]) :focus-visible,
+  :root[data-focus-nav] :is(textarea, [contenteditable="true"], [role="textbox"], [role="log"], [role="region"], [role="separator"]):focus-visible {
+    outline-offset: -2px !important;
+  }
+  :root[data-focus-nav] .composer-pill:has(textarea:focus-visible) {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  :root[data-focus-nav] .composer-pill textarea:focus-visible {
+    outline-color: transparent !important;
+  }
 }
-/* native checkboxes, radios, sliders, colour wells and file pickers paint no background, so their tint is a halo */
-:root[data-focus-nav] input:is([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]):focus-visible {
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-ink) 22%, transparent);
-}
-/* A menu row shows keyboard focus as its hover fill. */
+/* A menu row shows keyboard focus as its hover fill under the ring. */
 [role="menu"] :is(button, [role^="menuitem"]):focus-visible {
-  outline: none;
   background-color: var(--color-menu-hover);
 }
 
@@ -2294,7 +2317,7 @@ html[data-cloud-intent-morph] [data-tour="composer"] { view-transition-name: clo
   text-align: start;
   cursor: pointer;
 }
-.turn-now-toggle:hover, .turn-now-toggle[aria-expanded="true"] {
+.turn-now-toggle:hover:where(:not(html[data-mobile-app] *)), .turn-now-toggle[aria-expanded="true"] {
   background: color-mix(in srgb, var(--color-ink) 5%, transparent);
 }
 .turn-now-toggle:focus-visible {
@@ -3355,9 +3378,10 @@ button:disabled.bg-danger {
 .cloud-plan[data-plan-on] { box-shadow: inset 0 -6px 0 var(--cloud-plan-lip); }
 .cloud-plan-art { image-rendering: pixelated; }
 .cloud-plan-dim { background: var(--cloud-plan-dim); }
-/* the radio is hidden, so the card it fills takes the keyboard tint */
+/* the radio is hidden, so the card it fills takes the keyboard ring */
 :root[data-focus-nav] .cloud-plan:has(:focus-visible) {
-  background-image: linear-gradient(color-mix(in srgb, var(--color-ink) 10%, transparent), color-mix(in srgb, var(--color-ink) 10%, transparent));
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
 @media (prefers-reduced-motion: reduce) {
   .cloud-plan { transition: none; }
@@ -3405,4 +3429,57 @@ button:disabled.bg-danger {
     background-color: color-mix(in srgb, var(--color-ink) 17%, var(--color-menu));
     box-shadow: none;
   }
+}
+
+/* voice call: in and state changes on the sheet curve (cubic-bezier(.1,.6,.3,1) 380 ms), out on the sheet's accelerating
+   exit (cubic-bezier(.4,0,1,1) 200 ms); the menu grows from the gear's corner; presses dip and spring back */
+@keyframes voice-call-rise {
+  from { transform: translateY(18px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes voice-call-sink {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(22px); opacity: 0; }
+}
+@keyframes voice-call-grow {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes voice-call-shrink {
+  from { transform: scale(1); opacity: 1; }
+  to { transform: scale(0.92); opacity: 0; }
+}
+@keyframes voice-call-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes voice-call-unfade {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes voice-call-swap {
+  from { transform: translateY(5px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.voice-call-dock { animation: voice-call-fade 160ms linear both; }
+.voice-call-dock-out { animation: voice-call-unfade 200ms cubic-bezier(0.4, 0, 1, 1) both; }
+.voice-call-pill { animation: voice-call-rise 380ms cubic-bezier(0.1, 0.6, 0.3, 1) both; }
+.voice-call-pill-out { animation: voice-call-sink 200ms cubic-bezier(0.4, 0, 1, 1) both; }
+.voice-call-menu { transform-origin: bottom right; animation: voice-call-grow 170ms cubic-bezier(0.1, 0.6, 0.3, 1) both; }
+.voice-call-menu-out { animation: voice-call-shrink 200ms cubic-bezier(0.4, 0, 1, 1) both; pointer-events: none; }
+.voice-call-stage { animation: voice-call-fade 160ms linear both; }
+.voice-call-swap { animation: voice-call-swap 380ms cubic-bezier(0.1, 0.6, 0.3, 1) both; }
+.voice-call-heard { transition: opacity 120ms linear; }
+.voice-call-press { transition: transform 260ms cubic-bezier(0.1, 0.6, 0.3, 1), background-color 150ms linear, color 150ms linear, opacity 150ms linear; }
+.voice-call-press:active:not(:disabled) { transform: scale(0.9); transition-duration: 90ms; }
+@media (prefers-reduced-motion: reduce) {
+  .voice-call-pill, .voice-call-menu, .voice-call-swap { animation: voice-call-fade 160ms linear both; }
+  .voice-call-pill-out, .voice-call-menu-out { animation: voice-call-unfade 160ms linear both; }
+  .voice-call-press:active:not(:disabled) { transform: none; }
+}
+
+[data-sidebar] ~ main { anchor-name: --app-main; }
+.topbar-notice-frame { position-anchor: --app-main; top: anchor(top, 0px); left: anchor(left, 0px); right: anchor(right, 0px); }
+@supports not (anchor-name: --app-main) {
+  .topbar-notice-frame { top: 0; left: 0; right: 0; }
 }

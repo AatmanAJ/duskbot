@@ -70,11 +70,42 @@ it("a message written while it connects is held and sent once it is up", async (
   expect(composer().value).toBe("");
 });
 
-it("with nothing seen yet it still only connects; a failed wake offers Try again", async () => {
+it("with nothing seen yet it shows the loading mascot while it connects, never an empty chat list", async () => {
+  const empty = bridgeOf({ screen: "asleep" }, null);
+  await mount(empty.bridge);
+  expect(host.querySelector("[data-cloud-asleep-loading] [data-mascot-loader]")).toBeTruthy();
+  expect(host.querySelector("ol")).toBeNull();
+  expect(host.textContent).not.toContain("No chats seen");
+  expect(empty.bridge.wake).toHaveBeenCalledTimes(1);
+});
+
+it("the connecting line sits clear of the macOS traffic lights, in a bar that drags the window", async () => {
+  // the preload's platform is read when the page's modules load, as in the app
+  Object.assign(window, { duskDesktop: { platform: "darwin" } });
+  vi.resetModules();
+  const fresh = await import("./HomeScreen");
+  const { bridge } = bridgeOf({ screen: "asleep" });
+  root = createRoot(host);
+  await act(async () => { root!.render(createElement(fresh.HomeScreen, { bridge })); });
+  await settle();
+  const bar = host.querySelector<HTMLElement>("[data-cloud-asleep-bar]")!;
+  expect(bar.contains(host.querySelector("[data-cloud-asleep-line]"))).toBe(true);
+  expect(bar.style.paddingLeft).toBe("88px");
+  expect(bar.hasAttribute("data-window-drag")).toBe(true);
+  expect(bar.nextElementSibling?.querySelector("nav"), "the bots list starts under the bar, not beside the lights").toBeTruthy();
+});
+
+it("elsewhere the line keeps the page's own inset", async () => {
+  const { bridge } = bridgeOf({ screen: "asleep" });
+  await mount(bridge);
+  expect(host.querySelector<HTMLElement>("[data-cloud-asleep-bar]")!.style.paddingLeft).toBe("");
+});
+
+it("with nothing seen yet a failed wake says so and offers Try again", async () => {
   const empty = bridgeOf({ screen: "asleep" }, null);
   empty.bridge.wake.mockRejectedValueOnce(new Error("offline"));
   await mount(empty.bridge);
-  expect(host.textContent).toContain("No chats seen on this computer yet.");
+  expect(host.querySelector("[role=alert]")?.textContent).toBeTruthy();
   const button = [...host.querySelectorAll("button")].find((node) => node.textContent === "Try again")!;
   expect(button).toBeTruthy();
   await act(async () => { button.click(); });
