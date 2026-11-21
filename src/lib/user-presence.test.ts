@@ -39,10 +39,9 @@ const before = (text: string, gate: string, reveal: string) => {
 
 describe("every pairing code waits for the presence check", () => {
   it("gates the workspace, server and team phone codes before they are made", () => {
-    before(source("MobilePairingCard.tsx"), "if (!(await requireUserPresence()) || generation.current !== epoch) return;", 'api<MobilePairingResponse>("/api/mobile/pairing"');
+    before(source("MobilePairingCard.tsx"), "if ((!codesInCloud && !(await requireUserPresence())) || generation.current !== epoch) return;", 'api<MobilePairingResponse>("/api/mobile/pairing"');
     before(source("ServerPairingCard.tsx"), "if (!(await requireUserPresence())) return;", 'api("/api/auth/pairing"');
     before(source("TeamPhoneCard.tsx"), "if (!(await requireUserPresence())) return;", "api(TEAM_PHONE_PAIRING");
-    before(source("onboarding/FunnelSteps.tsx"), "if (!(await requireUserPresence()))", 'api<MobilePairingResponse>("/api/mobile/pairing"');
   });
 
   it("gates every way into the desktop phone setup flow, and forgets the pass when the flow ends", () => {
@@ -64,7 +63,18 @@ describe("every pairing code waits for the presence check", () => {
       .filter((file) => readFileSync(new URL(file, root), "utf8").includes('from "qrcode.react"'))
       .map((file) => file.replace(/^components[\\/]/, "").split("\\").join("/"))
       .sort();
-    expect(drawing).toEqual(["MobilePairingCard.tsx", "PhoneSetupFlow.tsx", "ServerPairingCard.tsx", "TeamPhoneCard.tsx", "onboarding/FunnelSteps.tsx"]);
-    for (const file of drawing) expect(source(file)).toContain("requireUserPresence");
+    expect(drawing).toEqual(["MobilePairingCard.tsx", "PhoneFlowRows.tsx", "PhoneSetupFlow.tsx", "ServerPairingCard.tsx", "TeamPhoneCard.tsx"]);
+    for (const file of drawing.filter((name) => name !== "PhoneFlowRows.tsx")) expect(source(file)).toContain("requireUserPresence");
+  });
+
+  it("draws the relay's code only inside the gated phone setup flow", () => {
+    const users = (readdirSync(new URL("../", import.meta.url), { recursive: true }) as string[])
+      .filter((file) => /\.tsx?$/.test(file) && !file.endsWith("PhoneFlowRows.tsx") && !file.includes(".test."))
+      .filter((file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8").includes('from "./PhoneFlowRows"'))
+      .map((file) => file.split("\\").join("/"));
+    expect(users).toEqual(["components/PhoneSetupFlow.tsx"]);
+    const flow = source("PhoneSetupFlow.tsx");
+    expect(flow).toMatch(/relayPairing: flow\.active && /);
+    expect(flow).toContain("if (c.relayPairing) return <RelayPairingRows ");
   });
 });

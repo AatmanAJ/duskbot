@@ -102,6 +102,15 @@ describe("preview stream control", () => {
     client.stop();
   });
 
+  it("passes on which tabs the person holds, so the panel can mark them", () => {
+    const { client, socket, onControl } = connect();
+    socket.message(JSON.stringify({ type: "control", ...agent, controller: "you", owned: true, heldTabs: ["t1", 7, "t3"] }));
+    expect(onControl).toHaveBeenLastCalledWith({ ...agent, controller: "you", owned: true, heldTabs: ["t1", "t3"] });
+    socket.message(JSON.stringify({ type: "control", ...agent, heldTabs: [] }));
+    expect(onControl).toHaveBeenLastCalledWith(agent);
+    client.stop();
+  });
+
   it("does not grant control from malformed dialog metadata", () => {
     const { client, socket, onControl } = connect();
     socket.message(JSON.stringify({ type: "control", ...agent, controller: "you", dialog: { type: "prompt", message: 42, defaultValue: "" } }));

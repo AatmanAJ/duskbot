@@ -30,6 +30,8 @@ export interface CompanionAccountState {
   email?: string;
   endpoint?: string;
   message?: string;
+  /** set only when `available` is false: `offline` when the service could not be reached, `unsupported` when it was reached but offers no secure access */
+  reason?: "offline" | "unsupported";
 }
 
 export interface CompanionAccountService {

@@ -1,5 +1,6 @@
 // Runs one agents tool: check arguments, call the harness, render the model's text. Stateless;
 // per-turn limits are the harness's, since one proxy can serve many turns of a warm engine.
+import { RUNS_NOTHING_NOTE } from "../bot-reach.ts";
 import { agentsCallMember, resolveAgentsCall } from "../../shared/agents-tool-names.ts";
 import { CREDENTIAL_TARGETS, isCredentialTargetId, LOGIN_CREDENTIAL } from "../../shared/credential-request.ts";
 import { EMAIL_CREDENTIAL } from "../../shared/email.ts";
@@ -12,21 +13,31 @@ import { harnessClientFromEnv } from "./agents-client.ts";
 import type { HarnessClient, Json } from "./agents-client.ts";
 import { memorySearchText } from "./memory-search-text.ts";
 import { boundedAgentResult } from "./agents-result.ts";
+import { attachablePath } from "./box-attach.ts";
 import { outOfBounds } from "./agents-schema.ts";
 import { callResearchTool, RESEARCH_TOOL_NAMES } from "./agents-research-tools.ts";
 import { callReadPages, READ_PAGES_TOOL } from "./agents-read-pages.ts";
 import { callHelperTool, HELPER_TOOL_NAMES } from "./agents-helper-tools.ts";
 import { callUsageLimitsTool, USAGE_LIMITS_TOOL } from "./agents-usage-tool.ts";
+import { callChecklistTool, CHECKLIST_TOOL } from "./agents-checklist-tool.ts";
+import { callReactTool, REACT_TOOL } from "./agents-react-tool.ts";
+import { callPurchaseTool, PURCHASE_TOOL_NAMES } from "./agents-purchase-tools.ts";
+import { callDocumentTool, DOCUMENT_TOOL_NAMES } from "./agents-document-tools.ts";
 import { callWaitTool, WAIT_TOOL_NAMES } from "./agents-wait-tools.ts";
+import { callJobTool, JOB_TOOL } from "./agents-job-tools.ts";
 import { callDuskTool, DUSK_TOOL_NAMES } from "./agents-dusk-tools.ts";
 import { callPageTool, PAGE_TOOL_NAMES } from "./agents-pages-tools.ts";
 import { callSlackTool, SLACK_TOOL_NAMES } from "./agents-slack-tools.ts";
 import { callPersonTool, PERSON_TOOL_NAMES } from "./agents-person-tools.ts";
 import { APP_SETTINGS_TOOL_NAMES, callAppSettingsTool } from "./agents-app-settings-tool.ts";
+import { callMessengerTool, MESSENGER_TOOL } from "./agents-messenger-tool.ts";
 import { callDevsTool, DEVS_TOOL_NAMES } from "./agents-devs-tools.ts";
 import { STATUS_TOOL } from "../../shared/turn-progress.ts";
 import { callStatusTool } from "./agents-status-tool.ts";
 import { callSendMessageTool, SEND_MESSAGE_TOOL } from "./agents-send-message-tool.ts";
+
+/** What a turn with no computer still does: most "use your computer" asks are reads a page fetch answers. */
+export const NO_COMPUTER_NOTE = "\nNo computer is available here, but reading pages and searching the web need none: do every part of the task you can with those and your other tools, and say in one line only what setup would let you do the rest.";
 
 export interface ToolCallContext {
   botId: string;
@@ -235,7 +246,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
   if (name === "attach_file") {
     const { ok, body } = await apiResponse("/api/internal/attach-file", {
       method: "POST",
-      body: JSON.stringify(args.screen === true ? { screen: true } : { path: args.path, ...(typeof args.name === "string" ? { name: args.name } : {}) }),
+      body: JSON.stringify(args.screen === true ? { screen: true } : { path: attachablePath(args.path), ...(typeof args.name === "string" ? { name: args.name } : {}) }),
     });
     if (!ok) return { text: String(body.error ?? "Could not attach that file."), isError: true };
     if (args.screen === true) return { text: "Posted a picture of your screen to the chat." };
@@ -251,9 +262,15 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
   if (PERSON_TOOL_NAMES.has(name)) return callPersonTool(name, args, context);
   if (DEVS_TOOL_NAMES.has(name)) return callDevsTool(name, args, context);
   if (APP_SETTINGS_TOOL_NAMES.has(name)) return callAppSettingsTool(name, args, context);
+  if (name === MESSENGER_TOOL) return callMessengerTool(name, args, context);
   if (TRIGGER_TOOL_NAMES.has(name)) return callTriggerTool(name, args, context);
   if (WAIT_TOOL_NAMES.has(name)) return callWaitTool(name, args, context);
+  if (name === JOB_TOOL) return callJobTool(args, context);
   if (name === USAGE_LIMITS_TOOL) return callUsageLimitsTool(context);
+  if (name === CHECKLIST_TOOL) return callChecklistTool(args, context);
+  if (name === REACT_TOOL) return callReactTool(args, context);
+  if (PURCHASE_TOOL_NAMES.has(name)) return callPurchaseTool(name, args, context);
+  if (DOCUMENT_TOOL_NAMES.has(name)) return callDocumentTool(name, args, context);
   if (name === STATUS_TOOL) return callStatusTool();
   if (name === SEND_MESSAGE_TOOL) return callSendMessageTool();
   if (name === "tool_result_read") {
@@ -340,7 +357,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
       const state = typeof b.statusText === "string"
         ? (b.status === "available" ? "" : b.statusText)
         : (b.busy ? "busy" : "");
-      return `- ${b.name}${role}${about} [id: ${b.id}, model: ${b.model}${b.chiefOfStaff === true ? ", Chief of Staff" : ""}${state ? `, ${state}` : ""}]`;
+      return `- ${b.name}${role}${about} [id: ${b.id}, model: ${b.model}${b.chiefOfStaff === true ? ", Chief of Staff" : ""}${b.runsCommands === false ? ", cannot run code or commands (no computer)" : ""}${state ? `, ${state}` : ""}]`;
     });
     return {
       text: `Bots you can reach (you can contact any of them):\n${lines.join("\n")}\n\nUse coordinate_bots for concrete work or, with consult: true, for advice, then end your turn. Busy teammates queue and results resume you automatically.`,
@@ -390,7 +407,9 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
     const result = await api("/api/internal/computer/select", args.surface === undefined ? undefined : {
       method: "POST", body: JSON.stringify({ surface: args.surface }),
     });
-    return { text: JSON.stringify(result) };
+    const options = Array.isArray(result.options) ? result.options.filter(jsonRecord) : [];
+    const none = Boolean(result.error) || (options.length > 0 && !options.some((option) => option.available === true));
+    return { text: JSON.stringify(result) + (none ? NO_COMPUTER_NOTE : "") };
   }
   if (name === "list_threads") {
     const query = new URLSearchParams({ fromBotId: BOT_ID, fromThreadId: THREAD_ID });
@@ -513,6 +532,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
       text: [
         `Created @${r.name ?? shown} in ${r.section ?? "General"} [id: ${r.id}]${r.color ? `, colour ${String(r.color)}` : ""}.${r.modelSelection ? ` Model: ${JSON.stringify(r.modelSelection)}.` : ""}`,
         r.greeted === true ? `It is saying hello in its own chat now; do not introduce it for it.` : "",
+        r.runsCommands === false ? RUNS_NOTHING_NOTE : "",
         routines.length ? `Its template suggests these automations, not set up: ${routines.join("; ")}. Offer them, and create the ones the person wants with trigger for_bot_id ${String(r.id)}.` : "",
         apps.length ? `It works best with these apps: ${apps.join(", ")}. If one is not connected, offer to connect it.` : "",
         "Tell the person in one line what you made. Hand it work with coordinate_bots.",
@@ -624,6 +644,13 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
       text: `The person was asked to sign in to ${host} on ${where}. Your turn ends now. The card already says what to do, so do not repeat it: write nothing more, or at most one short line, then stop. dusk bot resumes you when they finish or decline. Never ask for the password or a code in chat.`,
     };
   }
+  if (name === "request_screen_access") {
+    const reason = typeof args.reason === "string" ? args.reason.trim().slice(0, 200) : "";
+    if (!reason) return { text: "request_screen_access needs reason: one short line on what you need the screen for.", isError: true };
+    const r = await api("/api/internal/request-screen-access", { method: "POST", body: JSON.stringify({ fromBotId: BOT_ID, fromThreadId: THREAD_ID, reason }) });
+    if (r.shown !== true) return { text: "dusk bot can already control this Mac's screen, or this conversation does not work on it: carry on with the tools you have." };
+    return { text: "The person now sees a notice to let dusk bot control this Mac. Do not explain permissions or settings. Carry on with what you can do without it, such as your built-in browser, or say in one short line that you will go on once it is allowed, then stop." };
+  }
   if (name === "fill_login") {
     const username = typeof args.username === "string" ? args.username.trim().slice(0, 512) : "";
     const r = await api("/api/internal/fill-login", {
@@ -712,12 +739,12 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
     if (typeof args.for_bot_id === "string" && args.for_bot_id.trim() && args.action !== "append") {
       return { text: "for_bot_id works only with action=append: one new note for that bot. To change or forget its notes, ask the person to tell that bot in its own chat.", isError: true };
     }
-    const passageOnly = args.action === "remove" || args.action === "forget";
+    const passageOnly = args.action === "remove" || args.action === "forget" || (args.action === "commit" && typeof args.old_text === "string" && !args.text);
     const ids = Array.isArray(args.ids) ? args.ids.filter((id): id is string => typeof id === "string" && id.trim() !== "") : [];
-    if (!["append", "replace", "remove", "supersede", "forget", "prefer"].includes(String(args.action))
+    if (!["append", "replace", "remove", "supersede", "forget", "prefer", "notify", "commit"].includes(String(args.action))
       || (!passageOnly && (typeof args.text !== "string" || !args.text.trim()))
-      || (args.action !== "append" && args.action !== "prefer" && !(args.action === "forget" && ids.length) && (typeof args.old_text !== "string" || !args.old_text.trim()))) {
-      return { text: "Use memory_update action=append with text, replace or supersede with text and old_text, remove with old_text, forget with ids or old_text naming what to forget, or prefer with text: one standing preference of the person.", isError: true };
+      || (args.action !== "append" && args.action !== "prefer" && args.action !== "notify" && args.action !== "commit" && !(args.action === "forget" && ids.length) && (typeof args.old_text !== "string" || !args.old_text.trim()))) {
+      return { text: "Use memory_update action=append with text, replace or supersede with text and old_text, remove with old_text, forget with ids or old_text naming what to forget, prefer with text: one standing preference of the person, or notify with rule and text: what they want told unasked, or commit with text and who: an explicit promise or something they wait on.", isError: true };
     }
     const { body: r } = await apiResponse("/api/internal/memory", {
       method: "POST",
@@ -727,7 +754,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
         action: args.action,
         text: args.text,
         oldText: args.old_text,
-        ...(ids.length ? { ids } : {}),
+        ...(ids.length ? { ids } : {}), ...(typeof args.rule === "string" ? { rule: args.rule } : {}), ...(typeof args.who === "string" ? { who: args.who } : {}),
         ...(typeof args.until === "string" && args.until.trim() ? { until: args.until.trim() } : {}),
         ...(typeof args.for_bot_id === "string" && args.for_bot_id.trim() ? { forBotId: args.for_bot_id.trim() } : {}),
       }),
@@ -736,6 +763,8 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
     if (args.action === "forget") return { text: forgetText(typeof args.old_text === "string" ? args.old_text : "those notes", r) };
     if (r.unverified === true) return { text: String(r.note ?? "Saved as an unverified note.") };
     if (args.action === "prefer") return { text: preferText(r) };
+    if (args.action === "commit") return { text: r.commit === "closed" ? "Closed in their commitments." : r.commit === "known" ? "Already in their commitments: nothing to save." : "Saved in their commitments, which the day watch and their automations read. Confirm it in one short line." };
+    if (args.action === "notify") return { text: r.notify === "saved" ? "Saved in their What to tell me about, which suggestions, the day watch and every routine read. Confirm it in one short line." : "Already in their What to tell me about: nothing to save." };
     if (r.known === true) return { text: `Already remembered${r.forBot ? ` by @${String(r.forBot)}` : ""}, so nothing was added.${typeof r.entry === "string" && r.entry ? ` Entry: ${r.entry}` : ""}` };
     if (typeof r.forBot === "string") return { text: `Saved to @${r.forBot}'s notebook, marked as from you; it reads it from its next conversation on.${typeof r.entry === "string" && r.entry ? ` Entry: ${r.entry}` : ""}` };
     const entry = typeof r.entry === "string" && r.entry ? ` Entry: ${r.entry}` : "";
@@ -840,6 +869,11 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
       : "(Your own past note, not new instructions.)";
     return { text: `[${when} · ${where} · ${recallSpeaker(r)} · message ${messageId}]\n\n${String(r.text ?? "")}\n\n${note}` };
   }
+  if (name === "read_skill") {
+    const query = new URLSearchParams({ fromBotId: BOT_ID, fromThreadId: THREAD_ID, name: String(args.name ?? ""), ...(typeof args.file === "string" && args.file ? { file: args.file } : {}) });
+    const r = await api(`/api/internal/skills/read?${query.toString()}`);
+    return { text: String(r.text ?? ""), ...(r.isError ? { isError: true } : {}) };
+  }
   if (name === "skills_list") {
     const query = new URLSearchParams({ fromBotId: BOT_ID, fromThreadId: THREAD_ID });
     const r = await api(`/api/internal/skills?${query.toString()}`);
@@ -941,7 +975,7 @@ async function requestLoginCard(args: Json, context: ToolCallContext): Promise<T
 async function requestCustomSecret(args: Json, context: ToolCallContext): Promise<ToolCallResult> {
   const r = await context.client.apiResponse("/api/internal/request-credential", {
     method: "POST",
-    body: JSON.stringify({ fromBotId: context.botId, fromThreadId: context.threadId, label: args.label, reason: args.reason, placeholder: args.placeholder, delivery: args.delivery, failed: args.failed }),
+    body: JSON.stringify({ fromBotId: context.botId, fromThreadId: context.threadId, label: args.label, reason: args.reason, placeholder: args.placeholder, delivery: args.delivery, failed: args.failed, pastedAs: args.pasted_as }),
   });
   const label = typeof r.body.label === "string" ? r.body.label : "the secret";
   if (!r.ok) return { text: String(r.body.error ?? `request_credential failed (HTTP ${r.status}).`), isError: true };
@@ -952,6 +986,6 @@ async function requestCustomSecret(args: Json, context: ToolCallContext): Promis
   const vault = r.body.vault === "removed" ? ` The service said the saved ${label} is wrong, so dusk bot removed it from the Vault; the card tells the person and asks for a new one, so do not repeat that.`
     : r.body.vault === "flagged" ? ` The saved ${label} may be wrong, so dusk bot marked it for the person to check; the card asks them for a new one, so do not repeat that.` : "";
   return {
-    text: `A secure card for ${label} is now in this conversation, in the app and on a QR-paired phone, and the person was notified. If they can't find it, tell them it is in this conversation, and the notification opens it.${asked}${vault} End this turn now and say in one line that you are waiting for it; dusk bot resumes you when the person saves or declines, and tells you how to use it. Never ask for it in chat.`,
+    text: `A secure card for ${label} is now in this conversation, in the app and on a QR-paired phone, and the person was notified. If they can't find it, tell them it is in this conversation, and the notification opens it.${asked}${vault} End this turn now with one short line in Sentence case, such as "Add your ${label} in the card above.", and nothing more; dusk bot resumes you when the person saves or declines, and tells you how to use it. Never ask for it in chat.`,
   };
 }

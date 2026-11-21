@@ -68,7 +68,7 @@ describe("Chrome's command line", () => {
   it("turns the sandbox off only on an explicit opt-out, and reopens restored tabs without a start page", () => {
     expect(chromeArgs({ userDataDir: "/p", mode: "headless", host: "container", sandbox: false })).toContain("--no-sandbox");
     expect(chromeArgs({ userDataDir: "/p", mode: "headless", host: "desktop" }).at(-1)).toBe("about:blank");
-    expect(chromeArgs({ userDataDir: "/p", mode: "headless", host: "desktop", startUrl: null }).at(-1)).not.toBe("about:blank");
+    expect(chromeArgs({ userDataDir: "/p", mode: "headless", host: "desktop", startUrl: null }).at(-1)).toBe("--restore-last-session");
     expect(chromeArgs({ userDataDir: "/p", mode: "headless", host: "desktop", locale: "en-GB; rm -rf" })).not.toContain("--lang=en-GB; rm -rf");
   });
 
