@@ -24,6 +24,12 @@ it("says nothing extra off a team, and a private chat keeps its own name", () =>
   expect(pill(bot("own", "Quarter numbers"), { kind: "private" })).toContain("Quarter numbers");
 });
 
+it("never names a teammate's work as a conversation of its own", () => {
+  const work = { ...bot("own", "@content · work"), tasks: [bot("own").tasks![0]!, { threadId: "own", title: "@content · work", createdAt: 2, openedBy: { botId: "content", name: "content", kind: "work", at: 2 } }] } as Bot;
+  expect(pill(work, null)).not.toContain("· work");
+  expect(pill(bot("own", "@content · work"), null)).toContain("· work");
+});
+
 it("names it too from another conversation's list, in the person's language", () => {
   const away = { ...bot("main"), mainThreadId: "elsewhere", tasks: [...bot("main").tasks!, { threadId: "elsewhere", title: "Other", createdAt: 3 }] } as Bot;
   expect(pill(away, { kind: "shared", team: "Acme" })).toContain("Shared chat");

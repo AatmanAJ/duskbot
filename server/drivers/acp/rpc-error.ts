@@ -1,3 +1,4 @@
+import { withoutEchoedPrompt } from "../../../shared/failed-turn.ts";
 import { redactSecretsInText } from "../../redact.ts";
 
 /** ACP vendors put the actionable cause in error.data under a generic JSON-RPC message. Only known
@@ -16,7 +17,7 @@ export function acpRpcError(value: any, method: string): Error {
     typeof data?.errorName === "string" ? data.errorName : "",
   ].filter(Boolean).join(", ");
   const diagnostic = `${detail && detail !== message ? `${message}: ${detail}` : message} (${context})`;
-  const error = new Error(redactSecretsInText(diagnostic).slice(0, 1500));
+  const error = new Error(redactSecretsInText(withoutEchoedPrompt(diagnostic)).slice(0, 1500));
   return Object.assign(error, { code: value?.code, data,
     // -32603 is JSON-RPC's internal error; invalid params, unsupported methods and auth refusals keep the session.
     acpSessionFailure: value?.code === -32603,

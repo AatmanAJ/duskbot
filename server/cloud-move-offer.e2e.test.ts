@@ -23,9 +23,13 @@ const names = async (side: CloudSendFixture["local"]) => ((await side("GET", "/a
 it("bots on this computer wait for the person's yes; the yes moves them, checked, onto the other harness, and Open dusk cloud opens it", async () => {
   const { local, onCloud } = fx;
   for (const name of ["Nova", "Quill", "Rivet"]) {
-    const bot = (await local("POST", "/api/bots", { name })).body.bot as { id: string };
+    const bot = (await local("POST", "/api/bots", { name, modelSelection: { instanceId: "claude", model: "claude-sonnet-5" } })).body.bot as { id: string; threadId: string };
     expect((await local("PATCH", `/api/bots/${bot.id}`, { soul: `You are ${name}.` })).status).toBe(200);
+    // the move asks first only for bots the person talked with here
+    if (name === "Nova") expect((await local("POST", `/api/bots/${bot.id}/messages`, { text: "Hello Nova.", threadId: bot.threadId })).status).toBe(202);
   }
+  await expect.poll(async () => ((await local("GET", "/api/bots")).body.bots as Array<{ activity?: string; busy?: boolean }>)
+    .every((bot) => bot.activity !== "working" && !bot.busy), { timeout: 60_000, interval: 100 }).toBe(true);
   expect(await names(onCloud)).not.toContain("Nova");
 
   // The Cloud is ready (as at the launch after it appeared): main asks, and moves nothing yet.

@@ -11,7 +11,12 @@ import { Store, type BotRecord, type Message } from "./store.ts";
 const selection = () => ({ instanceId: "claude", model: "claude-sonnet-5" });
 
 describe("readRunReply", () => {
-  it.each(["NOTHING NEW", "Nothing new.", "**NOTHING NEW**", "Checked 14 emails.\n\nNOTHING NEW", "  nothing new  "])("keeps %j quiet", (text) => {
+  it("delivers a finding that ends on NOTHING NEW, without the token", () => {
+    expect(readRunReply("Acme's invoice #4411 is now 3 days overdue.\n\nNOTHING NEW")).toEqual({ quiet: false, text: "Acme's invoice #4411 is now 3 days overdue." });
+    expect(readRunReply("Checked the inbox.\n- Priya asked to move Friday's call to 4pm.\nNOTHING NEW")).toEqual({ quiet: false, text: "Checked the inbox.\n- Priya asked to move Friday's call to 4pm." });
+  });
+
+  it.each(["NOTHING NEW", "Nothing new.", "**NOTHING NEW**", "Checked 14 emails.\n\nNOTHING NEW", "  nothing new  ", "No new invoices since yesterday.\nI looked at Stripe and Gmail.\nNOTHING NEW"])("keeps %j quiet", (text) => {
     expect(readRunReply(text)).toEqual({ quiet: true });
   });
 
@@ -130,10 +135,25 @@ describe("automation reports", () => {
     f.store.patchTask(f.bot.id, f.main, { unread: false });
     f.reports.runSettled(run, `turn-${run.id}`);
     expect(f.added()).toEqual([]);
+    expect(f.store.messagesFor(run.threadId!).find((message) => message.role === "bot" && message.kind === "text")?.quietRun, "hidden in the run's own conversation too").toBe(true);
     expect(f.store.taskByThread(f.bot.id, f.main)?.unread).toBe(false);
     expect(f.runs.get(run.id)!.report).toEqual({ state: "quiet" });
     expect(f.wrote).toEqual([]);
     expect(f.notified).toEqual([]);
+  });
+
+  it("hides a NOTHING NEW reply of a run that worked in the person's own chat, and tells no one", () => {
+    const f = fixture();
+    const quiet = f.store.appendMessage(f.main, { role: "bot", kind: "text", text: "NOTHING NEW", turnId: "turn-q", turnTerminal: true });
+    const run: RoutineRun = { id: "run-here", routineId: "routine-here", routineName: "Group watch", target: "bot", botId: f.bot.id, runOn: "maus",
+      scheduledFor: 0, status: "completed", manual: false, triggerSource: "schedule", threadId: f.main, resultsThreadId: f.main, createdAt: 0 };
+    f.runs.set(run.id, run);
+    expect(f.reports.quietInItsChat(run, "turn-q")).toBe(true);
+    expect(f.store.messagesFor(f.main).find((message) => message.id === quiet.id)?.quietRun).toBe(true);
+    expect(f.runs.get(run.id)!.report).toEqual({ state: "quiet" });
+    expect(f.notified).toEqual([]);
+    f.store.appendMessage(f.main, { role: "bot", kind: "text", text: "Two new messages from Ada.", turnId: "turn-n", turnTerminal: true });
+    expect(f.reports.quietInItsChat(run, "turn-n")).toBe(false);
   });
 
   it("asks the person in the chat, as a normal line they can answer, when the run needs them", () => {

@@ -1,19 +1,16 @@
-// when the sidebar's dusk cloud card shows: a few times on a day the person actually uses the app, more for heavier use,
-// hours apart. Each showing stays until it is closed, clicked or the app quits. A showing that was dismissed, or left
-// alone until the app quit, makes the card rest: not the next two launches and not for a day. Counters live on this
-// computer only.
+// when the sidebar's dusk cloud card shows: at most twice a calendar day, on a day the app is in use, hours apart. Each
+// showing stays until it is closed, clicked or the app quits; closing it brings Give feedback back until the next showing.
+// Counters live on this computer only.
 
 export const NUDGE_KEY = "dusk-cloud-nudge";
 /** the least time between two showings, across midnight too */
 export const NUDGE_GAP_MS = 3 * 3600_000;
+/** the most showings in one calendar day */
+export const NUDGE_DAILY_MAX = 2;
 
-/** the rest after a dismissed or ignored showing: this many launches, and at least this long */
-export const REST_LAUNCHES = 2;
-export const REST_MS = 24 * 3600_000;
-
-/** today's use on this computer and today's showings; `lastShownAt` and the rest carry over to the next day.
- * `open`: a showing nobody has answered yet; `skip`: launches the card still sits out; `restUntil`: no showing before then */
-export interface NudgeDay { day: string; sessions: number; messages: number; shown: number; lastShownAt: number; open: boolean; skip: number; restUntil: number }
+/** today's use on this computer and today's showings; `lastShownAt` carries over to the next day.
+ * `open`: a showing nobody has answered yet */
+export interface NudgeDay { day: string; sessions: number; messages: number; shown: number; lastShownAt: number; open: boolean }
 
 /** the local calendar day, so "today" is the person's own */
 export function dayKey(now: number): string {
@@ -28,28 +25,21 @@ export function readNudge(raw: string | null | undefined, now: number): NudgeDay
   const today = dayKey(now);
   let saved: Partial<NudgeDay> = {};
   try { const parsed: unknown = raw ? JSON.parse(raw) : null; if (parsed && typeof parsed === "object") saved = parsed as Partial<NudgeDay>; } catch {}
-  const carried = { lastShownAt: Math.min(count(saved.lastShownAt), now), open: saved.open === true, skip: Math.min(count(saved.skip), REST_LAUNCHES), restUntil: Math.min(count(saved.restUntil), now + REST_MS) };
+  const carried = { lastShownAt: Math.min(count(saved.lastShownAt), now), open: saved.open === true };
   if (saved.day !== today) return { day: today, sessions: 0, messages: 0, shown: 0, ...carried };
   return { day: today, sessions: count(saved.sessions), messages: count(saved.messages), shown: count(saved.shown), ...carried };
 }
 
-/** how many showings today's use earns: none before a message is sent today (opening the app alone isn't use), one for
- * light use, two for a steady day, three for a heavy one */
-export function dailyShowings(day: Pick<NudgeDay, "sessions" | "messages">): 0 | 1 | 2 | 3 {
-  if (day.messages < 1) return 0;
-  if (day.messages >= 25 || (day.sessions >= 3 && day.messages >= 10)) return 3;
-  if (day.messages >= 8 || day.sessions >= 2) return 2;
-  return 1;
+/** how many showings today earns: none before the app is in use today, then at most NUDGE_DAILY_MAX */
+export function dailyShowings(day: Pick<NudgeDay, "sessions" | "messages">): number {
+  return day.sessions > 0 || day.messages > 0 ? NUDGE_DAILY_MAX : 0;
 }
 
 /** when the next showing may start: null when today's are used up (or not earned yet) */
 export function nextNudgeAt(day: NudgeDay): number | null {
   if (day.shown >= dailyShowings(day)) return null;
-  return Math.max(day.lastShownAt ? day.lastShownAt + NUDGE_GAP_MS : 0, day.restUntil);
+  return day.lastShownAt ? day.lastShownAt + NUDGE_GAP_MS : 0;
 }
-
-/** the record after a showing is dismissed, or found unanswered at the next launch: it sits out the next launches and a day */
-export const resting = (day: NudgeDay, now: number): NudgeDay => ({ ...day, open: false, skip: REST_LAUNCHES, restUntil: now + REST_MS });
 
 export const nudgeDue = (day: NudgeDay, now: number): boolean => {
   const at = nextNudgeAt(day);
@@ -69,7 +59,6 @@ const listeners = new Set<() => void>();
 let version = 0;
 let sessionNoted = false;
 let showing = false;
-let sitsOut = false;
 const changed = () => { version++; for (const listener of listeners) listener(); };
 
 export const watchNudge = (listener: () => void): (() => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
@@ -78,15 +67,12 @@ export const nudgeDay = (now = Date.now()): NudgeDay => read(now);
 /** a showing is on screen in this launch */
 export const nudgeShowing = (): boolean => showing;
 
-/** this launch, counted once */
+/** this launch, counted once; a showing left open when the app quit is over */
 export function noteNudgeSession(now = Date.now()): void {
   if (sessionNoted) return;
   sessionNoted = true;
-  let day = read(now);
-  // a showing nobody answered before the app quit counts as ignored; this launch is the first it sits out
-  if (day.open) day = resting(day, now);
-  if (day.skip > 0) { sitsOut = true; day = { ...day, skip: day.skip - 1 }; }
-  write({ ...day, sessions: day.sessions + 1 });
+  const day = read(now);
+  write({ ...day, open: false, sessions: day.sessions + 1 });
   changed();
 }
 /** a message the person sent */
@@ -97,7 +83,7 @@ export function noteNudgeMessage(now = Date.now()): void {
 }
 /** starts a showing when one is due; true when it did */
 export function takeNudge(now = Date.now()): boolean {
-  if (showing || sitsOut) return false;
+  if (showing) return false;
   const day = read(now);
   if (!nudgeDue(day, now)) return false;
   write({ ...day, shown: day.shown + 1, lastShownAt: now, open: true });
@@ -105,11 +91,10 @@ export function takeNudge(now = Date.now()): boolean {
   changed();
   return true;
 }
-/** closed (`dismissed`) or clicked: this showing is over; a dismissal makes the card rest */
-export function endNudge(dismissed = false, now = Date.now()): void {
+/** closed or clicked: this showing is over, and Give feedback comes back until the next one */
+export function endNudge(now = Date.now()): void {
   if (!showing) return;
   showing = false;
-  const day = read(now);
-  write(dismissed ? resting(day, now) : { ...day, open: false });
+  write({ ...read(now), open: false });
   changed();
 }

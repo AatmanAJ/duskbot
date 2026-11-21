@@ -17,6 +17,8 @@ import { CloudCard, MoveGuide } from "./cloud-card";
 import { Activity } from "./activity";
 import { CloudHero } from "./cloud-offer";
 import { LoadError } from "./common";
+import { RecentEmpty, StatTiles, WeekStrip } from "./home-stats";
+import { homeStats } from "../data/week";
 
 const ORDER: Record<BotMood, number> = { working: 0, waking: 1, idle: 2, drowsy: 3, sleeping: 4 };
 const DOT: Record<BotMood, string> = { working: "text-good", waking: "text-warn", idle: "text-accent", drowsy: "text-ink-4", sleeping: "text-ink-4" };
@@ -87,9 +89,9 @@ function Tile({ icon, tint, title, body, to, external }: { icon: ReactNode; tint
 function Recent({ rows: all }: { rows: BotRow[] }) {
   const now = useNow();
   const rows = useMemo(() => all.filter((r) => r.bot.lastActiveAt).sort((a, b) => Number(b.bot.busy) - Number(a.bot.busy) || (b.bot.lastActiveAt ?? 0) - (a.bot.lastActiveAt ?? 0)).slice(0, 5), [all]);
-  if (!rows.length) return null;
+  if (!rows.length) return <RecentEmpty />;
   return (
-    <Card className="enter !p-3" style={{ ["--i" as string]: 4 }} aria-labelledby="recent-title">
+    <Card className="enter !p-3" style={{ ["--i" as string]: 7 }} aria-labelledby="recent-title">
       <h2 id="recent-title" className="px-3 pb-1 pt-2 text-16 font-medium tracking-[-0.02em] text-ink">who ran last</h2>
       <ul className="px-3">
         {rows.map(({ bot, where, mood }) => (
@@ -112,14 +114,15 @@ function Recent({ rows: all }: { rows: BotRow[] }) {
 
 export function HomePage() {
   const { account, detail } = useSession();
-  const { account: profile, clouds, error, refresh } = useCloud();
-  const { bots, loading } = useAccountUsage();
+  const { account: profile, clouds, connections, error, refresh } = useCloud();
+  const { bots, sources, loading } = useAccountUsage();
   const now = useNow(60_000);
   const name = profile?.profile.name || account?.name || account?.email.split("@")[0] || "";
   const cloud = clouds?.[0] ?? null;
   const cloudDetail = useWorkspaceDetail(cloud?.workspaceId ?? null);
   useEffect(() => { if (bots.length) cheerOnce(account?.id, "first-bot", "your first bot is here. say hi in the app."); }, [bots.length > 0, account?.id]);
   useEffect(() => { if (cloud?.status === "running") cheerOnce(account?.id, "first-cloud", `${cloud.name} is up. your bots never sleep now.`, { confetti: true }); }, [cloud?.status, account?.id]);
+  const stats = useMemo(() => homeStats(sources, bots, connections, now), [sources, bots, connections, now]);
   const crew = cloud ? null : bots.length ? <Crew rows={bots} /> : loading ? <Skeleton className="h-[200px] !rounded-card" /> : <CrewEmpty />;
   return (
     <div>
@@ -133,13 +136,17 @@ export function HomePage() {
         {clouds !== null && <>
           {cloud && <MoveGuide cloud={cloud} rows={bots} cloudBots={cloudDetail?.report?.bots ?? null} />}
           {crew}
-          <div className="enter grid grid-cols-3 gap-4 max-md:grid-cols-1 max-sm:gap-3" style={{ ["--i" as string]: 2 }}>
+          {loading && !bots.length ? <Skeleton className="h-[176px] !rounded-card" /> : <>
+            <StatTiles stats={stats} />
+            <WeekStrip stats={stats} />
+          </>}
+          <div className="enter grid grid-cols-3 gap-4 max-md:grid-cols-1 max-sm:gap-3" style={{ ["--i" as string]: 5 }}>
             <Tile tint="sky" icon={<Download {...ICON} />} title="get the app" body="make bots and chat with them." to={DOWNLOAD_URL} external />
             <Tile tint="rose" icon={<Smartphone {...ICON} />} title="link your phone" body="text your bots from anywhere." to="/account#devices" />
             <Tile tint="lemon" icon={<LayoutGrid {...ICON} />} title="apps" body="gmail, slack, github and more." to="/connectors" />
           </div>
           {/* a year of empty squares says nothing to someone with no bots yet; it shows once there is anything to fill it */}
-          {(detail?.report?.activity || bots.length > 0) && <Activity detail={detail?.report?.activity ? detail : null} now={now} className="enter" style={{ ["--i" as string]: 3 }} />}
+          {(detail?.report?.activity || bots.length > 0) && <Activity detail={detail?.report?.activity ? detail : null} now={now} className="enter" style={{ ["--i" as string]: 6 }} />}
           <Recent rows={bots} />
         </>}
       </div>
