@@ -4,8 +4,6 @@ import { availableTools } from "./drivers/agents-catalog.ts";
 import { soulSystemPrompt } from "./bot-folder.ts";
 import { BUILT_IN_BROWSER_SYSTEM_PROMPT } from "./browser-engine.ts";
 import {
-  AUTOMATION_REPLY_PROMPT,
-  ROUTINE_EXECUTION_PROMPT,
   SANDBOX_ESCALATION_PROMPT,
   longCommandsPrompt,
   buildSystemPrompt,
