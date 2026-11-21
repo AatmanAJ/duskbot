@@ -42,7 +42,8 @@ describe("duskbot command line", () => {
     expect(parseArgs(["logout"], {})).toMatchObject({ command: "logout" });
     expect(parseArgs(["browser", "install", "--with-deps"], {})).toMatchObject({ command: "browser", browserAction: "install", withDeps: true });
     expect(parseArgs(["browser", "status"], {})).toMatchObject({ command: "browser", browserAction: "status" });
-    expect(parseArgs(["browser"], {})).toEqual({ error: "browser needs an action: install or status" });
+    expect(parseArgs(["browser", "setup"], {})).toMatchObject({ command: "browser", browserAction: "setup" });
+    expect(parseArgs(["browser"], {})).toEqual({ error: "browser needs an action: install, status or setup" });
     expect(parseArgs(["serve", "--tailscale", "--tunnel"], {})).toEqual({ error: "choose one of --tailscale (your tailnet) and --tunnel (a public address)" });
     expect(parseArgs(["access", "add", "her@example.test", "--chat-only"], {})).toMatchObject({ command: "access", accessAction: "add", email: "her@example.test", chatOnly: true });
     expect(parseArgs(["access", "list"], {})).toMatchObject({ command: "access", accessAction: "list" });
@@ -144,7 +145,7 @@ describe("duskbot command line", () => {
     const port = workerPort(21000, 9000);
     const child = spawn(process.execPath, ["--experimental-strip-types", join(SERVER_DIR, "duskbot.ts"), "serve", "--port", String(port), "--data-dir", join(home, "data"), "--label", "cli test", "--public-url", "https://mini.example"], {
       cwd: join(SERVER_DIR, ".."),
-      env: { PATH: process.env.PATH ?? "", HOME: home, USERPROFILE: home, DUSK_WEBHOOK_PORT: String(port + 1), DUSK_BROWSER_CONNECTION: join(home, "browser-connection.json") },
+      env: { PATH: dirname(process.execPath), DUSK_TEST_SEALED_PATH: "1", HOME: home, USERPROFILE: home, DUSK_WEBHOOK_PORT: String(port + 1), DUSK_BROWSER_CONNECTION: join(home, "browser-connection.json") },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let out = "";
@@ -386,7 +387,7 @@ describe.skipIf(process.platform === "win32")("serve --tunnel", () => {
   const cli = (args: string[], env: NodeJS.ProcessEnv) =>
     spawn(process.execPath, ["--experimental-strip-types", join(SERVER_DIR, "duskbot.ts"), ...args], {
       cwd: join(SERVER_DIR, ".."),
-      env: { PATH: process.env.PATH ?? "", ...env },
+      env: { PATH: [dirname(process.execPath), "/usr/bin", "/bin"].join(":"), DUSK_TEST_SEALED_PATH: "1", ...env },
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -540,7 +541,7 @@ describe.skipIf(process.platform === "win32")("serve --domain", () => {
     const port = workerPort(21000, 9000);
     const child = spawn(process.execPath, ["--experimental-strip-types", join(SERVER_DIR, "duskbot.ts"), "serve", "--domain", "dusk.example.test", "--port", String(port), "--data-dir", dataDir], {
       cwd: join(SERVER_DIR, ".."),
-      env: { PATH: process.env.PATH ?? "", HOME: home, USERPROFILE: home, DUSK_WEBHOOK_PORT: String(port + 1), DUSK_BROWSER_CONNECTION: join(home, "browser-connection.json"), DUSK_CADDY_PATH: fake },
+      env: { PATH: [dirname(process.execPath), "/usr/bin", "/bin"].join(":"), DUSK_TEST_SEALED_PATH: "1", HOME: home, USERPROFILE: home, DUSK_WEBHOOK_PORT: String(port + 1), DUSK_BROWSER_CONNECTION: join(home, "browser-connection.json"), DUSK_CADDY_PATH: fake },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let out = "";

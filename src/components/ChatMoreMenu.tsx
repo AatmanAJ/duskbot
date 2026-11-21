@@ -11,6 +11,8 @@ import {
 } from "@/lib/export-transcript";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
+import { answeringModelName } from "@/lib/simple-model-menu";
+import { answeringModel } from "@/lib/thread-backup";
 import { ELEVATED_CONTROL, ELEVATED_HOVER, ELEVATED_OPEN } from "./elevated";
 import { ShortcutHint } from "./ShortcutHint";
 import { SidebarPopoverMenu, type SidebarMenuItem } from "./SidebarPopoverMenu";
@@ -31,9 +33,7 @@ export function useChatMoreItems(profile: Bot, phoneHeader = false): { items: Si
   const hasMessages = messages.length > 0;
   const transcript = () => formatTranscriptMarkdown({ title: bot.name, messages, botName: bot.name, isGroup: false });
   const selection = profile.modelSelection;
-  const modelName = phoneHeader && selection
-    ? state.instances.find((candidate) => candidate.instanceId === selection.instanceId)?.models.options.find((option) => option.id === selection.model)?.label ?? selection.model
-    : "";
+  const modelName = phoneHeader && selection ? answeringModelName(state.instances, answeringModel(profile, bot.threadId, selection)) : "";
   // On a phone the header drops the profile pill's click target, the model chip and the Bot's screen button; they live here.
   const phoneItems: SidebarMenuItem[] = phoneHeader ? [
     {

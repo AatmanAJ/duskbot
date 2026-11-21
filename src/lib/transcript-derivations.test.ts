@@ -1,7 +1,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { Message } from "@/state/store";
 import { formatTime } from "@/state/store";
-import { setLocale, t } from "./i18n";
+import { activeLocale, setLocale, t } from "./i18n";
+import { deviceHourCycle } from "./format-time";
 import { dayLabel, localDay, transcriptLookups } from "./transcript-derivations";
 
 // The per-row code these replace, kept here as the reference.
@@ -85,10 +86,10 @@ describe("transcriptLookups", () => {
 });
 
 describe("formatTime", () => {
-  it("says what toLocaleTimeString said, in the browser's own locale", () => {
-    const options = { hour: "numeric", minute: "2-digit" } as const;
+  it("writes the time in the app's language on the device's own 12 or 24 hour clock", () => {
+    const options = { hour: "numeric", minute: "2-digit", hourCycle: deviceHourCycle() } as const;
     for (const at of [0, 1_700_000_000_000, Date.UTC(2026, 2, 8, 6, 59), Date.UTC(2026, 9, 3, 23, 30), Date.now()]) {
-      expect(formatTime(at)).toBe(new Date(at).toLocaleTimeString([], options));
+      expect(formatTime(at)).toBe(new Date(at).toLocaleTimeString(activeLocale(), options));
     }
   });
 });

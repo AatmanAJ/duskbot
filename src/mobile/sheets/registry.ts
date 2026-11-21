@@ -7,7 +7,6 @@ import { CreateBotSheet } from "./CreateBotSheet";
 import { RoutinesSheet } from "./RoutinesSheet";
 import { ConnectorsSheet } from "./ConnectorsSheet";
 import { VaultSheet } from "./VaultSheet";
-import { LinkSheet } from "./LinkSheet";
 
 /** What every sheet page receives. A page renders its own `Sheet` so it chooses its height and header. */
 export interface SheetPageProps<K extends MobileSheet["kind"] = MobileSheet["kind"]> {
@@ -26,5 +25,4 @@ export const SHEET_PAGES: Partial<{ [K in MobileSheet["kind"]]: ComponentType<Sh
   routines: RoutinesSheet,
   connectors: ConnectorsSheet,
   vault: VaultSheet,
-  link: LinkSheet,
 };
