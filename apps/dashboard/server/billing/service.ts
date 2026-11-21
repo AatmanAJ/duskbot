@@ -19,7 +19,12 @@ export class BillingError extends Error {
   status: number; code: BillingErrorCode; url?: string | null; blockers?: DeletionBlocker[];
   constructor(status: number, code: BillingErrorCode, url?: string | null) { super(code); this.status = status; this.code = code; if (url !== undefined) this.url = url; }
 }
+/** which failed charges are charged again on PAYMENT_RETRY_DAYS (DUSK_BILLING_RETRY): none, only plans that were paid
+ *  before, or trial-end charges too */
+export type PaymentRetryMode = "off" | "paid" | "all";
 export interface BillingServiceOptions {
+  /** default off */
+  retry?: PaymentRetryMode;
   store: BillingStore; provider: BillingProvider; clouds: CloudsService; config?: BillingConfig; publicUrl: string; now?: () => number; random?: (bytes: number) => string;
   /** told after a change is stored: an email goes out for each; never throws into billing */
   notify?: (notice: BillingNotice) => void;
@@ -833,8 +838,9 @@ export function createBillingService(options: BillingServiceOptions) {
   /** charges a failed renewal again on PAYMENT_RETRY_DAYS while its plan waits for a fix; a charge that goes through
    *  arrives as the provider's subscription.active, the same as a fixed card */
   let retrying = false;
+  const retryMode: PaymentRetryMode = options.retry ?? "off";
   async function retryPayments() {
-    if (!provider.retryPayment || retrying) return { sent: 0 };
+    if (!provider.retryPayment || retrying || retryMode === "off") return { sent: 0 };
     retrying = true; let sent = 0;
     try {
       const due = state.subscriptions.filter(sub => retryDue(sub) !== null);
@@ -859,6 +865,7 @@ export function createBillingService(options: BillingServiceOptions) {
   function retryDue(sub: StoredSubscription) {
     const problem = sub.paymentProblem, attempt = problem?.retries ?? 0;
     if (sub.status !== "payment_problem" || !problem || sub.cancelAtPeriodEnd || !sub.providerSubscriptionId || closureFor(sub.accountId)) return null;
+    if (retryMode === "off" || retryMode === "paid" && (problem.trial || unpaidTrial(sub))) return null;
     if (attempt >= PAYMENT_RETRY_DAYS.length || now() >= problem.fixBy || now() < problem.since + PAYMENT_RETRY_DAYS[attempt] * day) return null;
     // retries stay spaced from the last one sent, even when several are past due
     if (attempt > 0 && problem.retriedAt !== undefined && now() < problem.retriedAt + (PAYMENT_RETRY_DAYS[attempt] - PAYMENT_RETRY_DAYS[attempt - 1]) * day) return null;

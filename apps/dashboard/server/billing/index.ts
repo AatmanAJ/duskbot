@@ -150,7 +150,9 @@ export function createBilling(options: BillingOptions) {
   const store = createBillingStore(options.dataDir);
   billingStore = store;
   const mode = billingProvider === "dodo" && dodoMode === "live" ? "live" as const : "test" as const;
-  const service = createBillingService({ store, provider, clouds, config, publicUrl: url.origin, now, notify: options.notify, onLedger: options.onLedger, onRetention: options.onRetention, mode });
+  const retry = env.DUSK_BILLING_RETRY ?? "off";
+  if (retry !== "off" && retry !== "paid" && retry !== "all") throw new Error("Invalid DUSK_BILLING_RETRY.");
+  const service = createBillingService({ store, provider, clouds, config, publicUrl: url.origin, now, notify: options.notify, onLedger: options.onLedger, onRetention: options.onRetention, mode, retry });
   if (options.accountExists) service.scrubDeleted(options.accountExists);
   // a deleted account's clouds left over from before (or by a failed step) are destroyed at start, then every 10 minutes
   service.destroyDeleted();
