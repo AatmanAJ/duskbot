@@ -1,0 +1,97 @@
+{
+  "about": "A send the server refuses while the next message is being typed, then a reload. The refusal is a stand-in: for the capture the page's fetch is wrapped so that POST .../messages answers 400 'The server could not take this message' after 2.5 seconds; the reload removes the wrap, so the Retry is a real send. Before is the base of the pull request, after is its branch.",
+  "entry": "threads",
+  "color": "orange",
+  "reducedMotion": false,
+  "width": 1440,
+  "height": 600,
+  "scale": 2,
+  "script": [
+    {
+      "text": "Done."
+    }
+  ],
+  "steps": [
+    {
+      "click": "Close question"
+    },
+    {
+      "waitMs": 400
+    },
+    {
+      "click": "Message Pepper"
+    },
+    {
+      "type": {
+        "name": "Message Pepper",
+        "text": "Book the 9am train to Leeds on Thursday"
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "settle": 60
+    },
+    {
+      "eval": "(() => { const real = window.fetch; window.fetch = (input, init) => { const url = new URL(typeof input === 'string' ? input : input.url, location.href); if ((init?.method ?? 'GET') === 'POST' && url.pathname.endsWith('/messages')) return new Promise((done) => setTimeout(() => done(new Response(JSON.stringify({ error: 'The server could not take this message' }), { status: 400, headers: { 'content-type': 'application/json' } })), 2500)); return real(input, init); }; return true; })()"
+    },
+    {
+      "type": {
+        "name": "Message Pepper",
+        "text": "Move Friday's standup to 10:30"
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "waitMs": 400
+    },
+    {
+      "type": {
+        "name": "Message Pepper",
+        "text": "And let the team know"
+      }
+    },
+    {
+      "waitFor": "document.body.innerText.includes('Not sent')"
+    },
+    {
+      "waitMs": 800
+    },
+    {
+      "shot": "f01-failed",
+      "only": "after"
+    },
+    {
+      "reload": true
+    },
+    {
+      "waitMs": 1500
+    },
+    {
+      "shot": true
+    },
+    {
+      "shot": "f02-after-reload",
+      "only": "after"
+    },
+    {
+      "click": "Retry",
+      "only": "after"
+    },
+    {
+      "settle": 60,
+      "only": "after"
+    },
+    {
+      "waitMs": 800,
+      "only": "after"
+    },
+    {
+      "shot": "retried",
+      "only": "after"
+    }
+  ]
+}

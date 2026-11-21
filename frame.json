@@ -1,5 +1,7 @@
 {
-  "pr-37.before-after.png": { "arrange": "auto", "crop": ["0,16,1040,264", null] },
-  "pr-37.before.png": { "crop": "0,16,1040,264" },
-  "pr-37.retried.png": { "crop": "0,22,1040,258" }
+  "pr-37.before-after.png": { "arrange": "auto", "crop": "364,0,1000,600" },
+  "pr-37.before.png": { "crop": "364,0,1000,600" },
+  "pr-37.after.png": { "crop": "364,0,1000,600" },
+  "pr-37.retried.png": { "crop": "364,0,1000,600" },
+  "pr-37.gif": { "crop": "364,0,1000,600", "labels": ["the send fails", "after a reload"], "hold": 1800 }
 }
