@@ -37,12 +37,12 @@ export function ComposerSendButton({ compact, waits, label, title, look, disable
       onClick={(event) => onSend(event.metaKey || event.ctrlKey)}
       disabled={disabled}
       aria-label={label}
-      data-composer-send=""
+      data-composer-send={waits ? "waits" : ""}
       title={menu && alternate ? t("composer.followUp.buttonTitle", { title, key: menu.alternateKey, alternate: t(`composer.followUp.${alternate}`) }) : title}
       style={waits ? undefined : look.style}
       className={cn(
         "flex shrink-0 items-center justify-center rounded-full disabled:cursor-default",
-        compact ? "composer-press size-7" : "size-8 max-md:size-10",
+        compact ? "composer-press size-7" : "size-8",
         waits ? "bg-raised text-ink-secondary hover:bg-raised-hover" : look.className,
       )}
     >

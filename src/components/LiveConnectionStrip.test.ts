@@ -29,10 +29,16 @@ it("says the app is reconnecting once the live stream has been down for a moment
   expect(container.textContent).toBe("");
 });
 
-it("says the device is offline at once", () => {
-  draw(true);
+it("says the device is offline at once when the stream is down", () => {
+  draw(false);
   act(() => { window.dispatchEvent(new Event("offline")); });
   expect(container.textContent).toContain(t("liveConnection.offline"));
   act(() => { window.dispatchEvent(new Event("online")); });
+  expect(container.textContent).toBe("");
+});
+
+it("trusts a live stream over a browser that thinks it is offline", () => {
+  draw(true);
+  act(() => { window.dispatchEvent(new Event("offline")); });
   expect(container.textContent).toBe("");
 });
