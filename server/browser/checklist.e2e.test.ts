@@ -29,13 +29,14 @@ interface Status {
 suite("the bots' browser service on real Chrome", () => {
   let fx: FixtureServer;
   let real: RealService;
+  const signingIn = new Set<string>();
   let files: string;
   let bots = 0;
 
   beforeAll(async () => {
     fx = await FixtureServer.start();
     files = mkdtempSync(join(testRoot(), "dusk-checklist-files-"));
-    real = await startService();
+    real = await startService({ signingIn: (session) => signingIn.has(session) });
   }, hostTimeout(240_000));
 
   afterAll(async () => {
@@ -190,21 +191,52 @@ suite("the bots' browser service on real Chrome", () => {
     await viewer.close();
   }, hostTimeout(90_000));
 
-  it("refuses every bot call while a person holds the browser, and takes them again after hand-back", async () => {
+  it("lets the bot work in another tab while a person holds one, without moving their view, and holds calls on theirs", async () => {
     const target = bot();
-    await real.call(target, "agent_browser_open", { url: page("/held", "<p>held</p>") });
+    await real.call(target, "agent_browser_open", { url: page("/held", "<p>held</p><button onclick=\"document.title='pressed'\">Press</button>") });
     const viewer = await real.service.attachViewer(target, { owner: "local-owner", canOperate: true, maxWidth: 1280, maxHeight: 800 }, (output) => {
       if (output.type === "frame") output.ack();
     });
     await viewer.input({ type: "takeControl" });
-    expect(real.service.heldBy(target.session)).not.toBeNull();
-    for (const name of ["agent_browser_status", "agent_browser_snapshot", "agent_browser_eval"]) {
-      await expect(real.call(target, name, name === "agent_browser_eval" ? { expression: "1" } : {})).rejects.toThrow(BROWSER_CONTROL_REFUSAL);
-    }
+    expect(viewer.controlState().heldTabs).toEqual(["t1"]);
+    const other = page("/beside", `<input id="q"><button onclick="document.title='searched ' + document.querySelector('#q').value">Search</button>`);
+    expect(real.text(await real.call(target, "agent_browser_tabs", { action: "new", url: other }))).toContain("Opened t2");
+    await real.call(target, "agent_browser_fill", { selector: "#q", text: "lamps" });
+    expect(real.text(await real.call(target, "agent_browser_click", { selector: "button" }))).toContain("Clicked");
+    expect(await real.read<string>(target, "document.title")).toBe("searched lamps");
+    expect(real.text(await real.call(target, "agent_browser_snapshot"))).toContain(`button "Search"`);
+    // the person's view never left their tab
+    expect(real.service.profile(target).active()?.id).toBe("t1");
+    expect(await real.peek<string>(target, "document.visibilityState")).toBe("visible");
+    const held = real.call(target, "agent_browser_click", { tab: "t1", selector: "button" }).catch((error: unknown) => error);
+    await new Promise((resolve) => setTimeout(resolve, 600));
     await viewer.input({ type: "releaseControl" });
+    expect(String(await held)).toContain("The person used tab t1 while this call waited");
+    expect(await real.read<string>(target, "document.title")).toBe("searched lamps");
     expect(real.service.heldBy(target.session)).toBeNull();
     expect((await real.call(target, "agent_browser_status")).isError).toBeUndefined();
     await viewer.close();
+  }, hostTimeout(90_000));
+
+  it("refuses every bot call while a person answers the bot's own sign-in request", async () => {
+    const target = bot();
+    signingIn.add(target.session);
+    try {
+      await real.call(target, "agent_browser_open", { url: page("/signing-in", "<p>sign in</p>") });
+      const viewer = await real.service.attachViewer(target, { owner: "local-owner", canOperate: true, maxWidth: 1280, maxHeight: 800 }, (output) => {
+        if (output.type === "frame") output.ack();
+      });
+      await viewer.input({ type: "takeControl" });
+      for (const name of ["agent_browser_status", "agent_browser_snapshot", "agent_browser_eval"]) {
+        await expect(real.call(target, name, name === "agent_browser_eval" ? { expression: "1" } : {})).rejects.toThrow(BROWSER_CONTROL_REFUSAL);
+      }
+      signingIn.delete(target.session);
+      await viewer.input({ type: "releaseControl" });
+      expect((await real.call(target, "agent_browser_status")).isError).toBeUndefined();
+      await viewer.close();
+    } finally {
+      signingIn.delete(target.session);
+    }
   }, hostTimeout(90_000));
 
   it("restarts on one blank tab and keeps sign-ins", async () => {

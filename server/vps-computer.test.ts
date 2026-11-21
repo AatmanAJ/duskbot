@@ -57,11 +57,12 @@ import {
   vpsUnavailableHint,
   inspectVpsForAuto,
   reuseVps,
+  vpsTransportTiming,
   type VpsCommandRunner,
 } from "./vps-computer.ts";
 
 // these fixtures are the Cua XFCE desktop; the bot desktop has its own in bot-desktop.test.ts
-beforeAll(() => { vi.stubEnv("DUSK_VPS_DESKTOP", "cua"); });
+beforeAll(() => { vi.stubEnv("DUSK_VPS_DESKTOP", "cua"); vpsTransportTiming.retryDelays = [0, 0]; });
 afterAll(() => { vi.unstubAllEnvs(); });
 
 const BOT_ID = "bot-1234-abcd";
@@ -587,7 +588,7 @@ esac
     const stop = fixture();
     const stopped = await vpsComputerAction("stop", CONFIG, BOT_ID, stop.runner);
     expect(stopped.container).toBe("stopped");
-    expect(stop.calls.some(({ args }) => args[2] === "stop" && args[3] === CONTAINER_ID)).toBe(true);
+    expect(stop.calls.some(({ args }) => args[2] === "stop" && args.slice(3).join(" ") === `--time 10 ${CONTAINER_ID}`)).toBe(true);
     expect(stop.calls.some(({ args }) => ["rm", "system", "reboot", "shutdown"].includes(args[2]!))).toBe(false);
   });
 
@@ -1126,9 +1127,9 @@ esac
     const status = await vpsComputerStatus(CONFIG, BOT_ID, flaky);
     expect(status.daemonUp).toBe(false);
     expect(status.ready).toBe(false);
-    expect(status.problem).toMatch(/Docker over SSH failed while checking the VPS/);
+    expect(status.problem).toMatch(/The VPS didn't answer in time/);
 
-    await expect(vpsComputerAction("provision", CONFIG, BOT_ID, flaky)).rejects.toThrow(/Docker over SSH failed/);
+    await expect(vpsComputerAction("provision", CONFIG, BOT_ID, flaky)).rejects.toThrow(/The VPS didn't answer in time/);
     expect(fake.calls.some(({ args }) => args[2] === "run")).toBe(false);
 
     const imageFlaky: VpsCommandRunner = async (args, options) => {
@@ -1137,7 +1138,34 @@ esac
     };
     const imageStatus = await vpsComputerStatus(CONFIG, BOT_ID, imageFlaky);
     expect(imageStatus.daemonUp).toBe(false);
-    expect(imageStatus.problem).toMatch(/Docker over SSH failed while checking the VPS/);
+    expect(imageStatus.problem).toBe("The VPS's Docker can't be reached over SSH right now. Check that the VPS is online and Docker is running on it, then try again.");
+  });
+
+  const GATE_EOF = 'error during connect: Get "http://%2Frun%2Fopenmausbot-docker%2Fdocker.sock/v1.56/images/ghcr.io/duskbotai/dusk-desktop:v6/json": EOF';
+
+  it("rides out a docker gate that drops the connection (EOF) twice, then answers", async () => {
+    const fake = fixture();
+    let drops = 0;
+    const runner: VpsCommandRunner = async (args, options) => {
+      if (args[2] === "image" && drops < 2) { drops++; throw new Error(GATE_EOF); }
+      return fake.runner(args, options);
+    };
+    const status = await vpsComputerStatus(CONFIG, BOT_ID, runner);
+    expect(drops).toBe(2);
+    expect(status.daemonUp).toBe(true);
+    expect(status.ready).toBe(true);
+  });
+
+  it("says a docker gate that keeps dropping connections in one plain sentence, never the raw socket error", async () => {
+    const fake = fixture();
+    const runner: VpsCommandRunner = async (args, options) => {
+      if (args[2] === "image") throw new Error(GATE_EOF);
+      return fake.runner(args, options);
+    };
+    const status = await vpsComputerStatus(CONFIG, BOT_ID, runner);
+    expect(status.daemonUp).toBe(false);
+    expect(status.problem).not.toMatch(/%2F|docker\.sock|EOF|error during connect|openmausbot/);
+    expect(status.problem).toMatch(/^The VPS's Docker can't be reached/);
   });
 
   it.each(["image", "inspect"])("recovers one transient %s inspection failure without recreating the computer", async (command) => {
@@ -1155,9 +1183,9 @@ esac
   it("bounds inspection retries and never replays a failed lifecycle command", async () => {
     const unavailable = vi.fn(async () => { throw new Error("Docker-over-SSH command timed out"); });
     const status = await vpsComputerStatus(CONFIG, BOT_ID, unavailable);
-    expect(unavailable).toHaveBeenCalledTimes(4);
+    expect(unavailable).toHaveBeenCalledTimes(6);
     expect(status).toMatchObject({ ready: false, daemonUp: false });
-    expect(status.problem).toContain("Check that the VPS is online");
+    expect(status.problem).toContain("Check that it is online");
 
     const fake = fixture({ running: false });
     let starts = 0;

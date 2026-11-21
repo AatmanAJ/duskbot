@@ -16,7 +16,13 @@ describe("PeerExchangeLine", () => {
     expect(html).toContain('aria-expanded="false"');
     expect(html).toContain('aria-label="Show messages with Ghosty"');
     expect(render({ kind: "single", direction: "outbound", peer: { id: "ghosty", name: "Ghosty" } }, true)).toMatch(/>Messaged<.*aria-expanded="true"/);
-    expect(render({ kind: "single", direction: "inbound", peer: { id: "amy", name: "Amy" } })).toContain(">Message from<");
+  });
+
+  it("draws no line for a teammate's question or the bot's own ask, only Responded to and replied", () => {
+    expect(render({ kind: "single", direction: "inbound", peer: { id: "amy", name: "Amy" } })).toBe("");
+    expect(render({ kind: "single", direction: "outbound", as: "ask", peer: { id: "amy", name: "Amy" } })).toBe("");
+    expect(render({ kind: "single", direction: "outbound", as: "reply", peer: { id: "ghosty", name: "Ghosty" } })).toMatch(/data-peer-exchange="reply".*>Responded to<.*>Ghosty</);
+    expect(render({ kind: "single", direction: "inbound", as: "answer", peer: { id: "amy", name: "Amy" } })).toMatch(/>Amy<.*>replied</);
   });
 
   it("names two bots with and, and counts three or more", () => {

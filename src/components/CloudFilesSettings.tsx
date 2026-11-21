@@ -10,6 +10,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { Card, Switch } from "./SettingsPrimitives";
 import { MENU_SHEET } from "./menu-recipe";
 import { friendlyError } from "@/lib/plain-error";
+import { ArtState } from "./ui/Art";
 
 const REFUSAL: Record<string, LocaleKey> = {
   "too-broad": "files.refusal.tooBroad", "app-data": "files.refusal.appData", "already-shared": "files.refusal.alreadyShared",
@@ -80,7 +81,7 @@ function FilesSection({ bridge }: { bridge: CloudFilesBridge }) {
           ? <ul className="flex w-full flex-col divide-y divide-transparent">
             {state.shared.map((folder) => <FolderRow key={folder.id} folder={folder} bridge={bridge} busy={busy} run={run} onStop={() => setAsk({ kind: "stop", folder })} />)}
           </ul>
-          : <p className="text-[13px] text-ink-secondary">{t("files.empty")}</p>}
+          : <ArtState data-art-state="files" art="parcel" title={t("empty.files.title")} className="w-full py-4">{t("empty.files.hint")}</ArtState>}
         <button type="button" disabled={busy} className="ui-button"
           onClick={() => void run(async () => { const check = await bridge.pickFolder(); if (check) setAsk({ kind: "share", check }); })}>{t("files.add")}</button>
         {state.disk && <Storage disk={state.disk} busy={busy} onMore={moreSpace} />}

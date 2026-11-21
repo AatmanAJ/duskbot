@@ -73,10 +73,10 @@ export function remoteClipboardWriteAllowed(permission, requestingUrlOrOrigin, a
  *   homeOrigin?: () => string | null }} context
  *   Every getter is read per request, so a sign-out or server switch withdraws access at once. `homeOrigin`: My Cloud
  *   once the person's bots moved there (home-window.mjs), whose page alone may show notifications besides this
- *   computer's and the active remote server's.
+ *   computer's and the active remote server's. `systemNotifications`: false on a Mac, where no page may post one.
  */
 export function appPermissionHandlers({ rendererOrigin, mainContents, cloudHomeOrigin, cloudHomeRestoring = () => null, activeRemoteOrigin = () => null,
-  activeRemoteMicrophone = () => false, askRemoteMicrophone = () => null, homeOrigin = () => null }) {
+  activeRemoteMicrophone = () => false, askRemoteMicrophone = () => null, homeOrigin = () => null, systemNotifications = true }) {
   // Notifications for the main window's main frame on `origin`: My Cloud as home, or the remote server the person
   // switched to (Settings → Notifications there has no browser site settings to fall back on).
   // Fullscreen too, so a chat video's own fullscreen button works there (it still needs the person's click).
@@ -93,13 +93,13 @@ export function appPermissionHandlers({ rendererOrigin, mainContents, cloudHomeO
     Boolean(contents) && contents === mainContents() &&
     (remoteClipboardWriteAllowed(permission, requesting, activeRemoteOrigin(), details) ||
       remoteClipboardWriteAllowed(permission, requesting, cloudHomeOrigin(), details));
-  const allowed = (contents, permission, requesting, details) =>
+  const allowed = (contents, permission, requesting, details) => (permission !== "notifications" || systemNotifications) && (
     appPermissionAllowed(permission, requesting, rendererOrigin(), details) ||
     (asksAsCloud(contents, permission, requesting, details) && mainFrameMicrophoneAllowed(permission, requesting, cloudHomeOrigin(), details)) ||
     (asksAsRemote(contents, permission, requesting, details) && activeRemoteMicrophone() === true) ||
     clipboardWrite(contents, permission, requesting, details) ||
     notifiesAs(homeOrigin(), contents, permission, requesting, details) ||
-    notifiesAs(activeRemoteOrigin(), contents, permission, requesting, details);
+    notifiesAs(activeRemoteOrigin(), contents, permission, requesting, details));
   return {
     // Only a request may wait (Electron answers through the callback); the rule runs again after any wait.
     request: (contents, permission, callback, details) => {
