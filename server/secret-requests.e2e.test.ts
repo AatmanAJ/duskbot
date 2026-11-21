@@ -4,7 +4,7 @@
 // The file secret is found only in its private file; the ref secret only in the MCP server settings it was saved into.
 import { randomBytes } from "node:crypto";
 import { type ChildProcess, spawn } from "node:child_process";
-import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { createInterface } from "node:readline";
@@ -63,6 +63,7 @@ async function pairOwner(): Promise<string> {
 
 async function proxyFor(start: () => Promise<void>) {
   const dump = join(home, "spawn.json");
+  rmSync(dump, { force: true });
   await start();
   let agents: { command: string; args: string[]; env: Record<string, string> } | undefined;
   await expect.poll(() => {
@@ -153,7 +154,7 @@ it("keeps a file secret and a ref secret out of every record, and the bot uses e
     expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "Set up Stripe test charges and Notion's MCP." })).status).toBe(202);
   });
   const listed = (await tools.list()).tools.find((tool: any) => tool.name === "request_credential");
-  expect(Object.keys(listed.inputSchema.properties)).toEqual(["credential_id", "address", "site", "label", "reason", "placeholder", "delivery", "failed"]);
+  expect(Object.keys(listed.inputSchema.properties)).toEqual(["credential_id", "address", "site", "label", "reason", "placeholder", "delivery", "failed", "pasted_as"]);
   expect(listed.inputSchema.properties.credential_id.enum).toEqual(expect.arrayContaining(["composioApiKey", "openaiApiKey", "anthropicApiKey"]));
   const cards = async () => (await api("GET", `/api/threads/${bot.threadId}/messages`)).body.messages.filter((message: any) => message.kind === "secret");
   // Through a relay the app seals the value for this server first: the request never carries it in the clear.
@@ -237,4 +238,35 @@ it("keeps a file secret and a ref secret out of every record, and the bot uses e
     expect(where).not.toContain(REF_CANARY);
     expect(where).not.toContain(VAULT_CANARY);
   }
+}, hostTimeout(60_000));
+
+it("takes a value the person pasted in chat straight to the Vault with no card, and still asks for one they did not", async () => {
+  const PASTED = `xa_PASTEDCANARY${randomBytes(12).toString("hex")}`;
+  const bot = (await api("POST", "/api/bots", { name: "Rigger", modelSelection: { instanceId: "claude", model: "claude-sonnet-5" } })).body.bot;
+  const tools = await proxyFor(async () => {
+    expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: `Connect xactions for me.\nNITTER_URL=https://nitter.example.test\nXACTIONS_TOKEN=${PASTED}` })).status).toBe(202);
+  });
+  const cards = async () => (await api("GET", `/api/threads/${bot.threadId}/messages`)).body.messages.filter((message: any) => message.kind === "secret");
+
+  const took = await tools.call("request_credential", { label: "xactions token", reason: "For the xactions MCP server.", delivery: "ref", pasted_as: "XACTIONS_TOKEN" });
+  expect(took.isError).toBe(false);
+  expect(took.text).toMatch(/^dusk bot took xactions token from the person's own message, so no card was needed, and saved it to their Vault\./u);
+  expect(took.text).toContain("Continue the task.");
+  expect(took.text).not.toContain(PASTED);
+  expect(await cards()).toEqual([]);
+  expect((await api("GET", "/api/saved-secrets")).body.secrets).toEqual(expect.arrayContaining([expect.objectContaining({ label: "xactions token", bots: [bot.id] })]));
+
+  // the turn goes on: the ref works in mcp_server
+  const ref = /secret-ref:[0-9a-f]{32}/u.exec(took.text)?.[0];
+  expect(ref, took.text).toBeDefined();
+  const added = await tools.call("mcp_server", { action: "add", name: "xactions", url: "https://xactions.example.test/mcp", headers: { Authorization: `Bearer ${ref}` } });
+  expect(added.isError, added.text).toBe(false);
+  expect(JSON.parse(readFileSync(join(home, ".duskbot", "config.json"), "utf8")).mcpServers.xactions.headers).toEqual({ Authorization: `Bearer ${PASTED}` });
+
+  // nothing pasted under that name: the secure card, as before
+  const asked = await tools.call("request_credential", { label: "Hindsight token", reason: "For Hindsight memory.", delivery: "ref" });
+  expect(asked.text).toMatch(/^A secure card for Hindsight token is now in this conversation/u);
+  expect((await cards()).map((card: any) => card.secret.label)).toEqual(["Hindsight token"]);
+
+  for (const where of [...said.filter((text) => !text.includes("Connect xactions for me.")), log]) expect(where).not.toContain(PASTED);
 }, hostTimeout(60_000));

@@ -8,12 +8,15 @@ const overlays = new WeakSet();
 export const SETTLE_WAIT_MS = 1_000;
 export const isAmbientWindow = win => Boolean(win) && overlays.has(win);
 const PRELOAD = fileURLToPath(new URL("./ambient-preload.cjs", import.meta.url));
+/** How often main reads the pointer for a page that cannot hear it (Linux). */
+export const FEED_POINTER_MS = 50;
 
 /**
  * @param {{ BrowserWindow: any, surface: "island" | "dock", url: () => string | null, level: string,
  *   platform?: string, onMessage: (channel: string, payload: unknown) => void, log?: (line: string) => void }} deps
  */
-export function createAmbientWindow({ BrowserWindow, surface, url, level, platform = process.platform, onMessage, log = () => {}, trace = null, hoverKey = true }) {
+export function createAmbientWindow({ BrowserWindow, surface, url, level, platform = process.platform, onMessage, log = () => {}, trace = null, hoverKey = true,
+  cursor = () => null, feedEveryMs = FEED_POINTER_MS }) {
   let win = null, loaded = false, interactive = false, bounds = null, page = null, keyed = false, typing = false;
   // from the pointer reaching the surface until its page says it has finished closing: nothing moves or resizes the
   // window meanwhile (a new place waits in `held`), so a closing animation always plays out where it started
@@ -76,6 +79,26 @@ export function createAmbientWindow({ BrowserWindow, surface, url, level, platfo
       call("setIgnoreMouseEvents", "true forward", () => win.setIgnoreMouseEvents(true, { forward: true }));
       giveKeyBackOnceSettled();
     }
+  }
+
+  // Electron 43: setIgnoreMouseEvents' `forward` is macOS and Windows only, so on Linux a click-through page never
+  // hears the pointer and its shape never takes a click. There main reads the pointer and hands the page its moves over
+  // the window. X11 only: Wayland tells an app nothing about a pointer outside its own windows.
+  let feeder = null, fedOver = false;
+  function feedPointer() {
+    if (!live() || !loaded || interactive) { fedOver = false; return; }
+    const point = cursor();
+    if (!point) return;
+    const at = win.getBounds(), x = point.x - at.x, y = point.y - at.y;
+    const over = x >= 0 && y >= 0 && x < at.width && y < at.height;
+    if (over) win.webContents.sendInputEvent({ type: "mouseMove", x, y });
+    else if (fedOver) win.webContents.sendInputEvent({ type: "mouseLeave", x: Math.max(-1, Math.min(at.width, x)), y: Math.max(-1, Math.min(at.height, y)) });
+    fedOver = over;
+  }
+  function startFeeding() {
+    if (platform !== "linux" || feeder) return;
+    feeder = setInterval(feedPointer, feedEveryMs);
+    feeder.unref?.();
   }
 
   function create(address) {
@@ -149,12 +172,14 @@ export function createAmbientWindow({ BrowserWindow, surface, url, level, platfo
     });
     target.on("closed", () => { if (win === target) { win = null; loaded = false; } });
     target.loadURL(address).catch(() => {});
+    startFeeding();
     return target;
   }
 
   function close() {
     const target = win;
     clearTimeout(settleWait); settleWait = null;
+    clearInterval(feeder); feeder = null; fedOver = false;
     win = null; loaded = false; interactive = false; page = null; keyed = false; typing = false; settling = false; held = null;
     if (target && !target.isDestroyed()) call("destroy", "", () => target.destroy());
   }

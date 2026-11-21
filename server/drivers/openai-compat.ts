@@ -5,6 +5,8 @@ import { isLoopback } from "../provider-key-check.ts";
 import { lmStudioV1Catalog } from "./local-inject.ts";
 import { isContextName, isOllama, serveWithWindow } from "./ollama-context.ts";
 import { createOpenAIChatRuntime } from "./openai-chat.ts";
+import { geminiEffortLevels, openAiEffortLevels } from "./api-effort.ts";
+import { isOpenAIAddress } from "./openai-responses.ts";
 import {
   freeDefault, freeFallbackCatalog, freeLabel, freeToolModels, freeToolsFirst, isOpenRouterOrigin, openRouterFreeTier,
   withOpenRouterTurns, type OpenRouterModelRow,
@@ -195,6 +197,7 @@ export const OpenAICompatDriver: ProviderDriver<OpenAICompatConfig> = {
       : seeded;
     const openRouter = Boolean(apiKey) && !config.managedModels && isOpenRouterOrigin(config.url);
     const gemini = isGeminiOrigin(config.url);
+    const effortFor = gemini ? geminiEffortLevels : isOpenAIAddress(config.url) ? openAiEffortLevels : undefined;
     const freeTier = () => openRouter ? openRouterFreeTier(apiKey, config.url) : Promise.resolve(null);
 
     const fetchModels = async () => {
@@ -313,6 +316,7 @@ export const OpenAICompatDriver: ProviderDriver<OpenAICompatConfig> = {
       nudgeAnnouncedAction: true,
       models: () => catalog,
       refreshModels: fetchModels,
+      ...(effortFor ? { effort: { levels: ["low", "medium", "high"] as const, forModel: effortFor } } : {}),
       requestBody: (model, messages, stream) => ({
         model,
         messages,

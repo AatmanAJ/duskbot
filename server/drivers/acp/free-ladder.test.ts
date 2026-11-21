@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { ModelCatalog } from "../../contracts.ts";
 import {
-  coolFreeRung, FREE_RUNG_COOL_MS, FREE_RUNG_WARM_MS, freeFailure, freeLadder, freeRungCooling, probeFreeLadder, resetFreeLadder,
+  coolFreeRung, FREE_RUNG_COOL_MS, FREE_RUNG_WARM_MS, freeFailure, freeLadder, freeRungCooling, probeFreeLadder, resetFreeLadder, spannedSuspend,
   warmFreeModel, warmFreeRung,
 } from "./free-ladder.ts";
 
@@ -78,6 +78,42 @@ describe("free model start-up probe", () => {
     expect(picked).toEqual({ model: "opencode/deepseek-v4.1-flash-free" });
     expect(freeRungCooling("opencode/big-pickle")).toBe(true);
     expect(warmFreeModel()).toEqual({ model: "opencode/deepseek-v4.1-flash-free" });
+  });
+
+  it("never cools a model whose probe timed out across a sleep, and asks it once more after", async () => {
+    let wall = 1_000_000;
+    let mono = 0;
+    const tried: string[] = [];
+    const events: Array<{ ok: boolean; suspended?: boolean }> = [];
+    const picked = await probeFreeLadder(ladder, async ({ model }) => {
+      tried.push(model);
+      if (tried.length === 1) {
+        // the screen locked: 589 s on the wall clock, 15 s on the monotonic one, then the probe's timer fired
+        wall += 589_000;
+        mono += 15_000;
+        throw new Error("OpenCode background call timed out");
+      }
+      wall += 900;
+      mono += 900;
+    }, (event) => events.push(event), { now: () => wall, monotonic: () => mono, limitMs: 15_000 });
+    expect(tried).toEqual(["opencode/big-pickle", "opencode/big-pickle"]);
+    expect(picked).toEqual({ model: "opencode/big-pickle" });
+    expect(freeRungCooling("opencode/big-pickle", wall)).toBe(false);
+    expect(events).toEqual([expect.objectContaining({ ok: false, suspended: true }), expect.objectContaining({ ok: true })]);
+  });
+
+  it("still cools a model that timed out while the computer stayed awake", async () => {
+    let wall = 0;
+    let mono = 0;
+    await probeFreeLadder(ladder.slice(0, 1), async () => { wall += 15_200; mono += 15_200; throw new Error("timed out"); }, () => {},
+      { now: () => wall, monotonic: () => mono, limitMs: 15_000 });
+    expect(freeRungCooling("opencode/big-pickle", wall)).toBe(true);
+  });
+
+  it("tells a suspend from a slow call by the two clocks or a far-late timer", () => {
+    expect(spannedSuspend({ wall: 0, mono: 0 }, { wall: 589_000, mono: 15_000 }, 15_000)).toBe(true);
+    expect(spannedSuspend({ wall: 0, mono: 0 }, { wall: 589_000, mono: 589_000 }, 15_000)).toBe(true);
+    expect(spannedSuspend({ wall: 0, mono: 0 }, { wall: 15_300, mono: 15_300 }, 15_000)).toBe(false);
   });
 
   it("stops at the free usage limit every free model shares, and at its rung cap", async () => {

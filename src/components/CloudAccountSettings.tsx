@@ -17,6 +17,7 @@ import { StagingMark } from "./cloud-buy/parts";
 import { CloudSetupSteps } from "./CloudSetupSteps";
 import { useCloudSendNotice } from "./CloudSendStrip";
 import { CloudFilesSettings } from "./CloudFilesSettings";
+import { openAccountDeletion } from "./bot-panel/StartFresh";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
 
 export { cloudPlanLabel };
@@ -302,6 +303,9 @@ export function CloudAccountSettings({ linkRequest = 0, cloudHome = false, teamH
           {!confirm && <button type="button" disabled={busy} className="ui-button" onClick={() => setConfirm(true)}>{t("cloudAccount.signOut")}</button>}
         </div>
         {account.status === "connected" && account.renewal && <CloudCancelPlan renewal={account.renewal} actions={renewal} />}
+        {/* its own explicit action, never part of Start fresh: the account page says it cancels the plan, and asks there */}
+        {account.status === "connected" && !confirm && <p data-cloud-delete-account="" className="text-[12px] text-ink-secondary">{t("cloudAccount.deleteAccountHint")}{" "}
+          <button type="button" disabled={busy} className="underline hover:text-ink" onClick={openAccountDeletion}>{t("cloudAccount.deleteAccount")}</button></p>}
         {view.kind === "free" && !confirm && <p className="text-[12px] text-ink-secondary">{t(window.duskDesktop?.accounts ? "cloudAccount.otherEmailOrTeam" : "cloudAccount.otherEmail")}{" "}
           <button type="button" data-cloud-other-email disabled={busy} className="underline hover:text-ink" onClick={() => (window.duskDesktop?.accounts ? setAddingEmail(true) : setConfirm(true))}>{t(window.duskDesktop?.accounts ? "cloudAccount.addOtherEmail" : "cloudAccount.useOtherEmail")}</button></p>}
         {addingEmail && <AccountsSheet adding="" onClose={() => setAddingEmail(false)} />}

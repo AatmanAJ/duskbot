@@ -271,6 +271,29 @@ describe("independent bot threads", () => {
     expect(state.backgroundThreadEvents.second).toBeUndefined();
   });
 
+  it("keeps the open conversation through a reconnect's snapshot when another device opened a new one", () => {
+    // the phone (or another window) starts a new conversation: the server's open thread moves, this chat stays
+    const fresh = { threadId: "fresh", title: "New conversation", createdAt: 3 };
+    const elsewhere = { ...bot, threadId: "fresh", messages: [], activeLeafId: null, tasks: [fresh, ...bot.tasks!] };
+    let state = reducer(start(), { type: "botPatched", bot: elsewhere });
+    expect(state.bots[0]).toMatchObject({ threadId: "first", messages: bot.messages });
+    // the live stream could not resume (sleep, a server restart): the store reads a whole snapshot again
+    state = reducer(state, { type: "hydrate", bots: [elsewhere], groups: [], computerControl: {}, loadedThreads: ["fresh"] });
+    expect(state.bots[0]).toMatchObject({ threadId: "first", messages: bot.messages, activeLeafId: "first-message", transcriptStale: true });
+    expect(state.bots[0]?.tasks?.map((task) => task.threadId)).toEqual(["fresh", "first", "second"]);
+    // the open conversation's newest page then brings what the stream missed
+    const missed: Message = { id: "missed", role: "bot", kind: "text", text: "While you were away", at: 4, parentId: "first-message" };
+    state = reducer(state, { type: "transcriptSnapshot", threadId: "first", generation: 0, heldAtStart: state.bots[0]!.messages, leafAtStart: "first-message", messages: [...bot.messages, missed], hasMore: false, activeLeafId: "missed" });
+    expect(state.bots[0]).toMatchObject({ threadId: "first", activeLeafId: "missed", transcriptStale: undefined });
+    expect(state.bots[0]?.messages.map((message) => message.id)).toEqual(["first-message", "missed"]);
+  });
+
+  it("follows the server's open conversation on a reconnect once the one on screen was deleted", () => {
+    const fresh = { threadId: "fresh", title: "New conversation", createdAt: 3 };
+    const state = reducer(start(), { type: "hydrate", bots: [{ ...bot, threadId: "fresh", messages: [], activeLeafId: null, tasks: [fresh, bot.tasks![1]!] }], groups: [], computerControl: {}, loadedThreads: ["fresh"] });
+    expect(state.bots[0]).toMatchObject({ threadId: "fresh", messages: [] });
+  });
+
   it("does not undo navigation when a deleted thread's replacement snapshot arrives late", () => {
     const third = { threadId: "third", title: "Third", createdAt: 3 };
     const { messages: _messages, ...slim } = bot;
@@ -1042,6 +1065,12 @@ describe("config status frames", () => {
     expect(status.openai).toEqual({ configured: true, last4: "a1b2" });
     expect(status.box).toEqual({ configured: true, last4: "c3d4" });
     expect(status.savedKeys).toEqual({ ttsKey: { configured: true, last4: "e5f6" }, openaiLiveKey: { configured: false } });
+  });
+
+  it("keeps the computer's name and the new-bot effort through a live config update", () => {
+    const status = configStatusFromFrame({ computerName: "Studio Mac", newBots: { effort: "high" } } as ConfigStatusFrame);
+    expect(status.computerName).toBe("Studio Mac");
+    expect(status.newBots).toEqual({ effort: "high" });
   });
 
   it("keeps thread capacity and room timeout with the existing config fields", () => {

@@ -255,7 +255,8 @@ function runForget(state) {
     serverEnroll: null,
     desktopDataDir: () => "/Users/me/.duskbot",
     slog: () => {},
-    session: { defaultSession: { fetch: async () => ({ ok: true }), clearStorageData: async () => {} } },
+    session: { defaultSession: { clearStorageData: async () => {} } },
+    cloudFetch: async () => ({ ok: true }),
   };
   const context = vm.createContext(ctx);
   vm.runInContext(`${MAIN_SOURCE.slice(start, end)}; this.forgetEnvironment = forgetEnvironment;`, context);

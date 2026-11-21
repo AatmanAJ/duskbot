@@ -80,6 +80,8 @@ describe("workspace", () => {
       expect(prompt).toContain("Chat links and inline images open only files in currentWorkingFolder and sharedBotFolder.");
     }
     expect(workspaceLocationsPrompt(BOT, thread)).toContain("Save a file or picture you want to show in chat there.");
+    expect(workspaceLocationsPrompt(BOT, thread)).not.toContain("moved or deleted");
+    expect(workspaceLocationsPrompt(BOT, thread, undefined, { lostFolder: "client-site" })).toContain('The folder "client-site" this conversation worked in was moved or deleted');
   });
 
   it("creates distinct private task desks outside shared memory and refuses path traversal", () => {

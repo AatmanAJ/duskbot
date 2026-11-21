@@ -73,3 +73,24 @@ describe("a typed stop", () => {
     expect(await spoken.send("stop", { row: { via: "call" } })).toBeNull();
   });
 });
+
+describe("Stop on a turn waiting for its AI's limit to reset", () => {
+  it("ends the wait, and interrupts nothing when nothing runs", async () => {
+    const held = new Set(["t"]);
+    const interrupted: string[] = [];
+    const stop = createPersonStop({
+      store: { appendMessage: (_threadId: string, row: Partial<Message>) => row as Message, bot: () => ({ name: "Ada" }), tasks: () => [{ threadId: "t" }] } as unknown as PersonStopDeps["store"],
+      routines: () => null, handoffs: () => ({ stoppedByPerson: () => {} }) as never, interruptDirectThread: async (_botId, threadId) => { interrupted.push(threadId); },
+      clearUnattended: () => {}, markStopped: () => {}, stopGoal: () => {}, asking: () => false, language: () => undefined,
+      working: (_botId, threadId) => held.has(threadId),
+      cancelHeld: (threadId) => held.delete(threadId),
+    });
+    await stop.stopThreadForPerson("b", "t");
+    expect(held.size).toBe(0);
+    expect(interrupted).toEqual([]);
+    held.add("t");
+    expect(await stop.stopOnTypedCommand({ botId: "b", threadId: "t", text: "stop", trigger: { kind: "user" } as TypedStop["trigger"], personPresent: true, fromApp: false, busy: false, row: {} }))
+      .toMatchObject({ ok: true });
+    expect(held.size).toBe(0);
+  });
+});

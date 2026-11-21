@@ -15,6 +15,8 @@ export interface HeadlessPage {
   until: (condition: string, timeoutMs?: number) => Promise<void>;
   /** A PNG of the page, or of `clip` in CSS pixels. */
   capture: (clip?: { x: number; y: number; width: number; height: number }) => Promise<Buffer>;
+  /** Calls `listener` with each DevTools event named `method`; returns the unsubscribe. */
+  on: (method: string, listener: (params: any) => void) => () => void;
   close: () => void;
 }
 
@@ -32,8 +34,10 @@ export async function openHeadlessChrome(profile: string): Promise<HeadlessPage>
   await new Promise((done, fail) => { socket.onopen = done; socket.onerror = fail; });
   let next = 0;
   const waiting = new Map<number, { done: (value: any) => void; fail: (error: Error) => void }>();
+  const listeners = new Map<string, Set<(params: any) => void>>();
   socket.onmessage = (event) => {
     const message = JSON.parse(String(event.data));
+    if (message.method) for (const listener of listeners.get(message.method) ?? []) listener(message.params);
     const call = waiting.get(message.id);
     if (!call) return;
     waiting.delete(message.id);
@@ -58,6 +62,11 @@ export async function openHeadlessChrome(profile: string): Promise<HeadlessPage>
     async capture(clip) {
       const { data } = await send("Page.captureScreenshot", { format: "png", ...(clip ? { clip: { ...clip, scale: 1 } } : {}) });
       return Buffer.from(data, "base64");
+    },
+    on(method, listener) {
+      const set = listeners.get(method) ?? new Set();
+      listeners.set(method, set.add(listener));
+      return () => { set.delete(listener); };
     },
     close() { socket.close(); chrome.kill(); },
   };
