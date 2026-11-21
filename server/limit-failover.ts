@@ -2,15 +2,15 @@
 // its own engine once that limit has reset or it is signed in again.
 import { readFileSync } from "node:fs";
 
+import { SUBSCRIPTION_DRIVERS } from "../shared/ai-ranking.ts";
 import { sameModelSelection } from "../shared/thread-model.ts";
 import type { ModelSelection } from "../shared/wire.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import type { InstanceConfig } from "./contracts.ts";
 import { providerBackLine } from "./drivers/provider-failover.ts";
+import { serverLine } from "./server-lines.ts";
 import { hostTimeZone } from "./turn-clock.ts";
 
-/** Engines a person signs in to with a subscription whose usage limit refuses turns. */
-const SUBSCRIPTION_DRIVERS = new Set(["claudeAgent", "codex", "grokAgent"]);
 /** An engine instance with one of these keys bills each use instead of drawing on a subscription's limit. */
 const PAY_PER_USE_KEYS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY", "CODEX_API_KEY", "XAI_API_KEY"];
 
@@ -31,18 +31,19 @@ export function billsEachUse(config?: Pick<InstanceConfig, "environment" | "acce
   return config?.access === "api" || PAY_PER_USE_KEYS.some((key) => Boolean(config?.environment?.[key]?.trim()));
 }
 
-export function resetClock(at: number, timeZone = hostTimeZone()): string {
+export function resetClock(at: number, timeZone = hostTimeZone(), now = Date.now()): string {
   try {
-    const sameDay = new Date(at).toDateString() === new Date().toDateString();
+    const sameDay = new Date(at).toDateString() === new Date(now).toDateString();
     return new Date(at).toLocaleString("en-US", { ...(sameDay ? {} : { weekday: "short" }), hour: "numeric", minute: "2-digit", timeZone });
   } catch {
     return new Date(at).toISOString().slice(11, 16) + " UTC";
   }
 }
 
-/** "Claude hit its limit (resets 3:40 PM), so Codex took over." */
-export function failoverLine(from: string, to: string, resetsAt: number | undefined): string {
-  return `${from} hit its limit${resetsAt ? ` (resets ${resetClock(resetsAt)})` : ""}, so ${to} took over.`;
+/** "Claude hit its limit until 3:40 PM, Codex is answering." */
+export function failoverLine(from: string, to: string, resetsAt: number | undefined, language?: string): string {
+  return resetsAt ? serverLine(language, "server.limitHold.carriedOn", { engine: from, backup: to, time: resetClock(resetsAt) })
+    : serverLine(language, "server.limitHold.carriedOnNoTime", { engine: from, backup: to });
 }
 
 export function backLine(engine: string, why?: LimitFailover["why"]): string {

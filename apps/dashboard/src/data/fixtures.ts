@@ -140,6 +140,11 @@ export function fixtureConnections(): Record<string, string[]> {
   };
 }
 
+/** of those, the ones connected in the app itself (an MCP server), which only the app changes */
+export function fixtureAppsInApp(): Record<string, string[]> {
+  return { [fixtureWorkspaceIds.mac]: ["notion"] };
+}
+
 /** apps whose sign-in was started and not finished */
 export function fixturePendingApps(): Record<string, string[]> {
   return { [fixtureWorkspaceIds.mac]: ["linear"], [fixtureWorkspaceIds.vps]: ["linear"], [fixtureWorkspaceIds.cloud]: ["linear", "figma"] };

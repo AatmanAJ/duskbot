@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { RuntimeEvent } from "../shared/runtime-events.ts";
 import {
-  classifyRoutineFailure, dispatchRefusal, retryNote, ROUTINE_BUSY_RECHECK_MS, ROUTINE_BUSY_WAIT_MS, weekRuns, type RoutineAlert,
+  classifyRoutineFailure, dispatchRefusal, LIMIT_RECHECK_MS, MAX_LIMIT_WAITS, retryNote, ROUTINE_BUSY_RECHECK_MS, ROUTINE_BUSY_WAIT_MS, weekRuns, type RoutineAlert,
 } from "./routine-recovery.ts";
 import { RoutineManager, type RoutineManagerOptions, type RoutineRun } from "./routines.ts";
 
@@ -64,6 +64,7 @@ function harness(extra: Partial<RoutineManagerOptions> = {}) {
     tasks: () => tasks,
     refuse: (error: Error | null) => { refusal = error; },
     advance: async (ms: number) => { now += ms; await manager.tick(); },
+    now: () => now,
     runs: () => manager.listRuns(),
     run: (id: string) => manager.listRuns().find((run) => run.id === id)!,
     routine: (botId = "maus-1", name = "Inbox sweep") =>
@@ -324,6 +325,31 @@ describe("an unattended run whose bot is busy when it starts", () => {
     expect(h.tasks()).toBe(1);
   });
 
+  it("starts right after the turn it waited on ends, not at its next recheck", async () => {
+    const h = harness();
+    h.refuse(busy());
+    const run = await h.start(h.routine().id);
+    h.refuse(null);
+    h.manager.threadFreed("thread-other");
+    await h.advance(SECOND);
+    expect(h.started).toEqual([]);
+    h.manager.threadFreed("thread-1");
+    expect(h.run(run.id).retryAt).toBe(h.now());
+    await h.advance(0);
+    expect(h.started.map((turn) => turn.threadId)).toEqual(["thread-1"]);
+  });
+
+  it("leaves a run waiting on a usage limit to its own time when its thread frees", async () => {
+    const h = harness();
+    const run = await h.start(h.routine().id);
+    h.fail(run.threadId!, "You've hit your usage limit");
+    const waiting = h.run(run.id);
+    expect(waiting.status).toBe("queued");
+    expect(waiting.retryAt).toBeGreaterThan(h.now());
+    h.manager.threadFreed(run.threadId!);
+    expect(h.run(run.id).retryAt).toBe(waiting.retryAt);
+  });
+
   it("stops waiting after an hour, and a refusal without a busy code fails at once", async () => {
     const h = harness();
     h.refuse(busy());
@@ -414,22 +440,43 @@ describe("an unattended run only its owner can fix", () => {
     await h.advance(MINUTE + SECOND);
     expect(h.started.map((turn) => turn.threadId)).toEqual(["thread-1", "thread-1"]);
     expect(h.started[1]!.prompt).toContain(retryNote("usage_limit"));
+    // refused again after the reset: it backs off to the new reset and says so once, never a tight loop
     h.fail("thread-1", limit, { stopReason: "quota", limitResetsAt: START + 5 * 3_600_000 });
-    expect(h.run(run.id)).toMatchObject({ status: "failed", error: limit });
-    expect(h.failed[0]!.alert).toBeNull();
-    expect(h.deferred).toHaveLength(1);
+    expect(h.run(run.id)).toMatchObject({ status: "queued", retryAt: START + 5 * 3_600_000 + MINUTE, limitWaits: 1 });
+    expect(h.failed).toEqual([]);
+    expect(h.deferred).toHaveLength(2);
+    expect(h.deferred[1]!.alert?.detail).toMatch(/^This bot's AI is still at its usage limit\. This run starts again at /);
   });
 
-  it("fails a usage limit with no reset time, or one too far off, and tells the owner", async () => {
+  it("re-queues a usage limit with no reset time to check again in 15 minutes, backing off, and gives up after MAX_LIMIT_WAITS", async () => {
     const h = harness();
-    const run = await h.start(h.routine("maus-1").id);
-    h.fail("thread-1", "You've hit your weekly limit · resets Oct 12 at 2:30pm (Asia/Calcutta)", { stopReason: "quota" });
-    expect(h.run(run.id).status).toBe("failed");
+    const run = await h.start(h.routine().id);
+    const limit = "You've hit your weekly limit · resets Oct 12 at 2:30pm (Asia/Calcutta)";
+    h.fail("thread-1", limit, { stopReason: "quota" });
+    expect(h.run(run.id)).toMatchObject({ status: "queued", retried: "usage_limit", retryAt: START + LIMIT_RECHECK_MS,
+      attention: expect.stringMatching(/^Waiting for the AI's usage limit to reset; checking again at /) });
+    const gaps: number[] = [];
+    for (let wait = 0; wait <= MAX_LIMIT_WAITS; wait++) {
+      const before = h.run(run.id).retryAt!;
+      await h.advance(before - h.now() + SECOND);
+      h.fail("thread-1", limit, { stopReason: "quota" });
+      if (h.run(run.id).status !== "queued") break;
+      gaps.push(h.run(run.id).retryAt! - h.now());
+    }
+    expect(gaps).toHaveLength(MAX_LIMIT_WAITS);
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(LIMIT_RECHECK_MS);
+    expect(gaps.slice(0, 3)).toEqual([LIMIT_RECHECK_MS, 2 * LIMIT_RECHECK_MS, 4 * LIMIT_RECHECK_MS]);
+    expect(h.run(run.id)).toMatchObject({ status: "failed" });
+    expect(h.started).toHaveLength(MAX_LIMIT_WAITS + 2);
+  });
+
+  it("fails a usage limit whose reset is too far off, and tells the owner", async () => {
+    const h = harness();
     const far = await h.start(h.routine("maus-2").id);
     h.fail(far.threadId!, "This Claude account has reached its weekly limit.", { stopReason: "quota", limitResetsAt: START + 13 * 3_600_000 });
     expect(h.run(far.id).status).toBe("failed");
     const action = "This bot's AI reached its usage limit. Its routines work again once it resets, or choose another AI for this bot now.";
-    expect(h.failed.map(({ alert }) => alert)).toEqual([{ detail: action }, { detail: action }]);
+    expect(h.failed.map(({ alert }) => alert)).toEqual([{ detail: action }]);
     expect(h.deferred).toEqual([]);
   });
 });

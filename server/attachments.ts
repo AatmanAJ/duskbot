@@ -61,7 +61,7 @@ function invalidateAttachmentAccounting(): void {
   attachmentAccountingVersion += 1;
 }
 
-/** No sniffing: a lying mime only changes the filename. */
+/** The claimed mime picks the extension; an upload's bytes are checked against it at the route (imageMimeOf). */
 const IMAGE_MIMES: Record<string, string> = {
   "image/png": ".png",
   "image/jpeg": ".jpg",
@@ -69,7 +69,23 @@ const IMAGE_MIMES: Record<string, string> = {
   "image/webp": ".webp",
 };
 
-/** No archives, binaries, HTML, SVG or scripts. The claimed mime picks the extension; an attacker's filename never does. */
+/** Source code a bot hands over: stored and served as text/plain, always as a download, so it is never run or rendered;
+ * only the download keeps its own extension. */
+export const SCRIPT_EXTENSIONS: ReadonlySet<string> = new Set([
+  ".py", ".sh", ".bash", ".zsh", ".fish", ".ps1", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".rb", ".go", ".rs", ".java", ".kt",
+  ".swift", ".c", ".h", ".cpp", ".cc", ".hpp", ".cs", ".php", ".pl", ".lua", ".r", ".sql", ".yaml", ".yml", ".toml", ".ini",
+]);
+export const SCRIPT_MAX_BYTES = 1024 * 1024;
+
+/** A file name whose extension is a script's, lowercased, or null. */
+export function scriptExtensionOf(name: string): string | null {
+  const dot = name.lastIndexOf(".");
+  const extension = dot > 0 ? name.slice(dot).toLowerCase() : "";
+  return SCRIPT_EXTENSIONS.has(extension) ? extension : null;
+}
+
+/** No archives, binaries, HTML or SVG; scripts only as plain text. The claimed mime picks the extension; an attacker's
+ * filename never does, except a script's own extension on a text/plain download. */
 const FILE_MIMES: Readonly<Record<string, string>> = {
   "video/mp4": ".mp4",
   "video/webm": ".webm",
@@ -104,6 +120,15 @@ const FILE_MIMES: Readonly<Record<string, string>> = {
   "application/vnd.oasis.opendocument.spreadsheet": ".ods",
   "application/vnd.oasis.opendocument.presentation": ".odp",
 };
+
+/** The image type the bytes themselves say they are, by their magic bytes; null: not an image we take. */
+export function imageMimeOf(bytes: Buffer): string | null {
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes.toString("latin1", 1, 8) === "PNG\r\n\x1a\n") return "image/png";
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (bytes.length >= 6 && /^GIF8[79]a$/.test(bytes.toString("latin1", 0, 6))) return "image/gif";
+  if (bytes.length >= 12 && bytes.toString("latin1", 0, 4) === "RIFF" && bytes.toString("latin1", 8, 12) === "WEBP") return "image/webp";
+  return null;
+}
 
 export function extensionForMime(mime: string | undefined): string | null {
   if (!mime) return null;
@@ -424,7 +449,8 @@ export function sanitizeSharedFileName(name: string, mime: string): string {
     .trim();
   const boundedStem = Array.from(stem).slice(0, 180).join("");
   if (!boundedStem) throw statusError(400, "name must contain visible characters");
-  return `${boundedStem}${extension}`;
+  const script = extension === ".txt" ? scriptExtensionOf(normalized) : null;
+  return `${boundedStem}${script ?? extension}`;
 }
 
 /** Never buffers the request; a failed, empty or oversized upload leaves no partial file. */
