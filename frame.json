@@ -1,5 +1,62 @@
 {
-  "pr-29.row.before-after.png": { "shots": ["pr-29.row.before.raw.png", "pr-29.row.after.raw.png"], "labels": ["before", "after"] },
-  "pr-29.sheet-hourly.before-after.png": { "shots": ["pr-29.sheet-hourly.before.raw.png", "pr-29.sheet-hourly.after.raw.png"], "labels": ["before", "after"] },
-  "pr-29.sheet-future.before-after.png": { "shots": ["pr-29.sheet-future.before.raw.png", "pr-29.sheet-future.after.raw.png"], "labels": ["before", "after"] }
+  "pr-29.row.before-after.png": {
+    "shots": [
+      "pr-29.row.before.raw.png",
+      "pr-29.row.after.raw.png"
+    ],
+    "labels": [
+      "before",
+      "after"
+    ]
+  },
+  "pr-29.sheet-hourly.before-after.png": {
+    "shots": [
+      "pr-29.sheet-hourly.before.raw.png",
+      "pr-29.sheet-hourly.after.raw.png"
+    ],
+    "labels": [
+      "before",
+      "after"
+    ]
+  },
+  "pr-29.sheet-future.before-after.png": {
+    "shots": [
+      "pr-29.sheet-future.before.raw.png",
+      "pr-29.sheet-future.after.raw.png"
+    ],
+    "labels": [
+      "before",
+      "after"
+    ]
+  },
+  "pr-29.row.before.png": {
+    "shots": [
+      "pr-29.row.before.raw.png"
+    ]
+  },
+  "pr-29.row.after.png": {
+    "shots": [
+      "pr-29.row.after.raw.png"
+    ]
+  },
+  "pr-29.sheet-hourly.before.png": {
+    "shots": [
+      "pr-29.sheet-hourly.before.raw.png"
+    ]
+  },
+  "pr-29.sheet-hourly.after.png": {
+    "shots": [
+      "pr-29.sheet-hourly.after.raw.png"
+    ]
+  },
+  "pr-29.sheet-future.before.png": {
+    "shots": [
+      "pr-29.sheet-future.before.raw.png"
+    ]
+  },
+  "pr-29.sheet-future.after.png": {
+    "shots": [
+      "pr-29.sheet-future.after.raw.png"
+    ]
+  }
 }
