@@ -71,6 +71,7 @@ Use only mapped, tested commands:
 - [Proactive routines and the brief](proactive-routines.md)
 - [Waits: tell me when, with no AI while waiting](waits.md)
 - [Chat widgets](widgets.md)
+- [Lists and quotes in the message box](composer-lists.md)
 - [The Inbox on every plan](inbox.md)
 - [Reactions](reactions.md)
 - [Slack bots: own apps, Socket Mode, threaded replies](slack-bots.md)
