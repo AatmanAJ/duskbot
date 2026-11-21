@@ -1,0 +1,6 @@
+{
+  "pr-25.before-after.png": { "crop": "100,45,560,295", "arrange": "row" },
+  "pr-25.before.png": { "crop": "100,45,560,295" },
+  "pr-25.after.png": { "crop": "100,45,560,295" },
+  "pr-25.gif": { "crop": "100,45,560,295" }
+}
