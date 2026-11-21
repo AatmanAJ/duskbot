@@ -7,6 +7,7 @@
 // stopped turn and a person's own next message all leave it alone.
 import type { RuntimeEvent } from "../contracts.ts";
 import { effectfulCall } from "../drivers/openai-chat-habits.ts";
+import { DELIVERABLE_TOOL, deliverableCheckNote } from "./deliverable-check.ts";
 import { claimsDone, openChecklist, promisesFollowUp, ranTool, readBackWrite, schedulesWork, stopGateNote, type TurnForAsks } from "../turn-stop-gates.ts";
 
 export const MAX_CONTINUES = 2;
@@ -131,15 +132,26 @@ export interface FinishGuardDeps {
    * open that were never sent back for; `nudged` marks them sent back for; `failed` closes them after a turn that failed. */
   asks?: { settle(threadId: string, turn: TurnForAsks): string[]; nudged(threadId: string): void; failed?(threadId: string): void };
   later?: (run: () => void, ms: number) => void;
+  /** One second look at a turn that made a deliverable and has nothing else to carry on: the gaps it found, or null. */
+  review?: (botId: string, threadId: string, turn: { said: readonly string[]; startedAt: number }) => Promise<string[] | null>;
 }
 
-interface Turn { text: string; said: string[]; tools: number; toolsAfterText: number; plan: PlanSteps | null; carriable: boolean; scheduled: boolean; handedOff: boolean; effectful: number; unread: string | null }
+interface Turn { text: string; said: string[]; tools: number; toolsAfterText: number; plan: PlanSteps | null; carriable: boolean; scheduled: boolean; handedOff: boolean; effectful: number; unread: string | null; made: boolean; startedAt: number }
 
 export function createFinishGuard(deps: FinishGuardDeps) {
   const later = deps.later ?? ((run: () => void, ms: number) => { setTimeout(run, ms).unref?.(); });
   const turns = new Map<string, Turn>();
   /** Carry-ons since the person last wrote, by thread; the turn started next is ours while `ours` is set. */
-  const carried = new Map<string, { count: number; plans: number; ours: boolean; planSignature?: string }>();
+  const carried = new Map<string, { count: number; plans: number; ours: boolean; planSignature?: string; reviewed?: boolean }>();
+
+  async function reviewOnce(botId: string, threadId: string, turn: Turn, state: { count: number; plans: number; ours: boolean; planSignature?: string; reviewed?: boolean }): Promise<void> {
+    carried.set(threadId, { ...state, reviewed: true });
+    const gaps = await deps.review!(botId, threadId, { said: turn.said, startedAt: turn.startedAt }).catch(() => null);
+    const now = carried.get(threadId);
+    if (!gaps?.length || !now?.reviewed || deps.held(threadId)) return;
+    carried.set(threadId, { ...now, ours: true });
+    deps.carryOn(botId, threadId, deliverableCheckNote(gaps)).catch(() => carried.delete(threadId));
+  }
 
   return {
     onEvent(event: RuntimeEvent): void {
@@ -148,7 +160,7 @@ export function createFinishGuard(deps: FinishGuardDeps) {
         const state = carried.get(threadId);
         if (state?.ours) state.ours = false;
         else carried.delete(threadId);
-        turns.set(threadId, { text: "", said: [], tools: 0, toolsAfterText: 0, plan: null, carriable: deps.botOf(threadId) !== null, scheduled: false, handedOff: false, effectful: 0, unread: null });
+        turns.set(threadId, { text: "", said: [], tools: 0, toolsAfterText: 0, plan: null, carriable: deps.botOf(threadId) !== null, scheduled: false, handedOff: false, effectful: 0, unread: null, made: false, startedAt: Date.now() });
         return;
       }
       const turn = turns.get(threadId);
@@ -159,6 +171,7 @@ export function createFinishGuard(deps: FinishGuardDeps) {
         turn.plan = planSteps(event.title, event.input) ?? turn.plan;
         const tool = ranTool(event.title ?? "", event.input);
         if (HANDS_OFF.test(tool)) turn.handedOff = true;
+        if (DELIVERABLE_TOOL.test(tool)) turn.made = true;
         if (schedulesWork(tool)) turn.scheduled = true;
         else if (!NATIVE_LOOKUP.test(tool.toLowerCase()) && effectfulCall(tool.toLowerCase(), "{}")) {
           turn.effectful += 1;
@@ -179,6 +192,11 @@ export function createFinishGuard(deps: FinishGuardDeps) {
         const reason = finishReason({ ...turn, asks, ...(event.stopGates ? { gated: event.stopGates } : {}) });
         const botId = reason && turn.carriable ? deps.botOf(threadId) : null;
         const state = carried.get(threadId) ?? { count: 0, plans: 0, ours: false };
+        if (!reason && turn.made && turn.carriable && !state.reviewed && deps.review) {
+          const reviewer = deps.botOf(threadId);
+          if (reviewer) void reviewOnce(reviewer, threadId, turn, state);
+          return;
+        }
         if (!reason || !botId) return;
         const signature = reason.kind === "plan" ? planSignature(reason) : undefined;
         if (reason.kind === "plan") {
