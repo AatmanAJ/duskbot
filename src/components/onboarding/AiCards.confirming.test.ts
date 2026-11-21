@@ -11,6 +11,7 @@ vi.mock("@/state/store", () => ({ api: async () => ({ instances: f.instances }),
 vi.mock("@/components/EngineSetup", () => ({ EngineSetup: () => null }));
 vi.mock("./SignInPill", () => ({
   ConnectPanel: () => null,
+  revealIfCovered: () => {},
   useConnectFlow: () => ({ state: f.state, target: null, start: vi.fn(), cancel: f.cancel, retry: vi.fn(), openAgain: vi.fn(), submit: vi.fn() }),
 }));
 const { AiCards } = await import("./AiCards");

@@ -15,8 +15,8 @@ import { useStore, type InstanceInfo } from "@/state/store";
 import { aiName, aiTiles, type AiTile, type AiTileId } from "./funnel";
 import { TILE } from "./FunnelSteps";
 import { connectsInApp, type ConnectInstance } from "./connect-flow";
-import { Reveal, StageSwap } from "./ConnectMotion";
-import { ConnectPanel, useConnectFlow, type ConnectFlowHandle } from "./SignInPill";
+import { CONNECT_LEAVE_MS, Reveal, StageSwap } from "./ConnectMotion";
+import { ConnectPanel, revealIfCovered, useConnectFlow, type ConnectFlowHandle } from "./SignInPill";
 import type { WelcomeAiNow } from "./welcome-ai";
 import { connectedCards, readConnectedCache, writeConnectedCache } from "./ai-connected-cache";
 
@@ -107,6 +107,18 @@ function useFocusOnConnect(connectedIds: readonly string[]) {
   }, [key]);
 }
 
+/** An opened card's first field takes focus at once; once it has grown in, the card is scrolled clear of the pinned
+ * Continue (on a phone it opens below the fold). */
+function useOpenedCard(panel: { current: HTMLElement | null }, opened: AiTileId | undefined) {
+  useEffect(() => {
+    const element = panel.current;
+    if (!opened || !element) return;
+    element.querySelector<HTMLElement>("input:not([type=hidden]), textarea, select")?.focus({ preventScroll: true });
+    const timer = setTimeout(() => revealIfCovered(element), CONNECT_LEAVE_MS);
+    return () => clearTimeout(timer);
+  }, [opened]);
+}
+
 /** The AIs that are connected here now, by their card. */
 export function connectedAiCards(instances: readonly InstanceInfo[]): AiTileId[] {
   return aiTiles(instances, ready).filter((tile) => ready(tile.instance)).map((tile) => tile.id);
@@ -139,6 +151,8 @@ export function AiCards({ onMore, className, onConnected, suggested = [], staysH
     if (tile.candidates.some(inApp)) flow.start({ tile: tile.id, candidates: tile.candidates.map((candidate) => candidate.instanceId) });
   };
   const chosen = tiles.find((tile) => tile.id === picked && !shown.has(tile.id));
+  const connectPanel = useRef<HTMLDivElement>(null);
+  useOpenedCard(connectPanel, chosen?.id);
   useFocusOnConnect(tiles.filter((tile) => ready(tile.instance)).map((tile) => tile.id));
   const told = useRef(false);
   const pickedReady = Boolean(picked && tiles.some((tile) => tile.id === picked && ready(tile.instance)));
@@ -161,7 +175,7 @@ export function AiCards({ onMore, className, onConnected, suggested = [], staysH
       <Reveal className="pt-5">
         {chosen && (
           <StageSwap stage={chosen.id}>
-            <div data-funnel-ai-connect={chosen.id} className="flex w-full flex-col items-center">
+            <div ref={connectPanel} data-funnel-ai-connect={chosen.id} className="flex w-full flex-col items-center">
               <AiConnect key={chosen.id} tile={chosen} flow={{ ...flow, cancel: () => { flow.cancel(); setPicked(null); } }} />
             </div>
           </StageSwap>
