@@ -6,13 +6,12 @@
 // and every read skips expired ones); it is deleted on delivery, on a Cloud that ended, and on the owner's cancel. Never log
 // a value, a sealed value or a request body.
 import type { Db } from "mongodb";
+import { parseAiSignInList, type AiSignIn } from "../../../../shared/ai-signins.ts";
 import type { createSealer } from "./seal.ts";
 
 export const AI_STASH_TTL_MS = 24 * 60 * 60_000;
-const MAX_AUTH_BYTES = 32 * 1024;
 
-/** One sign-in a Cloud home applies: a ChatGPT plan's Codex `auth.json`. */
-export type AiSignIn = { kind: "codex-auth"; auth: string };
+export type { AiSignIn };
 
 export interface AiStashEntry { cloudId: string; accountId: string; sealed: string; expiresAt: number }
 export interface AiStashStore {
@@ -24,22 +23,7 @@ export interface AiStashStore {
 }
 
 /** The sign-ins a request carries, or null for anything else. */
-export function parseAiSignIns(value: unknown): AiSignIn[] | null {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 4) return null;
-  const out: AiSignIn[] = [];
-  for (const item of value) {
-    if (!item || typeof item !== "object" || (item as { kind?: unknown }).kind !== "codex-auth") return null;
-    const auth = (item as { auth?: unknown }).auth;
-    if (typeof auth !== "string" || !auth || Buffer.byteLength(auth) > MAX_AUTH_BYTES) return null;
-    try {
-      const parsed = JSON.parse(auth) as unknown;
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    } catch { return null; }
-    if (out.some(one => one.kind === "codex-auth")) return null;
-    out.push({ kind: "codex-auth", auth });
-  }
-  return out;
-}
+export const parseAiSignIns = (value: unknown): AiSignIn[] | null => parseAiSignInList(value);
 
 export function memoryAiStashStore(now: () => number = Date.now): AiStashStore {
   const entries = new Map<string, AiStashEntry>();

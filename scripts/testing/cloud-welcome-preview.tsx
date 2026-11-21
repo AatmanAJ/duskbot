@@ -1,6 +1,6 @@
 // The whole app as a new Cloud's owner sees it (scripts/verify-cloud-welcome.ts answers the session as one).
 // ?desktop=1 adds the reduced bridge a Cloud's page gets in the desktop app; ?move=copy|done shows the one-time move on its
-// way or landed; ?step= opens the welcome on a step; ?skin= picks a skin.
+// way or landed; ?offer=1 has the computer that set it up offer its bots; ?step= opens the welcome on a step; ?skin= picks a skin.
 import { createRoot } from "react-dom/client";
 import type { CloudSendNotice } from "../../electron/cloud-send.mjs";
 import App from "../../src/App";
@@ -11,7 +11,7 @@ import "../../src/styles.css";
 
 const params = new URLSearchParams(location.search);
 
-function installCloudPage(move: string | null) {
+function installCloudPage(move: string | null, offer: boolean) {
   const name = params.get("name") ?? "My Cloud";
   const sent = { bots: 6, updatedBots: 0, skills: 2, logins: 2, onePassword: true, settings: 1, chats: { conversations: 142, messages: 900 } };
   const notice: CloudSendNotice = {
@@ -20,13 +20,19 @@ function installCloudPage(move: string | null) {
     last: move === "done" ? { at: Date.now(), reason: "move", failed: 0, seen: false, sent } : null, whole: null,
     ...(move === "copy" ? { move: { phase: "copy" as const, chats: { done: 34, total: 142 } } } : {}),
     ...(move === "done" ? { move: { phase: "done" as const, counts: { bots: 6, skills: 2, logins: 2, onePassword: true, chats: 142, routines: 4 }, phone: true } } : {}),
+    ...(offer ? { offer: { stage: "prompt" as const, bots: 6 } } : {}),
   };
+  let current = notice;
+  const listeners = new Set<(next: CloudSendNotice) => void>();
+  const answer = async () => { current = { ...notice, offer: { stage: "settings" as const, bots: 6 } }; listeners.forEach((listener) => listener(current)); return current; };
   window.duskDesktop = {
     platform: "darwin",
     getCapabilities: async () => initialDesktopCapabilities(),
     onCapabilitiesChanged: () => () => {},
     workspaces: { state: async () => ({ local: false, name, origin: location.origin, home: true }), menu: async () => {} },
-    cloudSendPage: { notice: async () => notice, dismiss: async () => notice, onNotice: () => () => {} },
+    cloudSendPage: { notice: async () => current, dismiss: async () => current,
+      onNotice: (listener: (next: CloudSendNotice) => void) => { listeners.add(listener); return () => listeners.delete(listener); },
+      ...(offer ? { moveOfferAccept: answer, moveOfferDismiss: answer } : {}) },
     cloudPlan: {
       state: async () => ({ status: "paid", tier: "pro", credit: { grantedUsd: 5, remainingUsd: 5, state: "active" } }),
       manage: async () => {},
@@ -34,7 +40,7 @@ function installCloudPage(move: string | null) {
   } as unknown as typeof window.duskDesktop;
 }
 
-if (params.get("desktop") === "1") installCloudPage(params.get("move"));
+if (params.get("desktop") === "1") installCloudPage(params.get("move"), params.get("offer") === "1");
 applySkin((params.get("skin") ?? "midnight") as SkinId);
 const step = params.get("step");
 if (step) returnToWelcome(step);
