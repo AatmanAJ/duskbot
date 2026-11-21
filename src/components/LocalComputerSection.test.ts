@@ -21,6 +21,7 @@ import {
   parseLocalVmIdleTimeoutMinutes,
   perBotLocalVmDeletePlan,
   vpsComputerRemovePlan,
+  vpsComputerRestartPlan,
   vpsComputerInventoryState,
   vpsComputerShortId,
   type LocalVmInventoryInstance,
@@ -264,6 +265,18 @@ describe("VPS computer inventory UI", () => {
     expect(markup).toContain("In use");
     expect(markup).toContain("Stop this bot&#x27;s work before removing its desktop.");
     expect(markup).toContain("disabled=\"\"");
+  });
+
+  it("offers restart on a running desktop even while bots are stuck on it, and posts only to its own name", () => {
+    const markup = renderCard({ instances: [{ ...ownedVps, inUse: true }, { ...ownedVps, name: "duskbot-vps-asleep-123456abcdef", state: "exited" }], onRestart: vi.fn() });
+    expect(markup.match(/>Restart<\/button>/g)).toHaveLength(1);
+    expect(markup).toMatch(/<button type="button" title="Stop this desktop[^"]*" class="ui-button">Restart<\/button>/);
+    const confirm = vi.fn(() => true);
+    expect(confirmComputerAction(vpsComputerRestartPlan(ownedVps), confirm)).toEqual([
+      `/api/computers/vps/${ownedVps.name}/restart`,
+      { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
+    ]);
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Restart Research's desktop?"));
   });
 
   it("disables removal while refreshing an existing inventory", () => {

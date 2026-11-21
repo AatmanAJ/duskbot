@@ -58,6 +58,7 @@ const {
   deleteAttachment,
   extensionForFileMime,
   extensionForMime,
+  imageMimeOf,
   parseAudioRange,
   readAttachment,
   sanitizeSharedFileName,
@@ -94,6 +95,18 @@ describe("extensionForMime", () => {
     expect(extensionForMime("image/svg+xml")).toBeNull();
     expect(extensionForMime("text/plain")).toBeNull();
     expect(extensionForMime(undefined)).toBeNull();
+  });
+});
+
+describe("imageMimeOf", () => {
+  it("names a picture by its own first bytes, and nothing else", () => {
+    expect(imageMimeOf(Buffer.from("89504e470d0a1a0a0000", "hex"))).toBe("image/png");
+    expect(imageMimeOf(Buffer.from("ffd8ffe000", "hex"))).toBe("image/jpeg");
+    expect(imageMimeOf(Buffer.from("GIF89a....", "latin1"))).toBe("image/gif");
+    expect(imageMimeOf(Buffer.from("RIFF0000WEBPVP8 ", "latin1"))).toBe("image/webp");
+    expect(imageMimeOf(Buffer.from("efbfbd504e470d0a1a0a", "hex"))).toBeNull();
+    expect(imageMimeOf(Buffer.from("<svg/>"))).toBeNull();
+    expect(imageMimeOf(Buffer.alloc(0))).toBeNull();
   });
 });
 
