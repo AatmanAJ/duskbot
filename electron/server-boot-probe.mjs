@@ -4,19 +4,25 @@ export const BOOT_PROBE_INTERVAL_MS = 500;
 
 export const SERVER_BOOT_TIMEOUT_MS = 60_000;
 export const SERVER_LISTENING_GRACE_MS = 180_000;
+/** A child that has printed anything is alive and loading: on a slow PC its first start may need more than the boot
+ * budget, and stopping it only makes the next one redo the same cold work. */
+export const SERVER_STARTING_GRACE_MS = 120_000;
 const LISTENING_LINE = "duskbot server on ";
 
 export function listeningSignal() {
   let tail = "";
   let heard = false;
+  let spoke = false;
   return {
     hear(chunk) {
+      if (String(chunk).trim()) spoke = true;
       if (heard) return;
       const text = tail + chunk;
       tail = text.slice(-LISTENING_LINE.length);
       heard = text.includes(LISTENING_LINE);
     },
     heard: () => heard,
+    spoke: () => spoke,
   };
 }
 
@@ -38,6 +44,8 @@ const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  *   isExited?: () => boolean,
  *   isListening?: () => boolean,
  *   listeningGraceMs?: number,
+ *   isStarting?: () => boolean,
+ *   startingGraceMs?: number,
  *   now?: () => number,
  *   sleep?: (ms: number) => Promise<void>,
  *   fetchImpl?: typeof fetch,
@@ -51,12 +59,14 @@ export async function pollServerIdentity({
   isExited = () => false,
   isListening = () => false,
   listeningGraceMs = 0,
+  isStarting = () => false,
+  startingGraceMs = 0,
   now = Date.now,
   sleep = defaultSleep,
   fetchImpl = globalThis.fetch,
 }) {
   const startedAt = now();
-  const deadline = () => startedAt + bootTimeoutMs + (isListening() ? listeningGraceMs : 0);
+  const deadline = () => startedAt + bootTimeoutMs + (isListening() ? listeningGraceMs : isStarting() ? startingGraceMs : 0);
   for (;;) {
     if (isExited()) return { outcome: "exited" };
     const remainingMs = Math.max(0, deadline() - now());

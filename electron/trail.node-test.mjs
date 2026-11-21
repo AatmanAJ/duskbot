@@ -84,6 +84,16 @@ test("the export scrubber takes out emails, names, IPs, home paths and the perso
   assert.match(out.msg, /~\/Desktop\/code\/OpenMausBot\/electron\/main\.mjs/);
 });
 
+test("a tool field keeps only a tool's name, even in a trail written before names were checked", () => {
+  const old = { ev: "bot.tool", ts: new Date().toISOString(), tool: "node scripts/upload.mjs --sheet 1BxiMVs0XRA5nFMdKvBdBZjgm", ok: true };
+  const out = scrubForExport(old, { home: "/Users/siddharth", salt: "s" });
+  assert.equal(out.tool, "tool");
+  assert.ok(!everyString(out).includes("upload"));
+  assert.equal(scrubForExport({ ev: "bot.tool", tool: "Bash" }).tool, "Bash");
+  assert.equal(scrubForExport({ ev: "bot.tool", tool: "invoice.pdf" }).tool, "tool");
+  assert.equal(redactEvent({ ev: "bot.card.shown", tool: "mcp__dusk__get_url" }).tool, "mcp__dusk__get_url");
+});
+
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "dusk-trail-"));
 
 test("the writer batches, rotates past a fifth of the cap and keeps the total under it", async () => {

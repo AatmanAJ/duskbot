@@ -10,8 +10,10 @@ vi.mock("./notification-preferences", () => ({
 
 import {
   buildNotificationOptions,
+  readOnArrival,
   requestNotificationPermission,
   showNotification,
+  systemNotificationsAllowed,
   type NotifyFrame,
 } from "./notify";
 
@@ -46,6 +48,36 @@ afterEach(() => {
   sounds.enabled = true;
   sounds.finished = true;
   uiSounds.play.mockClear();
+});
+
+it("reads a notification as it lands only for the chat in front of the person", () => {
+  expect(readOnArrival(frame, "thread-1", true)).toBe(true);
+  expect(readOnArrival(frame, "thread-1", false)).toBe(false);
+  expect(readOnArrival(frame, "thread-2", true)).toBe(false);
+  expect(readOnArrival(frame, null, true)).toBe(false);
+  expect(readOnArrival({ ...frame, kind: "spend" }, "thread-1", true)).toBe(false);
+});
+
+describe("the desktop app on a Mac", () => {
+  it("never posts a system notification or asks for the permission, and keeps the app's own ping", async () => {
+    const { notices, requestPermission } = installNotification("granted");
+    const show = vi.fn(async () => true);
+    vi.stubGlobal("window", { focus: vi.fn(), duskDesktop: { platform: "darwin", desktopNotifications: { show } } });
+    expect(systemNotificationsAllowed()).toBe(false);
+    showNotification(frame, vi.fn());
+    showNotification({ ...frame, kind: "approval" }, vi.fn());
+    expect(notices).toHaveLength(0);
+    expect(show).not.toHaveBeenCalled();
+    expect(uiSounds.play).toHaveBeenCalledTimes(2);
+    expect(await requestNotificationPermission()).toBeNull();
+    expect(requestPermission).not.toHaveBeenCalled();
+  });
+
+  it("still shows them on Windows and Linux", () => {
+    expect(systemNotificationsAllowed("win32")).toBe(true);
+    expect(systemNotificationsAllowed("linux")).toBe(true);
+    expect(systemNotificationsAllowed(undefined)).toBe(true);
+  });
 });
 
 describe("desktop notifications", () => {

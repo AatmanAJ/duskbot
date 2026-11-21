@@ -3,9 +3,9 @@ import { request } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createHash, createPublicKey, randomBytes, timingSafeEqual, verify } from "node:crypto";
 import { accessSync, constants, readFileSync, realpathSync, statSync } from "node:fs";
-import { APP_COMMAND_ONLINE_MS, CLAIM_TTL_MS, COMMAND_KINDS, appSlug, COMMAND_TTL_MS, DASHBOARD_DISCOVERY_PATH, FAST_REPORT_MS, MAX_REPORT_BYTES, SIGNATURE_SKEW_MS, SLOW_REPORT_MS,
+import { APP_COMMAND_ONLINE_MS, CLAIM_TTL_MS, COMMAND_KINDS, PHONE_PAIR_COMMAND_TTL_MS, appSlug, COMMAND_TTL_MS, DASHBOARD_DISCOVERY_PATH, FAST_REPORT_MS, MAX_REPORT_BYTES, SIGNATURE_SKEW_MS, SLOW_REPORT_MS,
   freshnessOf, parseEnrollRequest, parseWorkspaceReport, signedPayload } from "../../../shared/dashboard-protocol.ts";
-import type { CommandKind, CommandView, ConnectorsAnswer, MachineSample, ReportAnswer, WorkspaceDetail, WorkspaceReport, WorkspaceSummary } from "../../../shared/dashboard-protocol.ts";
+import type { CommandKind, CommandResult, CommandView, ConnectorsAnswer, MachineSample, ReportAnswer, WorkspaceDetail, WorkspaceReport, WorkspaceSummary } from "../../../shared/dashboard-protocol.ts";
 import { PULSE_INTERVAL_MS, PULSE_WINDOW_MS, PulseRing, type PulseAnswer } from "../../../shared/machine-pulse.ts";
 import type { NotificationPrefs } from "../../../shared/account-api.ts";
 import { MCP_CLIENT_METADATA, MCP_CLIENT_METADATA_PATH } from "../../../shared/mcp-client-metadata.ts";
@@ -16,19 +16,22 @@ import { isOpsMade, withoutOps } from "./admin/money-mode.ts";
 import type { Mailer, MailMessage, TestMailbox } from "./auth/mail.ts";
 import type { RoutedMailer } from "./auth/mail-router.ts";
 import { createStore } from "./store.ts";
+import { createConnectStates } from "./connect-states.ts";
+import { appComputer, COMPUTER_ID, COMPUTER_PAIR_LIMITS, COMPUTER_PAIR_WAIT_MS, pairAnswer } from "./app-computers.ts";
 import type { Account, StoredCommand, StoredWorkspace } from "./store.ts";
 import { createBilling } from "./billing/index.ts";
 import type { BillingNotice } from "./billing/service.ts";
 import { BILLING_CONFIG, MANAGED_REGION, regionLabel } from "./billing/plans.ts";
 import type { StoredCloud } from "./clouds/types.ts";
 import { DEFAULT_RETENTION_DAYS } from "../../cloud-service/src/retention.ts";
-import { CODE_SUBJECT, accountDeletedEmail, cancelledEmail, cloudDeletedEmail, cloudNoticeEmail, cloudReadyEmail, emailConfig, paymentFailedEmail, receiptEmail, teamInviteEmail, teamSeatFullEmail, welcomeEmail } from "./email/templates.ts";
+import { CODE_SUBJECT, accountDeletedEmail, cancelledEmail, cloudDeletedEmail, cloudNoticeEmail, cloudReadyEmail, emailConfig, paymentFailedEmail, paymentRecoveredEmail, paymentReminderEmail, receiptEmail, teamInviteEmail, teamSeatFullEmail, welcomeEmail } from "./email/templates.ts";
 import type { Rendered } from "./email/templates.ts";
 import { render } from "./email/layout.ts";
 import { BillingError } from "./billing/service.ts";
 import { createSlackEdgeHost } from "./slack-edge/index.ts";
 import { createManagedRoutes } from "./clouds/managed-routes.ts";
 import { pagesRoutesFromEnv } from "./pages/routes.ts";
+import { xIndexRoutesFromEnv } from "./x-index/routes.ts";
 import { clientIp, rateIp } from "./client-ip.ts";
 import { stateBackend } from "./persistence/backend.ts";
 import type { ErrorReporter } from "../../../electron/error-report.mjs";
@@ -39,6 +42,8 @@ import { memorySink, type AnalyticsSink } from "./analytics/sink.ts";
 import { createUsage, memoryUsageStore, type UsageStore } from "./analytics/usage.ts";
 import { createInfraCollector, memoryInfraStore, type InfraStore } from "./admin/infra.ts";
 import { opsFixture } from "./admin/ops/fixture.ts";
+import type { WarmStore } from "./admin/web-warm.ts";
+import { CANARY_IDS, cloudFleetOf, serverFleet, type FleetAnswer } from "./admin/ops/fleet.ts";
 import { createOps } from "./admin/ops/index.ts";
 import { memoryOpsStore, type OpsStore } from "./admin/ops/store.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -61,7 +66,7 @@ import { createSealer, parseSealKey } from "./clouds/seal.ts";
 import { aliasLegacyCookies, aliasLegacyHeaders } from "../../../electron/legacy-names.mjs";
 import { LINK_GRANT_PATH, linkGrantSignerFromEnv, signLinkGrant } from "./link-grant.ts";
 import { screenIceMinterFromEnv } from "./screen-ice.ts";
-import { ACCOUNT_ROUTES } from "../../../shared/account-api.ts";
+import { ACCOUNT_ROUTES, type AppComputerAnswer, type AppComputersAnswer } from "../../../shared/account-api.ts";
 
 export interface DashboardAppOptions {
   dataDir: string;
@@ -98,9 +103,11 @@ export interface DashboardAppOptions {
   /** product analytics: MongoDB in production (main.ts), memory otherwise; the waitlist is dusk.waitlist when connected */
   analytics?: { sink?: AnalyticsSink; waitlist?: WaitlistSource | null; trackOrigins?: string[]; usage?: UsageStore; infra?: InfraStore; ops?: OpsStore; db?: Db | null };
   /** the owner's panel at /admin: DUSK_ADMIN_EMAILS by default */
-  admin?: { emails?: string[]; backupDir?: string | null; environment?: string; env?: NodeJS.ProcessEnv; opsFixture?: boolean; live?: LiveData | null;
+  admin?: { emails?: string[]; growthEmails?: string[]; backupDir?: string | null; environment?: string; env?: NodeJS.ProcessEnv; opsFixture?: boolean; live?: LiveData | null;
     /** how long the admin keeps an analytics answer (main.ts: 30 s); none by default, so a fixture shows each event at once */
-    readCacheMs?: number };
+    readCacheMs?: number;
+    /** keeps the overview's default ranges computed ahead (main.ts: in MongoDB); none by default */
+    warm?: { store: WarmStore; everyMs?: number } | null };
   /** the owner's alert emails (main.ts); without it incidents are kept in memory and nothing is mailed */
   incidents?: Incidents;
   /** @devs reports from the apps: MongoDB in production (main.ts), memory otherwise; mail goes where the alert emails go */
@@ -238,7 +245,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
     // one incident a day, whichever limit it was: someone (or a bot) is asking for sign-in codes faster than we will send them
     onMailLimit: kind => incidents.report({ source: "server", name: "SignInMailLimit", key: `auth-mail-${new Date(now()).toISOString().slice(0, 10)}`,
       message: `sign-in emails reached ${mailLimitSay[kind]} limit, so more codes are refused until it resets. a spike of signups or someone spraying addresses; check admin > health for rate-limited ips` }), now, fetch: options.fetch, oauth: options.oauth,
-    dev, signupOpen: options.signupOpen ?? true, trustProxy: options.trustProxy ?? false, legacyAccounts: () => state.accounts,
+    dev, signupOpen: options.signupOpen ?? true, trustProxy: options.trustProxy ?? false, legacyAccounts: () => state.accounts, websiteFirstSteps: !options.waitlistOnly,
     review: options.review === undefined ? reviewAccountFromEnv(process.env) : options.review });
   state.sessions = [];
   store.changed();
@@ -305,6 +312,8 @@ export function createDashboardApp(options: DashboardAppOptions) {
     if (notice.kind === "receipt") { if (courtesy(emailOf(notice.accountId))) sendTo(notice.accountId, "required", receiptEmail(emailCfg, { ...notice, receiptId: notice.invoiceId, cloud: notice.cloudId !== null })); }
     else if (!courtesy(emailOf(notice.accountId))) return;
     else if (notice.kind === "payment_failed") sendTo(notice.accountId, "required", paymentFailedEmail(emailCfg, { ...notice, cloudName: cloud?.name ?? null }));
+    else if (notice.kind === "payment_reminder") sendTo(notice.accountId, "required", paymentReminderEmail(emailCfg, { ...notice, cloudName: cloud?.name ?? null, final: notice.step === "final" }));
+    else if (notice.kind === "payment_recovered") sendTo(notice.accountId, "required", paymentRecoveredEmail(emailCfg, { description: notice.description, cloudName: cloud?.name ?? null }));
     else sendTo(notice.accountId, "required", cancelledEmail(emailCfg, { description: notice.description, cloudName: cloud?.name ?? null, endsAt: notice.endsAt,
       keptPaused: cloud?.backend === "managed", keepDays: cloud?.backend === "managed" ? retentionDays : notice.graceDays }));
   }
@@ -360,6 +369,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
     fromCookie: req => { try { return account(req); } catch (error) { if (error instanceof AuthError && error.code === "signed_out") return null; throw error; } },
     fromBearer: req => auth.appSession(req)?.account ?? null } });
   const pagesRoutes = pagesRoutesFromEnv({ dataDir: options.dataDir, publicUrl, clouds: billing.clouds, now, fetch: options.fetch });
+  const xIndexRoutes = xIndexRoutesFromEnv({ dataDir: options.dataDir, publicUrl, clouds: billing.clouds, now, fetch: options.fetch, fromBearer: req => auth.appSession(req)?.account ?? null });
   auth.beforeAccountDelete(async (owner, body) => {
     try { await billing.beforeAccountDelete(owner, body); } catch (error) { if (error instanceof BillingError && error.code === "billing_active") throw new AuthError(409, "billing_active", { blockers: error.blockers }); throw error; }
   });
@@ -384,9 +394,10 @@ export function createDashboardApp(options: DashboardAppOptions) {
   const infraStore = options.analytics?.infra ?? memoryInfraStore();
   const infra = createInfraCollector({ store: infraStore, clouds: () => billing.clouds.all?.() ?? [], usage: managedUsage ? (c, from) => managedUsage(c, from) : null, now });
   infra.start();
-  const admin = createAdmin({ emails: adminEmails, auth, billing, workspaces: () => state.workspaces, analytics, usage, infra: { store: infraStore },
+  const bugReportStore = options.bugReports?.store ?? memoryBugReportStore();
+  const admin = createAdmin({ emails: adminEmails, growthEmails: options.admin?.growthEmails ?? parseAdminEmails(process.env.DUSK_GROWTH_ADMIN_EMAILS), auth, billing, workspaces: () => state.workspaces, analytics, usage, bugReports: bugReportStore, infra: { store: infraStore },
     ops: { answer: () => ops.answer(), collect: () => ops.collect(), accounts: (relays, query) => ops.accounts(relays, query) }, wakeStats: () => slackEdge?.edge.wakeStats() ?? {},
-    waitlist: options.analytics?.waitlist ?? null, live: options.admin?.live ?? null, now, fetch: options.fetch, env: options.admin?.env, errors: errorsSeen, readBody, bodyObject, json, relayFixture: options.admin?.opsFixture, readCacheMs: options.admin?.readCacheMs ?? 0,
+    waitlist: options.analytics?.waitlist ?? null, live: options.admin?.live ?? null, now, fetch: options.fetch, env: options.admin?.env, errors: errorsSeen, readBody, bodyObject, json, relayFixture: options.admin?.opsFixture, readCacheMs: options.admin?.readCacheMs ?? 0, warm: options.admin?.warm ?? null,
     service: { version: options.version ?? null, startedAt, environment: options.admin?.environment ?? (dev ? "development" : "production"), dataDir: options.dataDir,
       backupDir: options.admin?.backupDir ?? null, database: () => stateBackend()?.health() ?? null } });
   // only production's numbers are news: preview and development share the env but never email the admins
@@ -420,7 +431,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
     admin: (req, mutation) => { const owner = auth.requireWeb(req, { mutation }); if (!admin.isAdmin(owner.email)) throw new AdminError(403, "not_admin", "This account is not an admin."); } });
   const reportMail = options.bugReports?.mail;
   const cloudSealer = createSealer((options.admin?.env ?? process.env).DUSK_CLOUD_SEAL_KEY ? parseSealKey((options.admin?.env ?? process.env).DUSK_CLOUD_SEAL_KEY!) : null);
-  const bugReports = createBugReports({ store: options.bugReports?.store ?? memoryBugReportStore(), now, json, bodyObject, ip: req => rateIp(clientIp(req, options.trustProxy ?? false)),
+  const bugReports = createBugReports({ store: bugReportStore, now, json, bodyObject, ip: req => rateIp(clientIp(req, options.trustProxy ?? false)),
     admin: (req, mutation) => { const owner = auth.requireWeb(req, { mutation }); if (!admin.isAdmin(owner.email)) throw new AdminError(403, "not_admin", "This account is not an admin."); return owner.id; },
     audit: (actor, action, target, detail) => { void analytics.sink.audit({ id: `aud_${random(12)}`, at: now(), actor, action, target, detail }).catch(() => {}); },
     clouds: { get: id => billing.clouds.get(id), unseal: sealed => cloudSealer.unseal(sealed) },
@@ -438,12 +449,15 @@ export function createDashboardApp(options: DashboardAppOptions) {
   for (const command of state.commands) if (command.purgeAt > now() && state.workspaces.some(ws => ws.id === command.workspaceId))
     commands.set(command.workspaceId, [...(commands.get(command.workspaceId) ?? []), command]);
   const deliveredAt = new Map<string, number>();
+  const connectStates = createConnectStates(pagesUrl, now);
   // a workspace that reported shortly before a restart still counts as awake for app sign-ins
   const seen = new Map<string, number>(state.workspaces.filter(ws => ws.lastReportAt !== null).map(ws => [ws.id, ws.lastReportAt!]));
   const history = new Map<string, MachineSample[]>();
   const pulses = new Map<string, PulseRing>();
   const pulseSenders = new Set<string>();
   const waits = new Map<string, { finish: () => void; cancel: () => void }>();
+  // security: a phone.pair answer carries a one-time grant secret; it lives only here, until the waiting phone takes it
+  const pairWaits = new Map<string, (result: CommandResult | null) => void>();
   let closed = false;
 
   function json(res: ServerResponse, status: number, data: unknown) {
@@ -505,7 +519,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
   }
   function isAdminRequest(req: IncomingMessage) {
     const found = auth.webSession(req);
-    return !!found && admin.isAdmin(found.account.email);
+    return !!found && admin.roleOf(found.account) !== null;
   }
   /** one public origin: www sends to it, app (where the page used to live) to the page, dev home; the API still answers on
    *  app so an old build's calls keep working */
@@ -540,7 +554,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
     const watched = isWatching(ws);
     lastWatching.set(ws.id, watched);
     const queued = (commands.get(ws.id) ?? []).filter(command => due(command) && command.expiresAt > now());
-    const delivery = queued.map(({ id, kind, target, issuedAt, expiresAt }) => ({ id, kind, target, issuedAt, expiresAt }));
+    const delivery = queued.map(({ id, kind, target, issuedAt, expiresAt, callback }) => ({ id, kind, target, issuedAt, expiresAt, ...(callback ? { callback } : {}) }));
     for (const command of queued) { command.status = "sent"; deliveredAt.set(command.id, now()); }
     if (queued.length) store.changed();
     return { v: 1, watching: watched, nextReportMs: watched ? FAST_REPORT_MS : SLOW_REPORT_MS, commands: delivery, ...(ws.ownerAccountId ? { usageOptOut: analytics.optedOut(ws.ownerAccountId) } : {}) };
@@ -629,10 +643,10 @@ export function createDashboardApp(options: DashboardAppOptions) {
     if (under(path, "/assets/admin") && !isAdminRequest(req)) fail(404, "not_found", "Page not found.");
     if (!path.startsWith("/") || path.includes("\\") || path.includes("\0") || path.split("/").some(part => part.startsWith("."))) fail(404, "not_found", "Page not found.");
     try {
-      const root = realpathSync(options.staticDir).replace(/\/$/, "");
+      const root = realpathSync(options.staticDir).replaceAll("\\", "/").replace(/\/$/, "");
       let file = `${root}${path}`;
       try { if (!statSync(file).isFile()) file = `${root}/index.html`; } catch { file = `${root}/index.html`; }
-      file = realpathSync(file);
+      file = realpathSync(file).replaceAll("\\", "/");
       if (!file.startsWith(`${root}/`) || file.slice(root.length + 1).split("/").some(part => part.startsWith("."))) fail(404, "not_found", "Page not found.");
       const ext = file.slice(file.lastIndexOf(".")).toLowerCase();
       let content = readFileSync(file);
@@ -658,6 +672,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
     const method = req.method ?? "GET";
     const url = new URL(req.url ?? "/", publicUrl);
     if (await pagesRoutes.handle(req, res, url)) return;
+    if (await xIndexRoutes.handle(req, res, url)) return;
     const path = url.pathname;
     const elsewhere = hostRedirect(req, url);
     if (elsewhere) return moved(res, 301, elsewhere);
@@ -707,7 +722,23 @@ export function createDashboardApp(options: DashboardAppOptions) {
     }
     const mutation = MUTATIONS.includes(method);
     const appleCallback = method === "POST" && path === "/v1/auth/oauth/apple/callback" && req.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() === "application/x-www-form-urlencoded";
-    if (mutation && !isAppCorsRoute(path) && !appleCallback && path !== TRACK_PATH && path !== APP_EVENTS_PATH) {
+    const computersRoute = path === ACCOUNT_ROUTES.appComputers || /^\/v1\/app\/computers\/[^/]+(?:\/pair)?$/.test(path);
+    if (computersRoute) {
+      // bearer only, never a cookie: any origin may call it, as the session and enroll-grant routes allow
+      res.setHeader("access-control-allow-origin", "*");
+      res.setHeader("access-control-allow-headers", "content-type, authorization, x-dusk-version");
+      res.setHeader("access-control-allow-methods", "GET, POST, PATCH, DELETE, OPTIONS");
+      if (method === "OPTIONS") { res.writeHead(204); res.end(); return; }
+    }
+    // the app sends feedback here itself when its server can't: no cookie is read, and the route keeps its own hourly limits
+    const reportRoute = path === BUG_REPORT_PATH;
+    if (reportRoute) {
+      res.setHeader("access-control-allow-origin", "*");
+      res.setHeader("access-control-allow-headers", "content-type");
+      res.setHeader("access-control-allow-methods", "POST, OPTIONS");
+      if (method === "OPTIONS") { res.writeHead(204); res.end(); return; }
+    }
+    if (mutation && !isAppCorsRoute(path) && !computersRoute && !reportRoute && !appleCallback && path !== TRACK_PATH && path !== APP_EVENTS_PATH) {
       if (req.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() !== "application/json") fail(403, "forbidden", "JSON is required.");
       if (req.headers.origin !== undefined && req.headers.origin !== publicUrl) fail(403, "forbidden", "Origin is not allowed.");
     }
@@ -737,6 +768,73 @@ export function createDashboardApp(options: DashboardAppOptions) {
       store.changed();
       return json(res, 200, { ok: true, removed: true });
     }
+    // the phone's list of the account's computers: only its own, never a dusk cloud's workspace (the cloud row covers it)
+    if (method === "GET" && path === ACCOUNT_ROUTES.appComputers) {
+      rate(req, "app-computers", 1200);
+      const found = auth.appSession(req);
+      if (!found) fail(401, "invalid_token", "Session is invalid.");
+      const clouds = new Set(billing.clouds.list(found.account.id, true).map(cloud => billing.clouds.view(cloud).workspaceId));
+      const answer: AppComputersAnswer = { v: 1, computers: state.workspaces.filter(ws => ws.ownerAccountId === found.account.id && !clouds.has(ws.id))
+        .map(ws => appComputer(ws, seen.get(ws.id), now())) };
+      return json(res, 200, answer);
+    }
+    const computerPath = (method === "PATCH" || method === "DELETE") ? /^\/v1\/app\/computers\/([^/]+)$/.exec(path) : null;
+    if (computerPath) {
+      rate(req, method === "PATCH" ? "computer-rename" : "computer-remove", 120);
+      const found = auth.appSession(req);
+      if (!found) fail(401, "invalid_token", "Session is invalid.");
+      let id: string;
+      try { id = decodeURIComponent(computerPath[1]!); } catch { fail(404, "not_found", "Computer not found."); }
+      // security: another account's computer reads as missing, the same as one that does not exist
+      const ws = COMPUTER_ID.test(id) ? state.workspaces.find(item => item.id === id && item.ownerAccountId === found.account.id) : undefined;
+      if (!ws || billing.clouds.list(found.account.id, true).some(cloud => billing.clouds.view(cloud).workspaceId === ws.id)) fail(404, "not_found", "Computer not found.");
+      if (method === "PATCH") {
+        const data = bodyObject(await readBody(req));
+        const name = typeof data.name === "string" ? data.name.trim() : "";
+        if (!name.length || name.length > 60 || [...name].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) fail(400, "invalid_name", "Name must be 1 to 60 characters.");
+        ws.name = name;
+        store.changed();
+        return json(res, 200, { v: 1, computer: appComputer(ws, seen.get(ws.id), now()) } satisfies AppComputerAnswer);
+      }
+      forget(ws);
+      void usage.forgetWorkspace(ws.id);
+      state.workspaces = state.workspaces.filter(item => item !== ws);
+      store.changed();
+      return json(res, 200, { ok: true });
+    }
+    const pairPath = method === "POST" ? /^\/v1\/app\/computers\/([^/]+)\/pair$/.exec(path) : null;
+    if (pairPath) {
+      rate(req, "computer-pair", COMPUTER_PAIR_LIMITS.perIp);
+      const found = auth.appSession(req);
+      if (!found) fail(401, "invalid_token", "Session is invalid.");
+      const id = decodeURIComponent(pairPath[1]!);
+      // security: another account's computer reads as missing, the same as one that does not exist
+      const ws = COMPUTER_ID.test(id) ? state.workspaces.find(item => item.id === id && item.ownerAccountId === found.account.id) : undefined;
+      if (!ws || billing.clouds.list(found.account.id, true).some(cloud => billing.clouds.view(cloud).workspaceId === ws.id)) fail(404, "not_found", "Computer not found.");
+      limitKey(`computer-pair:${found.account.id}`, COMPUTER_PAIR_LIMITS.perAccount);
+      if (now() - (seen.get(ws.id) ?? -Infinity) > APP_COMMAND_ONLINE_MS) fail(409, "computer_offline", "This computer is asleep or offline.");
+      const queue = commands.get(ws.id) ?? [];
+      if (queue.filter(item => item.kind === "phone.pair" && (item.status === "queued" || item.status === "sent")).length >= COMPUTER_PAIR_LIMITS.pendingPerComputer) fail(429, "rate_limited", "Try again in a minute.");
+      const label = [...found.session.name].filter(char => char >= " ").join("").trim().slice(0, 60) || "Phone";
+      const command: StoredCommand = { id: `cmd_${random(16)}`, workspaceId: ws.id, kind: "phone.pair", target: label, issuedAt: now(), expiresAt: now() + PHONE_PAIR_COMMAND_TTL_MS,
+        purgeAt: now() + 2 * COMMAND_TTL_MS, status: "queued", message: null, doneAt: null };
+      queue.push(command);
+      commands.set(ws.id, queue);
+      saveCommands();
+      const result = await new Promise<CommandResult | null>(resolve => {
+        const timer = setTimeout(() => done(null), COMPUTER_PAIR_WAIT_MS);
+        const done = (value: CommandResult | null) => { clearTimeout(timer); pairWaits.delete(command.id); res.off("close", gone); resolve(value); };
+        const gone = () => done(null);
+        pairWaits.set(command.id, done);
+        res.on("close", gone);
+        waits.get(ws.id)?.finish();
+      });
+      if (!result) fail(409, "computer_offline", "This computer did not answer.");
+      const answer = result.ok && result.link ? pairAnswer(result.link, now()) : null;
+      if (answer) return json(res, 200, answer);
+      if (result.reason === "unreachable") fail(409, "computer_unreachable", "A phone cannot reach this computer yet.");
+      fail(409, "pair_refused", "This computer did not make a pairing.");
+    }
     // TURN credentials for the direct screen path, minted per signed-in app; the TURN key never leaves this service
     if (method === "POST" && path === ACCOUNT_ROUTES.screenIce) {
       rate(req, "screen-ice", 120);
@@ -763,6 +861,16 @@ export function createDashboardApp(options: DashboardAppOptions) {
       if (!isTestAddress(to)) fail(400, "invalid_request", "Only test addresses have a test mailbox.");
       const found = testMail.latest(to, Number(url.searchParams.get("since")) || 0);
       return found ? json(res, 200, found) : fail(404, "not_found", "No mail yet.");
+    }
+    // the release tool's view of the fleet (scripts/release-all.mjs status): counts only, to DUSK_OPS_TOKEN only
+    if (path === "/v1/ops/fleet" && method === "GET") {
+      const token = adminEnv.DUSK_OPS_TOKEN, given = String(req.headers.authorization ?? "");
+      if (!token || given.length !== token.length + 7 || !timingSafeEqual(Buffer.from(given), Buffer.from(`Bearer ${token}`))) { rate(req, "ops-fleet-denied", 20); fail(404, "not_found", "Route not found."); }
+      const days = Number(url.searchParams.get("days") ?? 14), canary = (url.searchParams.get("canary") ?? "").split(",").filter(Boolean);
+      if (!Number.isInteger(days) || days < 1 || days > 60 || canary.length > 200 || !canary.every(id => CANARY_IDS.test(id))) fail(400, "invalid_request", "Invalid fleet query.");
+      const at = now();
+      const [desktops, servers] = await Promise.all([analytics.sink.fleet?.(at - days * 86_400_000, at + 1) ?? Promise.resolve([]), serverFleet(adminEnv, options.fetch)]);
+      return json(res, 200, { at, desktops: { days, versions: desktops }, clouds: cloudFleetOf(billing.clouds.all?.() ?? [], canary), servers } satisfies FleetAnswer);
     }
     if (path === "/v1/ops/report" && method === "POST") {
       const verdict = ops.authorizeReport(typeof req.headers.authorization === "string" ? req.headers.authorization : undefined);
@@ -873,7 +981,8 @@ export function createDashboardApp(options: DashboardAppOptions) {
           if (command) {
             commandsChanged = true;
             command.status = result.ok ? "done" : "failed"; command.message = result.message; command.doneAt = result.at;
-            if (command.kind === "app.connect" && result.ok && result.url) command.url = result.url;
+            if (command.kind === "app.connect" && result.ok && result.url) { command.url = result.url; if (result.returnsHere && command.callback) command.returnsHere = true; }
+            if (command.kind === "phone.pair") pairWaits.get(command.id)?.(result);
           }
         }
         if (ws.ownerAccountId && workspaceTurns(ws) > 0) analytics.botReplied(ws.ownerAccountId);
@@ -918,15 +1027,25 @@ export function createDashboardApp(options: DashboardAppOptions) {
     if (method === "GET" && path === "/v1/connectors") {
       const owner = account(req);
       watch(owner);
-      const answer: ConnectorsAnswer = { byWorkspace: {}, pending: {}, available: {}, at: {} };
+      const inApp: Record<string, string[]> = {};
+      const answer: ConnectorsAnswer = { byWorkspace: {}, inApp, pending: {}, available: {}, at: {} };
       for (const ws of state.workspaces) if (ws.ownerAccountId === owner.id) {
         const apps = ws.report?.apps;
+        inApp[ws.id] = apps?.services.filter(service => service.via === "app" && (service.connected || service.pending)).map(service => service.slug) ?? [];
         answer.byWorkspace[ws.id] = apps?.services.filter(service => service.connected).map(service => service.slug) ?? [];
         answer.pending[ws.id] = apps?.services.filter(service => !service.connected && service.pending).map(service => service.slug) ?? [];
         answer.available[ws.id] = apps?.available ?? false;
         answer.at[ws.id] = ws.sectionAt.apps ?? null;
       }
       return json(res, 200, answer);
+    }
+    if (method === "POST" && path === "/v1/connect/finish") {
+      const owner = account(req);
+      watch(owner);
+      const data = bodyObject(await readBody(req));
+      const found = typeof data.state === "string" ? connectStates.take(data.state, owner.id) : null;
+      if (!found || !owned(found.workspaceId, owner)) fail(404, "connect_expired", "This sign-in link expired. Connect the app again.");
+      return json(res, 200, { workspaceId: found.workspaceId, slug: found.slug, outcome: data.status === "success" ? "signed-in" : "cancelled" });
     }
     if (method === "POST" && path === "/v1/claim") {
       const owner = account(req);
@@ -979,6 +1098,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
         }
         const command: StoredCommand = { id: `cmd_${random(16)}`, workspaceId: ws.id, kind, target, issuedAt: now(), expiresAt: now() + COMMAND_TTL_MS,
           purgeAt: now() + 2 * COMMAND_TTL_MS, status: "queued", message: null, doneAt: null };
+        if (kind === "app.connect" && data.returnHere === true) command.callback = connectStates.open(owner.id, ws.id, target!);
         queue.push(command);
         commands.set(ws.id, queue.filter(item => item.status === "queued" || item.status === "sent" || queue.indexOf(item) >= queue.length - 100));
         saveCommands();
