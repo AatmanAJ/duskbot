@@ -2,7 +2,9 @@
 // on every person's computer and server.
 //
 // what it sees: the device token, apns or fcm, the bot's name and the ids a tap opens (notification, bot, thread,
-// room). never a title, a message or anything a person wrote; it keeps nothing and logs no token.
+// room, ask). never a title, a message or anything a person wrote; it keeps nothing and logs no token. a Live Activity
+// push carries only a fixed vocabulary (phase, step kind, counts, times) and, for the end, the reply's first line
+// sealed to a key only that phone holds.
 import { createPrivateKey, sign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { connect, constants } from "node:http2";
@@ -28,15 +30,77 @@ function collapseId(threadId) {
   return value;
 }
 
+const cleanName = (value) => typeof value === "string" ? [...value].filter((char) => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127).join("").trim().slice(0, 80) : "";
+const optionalId = (value) => value === undefined || (typeof value === "string" && ID.test(value));
+
 /** the message a workspace asks to push, or null; the bot's name is cut to what a lock screen shows */
 export function pushMessage(value) {
   if (!value || typeof value !== "object") return null;
-  const { id, kind, botId, threadId, groupId } = value;
+  const { id, kind, botId, threadId, groupId, requestId } = value;
   if (![id, botId, threadId].every((one) => typeof one === "string" && ID.test(one)) || typeof kind !== "string" || !KIND.test(kind)) return null;
-  if (groupId !== undefined && (typeof groupId !== "string" || !ID.test(groupId))) return null;
-  const botName = typeof value.botName === "string" ? [...value.botName].filter((char) => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127).join("").trim().slice(0, 80) : "";
+  if (!optionalId(groupId) || !optionalId(requestId)) return null;
+  const botName = cleanName(value.botName);
   if (!botName) return null;
-  return { id, kind, botId, botName, threadId, ...(groupId !== undefined ? { groupId } : {}) };
+  return { id, kind, botId, botName, threadId, ...(groupId !== undefined ? { groupId } : {}), ...(requestId !== undefined ? { requestId } : {}) };
+}
+
+const REPLY_KINDS = new Set(["done", "mention", "brief", "wait", "delegation-settled"]);
+
+/** the notification's buttons, as the app registers them */
+export function pushCategory({ kind, requestId, groupId }) {
+  if (kind === "approval") return requestId ? "dusk.approval" : undefined;
+  if (kind === "question") return "dusk.question";
+  if (REPLY_KINDS.has(kind) && !groupId) return "dusk.message";
+  return undefined;
+}
+
+const PHASES = new Set(["working", "needs-you", "done", "stopped"]);
+const STEPS = new Set(["write", "edit", "command", "web", "read", "fetch", "search", "tool"]);
+const EVENTS = new Set(["update", "end", "start"]);
+const SEALED = /^[A-Za-z0-9_-]{80,700}$/;
+const COLOR = /^[a-z]{1,16}$/;
+const BODY = /^[a-z]{1,16}$/;
+const seconds = (value) => Number.isSafeInteger(value) && value > 1_500_000_000 && value < 10_000_000_000;
+
+/** a Live Activity push a workspace asks for, or null: only the fields and values the phone's widget knows */
+export function activityMessage(value) {
+  if (!value || typeof value !== "object" || !EVENTS.has(value.event) || !seconds(value.timestamp) || (value.priority !== 5 && value.priority !== 10)) return null;
+  const s = value.state;
+  if (!s || typeof s !== "object" || !PHASES.has(s.phase) || !seconds(s.startedAt) || !Number.isSafeInteger(s.steps) || s.steps < 0 || s.steps > 100_000) return null;
+  if (s.step !== undefined && !STEPS.has(s.step)) return null;
+  if (s.sealed !== undefined && (typeof s.sealed !== "string" || !SEALED.test(s.sealed))) return null;
+  if (s.ask !== undefined && (!s.ask || (s.ask.kind !== "approve" && s.ask.kind !== "answer") || typeof s.ask.requestId !== "string" || !ID.test(s.ask.requestId))) return null;
+  const state = {
+    phase: s.phase, steps: s.steps, startedAt: s.startedAt, ...(s.step ? { step: s.step } : {}),
+    ...(s.ask ? { ask: { kind: s.ask.kind, requestId: s.ask.requestId } } : {}), ...(s.sealed ? { sealed: s.sealed } : {}),
+  };
+  const out = { event: value.event, state, timestamp: value.timestamp, priority: value.priority };
+  if (value.event === "end" && value.dismissAt !== undefined) {
+    if (!seconds(value.dismissAt)) return null;
+    out.dismissAt = value.dismissAt;
+  }
+  if (value.event === "start") {
+    const a = value.attributes;
+    if (!a || typeof a !== "object" || ![a.botId, a.threadId].every((one) => typeof one === "string" && ID.test(one)) || !optionalId(a.groupId)) return null;
+    if (typeof a.color !== "string" || !COLOR.test(a.color) || typeof a.body !== "string" || !BODY.test(a.body)) return null;
+    const botName = cleanName(a.botName);
+    if (!botName) return null;
+    out.attributes = { botId: a.botId, botName, threadId: a.threadId, ...(a.groupId !== undefined ? { groupId: a.groupId } : {}), color: a.color, body: a.body };
+  }
+  return out;
+}
+
+/** the APNs body of a checked activity push */
+export function activityBody(push) {
+  return {
+    aps: {
+      timestamp: push.timestamp, event: push.event, "content-state": push.state,
+      ...(push.event === "end" && push.dismissAt ? { "dismissal-date": push.dismissAt } : {}),
+      ...(push.event === "start" && push.attributes ? {
+        "attributes-type": "DuskTurnAttributes", attributes: push.attributes, alert: { title: push.attributes.botName, body: "Waiting for you" },
+      } : {}),
+    },
+  };
 }
 
 export function createPushRelay({ env = process.env, now = Date.now, fetch: fetchImpl = fetch, http2Connect = connect, readFile = readFileSync, log = () => {} } = {}) {
@@ -82,7 +146,7 @@ export function createPushRelay({ env = process.env, now = Date.now, fetch: fetc
     return session;
   }
 
-  function sendApns(token, environment, message) {
+  function sendApns(token, environment, headers, payload) {
     if (!providerToken || now() - providerToken.createdAt >= 50 * 60_000) {
       providerToken = { value: jwt({ alg: "ES256", kid: apns.keyId }, { iss: apns.teamId, iat: Math.floor(now() / 1000) }, apns.key), createdAt: now() };
     }
@@ -90,8 +154,7 @@ export function createPushRelay({ env = process.env, now = Date.now, fetch: fetc
     const session = apnsSession(origin);
     return new Promise((resolve) => {
       const request = session.request({
-        ":method": "POST", ":path": `/3/device/${token}`, authorization: `bearer ${providerToken.value}`, "apns-topic": apns.topic,
-        "apns-push-type": "alert", "apns-priority": "10", "apns-collapse-id": collapseId(message.threadId),
+        ":method": "POST", ":path": `/3/device/${token}`, authorization: `bearer ${providerToken.value}`, ...headers,
       });
       let status = 0, body = "";
       const finish = (outcome) => { clearTimeout(timer); resolve(outcome); };
@@ -108,9 +171,20 @@ export function createPushRelay({ env = process.env, now = Date.now, fetch: fetc
         try { reason = JSON.parse(body).reason; } catch {}
         finish(status === 400 && (reason === "BadDeviceToken" || reason === "DeviceTokenNotForTopic") ? "gone" : "failed");
       });
-      const { botName, ...data } = message;
-      request.end(JSON.stringify({ aps: { alert: { title: botName, body: "New message" }, sound: "default", "thread-id": message.threadId }, omb: data }));
+      request.end(JSON.stringify(payload));
     });
+  }
+
+  function sendAlert(token, environment, message) {
+    const { botName, ...data } = message;
+    const category = pushCategory(message);
+    return sendApns(token, environment, { "apns-topic": apns.topic, "apns-push-type": "alert", "apns-priority": "10", "apns-collapse-id": collapseId(message.threadId) }, {
+      aps: { alert: { title: botName, body: "New message" }, sound: "default", "thread-id": message.threadId, ...(category ? { category } : {}) }, omb: data,
+    });
+  }
+
+  function sendActivity(token, environment, activity) {
+    return sendApns(token, environment, { "apns-topic": `${apns.topic}.push-type.liveactivity`, "apns-push-type": "liveactivity", "apns-priority": String(activity.priority) }, activityBody(activity));
   }
 
   let accessToken, exchange;
@@ -160,7 +234,8 @@ export function createPushRelay({ env = process.env, now = Date.now, fetch: fetc
 
   return {
     services,
-    /** GET /v1/push says which services it delivers; POST /v1/push {service, token, environment?, message} sends one */
+    /** GET /v1/push says which services it delivers; POST /v1/push {service, token, environment?, message | activity} sends
+     * one (an activity is APNs only) */
     async route(req, res, { method, readJson, send, fail, ip }) {
       if (method === "GET") return send(res, 200, { services });
       if (method !== "POST") return fail(res, 405, "method not allowed");
@@ -168,12 +243,13 @@ export function createPushRelay({ env = process.env, now = Date.now, fetch: fetc
       const service = SERVICES.has(body?.service) ? body.service : null;
       const token = typeof body?.token === "string" && TOKEN.test(body.token) ? body.token : null;
       const environment = body?.environment === "sandbox" ? "sandbox" : "production";
-      const message = pushMessage(body?.message);
-      if (!service || !token || !message) return fail(res, 400, "service, token and message are required", "invalid");
+      const activity = body?.activity !== undefined && service === "apns" ? activityMessage(body.activity) : null;
+      const message = activity ? null : pushMessage(body?.message);
+      if (!service || !token || (!message && !activity)) return fail(res, 400, "service, token and message are required", "invalid");
       if (!services.includes(service)) return fail(res, 503, `this relay has no ${service === "apns" ? "APNs" : "FCM"} keys`, "not_configured");
       if (!allowed(`ip:${ip}`, PER_IP_PER_MINUTE) || !allowed(`token:${token}`, PER_TOKEN_PER_MINUTE)) return fail(res, 429, "too many pushes", "rate_limited");
       let outcome;
-      try { outcome = service === "apns" ? await sendApns(token, environment, message) : await sendFcm(token, message); }
+      try { outcome = activity ? await sendActivity(token, environment, activity) : service === "apns" ? await sendAlert(token, environment, message) : await sendFcm(token, message); }
       catch { outcome = "failed"; }
       return send(res, 200, { outcome });
     },
