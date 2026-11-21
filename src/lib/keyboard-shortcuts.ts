@@ -70,6 +70,12 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
         winKeys: ["Shift", "Enter"],
       },
       {
+        id: "nest-list-item",
+        description: "Nest or un-nest a list item",
+        macKeys: ["Tab / ⇧Tab"],
+        winKeys: ["Tab / Shift+Tab"],
+      },
+      {
         id: "send-follow-up",
         description: "Queue or steer while a bot works",
         macKeys: ["⌘", "Return"],
