@@ -1,0 +1,190 @@
+{
+  "about": "Settings, Usage & billing, Usage breakdown, grouped by Person. The message row is a real turn. The fake engine runs no background jobs, so the three background rows are synthetic: they are appended to the fixture's usage ledger in the shape each build books them, {kind: bot} on the base and {kind: upkeep, job} on the branch. The fake engine waits 1.94 s before its reply so that both runs time the turn at 2s. Before is the base of the pull request, after is its branch.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1440,
+  "height": 900,
+  "scale": 2,
+  "script": [
+    {
+      "waitMs": 1940
+    },
+    {
+      "text": "Noted. Short answers from now on."
+    }
+  ],
+  "steps": [
+    {
+      "type": {
+        "name": "Message Pepper",
+        "text": "Remember that I prefer short answers"
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "settle": 60
+    },
+    {
+      "appendRows": {
+        "file": "usage/{month}.jsonl",
+        "rows": [
+          {
+            "botId": "{botId}",
+            "botName": "Pepper",
+            "threadId": "memory-capture",
+            "instanceId": "claude",
+            "driverKind": "claudeAgent",
+            "model": "claude-sonnet-5",
+            "input": 900,
+            "output": 200,
+            "cachedInput": 0,
+            "costUsd": 0.01,
+            "trigger": {
+              "kind": "bot",
+              "botId": "{botId}"
+            },
+            "costSource": "reported",
+            "at": "{now}"
+          },
+          {
+            "botId": "{botId}",
+            "botName": "Pepper",
+            "threadId": "skill-review-capture",
+            "instanceId": "claude",
+            "driverKind": "claudeAgent",
+            "model": "claude-sonnet-5",
+            "input": 900,
+            "output": 200,
+            "cachedInput": 0,
+            "costUsd": 0.01,
+            "trigger": {
+              "kind": "bot",
+              "botId": "{botId}"
+            },
+            "costSource": "reported",
+            "at": "{now}"
+          },
+          {
+            "botId": "{botId}",
+            "botName": "Pepper",
+            "threadId": "setup-suggestions-capture",
+            "instanceId": "claude",
+            "driverKind": "claudeAgent",
+            "model": "claude-sonnet-5",
+            "input": 900,
+            "output": 200,
+            "cachedInput": 0,
+            "costUsd": 0.01,
+            "trigger": {
+              "kind": "bot",
+              "botId": "{botId}"
+            },
+            "costSource": "reported",
+            "at": "{now}"
+          }
+        ]
+      },
+      "only": "before"
+    },
+    {
+      "appendRows": {
+        "file": "usage/{month}.jsonl",
+        "rows": [
+          {
+            "botId": "{botId}",
+            "botName": "Pepper",
+            "threadId": "memory-capture",
+            "instanceId": "claude",
+            "driverKind": "claudeAgent",
+            "model": "claude-sonnet-5",
+            "input": 900,
+            "output": 200,
+            "cachedInput": 0,
+            "costUsd": 0.01,
+            "trigger": {
+              "kind": "upkeep",
+              "botId": "{botId}",
+              "job": "memory"
+            },
+            "costSource": "reported",
+            "at": "{now}"
+          },
+          {
+            "botId": "{botId}",
+            "botName": "Pepper",
+            "threadId": "skill-review-capture",
+            "instanceId": "claude",
+            "driverKind": "claudeAgent",
+            "model": "claude-sonnet-5",
+            "input": 900,
+            "output": 200,
+            "cachedInput": 0,
+            "costUsd": 0.01,
+            "trigger": {
+              "kind": "upkeep",
+              "botId": "{botId}",
+              "job": "skill-review"
+            },
+            "costSource": "reported",
+            "at": "{now}"
+          },
+          {
+            "botId": "{botId}",
+            "botName": "Pepper",
+            "threadId": "setup-suggestions-capture",
+            "instanceId": "claude",
+            "driverKind": "claudeAgent",
+            "model": "claude-sonnet-5",
+            "input": 900,
+            "output": 200,
+            "cachedInput": 0,
+            "costUsd": 0.01,
+            "trigger": {
+              "kind": "upkeep",
+              "botId": "{botId}",
+              "job": "setup-suggestions"
+            },
+            "costSource": "reported",
+            "at": "{now}"
+          }
+        ]
+      },
+      "only": "after"
+    },
+    {
+      "click": "You"
+    },
+    {
+      "click": "Settings"
+    },
+    {
+      "click": "Usage & billing"
+    },
+    {
+      "click": "Usage breakdown"
+    },
+    {
+      "waitFor": "!!document.querySelector('[role=tablist]')"
+    },
+    {
+      "eval": "([...document.querySelectorAll('[role=tab]')].find((tab) => tab.textContent.trim() === 'Person').click(), true)"
+    },
+    {
+      "waitMs": 600
+    },
+    {
+      "eval": "(document.querySelector('[role=tablist]').scrollIntoView({ block: 'start' }), true)"
+    },
+    {
+      "click": "Refresh"
+    },
+    {
+      "waitMs": 1500
+    },
+    {
+      "shot": true
+    }
+  ]
+}

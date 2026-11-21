@@ -1,3 +1,5 @@
 {
-  "pr-34.before-after.png": { "arrange": "auto" }
+  "pr-34.before-after.png": { "arrange": "auto", "crop": "479,302,678,370" },
+  "pr-34.before.png": { "crop": "479,302,678,370" },
+  "pr-34.after.png": { "crop": "479,302,678,370" }
 }
