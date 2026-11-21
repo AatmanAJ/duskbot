@@ -40,7 +40,7 @@ async function binaryVersion(candidate) {
   if (!candidate || !existsSync(candidate)) return null;
   if (cross) return expectedVersion;
   try {
-    const { stdout } = await run(candidate, ["--version"], { timeout: 5000, windowsHide: true });
+    const { stdout } = await run(candidate, ["--version"], { timeout: 30_000, windowsHide: true });
     return stdout.match(/cua-driver\s+([\d.]+)/)?.[1] ?? null;
   } catch {
     return null;
