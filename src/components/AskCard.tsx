@@ -161,7 +161,7 @@ export function CardSettledRow({ icon, label, summary, tone = "done", title, det
     <>
       <CardSourceIcon>{icon}</CardSourceIcon>
       <span className="shrink-0 font-medium text-ink">{label}</span>
-      <span dir="auto" aria-live="polite" className={cn("min-w-0 truncate", tone === "failed" ? "text-danger" : "text-ink-tertiary")}>{summary}</span>
+      <span dir="auto" aria-live="polite" data-settled-summary="" className={cn("min-w-0 truncate", tone === "failed" ? "text-danger" : "text-ink-tertiary")}>{summary}</span>
     </>
   );
   const rowClass = "flex min-h-[52px] min-w-0 flex-1 items-center gap-2 px-4 py-3.5 text-start text-[13px] leading-[18px]";
@@ -448,6 +448,23 @@ export const CARD_FIELD =
 export function returnFocusToComposer(): void {
   if (typeof requestAnimationFrame !== "function") return;
   requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('[data-tour="composer"] textarea')?.focus());
+}
+
+/** The composer once it is drawn (the chat behind a closing screen can mount a few frames later), unless the person has
+ * moved on to another field or dialog; never on a touch screen, where focus pops the keyboard over the chat. */
+export function focusComposerWhenShown(frames = 60): void {
+  if (typeof requestAnimationFrame !== "function" || window.matchMedia?.("(hover: none) and (pointer: coarse)").matches) return;
+  const attempt = (left: number) => requestAnimationFrame(() => {
+    const input = document.querySelector<HTMLTextAreaElement>('[data-tour="composer"] textarea');
+    const active = document.activeElement;
+    const elsewhere = active && active !== document.body && active !== document.documentElement && (
+      /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || (active as HTMLElement).isContentEditable || active.closest("[role=dialog], [role=alertdialog], [aria-modal=true]"));
+    const closing = active?.closest("[data-welcome]");
+    if (elsewhere && !closing) return;
+    if (input && !input.disabled && !closing) { input.focus(); return; }
+    if (left > 0) attempt(left - 1);
+  });
+  attempt(frames);
 }
 
 export function moveChoiceFocus(event: KeyboardEvent<HTMLElement>): void {

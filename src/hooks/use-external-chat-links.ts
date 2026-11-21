@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { openChatLink } from "@/components/ThreadRefs";
+import { connectAppLinkId, openConnectApps } from "@/components/connect-apps/open";
 import { openThread, type Action, type AppState, type ThreadTarget } from "@/state/store";
 
 export function useExternalChatLinks(state: AppState, dispatch: (action: Action) => void): void {
@@ -10,7 +11,9 @@ export function useExternalChatLinks(state: AppState, dispatch: (action: Action)
     setLink(null);
     if (state.appSettingsOpen) dispatch({ type: "toggleAppSettings", open: false });
     if (state.shortcutsOpen) dispatch({ type: "toggleShortcuts", open: false });
-    openChatLink(dispatch, link, state);
+    const appId = connectAppLinkId(link);
+    if (appId) openConnectApps({ kind: "detail", id: appId });
+    else openChatLink(dispatch, link, state);
   }, [link, state, dispatch]);
 }
 

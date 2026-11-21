@@ -1,11 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { ArrowLeft } from "@/icons";
-import { Segmented } from "../ui/kit";
+import { Button, Segmented } from "../ui/kit";
+import { toast } from "../lib/toast";
 import { Nil, Table, Td, Th } from "../ui/table";
 import { ago } from "../lib/format";
 import { Link } from "../lib/router";
 import { useNow } from "../lib/now";
-import { useAdmin, type UserDetail, type UserRow } from "./api";
+import { adminCall, AdminApiError, useAdmin, type UserDetail, type UserRow } from "./api";
 import { CloudTable } from "./Clouds";
 import { duration } from "./kit";
 import { endLabel, PlanEditor } from "./PlanEditor";
@@ -51,7 +52,7 @@ export function UsersPage({ tabs }: { tabs?: ReactNode }) {
                       <span className="block truncate text-12 text-ink-3">{user.name ?? "no name"} · {user.methods.join(", ")}{user.optOut ? " · opted out" : ""}</span>
                     </Link>
                   </Td>
-                  <Td>{user.plan ? <Status value={user.plan.status} label={`${user.plan.plan ?? "custom"}${user.plan.status === "active" ? "" : `, ${user.plan.status.replace(/_/g, " ")}`}`} /> : <span className="text-13 text-ink-3">free</span>}</Td>
+                  <Td>{user.plan ? <Status value={user.plan.trial ? "trial" : user.plan.status} label={`${user.plan.plan ?? "custom"}${user.plan.trial ? ", trial" : user.plan.status === "active" ? "" : `, ${user.plan.status.replace(/_/g, " ")}`}`} /> : <span className="text-13 text-ink-3">free</span>}</Td>
                   <Td className="text-end font-mono num">{user.clouds || <Nil />}</Td>
                   <Td className="text-13 text-ink-2">{user.devices ? `${user.devices} · ${user.platforms.join(", ")}` : <Nil />}</Td>
                   <Td className="t-id whitespace-nowrap text-ink-2">{stamp(user.createdAt).slice(0, 10)}</Td>
@@ -80,6 +81,33 @@ function describe(item: UserDetail["timeline"][number]) {
   return Object.entries(p).filter(([key]) => key !== "cloudId").map(([key, value]) => key === "ms" && typeof value === "number" ? `for ${duration(value)}` : `${key} ${value}`).join(", ");
 }
 
+/** the owner's switch for the growth admin role: analytics and revenue, read only */
+function AdminAccess({ detail, onChange }: { detail: UserDetail; onChange(next: UserDetail): void }) {
+  const [busy, setBusy] = useState(false);
+  const admin = detail.account.admin;
+  if (!admin) return null;
+  const on = admin.role === "growth";
+  const flip = async () => {
+    setBusy(true);
+    try {
+      const answer = await adminCall<{ role: "growth" | null }>(`/users/${encodeURIComponent(detail.account.id)}/admin-role`, { method: "POST", body: { role: on ? null : "growth" } });
+      onChange({ ...detail, account: { ...detail.account, admin: { ...admin, role: answer.role } } });
+      toast(answer.role ? "growth admin on. they see analytics and revenue." : "growth admin off.");
+    } catch (err) {
+      toast(err instanceof AdminApiError ? err.message : "that didn't save.", "bad");
+    } finally { setBusy(false); }
+  };
+  return (
+    <div className="mt-2.5 flex flex-wrap items-center justify-between gap-3 rounded-[18px] bg-card px-4 py-3">
+      <div className="min-w-0">
+        <div className="text-14 text-ink">admin access</div>
+        <div className="mt-0.5 text-12 text-ink-3">{admin.owner ? "full admin, from the admin email list." : on ? "growth admin: analytics and revenue, read only." : "none. growth admin lets them read analytics and revenue, nothing else."}</div>
+      </div>
+      {!admin.owner && <Button size="sm" disabled={busy} onClick={flip}>{on ? "remove growth admin" : "make growth admin"}</Button>}
+    </div>
+  );
+}
+
 export function UserPage({ id }: { id: string }) {
   const { data, error, loading, reload, setData } = useAdmin<UserDetail>(`/users/${encodeURIComponent(id)}`);
   const now = useNow(60_000);
@@ -96,6 +124,7 @@ export function UserPage({ id }: { id: string }) {
             <Tile label="last seen" value={ago(data.account.lastSeenAt, now)} note={data.account.optOut ? "opted out of analytics" : "analytics on"} />
             <Tile label="bot replies, 30 days" value={n(data.workspaces.reduce((sum, ws) => sum + ws.turns30d, 0))} note={`${n(data.workspaces.reduce((sum, ws) => sum + ws.bots, 0))} bots`} />
           </div>
+          <AdminAccess detail={data} onChange={setData} />
 
           <div className="mt-6 grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start gap-6 max-xl:grid-cols-1">
             <PlanEditor detail={data} onChange={setData} />

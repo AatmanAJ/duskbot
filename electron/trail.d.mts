@@ -20,6 +20,7 @@ export function contentKey(key: string): boolean;
 export function urlHostPath(raw: string): string;
 export function scrubString(value: unknown): string;
 export function redactFields(fields: unknown, depth?: number): TrailFields;
+export function toolName(value: unknown): string | undefined;
 export function redactEvent(event: unknown): TrailEvent | null;
 export function hashName(value: string, salt?: string): string;
 export function scrubForExport(event: unknown, options?: { home?: string; salt?: string }): TrailEvent | null;

@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "version": "0.2.14",
-  "sha256sums": "b13cb39a921459eab7c880c48b0bd4efd0c652b5e10e4dbbdc4ab8888fe71fae",
-  "signature": "r1.rel-2026-11.eyJ2IjoxLCJraW5kIjoiZGVza3RvcCIsIm5hbWUiOiJkdXNrIGJvdCIsInZlcnNpb24iOiIwLjIuMTQiLCJzaGEyNTYiOiJiMTNjYjM5YTkyMTQ1OWVhYjdjODgwYzQ4YjBiZDRlZmQwYzY1MmI1ZTEwZTRkYmJkYzRhYjg4ODhmZTcxZmFlIiwic2lnbmVkQXQiOjE3OTQ4NTI4NDAyNjN9._v8WkstnsgGFy_-HlJ3OuJN86TdrYzlgKGVev2O1j3UjPHlmeHcLzm2RdhSyVkLNpeMz8LsiRrSogOACtd8WDA"
+  "version": "0.2.25",
+  "sha256sums": "b139de27fc42e53e9422f343f43525e3f9c460d2d6bedf2f98490ac8cdf52cdb",
+  "signature": "r1.rel-2026-11.eyJ2IjoxLCJraW5kIjoiZGVza3RvcCIsIm5hbWUiOiJkdXNrIGJvdCIsInZlcnNpb24iOiIwLjIuMjUiLCJzaGEyNTYiOiJiMTM5ZGUyN2ZjNDJlNTNlOTQyMmYzNDNmNDM1MjVlM2Y5YzQ2MGQyZDZiZWRmMmY5ODQ5MGFjOGNkZjUyY2RiIiwic2lnbmVkQXQiOjE3OTUxMzM4MzM4MjN9.w5DWX0D__rzYUcPCkmLusxJK1novlqYKub7GLKlX7XhviPXLna95QXB9CDFUIXk8Tgfes8z5v_pmxyclE8t4Ag"
 }
