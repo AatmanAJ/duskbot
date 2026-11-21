@@ -1,0 +1,6 @@
+{
+  "pr-22.before-after.png": { "crop": "0,0,336,200" },
+  "pr-22.before.png": { "crop": "0,0,336,200" },
+  "pr-22.after.png": { "crop": "0,0,336,200" },
+  "pr-22.gif": { "labels": ["composer clicked", "start dictation", "send message", "search", "new bot", "resize sidebar", "pepper", "actions for pepper", "actions for fixture starter", "give feedback", "you", "connect apps", "open pepper's profile", "conversation with pepper", "add reaction", "reply to message", "message actions"] }
+}
