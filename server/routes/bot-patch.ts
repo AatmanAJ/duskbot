@@ -4,7 +4,7 @@ import { normalizeConnectorScopes } from "../../shared/connector-scopes.ts";
 import { normalizeOutboundPolicy } from "../../shared/outbound.ts";
 import { normalizePhoneApps } from "../../shared/phone-apps.ts";
 import { parseToolScope, toolScopeWidens } from "../../shared/tool-scope.ts";
-import { isMausColor, MAUS_COLOR_NAMES, type WireBot, type WireGroup } from "../../shared/wire.ts";
+import { isMausColor, LIMIT_MODES, MAUS_COLOR_NAMES, type LimitMode, type WireBot, type WireGroup } from "../../shared/wire.ts";
 import { validateBotCwd } from "../bot-cwd.ts";
 import { parseBotProfilePatch } from "../bot-profile.ts";
 import { accessFromVisibility } from "../../shared/bot-access.ts";
@@ -118,7 +118,7 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
       if (body.pinned !== undefined && typeof body.pinned !== "boolean") {
         return json(res, 400, { error: "pinned must be true or false" });
       }
-      const existingBot = store.bot(m[1]); const defaultBotRefused = defaultBotPatchRefusal(existingBot, body);
+      const existingBot = store.bot(m[1]); const defaultBotRefused = defaultBotPatchRefusal(existingBot, body, store.bots);
       if (defaultBotRefused) return json(res, 400, { error: defaultBotRefused });
       const rawSelection = (body as Record<string, unknown>).modelSelection;
       if (body.threadId !== undefined && rawSelection === undefined) {
@@ -185,6 +185,7 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
       for (const key of ["unread", "cloudBackend", "color", "mascotExpression", "mascotBody", "pinned", "hidden", "sidebarHidden", "welcomed"] as const) {
         if (body[key] !== undefined) patch[key] = body[key];
       }
+      if (body.hidden === true && existingBot?.defaultBot) Object.assign(patch, { defaultBot: undefined, sidebarHidden: undefined });
       if (body.cloudBackend === "box" || body.cloudBackend === "vps") patch.cloudBackend = "vps";
       const computerSpecified = Object.prototype.hasOwnProperty.call(body, "computer");
       let requestedComputer = existingBot?.computer;
@@ -203,7 +204,7 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
           return json(res, 400, { error: "computer must be null (Auto), cloud, vm, local, browser, or off" });
         }
       }
-      if (normalizedSelection) patch.modelSelection = normalizedSelection;
+      if (normalizedSelection) Object.assign(patch, { modelSelection: normalizedSelection, modelChosen: true });
       // null/"" clears; the id is not checked against the transcript.
       if (body.pinnedMessageId !== undefined) {
         if (body.pinnedMessageId === null || body.pinnedMessageId === "") patch.pinnedMessageId = undefined;
@@ -221,7 +222,8 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
       }
       if (section !== undefined) patch.section = section ?? undefined;
       if (body.chiefOfStaff === false) patch.chiefOfStaff = false;
-      if (body.fallback !== undefined) {
+      if (body.fallback === null) patch.fallback = undefined;
+      else if (body.fallback !== undefined) {
         if (!Array.isArray(body.fallback) || body.fallback.length > 5) {
           return json(res, 400, { error: "fallback must be a list of up to five { instanceId, model } entries" });
         }
@@ -237,6 +239,10 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
           chain.push({ instanceId: row.instanceId, model });
         }
         patch.fallback = chain;
+      }
+      if (body.limitMode !== undefined) {
+        if (body.limitMode !== null && !(LIMIT_MODES as readonly unknown[]).includes(body.limitMode)) return json(res, 400, { error: "limitMode must be wait, ask or free" });
+        patch.limitMode = body.limitMode === null || body.limitMode === "wait" ? undefined : body.limitMode as LimitMode;
       }
       // null clears back to every connected app.
       if (body.connectorScopes !== undefined) {
@@ -278,6 +284,10 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
       if (body.macControl !== undefined) {
         if (typeof body.macControl !== "boolean") return json(res, 400, { error: "macControl must be true or false" });
         patch.macControl = body.macControl;
+      }
+      if (body.suggestions !== undefined) {
+        if (typeof body.suggestions !== "boolean") return json(res, 400, { error: "suggestions must be true or false" });
+        patch.suggestions = body.suggestions;
       }
       if (body.memoryEnabled !== undefined) {
         if (typeof body.memoryEnabled !== "boolean") return json(res, 400, { error: "memoryEnabled must be true or false" });
@@ -696,7 +706,7 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
       if (body.memoryUpkeep === false || body.memoryEnabled === false) memoryUpkeep.dropBot(bot.id);
       if (body.cacheKeepWarm !== undefined) cacheKeepWarm.refresh();
       if (computerSpecified && requestedComputer !== undefined) store.clearAutoSurfacePins(m[1], requestedComputer);
-      if (normalizedSelection && movedTask) store.patchTask(bot.id, movedTask.threadId, { modelSelection: undefined });
+      if (normalizedSelection && movedTask) store.patchTask(bot.id, movedTask.threadId, { modelSelection: undefined, modelChosen: undefined });
       if (existingBot && (bot.browserProfile !== beforeBrowserProfile || bot.browser !== beforeBrowserEnabled)) {
         browserLive.closeForBot(bot.id);
         if (beforeBrowserProfile === "guest" && (bot.browserProfile !== "guest" || bot.browser === false)) {

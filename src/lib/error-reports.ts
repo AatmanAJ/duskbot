@@ -10,6 +10,7 @@ export function createErrorReports(bridge: ErrorReportsBridge | undefined, path 
   return (error: unknown) => {
     if (!bridge) return;
     const err = error instanceof Error ? error : new Error(typeof error === "string" ? error : "non-error rejection");
+    if (/ResizeObserver loop/.test(err.message)) return;
     const stack = (err.stack ?? "").split("\n").slice(1, 31).join("\n");
     const key = `${err.name}|${err.message}|${stack.split("\n")[0] ?? ""}`;
     if (seen.has(key) || left <= 0) return;
