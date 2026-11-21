@@ -19,7 +19,7 @@ import { RowMenu, Table, Td, Th, type MenuItem } from "../ui/table";
 import { KIND_LABEL } from "../ui/Shell";
 import { SkyEmpty } from "../ui/Sky";
 import { CloudStatus, prewarm, regionName, tierName, workspaceIcon } from "./cloud-bits";
-import { monthlyOf, Points, useQuickCheckout } from "./cloud-offer";
+import { monthlyOf, Points, usePlanChoice } from "./cloud-offer";
 import { CommandButton, LoadError } from "./common";
 import { MachineView } from "./Machine";
 import { useNow } from "../lib/now";
@@ -140,18 +140,18 @@ export function WorkspacesPage() {
 /** the other way to run bots: dusk cloud, so they keep working when the computer sleeps */
 function CloudColumn({ hasCloud, computer }: { hasCloud: boolean; computer: string }) {
   const { catalog } = useCloud();
-  const { busy, error, buy } = useQuickCheckout("dash_workspaces");
+  const { choose, sheet } = usePlanChoice("dash_workspaces");
   const from = monthlyOf(catalog, "starter");
   return (
     <div className="min-w-0 max-md:pt-6 md:pl-6">
       <h3 className="mb-2 text-14 font-medium text-ink">dusk cloud</h3>
       <p className="mb-5 text-14 text-ink-3">your bots on a computer we run, so they keep going when your {computer} sleeps.{from ? ` from ${from} a month.` : ""}</p>
       <Points />
-      {error && <p role="alert" className="mt-4 text-14 text-bad">{error}</p>}
+      {sheet}
       <div className="mt-6 flex flex-wrap gap-2">
         {hasCloud
           ? <ButtonLink to="/cloud" variant="primary">open dusk cloud</ButtonLink>
-          : <Button variant="primary" onClick={() => void buy("starter")} disabled={busy || !catalog}>{busy ? "opening checkout" : "get dusk cloud"}</Button>}
+          : <Button variant="primary" onClick={() => choose("starter")} disabled={!catalog}>get dusk cloud</Button>}
         <ButtonLink to="/billing">compare plans</ButtonLink>
       </div>
     </div>

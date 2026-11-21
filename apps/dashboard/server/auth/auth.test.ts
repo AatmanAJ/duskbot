@@ -94,7 +94,7 @@ describe("local account service", () => {
     const second = await login();
     expect(second.created).toBe(false);
     expect(second.account.id).toBe(first.account.id);
-    expect(await body(call("/v1/me", undefined, browserHeaders(second)))).toEqual({ account: second.account, csrfToken: second.csrfToken });
+    expect(await body(call("/v1/me", undefined, browserHeaders(second)))).toEqual({ account: second.account, csrfToken: second.csrfToken, admin: false });
     const view = await body<AccountAnswer>(call("/v1/account", undefined, browserHeaders(second)));
     expect(view.identities).toEqual([]);
     expect(view.sessions).toHaveLength(2);

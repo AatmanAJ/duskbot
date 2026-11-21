@@ -32,6 +32,8 @@ export const PHONE_CODES_OUTSTANDING = 3, PHONE_CODE_REMEMBERED_MS = 60 * 60_000
 
 export interface AuthOptions {
   dataDir: string; publicUrl: string; mailer: Mailer; email?: EmailConfig; now?: () => number; fetch?: typeof fetch;
+  /** whether an account may open the admin panel, said on GET /v1/me so the page asks the panel only then */
+  isAdmin?: (account: Account) => boolean;
   /** where the page is served on publicUrl ("/dashboard" when it shares the origin with the site, "" at the root) */
   pageBase?: string;
   /** sign-in emails the service sends an hour across everyone (DUSK_AUTH_MAIL_PER_HOUR, default AUTH_LIMITS.mailPerHour) */
@@ -685,7 +687,7 @@ export function createAuth(options: AuthOptions) {
         json({ v: 1, providers: OAUTH_PROVIDERS.map(id => ({ id, enabled: providers.has(id), comingSoon: !providers.has(id) && options.dev })), signupOpen: options.signupOpen, recovery: true });
       } else if (method === "GET" && path === R.me) {
         const owner = requireWeb(req, { mutation: false });
-        json({ account: view(owner), csrfToken: csrfFor(webSession(req)!.session) });
+        json({ account: view(owner), csrfToken: csrfFor(webSession(req)!.session), ...(options.isAdmin ? { admin: options.isAdmin(owner) } : {}) });
       } else if ((method === "GET" || method === "PATCH") && path === R.account) {
         const owner = requireWeb(req, { mutation });
         if (mutation) {

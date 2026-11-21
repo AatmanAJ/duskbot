@@ -244,7 +244,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
   const testMail = options.testMail ?? createTestMailbox({ readable: dev });
   const outbound = sinkTestMail(options.mailer, testMail);
   const mailer: Mailer = { send: message => { try { if (!isTestAddress(message.to)) noteMail(message); } catch { /* counting never stops an email */ } return outbound.send(message); } };
-  const auth = createAuth({ dataDir: options.dataDir, publicUrl, pageBase, mailPerHour: options.mailPerHour, mailPerDay: options.mailPerDay, mailer: mailer,
+  const auth = createAuth({ dataDir: options.dataDir, publicUrl, pageBase, mailPerHour: options.mailPerHour, mailPerDay: options.mailPerDay, mailer: mailer, isAdmin: account => admin.roleOf(account) !== null,
     // one incident a day, whichever limit it was: someone (or a bot) is asking for sign-in codes faster than we will send them
     onMailLimit: kind => incidents.report({ source: "server", name: "SignInMailLimit", key: `auth-mail-${new Date(now()).toISOString().slice(0, 10)}`,
       message: `sign-in emails reached ${mailLimitSay[kind]} limit, so more codes are refused until it resets. a spike of signups or someone spraying addresses; check admin > health for rate-limited ips` }), now, fetch: options.fetch, oauth: options.oauth,
