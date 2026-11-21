@@ -581,11 +581,12 @@ function records(value: unknown): Array<Record<string, any>> {
   return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
+const QUOTED_ABSOLUTE_PATH = /([`'"])(?:~|[A-Za-z]:)?[\\/][^`'"]*[\\/]([^`'"\\/]+)\1/g;
 const ABSOLUTE_PATH = /(^|[\s`'"(])(?:~|[A-Za-z]:)?[\\/](?:[^\s`'"()\\/]+[\\/])+([^\s`'"()\\/]+)/g;
 
 /** An engine's status line with each absolute path cut to its last part. */
 export function withoutLocalPaths(text: string): string {
-  return text.replace(ABSOLUTE_PATH, "$1$2");
+  return text.replace(QUOTED_ABSOLUTE_PATH, "$1$2$1").replace(ABSOLUTE_PATH, "$1$2");
 }
 
 function projectTask(task: Record<string, any>, activeThreadId: unknown) {
