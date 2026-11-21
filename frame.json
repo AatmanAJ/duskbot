@@ -1,6 +1,6 @@
 {
-  "pr-21.before-after.png": { "crop": "0,16,600,334" },
-  "pr-21.before.png": { "crop": "0,16,600,334" },
-  "pr-21.after.png": { "crop": "0,16,600,334" },
-  "pr-21.after-light.png": { "crop": "0,16,600,334" }
+  "pr-21.before-after.png": { "arrange": "auto", "crop": "288,380,984,380" },
+  "pr-21.before.png": { "crop": "288,380,984,380" },
+  "pr-21.after.png": { "crop": "288,380,984,380" },
+  "pr-21.after-light.png": { "crop": "288,380,984,380" }
 }
