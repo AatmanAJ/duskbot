@@ -26,13 +26,13 @@ Composio at a loopback stand-in. It verifies:
 - Spanish, Hindi, French, Japanese and English requests need consent before
   the first send, with no draft write or request-wording classification.
 - The daily allowance permits sends at Full access, consumes the cap, and
-  refuses further sends after it is exhausted.
+  refuses further sends after it is exhausted. Explicit draft-and-send
+  requests follow the same policy. Sending a draft after a draft write also
+  uses the configured policy.
 - At Full access with no sending rule, an email waits on its review card and
   goes out only after Send, without spending the allowance; other sends go out
   on their own up to 25 a day, the 26th is refused with no card, and a routine
-  that hits the cap reports it instead of waiting on anyone. Explicit draft-and-send
-  requests follow the same policy. Sending a draft after a draft write also
-  uses the configured policy.
+  that hits the cap reports it instead of waiting on anyone.
 - The draft tools create one reply draft and update its existing ID while
   retaining the Gmail thread. Repeated creation for the same thread within
   the originating request is refused, including after delegation and resuming.
