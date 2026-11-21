@@ -8,7 +8,7 @@ export type WhenPreset = "daily" | "weekdays" | "weekly" | "hourly" | "once" | "
 
 export interface WhenDraft {
   preset: WhenPreset;
-  /** "HH:MM", local. */
+  /** "HH:MM", local; "" while the typed time reads as none. */
   time: string;
   /** Sunday = 0, for "weekly". */
   day: number;
@@ -62,7 +62,8 @@ export function nextLocalHour(now = Date.now()): number {
 export function scheduleFromDraft(draft: WhenDraft, now = Date.now()): { schedule?: RoutineScheduleInput; error?: LocaleKey } {
   if (draft.preset === "keep") return {};
   if (draft.preset === "hourly") {
-    if (draft.window && !(TIME.test(draft.window.start) && TIME.test(draft.window.end) && draft.window.start < draft.window.end)) return { error: "routines.inline.error.hours" };
+    if (draft.window && !(TIME.test(draft.window.start) && TIME.test(draft.window.end))) return { error: "routines.inline.error.time" };
+    if (draft.window && draft.window.start >= draft.window.end) return { error: "routines.inline.error.hours" };
     return { schedule: { type: "interval", everyMinutes: 60, anchorAt: nextLocalHour(now), weekdays: null, ...(draft.window === undefined ? {} : { window: draft.window }), endsAt: null } };
   }
   if (!TIME.test(draft.time)) return { error: "routines.inline.error.time" };

@@ -37,6 +37,7 @@ describe("the routine editor's when", () => {
     const draft = newWhenDraft(now);
     expect(scheduleFromDraft({ ...draft, preset: "once", date: "2026-11-07", time: "08:00" }, now).error).toBe("routines.inline.error.past");
     expect(scheduleFromDraft({ ...draft, time: "" }, now).error).toBe("routines.inline.error.time");
+    expect(scheduleFromDraft({ ...draft, preset: "hourly", window: { start: "", end: "23:00" } }, now).error).toBe("routines.inline.error.time");
   });
 
   it("names a routine from what it does", () => {
