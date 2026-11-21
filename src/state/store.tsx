@@ -66,7 +66,7 @@ import { parseComputerHelp } from "@/lib/computer-control";
 import { answerResponse, dismissResponse } from "@/lib/card-answer";
 import { forgetLiveTurns, forgetStopPress, noteRuntimeTurn, sendStop } from "@/lib/stop-turn"; import { forgetTurnStatuses } from "@/state/turn-status"; import { forgetLiveReplies } from "@/state/live-reply";
 import { readLastConversation, rememberConversation } from "@/lib/last-conversation";
-import { BOT_PANEL_OPEN_KEY, readBotPanelOpen, readLastBotSection, rememberBotSection } from "@/lib/last-bot-section";
+import { readBotPanelOpen, readLastBotSection, rememberBotPanelOpen, rememberBotSection } from "@/lib/last-bot-section";
 import { readOnArrival, showNotification } from "@/lib/notify";
 import { randomUuid } from "@/lib/random-uuid";
 import { callReplyEvent, callReplyOwner, callReplyStream, speechOwner, spokenReplyStream } from "@/lib/spoken-reply-stream";
@@ -2137,7 +2137,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
   }, []);
   useEffect(() => {
-    try { globalThis.localStorage?.setItem(BOT_PANEL_OPEN_KEY, state.settingsOpen ? "1" : "0"); } catch {}
+    rememberBotPanelOpen(state.settingsOpen);
   }, [state.settingsOpen]);
   useEffect(() => {
     if (state.settingsOpen && state.botSettingsExpandAccordion) rememberBotSection(state.botSettingsSection);

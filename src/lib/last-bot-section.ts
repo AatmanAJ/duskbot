@@ -42,10 +42,20 @@ export function rememberBotSection(section: BotSettingsSection): void {
   }
 }
 
+const phoneLayout = () => globalThis.matchMedia?.(PHONE_LAYOUT).matches === true;
+
 export function readBotPanelOpen(): boolean {
   try {
-    return globalThis.localStorage?.getItem(BOT_PANEL_OPEN_KEY) === "1" && globalThis.matchMedia?.(PHONE_LAYOUT).matches !== true;
+    return globalThis.localStorage?.getItem(BOT_PANEL_OPEN_KEY) === "1" && !phoneLayout();
   } catch {
     return false;
+  }
+}
+
+/** At phone width the panel is never restored, so a load there keeps the choice made on a wide window. */
+export function rememberBotPanelOpen(open: boolean): void {
+  try {
+    if (!phoneLayout()) globalThis.localStorage?.setItem(BOT_PANEL_OPEN_KEY, open ? "1" : "0");
+  } catch {
   }
 }

@@ -5,6 +5,7 @@ import {
   LAST_BOT_SECTION_KEY,
   readBotPanelOpen,
   readLastBotSection,
+  rememberBotPanelOpen,
   rememberBotSection,
 } from "./last-bot-section";
 
@@ -65,5 +66,17 @@ describe("the bot panel left open", () => {
     vi.stubGlobal("localStorage", surface({ [BOT_PANEL_OPEN_KEY]: "0" }));
     width(false);
     expect(readBotPanelOpen()).toBe(false);
+  });
+
+  it("keeps the choice made on a wide window through a load at phone width", () => {
+    const store = surface({ [BOT_PANEL_OPEN_KEY]: "1" });
+    vi.stubGlobal("localStorage", store);
+    width(true);
+    rememberBotPanelOpen(false);
+    expect(store.stored.get(BOT_PANEL_OPEN_KEY)).toBe("1");
+    width(false);
+    expect(readBotPanelOpen()).toBe(true);
+    rememberBotPanelOpen(false);
+    expect(store.stored.get(BOT_PANEL_OPEN_KEY)).toBe("0");
   });
 });
