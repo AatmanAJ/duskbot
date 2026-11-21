@@ -658,7 +658,8 @@ const TOOL_DEFINITIONS = [
       type: "object",
       additionalProperties: false,
       properties: {
-        action: { type: "string", enum: ["create", "update", "pause", "resume", "run_now", "email"] },
+        action: { type: "string", enum: ["create", "update", "pause", "resume", "run_now", "email", "note"] },
+        note: { type: "string", maxLength: 4000, description: "action=note, in an automation's run: notes for its next run." },
         trigger_id: { type: "string", description: "Not for create: the id from trigger_info." },
         when: {
           type: "string",

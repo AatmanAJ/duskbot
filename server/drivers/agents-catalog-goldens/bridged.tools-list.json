@@ -681,8 +681,13 @@
               "pause",
               "resume",
               "run_now",
-              "email"
+              "email",
+              "note"
             ]
+          },
+          "note": {
+            "type": "string",
+            "description": "action=note, in an automation's run: notes for its next run."
           },
           "trigger_id": {
             "type": "string",

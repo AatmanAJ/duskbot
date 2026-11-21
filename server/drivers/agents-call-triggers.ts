@@ -391,6 +391,11 @@ export async function callTriggerTool(name: string, args: Json, context: ToolCal
     return listTriggers(args, forBotId, context);
   }
   if (name === "trigger" && args.action === "email") return emailRoute(args, context);
+  if (name === "trigger" && args.action === "note") {
+    if (typeof args.note !== "string") return { text: "trigger action=note needs note: the whole notes for this automation's next run.", isError: true };
+    const { ok, body } = await context.client.apiResponse(REQUEST_ROUTE, { method: "POST", body: JSON.stringify({ action: "note", note: args.note }) });
+    return ok ? { text: String(body.text ?? "Saved.") } : { text: String(body.error ?? "The note was not saved."), isError: true };
+  }
   if (name === "trigger" && args.action === "create") {
     if (args.trigger_id !== undefined && args.trigger_id !== null) return { text: "trigger_id is for a trigger that exists; leave it out to create one.", isError: true };
     return createTrigger(args, forBotId, context);

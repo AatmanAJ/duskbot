@@ -506,7 +506,7 @@ import { listenWebhookIngress, type WebhookIngress } from "./webhook-ingress.ts"
 import { addressFor } from "./webhook-address.ts"; import { createRoutineMailHost } from "./host/routine-mail-host.ts";
 import { assertModelVariantSupported, memberTurnSelection } from "./member-turn.ts";
 import { WebhookManager } from "./webhooks.ts";
-import { SCRIPT_CHECK_ON_NOTE, scriptCheckGate, scriptRoutineRefusal, setsScript } from "./routine-script.ts"; import { tieAutomationsToBots } from "./bot-automations.ts"; import { WaitManager } from "./waits.ts"; import { cancelWaitFromCard, createWaitHost, waitRunChat } from "./wait-host.ts"; import { ranApart, runAnswersInItsChat } from "./routine-run-definition.ts"; import { createWaitRoutes, findWaitPeer, hostWaitRefusal, waitSourceRefusal, type WaitRouteContext } from "./routes/waits.ts"; import { createJobsHost, JOB_NOTIFY_PATH, type JobTurn } from "./jobs/host.ts";
+import { SCRIPT_CHECK_ON_NOTE, scriptCheckGate, scriptRoutineRefusal, setsScript } from "./routine-script.ts"; import { tieAutomationsToBots } from "./bot-automations.ts"; import { WaitManager } from "./waits.ts"; import { cancelWaitFromCard, createWaitHost, waitRunChat } from "./wait-host.ts"; import { ranApart, runAnswersInItsChat } from "./routine-run-definition.ts"; import { createWaitRoutes, findWaitPeer, hostWaitRefusal, waitSourceRefusal, type WaitRouteContext } from "./routes/waits.ts"; import { createJobsHost, JOB_NOTIFY_PATH, type JobTurn } from "./jobs/host.ts"; import { routineNoteRequest } from "./routine-notes.ts"; import { selfSpawnRefusal } from "./routine-bot-guard.ts";
 import type { WebhookTrigger } from "../shared/webhooks.ts";
 import { AGENTS_NODE_FLAG, SPAWNED_PROXIES } from "./proxy-paths.ts"; import { hostShellLaunch, mountsHostShell } from "./host-shell-mcp.ts";
 import { currentTrailId, startServerTrail, trail, trailError, withRequestTrail } from "./trail.ts"; import { traceRuntimeEvents } from "./trail-events.ts";
@@ -14632,7 +14632,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         const fromThreadId = internalCapability.threadId;
         const owner = connectorThread(from.id, fromThreadId);
         if (!owner) return json(res, 403, { error: "source conversation does not belong to sender" });
-        const request = parseTriggerRequest(await readInternalBody(), (id) => routines!.listRoutines().some((routine) => routine.id === id) ? "schedule" : appTriggers.isApp(id) ? "app" : "webhook");
+        const rawTrigger = await readInternalBody(), noted = routineNoteRequest(rawTrigger, activeRoutineRunForThread(fromThreadId), (id, notes) => routines!.setNotes(id, notes)); if (noted) return json(res, noted.status, noted.body); const request = parseTriggerRequest(rawTrigger, (id) => routines!.listRoutines().some((routine) => routine.id === id) ? "schedule" : appTriggers.isApp(id) ? "app" : "webhook");
         if (!request.ok) return json(res, 400, { error: request.error });
         const target = triggerTarget(from, request.forBotId, (id) => store.bot(id), store.bots);
         if ("error" in target) return json(res, target.status, { error: target.error });
@@ -14660,7 +14660,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         const proposedInput = { ...request.proposal, forBot };
         if (proposedInput.action !== "create" && (proposedInput.action === "update" ? outsideWorkStaysHere(fromThreadId) : cloudGuestDriven(fromThreadId)) && !outsideLineage.routineRunsConfined(String(proposedInput.routineId))) return json(res, 403, { error: OUTSIDE_STAYS_HERE });
         const wasOwners = proposedInput.action !== "create" && typeof proposedInput.routineId === "string" ? cloudRoutineIsOwners(proposedInput.routineId) : false;
-        const run = activeRoutineRunForThread(fromThreadId);
+        const run = activeRoutineRunForThread(fromThreadId), selfSpawn = proposedInput.action === "create" ? selfSpawnRefusal(run, run?.prompt ?? routines!.listRoutines().find((routine) => routine.id === run?.routineId)?.prompt, proposedInput.routine as { instructions?: unknown } | undefined) : null; if (selfSpawn) return json(res, 409, { error: selfSpawn });
         const outside = Boolean(CLOUD_HOME) && (outsideDrivenThread(fromThreadId) || outsideWorkStaysHere(fromThreadId));
         const ownersTurn = !outside && (cloudOwnerOnlyThread(fromThreadId) || cloudRoutineRunIsOwners(run, from.id, fromThreadId));
         const ownersLevel = !outside && CLOUD_HOME && !cloudGuestDriven(fromThreadId) && (proposedInput.action === "create" ||

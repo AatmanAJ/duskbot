@@ -124,6 +124,19 @@ export function duplicateRefusal(existing: ExistingRoutine): string {
     "Change that one with action update instead of making another, and tell the person it is already set up.";
 }
 
+const significant = (text: string) => new Set(text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((word) => word.length > 3));
+
+/** A run of a scheduled routine asking to create a routine that mostly repeats its own instructions: the run read its
+ * "every morning" as a request (Hermes Agent's cron RECURSION rule). The refusal it reads, or null. */
+export function selfSpawnRefusal(run: { routineName: string; triggerSource?: string } | null, runPrompt: string | undefined, definition: { instructions?: unknown } | undefined): string | null {
+  if (!run || run.triggerSource === "webhook" || !runPrompt || typeof definition?.instructions !== "string") return null;
+  const own = significant(runPrompt), asked = significant(definition.instructions);
+  if (!asked.size || !own.size) return null;
+  const shared = [...asked].filter((word) => own.has(word)).length;
+  if (shared / Math.min(asked.size, own.size) < 0.6) return null;
+  return `This is a run of the automation "${run.routineName}", which already repeats on its own schedule. Nothing was set up: do its work now and report the result.`;
+}
+
 export interface WatchFacts { prompt: string; name: string; createdAt: number; sourceThreadId?: string; schedule: { type: string } }
 
 /** A watch a bot made from a chat for something that happens once: it ends once it has told the person. */
