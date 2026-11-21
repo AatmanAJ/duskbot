@@ -1,9 +1,9 @@
-import { lstatSync, realpathSync, statSync } from "node:fs";
+import { closeSync, lstatSync, openSync, readSync, realpathSync, statSync } from "node:fs";
 import { dirname, extname, resolve } from "node:path";
 
 import { fromMarkdown } from "mdast-util-from-markdown";
 
-import { ATTACHMENTS_DIR, IMAGE_MAX_BYTES } from "./attachments.ts";
+import { ATTACHMENTS_DIR, IMAGE_MAX_BYTES, imageMimeOf } from "./attachments.ts";
 import type { TurnImageInput } from "./contracts.ts";
 import { decodeAttachmentAttribute } from "./message-file.ts";
 
@@ -22,6 +22,22 @@ type MarkdownNode = {
 };
 
 type TagCandidate = { start: number; end: number; path: string };
+
+/** Stands in for a stored picture whose bytes are no image, or after an engine refused one: the turn goes on without it. */
+export const UNREADABLE_IMAGE_NOTE = "[An attached image could not be read, so it was left out.]";
+const UNREADABLE = "unreadable" as const;
+
+/** Engines' words for a picture they cannot decode (Gemini, Claude, OpenAI). */
+export function engineRefusedImage(message: string | undefined): boolean {
+  return /unable to process input image|could not process image|does not represent a valid image|image_parse_error|invalid image (?:data|format|file)|image (?:is )?(?:corrupt|invalid|could not be (?:decoded|processed|read))/i
+    .test(message ?? "");
+}
+
+function headOf(path: string): Buffer {
+  const head = Buffer.alloc(12);
+  const fd = openSync(path, "r");
+  try { return head.subarray(0, readSync(fd, head, 0, head.length, 0)); } finally { closeSync(fd); }
+}
 
 const OWNED_IMAGE_NAME =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(png|jpg|gif|webp)$/;
@@ -68,7 +84,7 @@ function imageTagCandidates(text: string): TagCandidate[] {
   return candidates;
 }
 
-function ownedImage(path: string, attachmentsDir: string): TurnImageInput | null {
+function ownedImage(path: string, attachmentsDir: string): TurnImageInput | typeof UNREADABLE | null {
   if (!path || path.includes("\0")) return null;
   const name = path.split(/[\\/]/).at(-1) ?? "";
   if (!OWNED_IMAGE_NAME.test(name)) return null;
@@ -85,8 +101,10 @@ function ownedImage(path: string, attachmentsDir: string): TurnImageInput | null
     if (dirname(canonicalFile) !== canonicalRoot) return null;
     const finalEntry = statSync(canonicalFile);
     if (!finalEntry.isFile() || finalEntry.size !== entry.size) return null;
-    const mime = MIME_BY_EXTENSION[extname(name)];
-    return mime ? { path: expected, mime, bytes: entry.size } : null;
+    if (!MIME_BY_EXTENSION[extname(name)]) return null;
+    // the bytes say what the picture is; a file stored before uploads were checked may be no picture at all
+    const mime = imageMimeOf(headOf(canonicalFile)) as TurnImageInput["mime"] | null;
+    return mime ? { path: expected, mime, bytes: entry.size } : UNREADABLE;
   } catch {
     return null;
   }
@@ -96,6 +114,8 @@ export interface ExtractTurnImagesOptions {
   attachmentsDir?: string;
   maxCount?: number;
   maxBytes?: number;
+  /** Leave every picture out, each with the unreadable note: after an engine refused one it cannot name. */
+  withoutImages?: boolean;
 }
 
 /** Invalid tags stay visible as ordinary text and never become native image input. */
@@ -108,9 +128,10 @@ export function extractTurnImages(
   const attachmentsDir = options.attachmentsDir ?? ATTACHMENTS_DIR;
   const maxCount = options.maxCount ?? TURN_IMAGE_MAX_COUNT;
   const maxBytes = options.maxBytes ?? TURN_IMAGE_MAX_BYTES;
-  const admitted = imageTagCandidates(text)
-    .map((tag) => ({ tag, image: ownedImage(tag.path, attachmentsDir) }))
-    .filter((item): item is { tag: TagCandidate; image: TurnImageInput } => item.image !== null);
+  const owned = imageTagCandidates(text).map((tag) => ({ tag, image: ownedImage(tag.path, attachmentsDir) }));
+  const unreadable = owned.flatMap((item) => item.image === UNREADABLE || (item.image !== null && options.withoutImages) ? [item.tag] : []);
+  const admitted = owned.filter((item): item is { tag: TagCandidate; image: TurnImageInput } =>
+    item.image !== null && item.image !== UNREADABLE && !options.withoutImages);
 
   if (admitted.length > maxCount) {
     throw statusError(413, `Send no more than ${maxCount} images at a time`);
@@ -121,8 +142,9 @@ export function extractTurnImages(
   }
 
   let providerText = text;
-  for (const { tag } of admitted.toReversed()) {
-    providerText = providerText.slice(0, tag.start) + providerText.slice(tag.end);
+  const removed = [...admitted.map(({ tag }) => ({ tag, note: "" })), ...unreadable.map((tag) => ({ tag, note: UNREADABLE_IMAGE_NOTE }))];
+  for (const { tag, note } of removed.sort((a, b) => b.tag.start - a.tag.start)) {
+    providerText = providerText.slice(0, tag.start) + note + providerText.slice(tag.end);
   }
   return { text: providerText, images: admitted.map((item) => item.image) };
 }
@@ -162,7 +184,10 @@ export function extractReplayImages<T extends { role: "user" | "assistant"; text
     const entry = replayed[index]!;
     if (entry.role !== "user") continue;
     const item = extractTurnImages(entry.text, { ...options, maxCount: Infinity, maxBytes: Infinity });
-    if (!item.images.length) continue;
+    if (!item.images.length) {
+      if (item.text !== entry.text) replayed[index] = { ...entry, text: item.text };
+      continue;
+    }
     const bytes = item.images.reduce((total, image) => total + image.bytes, 0);
     if (item.images.length > maxCount || bytes > maxBytes) break;
     replayed[index] = { ...entry, text: item.text };

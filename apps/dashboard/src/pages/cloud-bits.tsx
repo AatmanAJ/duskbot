@@ -114,7 +114,7 @@ export function QuickPick({ catalog, source, className, onDone, secondary }: { s
       if (await checkout({ source, kind: "plan", selection: planSelection(catalog, pick, { interval: "month", work: false }), bundle: null })) {
         toast(checkoutDone(catalog));
         if (onDone) await onDone(); else navigate("/cloud");
-      }
+      } else setError("checkout didn't open. try again.");
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
   return (

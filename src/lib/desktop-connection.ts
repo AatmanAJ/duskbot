@@ -171,3 +171,27 @@ export function typeOnDesktop(client: RFB, text: string): void {
     client.sendKey(code === 10 ? 0xff0d : code === 9 ? 0xff09 : code <= 255 ? code : 0x01000000 | code, null);
   }
 }
+
+type SendsPointer = { _sock?: unknown; _rfbConnectionState?: string; _fbWidth?: number; _fbHeight?: number };
+type PointerMessages = { messages?: { pointerEvent?(sock: unknown, x: number, y: number, mask: number): void } };
+
+/** The desktop's own size in pixels, once connected. */
+export function desktopSize(client: RFB): { width: number; height: number } | null {
+  const { _fbWidth: width, _fbHeight: height } = client as unknown as SendsPointer;
+  return width && height ? { width, height } : null;
+}
+
+/** A pointer event at a desktop pixel, on the same RFB channel noVNC's own mouse uses. noVNC 1.7 only sends pointer
+ * events from its canvas's mouse and touch handlers, which take element coordinates, so the phone's trackpad writes the
+ * protocol message itself. */
+export function pointerOnDesktop(client: RFB, x: number, y: number, mask: number): void {
+  const internals = client as unknown as SendsPointer;
+  const send = (RFB as unknown as PointerMessages).messages?.pointerEvent;
+  if (client.viewOnly || internals._rfbConnectionState !== "connected" || !internals._sock || !send) return;
+  send(internals._sock, Math.round(x), Math.round(y), mask);
+}
+
+/** One key press on the desktop by X keysym, as a key down and up. */
+export function keyOnDesktop(client: RFB, keysym: number, code: string): void {
+  client.sendKey(keysym, code);
+}

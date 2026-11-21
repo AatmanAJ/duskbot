@@ -28,7 +28,8 @@ export function LiveConnectionStrip({ connected, hydrated }: { connected: boolea
     return () => clearTimeout(timer);
   }, [connected]);
   if (asleep || !hydrated) return null;
-  const notice = !online ? "offline" : !connected && late ? "reconnecting" : null;
+  // navigator.onLine is wrong behind some VPNs and network setups: a live stream proves the connection
+  const notice = connected ? null : !online ? "offline" : late ? "reconnecting" : null;
   if (!notice) return null;
   return <div role="status" data-live-connection={notice} className="flex items-center justify-center gap-2 px-3 py-1.5 text-[13px] text-ink-secondary">
     {notice === "offline" ? <CloudOff size={14} aria-hidden="true" /> : <Loader2 size={14} className="animate-spin" aria-hidden="true" />}

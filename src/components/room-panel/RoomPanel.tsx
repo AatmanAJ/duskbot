@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 import { t } from "@/lib/i18n";
@@ -12,21 +11,33 @@ import { BotFaces } from "../BotFaces";
 import { roomWorkingIds } from "../RoomWorkingLines";
 import { useCaptionChrome } from "../DesktopCapabilities";
 import { Icon } from "../Icon";
-import { ManageMembersPanel } from "../ManageMembersPanel";
+import { ManageMembersPage, ManageMembersPanel } from "../ManageMembersPanel";
 import { TAB_LABEL, type PanelTab } from "../bot-panel/page-registry";
-import { panelTabs, screenViewAllowed } from "@/lib/store-app";
+import { panelTabs, phoneApp, screenViewAllowed } from "@/lib/store-app";
+import { wakeSystemControls } from "@/lib/system-control";
+import { feel, phoneTabFade, phoneTabSlide } from "@/mobile/motion";
+import { SheetPush } from "@/mobile/SheetPush";
 import { pageSurfaceCls } from "../bot-panel/pages";
 import { roundButtonCls } from "../bot-panel/rows";
+import { PanelResizeEdge } from "../bot-panel/PanelResizeEdge";
 import { sidePanelCls } from "../bot-panel/side-panel";
 import { SegmentedTabs } from "../ui/SegmentedTabs";
 import { RoomAdvancedTab } from "./RoomAdvancedTab";
 import { RoomComputerTab } from "./RoomComputerTab";
+import { TabBoundary } from "../bot-panel/TabBoundary";
 import { PerBotModels, RoomDetailsTab, type RoomPage, type RoomTarget } from "./RoomDetailsTab";
-import type { RoomDialog } from "./RoomModals";
+import { RoomAboutModal, RoomFolderModal, RoomInstructionsModal, RoomResponderModal, type RoomDialog } from "./RoomModals";
 import { RoomSheet } from "./RoomSheet";
 
 const PAGES: Record<RoomPage, { title: LocaleKey }> = {
   models: { title: "room.panel.perBot" },
+};
+
+const DIALOG_TITLE: Record<RoomDialog, LocaleKey> = {
+  responder: "room.panel.whoResponds",
+  folder: "room.folder.title",
+  instructions: "room.panel.instructions",
+  about: "room.panel.about",
 };
 
 function RoomHero({ group, members }: { group: Group; members: Bot[] }) {
@@ -46,7 +57,7 @@ function RoomHero({ group, members }: { group: Group; members: Bot[] }) {
   );
 }
 
-export function RoomPanel({ group, overlay = false }: { group: Group; overlay?: boolean }) {
+export function RoomPanel({ group, overlay = false, initialTab = "details" }: { group: Group; overlay?: boolean; initialTab?: PanelTab }) {
   const { state, dispatch } = useStore();
   const { dragProps } = useCaptionChrome();
   // the side panel stays shut for every chat until the person opens it again, as the bot panel does
@@ -54,9 +65,10 @@ export function RoomPanel({ group, overlay = false }: { group: Group; overlay?: 
     closeRoomPanel({ refocus: true });
     dispatch({ type: "toggleSettings", open: false });
   };
-  const [tab, setTab] = useState<PanelTab>("details");
+  const [tab, setTab] = useState<PanelTab>(initialTab);
   const [page, setPage] = useState<RoomPage | null>(null);
   const [membersOpen, setMembersOpen] = useState(false);
+  const [membersEpoch, setMembersEpoch] = useState(0);
   const dialogRef = useRef<HTMLElement>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const membersRowRef = useRef<HTMLButtonElement>(null);
@@ -65,18 +77,30 @@ export function RoomPanel({ group, overlay = false }: { group: Group; overlay?: 
     () => group.memberIds.map((id) => state.bots.find((bot) => bot.id === id)).filter((bot): bot is Bot => Boolean(bot)),
     [group.memberIds, state.bots],
   );
+  const openMembers = useCallback(() => {
+    wakeSystemControls();
+    setMembersEpoch((n) => n + 1);
+    setMembersOpen(true);
+  }, []);
   const closeMembers = useCallback(() => setMembersOpen(false), []);
 
   // only a tab picked from the tabs swaps in; coming back from a page, the list is simply there under the wipe
   const [tabSwapped, setTabSwapped] = useState(false);
   const openTab = (next: PanelTab) => {
+    wakeSystemControls();
     setTab(next);
     setTabSwapped(true);
     bodyRef.current?.scrollTo({ top: 0 });
   };
   const [dialog, setDialog] = useState<RoomDialog | null>(null);
-  const open = (target: RoomTarget) => (target === "models" ? setPage(target) : setDialog(target));
+  const closeDialog = useCallback(() => setDialog(null), []);
+  const open = (target: RoomTarget) => {
+    wakeSystemControls();
+    if (target === "models") setPage(target);
+    else setDialog(target);
+  };
   const back = () => {
+    wakeSystemControls();
     leftPage.current = page;
     setTabSwapped(false);
     setPage(null);
@@ -119,8 +143,28 @@ export function RoomPanel({ group, overlay = false }: { group: Group; overlay?: 
   const reduced = prefersReduced || (typeof document !== "undefined" && document.documentElement.dataset.reducedMotion === "true");
   const viewKey = page === null ? "tabs" : `1:${page}`;
   const backLabel = t(TAB_LABEL[tab]);
+  const order = panelTabs();
+  const tabMove = useRef({ tab, direction: 1, span: 1 });
+  if (tabMove.current.tab !== tab) {
+    const delta = order.indexOf(tab) - order.indexOf(tabMove.current.tab);
+    tabMove.current = { tab, direction: delta >= 0 ? 1 : -1, span: Math.max(1, Math.abs(delta)) };
+  }
+  const phone = phoneApp();
+  const lastRoomPage = useRef<RoomPage | null>(null);
+  if (page) lastRoomPage.current = page;
+  const shownRoomPage = page ?? lastRoomPage.current;
+  const lastRoomDialog = useRef<RoomDialog | null>(null);
+  if (dialog) lastRoomDialog.current = dialog;
+  const shownRoomDialog = dialog ?? lastRoomDialog.current;
 
-  const rowProps = { group, members, onOpen: open, onMembers: () => setMembersOpen(true), membersRef: membersRowRef };
+  const rowProps = { group, members, onOpen: open, onMembers: openMembers, membersRef: membersRowRef };
+  const tabContent = (
+    <>
+      {tab === "details" && <RoomDetailsTab {...rowProps} />}
+      {tab === "computer" && screenViewAllowed() && <TabBoundary name={group.name}><RoomComputerTab members={members} room={group} /></TabBoundary>}
+      {tab === "advanced" && <RoomAdvancedTab {...rowProps} />}
+    </>
+  );
   const tabsView = (
     <>
       <div data-panel-head className="contents">
@@ -137,19 +181,34 @@ export function RoomPanel({ group, overlay = false }: { group: Group; overlay?: 
             value={tab}
             onChange={openTab}
             tabs={panelTabs().map((id) => ({ value: id, label: t(TAB_LABEL[id]) }))}
+            slide={phone ? (reduced ? null : feel.soft) : undefined}
           />
         </div>
       </div>
-      <MotionDiv
-        key={tab}
-        role="tabpanel" aria-label={t(TAB_LABEL[tab])} className="pt-2.5"
-        initial={reduced || !tabSwapped ? false : SWAP.initial}
-        animate={SWAP.animate}
-      >
-        {tab === "details" && <RoomDetailsTab {...rowProps} />}
-        {tab === "computer" && screenViewAllowed() && <RoomComputerTab members={members} />}
-        {tab === "advanced" && <RoomAdvancedTab {...rowProps} />}
-      </MotionDiv>
+      {phone ? (
+        <AnimatePresence initial={false} mode="popLayout" custom={tabMove.current}>
+          <MotionDiv
+            key={tab}
+            role="tabpanel" aria-label={t(TAB_LABEL[tab])} className="pt-2.5"
+            custom={tabMove.current}
+            variants={reduced ? phoneTabFade : phoneTabSlide}
+            initial={tabSwapped ? "enter" : false}
+            animate="center"
+            exit="exit"
+          >
+            {tabContent}
+          </MotionDiv>
+        </AnimatePresence>
+      ) : (
+        <MotionDiv
+          key={tab}
+          role="tabpanel" aria-label={t(TAB_LABEL[tab])} className="pt-2.5"
+          initial={reduced || !tabSwapped ? false : SWAP.initial}
+          animate={SWAP.animate}
+        >
+          {tabContent}
+        </MotionDiv>
+      )}
     </>
   );
 
@@ -161,7 +220,7 @@ export function RoomPanel({ group, overlay = false }: { group: Group; overlay?: 
     </div>
   );
 
-  const viewCls = "@container absolute inset-0 flex flex-col overflow-y-auto overscroll-contain bg-app px-4 pb-8 [scrollbar-gutter:stable] [scrollbar-width:thin]";
+  const viewCls = "@container absolute inset-0 flex flex-col overflow-x-hidden overflow-y-auto overscroll-contain bg-app px-4 pb-8 [scrollbar-gutter:stable] [scrollbar-width:thin]";
   const setBody = (element: HTMLDivElement | null) => { if (element) bodyRef.current = element; };
   const view = (content: ReactNode) => reduced ? (
     <div key={viewKey} ref={setBody} className={viewCls}>{content}</div>
@@ -185,17 +244,17 @@ export function RoomPanel({ group, overlay = false }: { group: Group; overlay?: 
     <>
       <aside
         ref={dialogRef}
-        role="dialog"
-        aria-labelledby="room-panel-title"
+        role={phoneApp() ? undefined : "dialog"}
+        aria-labelledby={phoneApp() ? undefined : "room-panel-title"}
         tabIndex={-1}
         data-room-panel
         onKeyDown={onKeyDown}
         className={sidePanelCls(overlay)}
       >
         <span id="room-panel-title" className="sr-only">{group.name}</span>
-        <span aria-hidden="true" data-panel-edge className="pointer-events-none absolute inset-y-0 left-0 z-10 w-[0.5px] bg-edge max-md:hidden" />
-        <div {...dragProps} className="relative flex h-[60px] shrink-0 items-center gap-2 p-3">
-          {page === null ? (
+        <PanelResizeEdge />
+        <div {...dragProps} data-panel-bar className="relative ms-2 flex h-[60px] shrink-0 items-center gap-2 p-3 ps-1">
+          {phone || page === null ? (
             <span className="ms-auto" />
           ) : (
             <>
@@ -215,23 +274,65 @@ export function RoomPanel({ group, overlay = false }: { group: Group; overlay?: 
               <span className="ms-auto" />
             </>
           )}
-          <button type="button" onClick={close} aria-label={t("botPanel.close")} title={t("botPanel.close")} className={roundButtonCls}>
+          <button type="button" onClick={close} aria-label={t("botPanel.closePanel")} title={t("botPanel.closePanel")} className={roundButtonCls}>
             <Icon name="close" size={16} />
           </button>
         </div>
 
         <div className="relative min-h-0 flex-1 overflow-hidden">
-          {reduced ? view(page === null ? tabsView : pageView) : (
+          {phone ? (
+            <>
+              <div ref={setBody} className={viewCls}>{tabsView}</div>
+              {shownRoomPage && (
+                <SheetPush
+                  open={page !== null}
+                  onClose={back}
+                  title={t(PAGES[shownRoomPage].title)}
+                  pageId={`room:${shownRoomPage}`}
+                >
+                  <div data-panel-page-view={shownRoomPage} className="px-4 pb-8 pt-2">
+                    <div className={pageSurfaceCls}>
+                      <PerBotModels members={members} />
+                    </div>
+                  </div>
+                </SheetPush>
+              )}
+              {shownRoomDialog && (
+                <SheetPush
+                  open={dialog !== null}
+                  onClose={closeDialog}
+                  title={t(DIALOG_TITLE[shownRoomDialog])}
+                  pageId={`room:${shownRoomDialog}`}
+                  flush
+                  bodyClassName="pt-0! pb-0"
+                >
+                  {shownRoomDialog === "responder" && <RoomResponderModal group={group} members={members} onClose={closeDialog} />}
+                  {shownRoomDialog === "folder" && <RoomFolderModal group={group} onClose={closeDialog} />}
+                  {shownRoomDialog === "instructions" && <RoomInstructionsModal group={group} onClose={closeDialog} />}
+                  {shownRoomDialog === "about" && <RoomAboutModal group={group} onClose={closeDialog} />}
+                </SheetPush>
+              )}
+              <SheetPush
+                open={membersOpen}
+                onClose={closeMembers}
+                title={t("room.members.manage")}
+                pageId="room:members"
+              >
+                <ManageMembersPage key={membersEpoch} group={group} onClose={closeMembers} />
+              </SheetPush>
+            </>
+          ) : reduced ? view(page === null ? tabsView : pageView) : (
             <AnimatePresence initial={false} custom={direction}>
               {view(page === null ? tabsView : pageView)}
             </AnimatePresence>
           )}
         </div>
       </aside>
-      {dialog && <RoomSheet initial={dialog} group={group} members={members} onClose={() => setDialog(null)} />}
-      {membersOpen && createPortal(
-        <ManageMembersPanel group={group} onClose={closeMembers} triggerRef={membersRowRef} />,
-        document.body,
+      {!phone && dialog && <RoomSheet initial={dialog} group={group} members={members} onClose={closeDialog} />}
+      {!phone && (
+        <AnimatePresence>
+          {membersOpen && <ManageMembersPanel key="members" group={group} onClose={closeMembers} triggerRef={membersRowRef} />}
+        </AnimatePresence>
       )}
     </>
   );

@@ -97,10 +97,17 @@ export function ServerPairingCard({ initialSession = null, cloudHome = false, fo
     if (!focusRequest) revealed.current = 0;
     else if (revealed.current !== focusRequest && revealPhonePairing(root.current)) {
       revealed.current = focusRequest;
-      // asked for this server's own code: open it
-      setComputerOpen(true);
+      // asked for this server's own code: open it, unless the phone's own ways are on this page. That code is for /pair
+      // in a browser, and the phone app reads it as unknown
+      if (!phone) setComputerOpen(true);
     }
-  }, [focusRequest, session]);
+  }, [focusRequest, session, phone]);
+
+  // a phone that just linked shows up in the sign-ins once the flow folds away
+  const phoneStepping = phone?.stepping === true;
+  useEffect(() => {
+    if (phone && !phoneStepping && canPairDevices(session)) void loadDevices();
+  }, [phoneStepping]);
 
   useEffect(() => {
     if (!offer) return;
@@ -108,13 +115,12 @@ export function ServerPairingCard({ initialSession = null, cloudHome = false, fo
     return () => clearInterval(timer);
   }, [offer]);
 
-  // the phone page: what the phone app is, its two ways to pair side by side, pairing another computer under them,
-  // the phones, then the rest
+  // the phone page: the phone flow or the linked phones, pairing another computer under them, then the rest
   const phonePage = (computerPair: ReactNode, rest: ReactNode) => (
     <div ref={root} tabIndex={-1} data-phone-pairing="server" className="flex scroll-mt-4 flex-col gap-5 focus:outline-none">
       {phone?.top}
-      {phone?.stepping ? null : computerPair}
       {phone?.phones}
+      {phone?.stepping ? null : computerPair}
       {rest}
     </div>
   );
@@ -238,8 +244,9 @@ export function ServerPairingCard({ initialSession = null, cloudHome = false, fo
           <div data-pairing-offer={live ? "" : undefined} className="flex flex-col items-start gap-2 px-2.5 py-2">
             {live && <code aria-label={t("settings.w6.pairing.code")} className="select-all whitespace-nowrap font-mono text-[22px] leading-8 tracking-[0.1em] text-ink">{live.code}</code>}
             <p className="m-0 text-[13px] leading-[18px] text-ink-secondary">
-              {live ? t("settings.elsewhere.codeLive", { minutes: minutesLeft(live.expiresAt, now) }) : expired ? t("remote.serverPairing.expired") : t("settings.elsewhere.codeHint")}
+              {live ? t(live.url ? "settings.elsewhere.codeLive" : "remote.serverPairing.expires", { minutes: minutesLeft(live.expiresAt, now) }) : expired ? t("remote.serverPairing.expired") : t("settings.elsewhere.codeHint")}
             </p>
+            {live && !live.url && <p data-pairing-no-address="" className="m-0 text-[13px] leading-[18px] text-ink-secondary [text-wrap:pretty]">{t("settings.elsewhere.noAddress")}</p>}
             <div className="flex flex-wrap items-center gap-2">
               {live && (
                 <button type="button" data-pairing-copy="" className="ui-button ui-button-primary" onClick={() => void copyCode()}>
@@ -321,8 +328,11 @@ export function ServerPairingCard({ initialSession = null, cloudHome = false, fo
         </div>
       </div>
     );
-    // who a computer's code lets in, and who is signed in, below
-    return phonePage(computerPair, <>
+    // who a computer's code lets in, and who is signed in, below. A cloud's phone page leads to signing in only: a
+    // code there was what people typed into the phone app
+    // while the phone flow is on screen it is the only thing there; the rest waits for the linked phones
+    if (phone?.stepping) return phonePage(null, null);
+    return phonePage(cloudHome && phone ? null : computerPair, <>
       {!cloudHome && computerName !== null && (
         <RowsCard label={t("settings.mobile.thisComputer")} data-settings-block="pair-code">
           <ComputerNameRow saved={computerName} onSaved={setComputerName} />
