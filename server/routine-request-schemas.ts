@@ -22,13 +22,15 @@ export const toolIntervalWindowSchema = z.object({
 }).strict();
 
 export const routineToolScheduleSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("cron"), expression: z.string().max(256), timeZone: z.string().max(128) }).strict(),
+  z.object({ type: z.literal("cron"), expression: z.string().max(256), timeZone: z.string().max(128), exact: z.boolean().optional() }).strict(),
   z.object({ type: z.literal("limit_reset"), engine: z.string().max(128).optional(), repeat: z.enum(["once", "every_reset"]).optional() }).strict(),
   z.object({ type: z.literal("once"), at: z.string().max(64) }).strict(),
   z.object({
     type: z.literal("weekly"),
     time: z.string().max(5),
     weekdays: z.array(z.string().max(9)).min(1).max(7),
+    timeZone: z.string().max(128).optional(),
+    exact: z.boolean().optional(),
   }).strict(),
   z.object({
     type: z.literal("interval"),
@@ -40,6 +42,33 @@ export const routineToolScheduleSchema = z.discriminatedUnion("type", [
   }).strict(),
 ]);
 
+type ToolSchedule = z.infer<typeof routineToolScheduleSchema>;
+const CRON_DAY: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+
+/** The cron rule a schedule runs by: a weekly time in a zone the person named stays a rule in that zone, so it follows its clock changes. */
+export function cronRule(schedule: Extract<ToolSchedule, { type: "cron" | "weekly" }>): { type: "cron"; expression: string; timeZone: unknown } {
+  if (schedule.type === "cron") return { type: "cron", expression: schedule.expression, timeZone: schedule.timeZone };
+  if (!TIME.test(schedule.time)) throw new Error("Weekly schedule time must use 24-hour HH:MM");
+  const days = [...new Set(schedule.weekdays.map((day) => {
+    const number = CRON_DAY[day.toLowerCase()];
+    if (number === undefined) throw new Error(`Unsupported weekday: ${day}`);
+    return number;
+  }))].sort();
+  const [hour, minute] = schedule.time.split(":").map(Number);
+  return { type: "cron", expression: `${minute} ${hour} * * ${days.length === 7 ? "*" : days.join(",")}`, timeZone: schedule.timeZone };
+}
+
+/** A time the person named stays to the minute; only one the bot picked moves off the hour. */
+export const namedTime = (schedule: ToolSchedule | undefined): boolean =>
+  schedule?.type === "cron" ? schedule.exact === true : schedule?.type === "weekly" && (schedule.exact === true || schedule.timeZone !== undefined);
+
+const probeSchema = z.object({
+  kind: z.enum(["page", "feed", "price", "script"]),
+  url: z.string().max(2_000),
+  selector: z.string().max(200).optional(),
+  command: z.string().max(2_000).optional(),
+}).strict();
+
 export const routineToolDefinitionSchema = z.object({
   name: z.string().max(80),
   instructions: z.string().max(20_000),
@@ -50,12 +79,13 @@ export const routineToolDefinitionSchema = z.object({
   continuity: z.boolean().optional(),
   overlap: z.enum(["skip", "queue"]).optional(),
   runOnStartup: z.boolean().optional(),
+  probe: probeSchema.optional(),
 }).strict();
 
 export const routineToolChangesSchema = routineToolDefinitionSchema
-  .omit({ timeoutMinutes: true })
+  .omit({ timeoutMinutes: true, probe: true })
   .partial()
-  .extend({ timeoutMinutes: z.number().nullable().optional() })
+  .extend({ timeoutMinutes: z.number().nullable().optional(), probe: probeSchema.nullable().optional() })
   .strict()
   .refine(
   (changes) => Object.values(changes).some((value) => value !== undefined),
@@ -72,7 +102,7 @@ export const routineProposalSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("update"), routineId: z.string().max(128), changes: routineToolChangesSchema, forBot: targetBotSchema.optional() }).strict(),
   z.object({ action: z.literal("pause"), routineId: z.string().max(128), forBot: targetBotSchema.optional() }).strict(),
   z.object({ action: z.literal("resume"), routineId: z.string().max(128), forBot: targetBotSchema.optional() }).strict(),
-  z.object({ action: z.literal("run_now"), routineId: z.string().max(128), forBot: targetBotSchema.optional() }).strict(),
+  z.object({ action: z.literal("run_now"), routineId: z.string().max(128), forBot: targetBotSchema.optional(), test: z.literal(true).optional() }).strict(),
   z.object({ action: z.literal("delete"), routineId: z.string().max(128), forBot: targetBotSchema.optional() }).strict(),
 ]);
 
@@ -179,13 +209,15 @@ export const storedDefinitionSchema = z.object({
   continuity: z.boolean().optional(),
   overlap: z.enum(["skip", "queue"]).optional(),
   runOnStartup: z.boolean().optional(),
+  probe: probeSchema.optional(),
 }).strict();
 export const storedChangesSchema = storedDefinitionSchema
-  .omit({ schedule: true, timeoutMinutes: true })
+  .omit({ schedule: true, timeoutMinutes: true, probe: true })
   .partial()
   .extend({
     schedule: storedScheduleChangesSchema.optional(),
     timeoutMinutes: z.number().int().min(5).max(240).nullable().optional(),
+    probe: probeSchema.nullable().optional(),
   })
   .strict()
   .refine(
@@ -202,7 +234,7 @@ export const storedOperationSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("update"), ...storedManageBase, changes: storedChangesSchema }).strict(),
   z.object({ action: z.literal("pause"), ...storedManageBase }).strict(),
   z.object({ action: z.literal("resume"), ...storedManageBase }).strict(),
-  z.object({ action: z.literal("run_now"), ...storedManageBase }).strict(),
+  z.object({ action: z.literal("run_now"), ...storedManageBase, test: z.literal(true).optional() }).strict(),
   z.object({ action: z.literal("delete"), ...storedManageBase }).strict(),
 ]);
 export const storedSnapshotSchema = storedDefinitionSchema.extend({

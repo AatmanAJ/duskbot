@@ -1,6 +1,7 @@
 import { cn } from "@/lib/cn";
 import { activeLocale, t } from "@/lib/i18n";
 import type { RoutineStripEntry } from "@/lib/routines";
+import { deviceHourCycle } from "@/lib/format-time";
 
 const MARK: Record<RoutineStripEntry["outcome"], { mark: string; tone: string }> = {
   ok: { mark: "✓", tone: "text-success" },
@@ -10,7 +11,7 @@ const MARK: Record<RoutineStripEntry["outcome"], { mark: string; tone: string }>
   skipped: { mark: "–", tone: "text-ink-tertiary" },
 };
 
-const when = (at: number) => new Date(at).toLocaleString(activeLocale(), { weekday: "short", hour: "numeric", minute: "2-digit" });
+const when = (at: number) => new Date(at).toLocaleString(activeLocale(), { weekday: "short", hour: "numeric", minute: "2-digit", hourCycle: deviceHourCycle() });
 
 /** A routine's last seven outcomes, oldest first: ✓ did something, a dim ✓ fired with nothing new, ✗ failed, ○ didn't
  * fire, – the weekly limit skipped it. Each says which in words for a screen reader and on hover, and the line under it counts them. */

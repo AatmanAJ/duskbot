@@ -1,21 +1,16 @@
-// "Start fresh": the bot panel's reset for testing. It deletes everything this person has with dusk bot, in an order that
-// never strands anything: their own linked servers first (dusk bot's data there deleted while this app can still reach
-// them, then unlinked), each dusk cloud plan cancelled, then the account deleted (its clouds destroyed now, not at the
-// paid period's end) and signed out, then this computer's AI keys, then this computer's data, which goes at the next start,
-// before anything opens it. A step that fails (a server offline) never stops the rest; it is listed with a retry, and the
-// person may finish without it.
+// "Start fresh": resets dusk bot on this computer only. It signs this computer out, removes the AI keys saved here and,
+// at the next start, every bot, chat and file kept here, so the app comes back as a new install. Nothing outside this
+// computer is touched: the dusk bot account, its plan or trial, its dusk cloud computers and linked servers all stay
+// (a server or cloud is only forgotten here). Deleting the account, which cancels its plan, is its own action on the
+// website's account page, never part of this.
 //
-// Security: every step acts as this app's own sign-ins (the account service by its bearer, a server by this app's session
-// there), so the services decide what is this person's: a cloud of someone else's is refused (404), a server they don't
-// own refuses its wipe (403) and is only forgotten here. The account step never runs while a plan cancel failed, so a
-// subscription is always cancelled before its account goes. A failed account delete keeps the sign-in, so a retry works
-// and the app is never half signed in.
+// A step that fails never stops the rest; it is listed with a retry, and the person may finish without it.
 import nodeFs from "node:fs";
 import path from "node:path";
 
 import { DATA_DIR_NAMES, SERVER_CHILD_DIR, SERVER_LEASE_NAME } from "./legacy-names.mjs";
 
-export const CONFIRM_PHRASE = "delete everything";
+export const CONFIRM_PHRASE = "start fresh";
 export const confirmed = (typed) => typeof typed === "string" && typed.trim().toLowerCase() === CONFIRM_PHRASE;
 
 /** userData's marker: the next start deletes this computer's data before anything reads it */
@@ -32,12 +27,7 @@ const errorText = (error) => String(error?.message ?? error ?? "failed").slice(0
 
 /**
  * @param {{
- *   servers(): Array<{ id: string, name: string, origin: string, uninstall?: string }>,
- *   wipeServer(server: { id: string, origin: string }): Promise<"wiped" | "not-owner">,
- *   unlinkServer(server: { id: string, origin: string }): Promise<void>,
- *   account(): { email: string, clouds: Array<{ id: string, name: string }> } | null,
- *   cancelPlan(cloudId: string): Promise<void>,
- *   deleteAccount(email: string): Promise<void>,
+ *   account(): { email: string } | null,
  *   signOut(): Promise<void>,
  *   removeAiKeys(): Promise<void>,
  *   markLocal(): void,
@@ -55,27 +45,12 @@ export function createStartFresh(deps) {
   const view = () => ({ phase, steps: steps.map(({ run: _run, ...step }) => ({ ...step })) });
   const publish = () => { const next = view(); changed(next); return next; };
 
-  /** what would go, read fresh: the dialog's list and the run's steps */
+  /** what would go, read fresh: the dialog's list and the run's steps. Only this computer's: a sign-out (the account
+   * itself stays), the AI keys and the local data. */
   function plan() {
     const list = [];
-    for (const server of deps.servers()) {
-      list.push({ id: `server:${server.id}`, kind: "server", label: server.name, ...(server.uninstall ? { uninstall: server.uninstall } : {}), run: async () => {
-        const wiped = await deps.wipeServer(server);
-        await deps.unlinkServer(server);
-        return wiped === "not-owner" ? "unlinked" : null;
-      } });
-    }
     const account = deps.account();
-    if (account) {
-      for (const cloud of account.clouds) list.push({ id: `plan:${cloud.id}`, kind: "plan", label: cloud.name, run: () => deps.cancelPlan(cloud.id) });
-      // the clouds and the account go together: deleting the account destroys its clouds now
-      list.push({ id: "account", kind: "account", label: account.email, clouds: account.clouds.length, run: async () => {
-        const blocked = steps.some((step) => step.kind === "plan" && step.status !== "done");
-        if (blocked) throw Object.assign(new Error("A dusk cloud plan isn't cancelled yet."), { code: "plan_first" });
-        await deps.deleteAccount(account.email);
-        await deps.signOut().catch((error) => log(`start fresh: sign-out after delete (${errorText(error)})`));
-      } });
-    }
+    if (account) list.push({ id: "signout", kind: "signout", label: account.email, run: () => deps.signOut() });
     list.push({ id: "ai", kind: "ai", label: "", run: () => deps.removeAiKeys() });
     list.push({ id: "local", kind: "local", label: "", run: async () => {} });
     return list;
@@ -124,7 +99,7 @@ export function createStartFresh(deps) {
       deps.markLocal();
       return pass(null);
     }),
-    /** runs again only what failed; the account step waits on its plans, so they go first as before */
+    /** runs again only what failed */
     retry: () => once(async () => {
       if (phase !== "partial") return view();
       return pass(new Set(steps.filter((step) => step.status === "failed").map((step) => step.id)));

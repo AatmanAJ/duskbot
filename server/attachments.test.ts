@@ -58,6 +58,7 @@ const {
   deleteAttachment,
   extensionForFileMime,
   extensionForMime,
+  imageMimeOf,
   parseAudioRange,
   readAttachment,
   sanitizeSharedFileName,
@@ -94,6 +95,18 @@ describe("extensionForMime", () => {
     expect(extensionForMime("image/svg+xml")).toBeNull();
     expect(extensionForMime("text/plain")).toBeNull();
     expect(extensionForMime(undefined)).toBeNull();
+  });
+});
+
+describe("imageMimeOf", () => {
+  it("names a picture by its own first bytes, and nothing else", () => {
+    expect(imageMimeOf(Buffer.from("89504e470d0a1a0a0000", "hex"))).toBe("image/png");
+    expect(imageMimeOf(Buffer.from("ffd8ffe000", "hex"))).toBe("image/jpeg");
+    expect(imageMimeOf(Buffer.from("GIF89a....", "latin1"))).toBe("image/gif");
+    expect(imageMimeOf(Buffer.from("RIFF0000WEBPVP8 ", "latin1"))).toBe("image/webp");
+    expect(imageMimeOf(Buffer.from("efbfbd504e470d0a1a0a", "hex"))).toBeNull();
+    expect(imageMimeOf(Buffer.from("<svg/>"))).toBeNull();
+    expect(imageMimeOf(Buffer.alloc(0))).toBeNull();
   });
 });
 
@@ -292,6 +305,27 @@ describe("aggregate attachment storage", () => {
     })(), "last-byte.txt", "text/plain");
     expect(saved.bytes).toBe(1);
     expect(() => saveImage(Buffer.from("b"), "image/png")).not.toThrow();
+  });
+
+  it("keeps an image too large for a picture as a file, and refuses bytes that are not the image they claim", async () => {
+    const png = Buffer.concat([Buffer.from("\x89PNG\r\n\x1a\n", "latin1"), Buffer.alloc(64)]);
+    const saved = await saveFile((async function* () {
+      yield png.subarray(0, 5);
+      yield png.subarray(5);
+    })(), "huge-photo.png", "image/png");
+    expect(saved).toMatchObject({ name: "huge-photo.png", mime: "image/png", bytes: png.byteLength });
+    expect(saved.path.endsWith(".png")).toBe(true);
+
+    let chunksRead = 0;
+    await expect(saveFile((async function* () {
+      chunksRead += 1;
+      yield Buffer.from("<html>not a picture</html>");
+      chunksRead += 1;
+      yield Buffer.alloc(1024);
+    })(), "page.png", "image/png")).rejects.toMatchObject({ status: 400 });
+    expect(chunksRead, "refused at the first bytes, before the rest is read").toBe(1);
+    await expect(saveFile((async function* () { yield Buffer.from("GIF8"); })(), "cut-short.gif", "image/gif")).rejects.toMatchObject({ status: 400 });
+    expect(readdirSync(ATTACHMENTS_DIR).every((name) => !name.endsWith(".partial"))).toBe(true);
   });
 
   it("releases reservations and removes partials after failed uploads", async () => {
@@ -548,6 +582,9 @@ describe("shared files", () => {
   it("sanitizes the display name and derives its extension from the mime", () => {
     expect(sanitizeSharedFileName("  Quarterly: report.exe  ", "application/pdf")).toBe("Quarterly_ report.pdf");
     expect(sanitizeSharedFileName("notes", "text/markdown")).toBe("notes.md");
+    expect(sanitizeSharedFileName("rename.py", "text/plain")).toBe("rename.py");
+    expect(sanitizeSharedFileName("rename.py", "application/pdf")).toBe("rename.pdf");
+    expect(sanitizeSharedFileName("page.html", "text/plain")).toBe("page.txt");
     expect(() => sanitizeSharedFileName("../../secret.txt", "text/plain")).toThrow(/filename, not a path/);
     expect(() => sanitizeSharedFileName("..\\..\\secret.txt", "text/plain")).toThrow(/filename, not a path/);
     expect(() => sanitizeSharedFileName("..%2F..%2Fsecret.txt", "text/plain")).toThrow(/filename, not a path/);

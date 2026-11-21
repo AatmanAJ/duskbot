@@ -10,6 +10,8 @@ import { useStore, type Action } from "@/state/store";
 import { ConnectAiDialog } from "./onboarding/ConnectAi";
 import { useWelcomeAi } from "./onboarding/welcome-ai";
 
+const CHIP = "inline-flex h-8 items-center gap-2 rounded-full border-[0.5px] border-transparent bg-card px-3 text-[14px] leading-5 text-ink transition-colors hover:bg-[color-mix(in_srgb,var(--color-ink)_4%,var(--color-card))]";
+
 const CHIPS: Record<IntroChip, { label: LocaleKey; icon: GlyphIcon }> = {
   ai: { label: "helperIntro.chip.ai", icon: Sparkles },
   apps: { label: "helperIntro.chip.mail", icon: Mail },
@@ -51,8 +53,7 @@ export function IntroChips({ chips }: { chips: readonly IntroChip[] }) {
           {shown.map((chip) => {
             const { label, icon: Icon } = CHIPS[chip];
             return (
-              <button key={chip} type="button" data-helper-step={chip} onClick={() => tap(chip)}
-                className="inline-flex h-8 items-center gap-2 rounded-full border-[0.5px] border-transparent bg-card px-3 text-[14px] leading-5 text-ink transition-colors hover:bg-raised-hover">
+              <button key={chip} type="button" data-helper-step={chip} onClick={() => tap(chip)} className={CHIP}>
                 <Icon size={16} aria-hidden="true" className="text-ink-secondary" />{t(label)}
               </button>
             );
