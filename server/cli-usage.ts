@@ -38,7 +38,7 @@ export const USAGE = `duskbot: your team of AI bots, ready in a few steps
   duskbot service install [--domain HOST | --tunnel | --tailscale] [--port N] [--data-dir DIR] | uninstall
                     [--sentinel]   (the health scan below, every two minutes, instead of the server)
   duskbot sentinel [--data-dir DIR] [--out DIR] [--once] [--json]   (read-only health scan; see --help)
-  duskbot browser install [--with-deps] | status
+  duskbot browser install [--with-deps] | status | setup
   duskbot free-backup install [--data-dir DIR]
                     [--anthropic-key-file FILE] [--cap USD] [--memory 1G]
                   | list | users NAME add|remove EMAIL [--chat-only] | suspend NAME | resume NAME
@@ -70,6 +70,8 @@ browser install: the bots' browser engine (agent-browser, pinned) into the
         the Linux libraries Chrome needs (run as root once). Then run
         browser install as the user running serve, from that user's home.
         status: what the current user and data directory have.
+        setup (Linux, as root): the libraries, plus the AppArmor profile
+        Ubuntu 23.10+ needs before Chrome may use its sandbox.
 free-backup install: OpenCode's own build (pinned), the free backup AI, into
         the data dir, unless an OpenCode is already installed. Run it as the
         user running serve.

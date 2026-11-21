@@ -7,6 +7,7 @@ import { createInterface } from "node:readline";
 import { once } from "node:events";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { ERROR_DUMP_REFUSAL } from "../shared/failed-turn.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
 import { createPageSchema } from "./testing/oversized-tool-schema.ts";
 import { schemaBytes, TOOL_SCHEMA_PROFILE_ENV } from "./tool-schema-profile.ts";
@@ -139,6 +140,17 @@ describe("mcp-gate", () => {
     }
     gate = undefined;
     await removeTempDir(scratch);
+  });
+
+  it("drops a send to someone outside that carries a failure report, and relays an ordinary one", async () => {
+    start({ content: [{ type: "text", text: "sent" }] });
+    const dump = "Bot failed to respond\nInternal error: 'You are Campaign Manager, a personal bot in dusk bot.\\n\\nAbout you: …'";
+    send({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "send_message", arguments: { chat: "Launch group", text: dump } } });
+    expect(JSON.parse(await nextLine()).error).toEqual({ code: -32602, message: ERROR_DUMP_REFUSAL });
+    send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "send_message", arguments: { chat: "Launch group", text: "Posters go up at 6." } } });
+    expect(JSON.parse(await nextLine()).result.content[0].text).toBe("sent");
+    send({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "read_chat", arguments: { note: dump } } });
+    expect(JSON.parse(await nextLine()).result.content[0].text).toBe("sent");
   });
 
   it("relays a frame that is not a tool result untouched", async () => {

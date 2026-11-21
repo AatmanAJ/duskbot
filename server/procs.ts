@@ -11,7 +11,7 @@ import {
 } from "node:child_process";
 import { closeSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import type { Readable, Writable } from "node:stream";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { botBox, type WrappedSpawn } from "./bot-box/box.ts";
 import type { BoxRequest } from "./bot-box/plan.ts";
 import { engineMemory } from "./engine-memory.ts";
@@ -295,7 +295,7 @@ type SpawnFailure = { message: string; setup: boolean };
 export function describeSpawnFailure(err: NodeJS.ErrnoException, cli: string, cwd?: string): SpawnFailure {
   if (err.code === "ENOENT") {
     if (cwd && !existsSync(cwd))
-      return { message: `This chat's working folder no longer exists: ${cwd}. Choose another folder in the bot's settings, or create it again.`, setup: false };
+      return { message: `This bot's folder ${basename(cwd) || cwd} was moved or deleted. Pick a folder in the bot's settings.`, setup: false };
     return { message: `\`${cli}\` isn't installed, or isn't on this app's PATH`, setup: true };
   }
   if (err.code === "EACCES" || err.code === "EPERM")
@@ -322,6 +322,20 @@ export function killCliTree(child: ChildProcess, timeoutMs = 5_000): Promise<boo
   // Remember success, so a delayed caller cannot signal a reused PID/group.
   void run.then((stopped) => { if (!stopped) stopping.delete(child); });
   return run;
+}
+
+/** Waits up to graceMs for the child to close by itself, then stops its tree. */
+export function closedOrKilled(child: ChildProcess, graceMs = 5_000): Promise<boolean> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true);
+  return new Promise<boolean>((resolveStop) => {
+    const done = () => { clearTimeout(timer); resolveStop(true); };
+    child.once("close", done);
+    const timer = setTimeout(() => {
+      child.off("close", done);
+      void killCliTree(child).then(resolveStop, () => resolveStop(false));
+    }, graceMs);
+    timer.unref?.();
+  });
 }
 
 async function stopCliTree(child: ChildProcess, pid: number, timeoutMs: number): Promise<boolean> {
