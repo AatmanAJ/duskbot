@@ -17,7 +17,7 @@ import { useBotMarkState } from "./mascot-presence";
 import { cn } from "@/lib/cn";
 import { useHeldMenuMotion, useMenuMotion } from "./MenuMotion";
 import { lastNonReceipt } from "@/lib/receipts";
-import { botPreview, groupPreview, lastLine, sidebarPreviewMessages, waitingLine } from "./sidebar-preview";
+import { botPreview, groupPreview, lastLine, lastPreviewable, openWait, sidebarPreviewMessages, waitingLine } from "./sidebar-preview";
 import { activeLocale, t } from "@/lib/i18n";
 import { copyText } from "@/lib/copy-text";
 import type { LocaleKey } from "@/locales";
@@ -667,12 +667,15 @@ export const BotListItem = memo(function BotListItem(props: BotRowProps) {
   const onContextMenu = (event: React.MouseEvent) => {
     openBotContextMenu(onMenu, bot.id, event);
   };
+  const openRow = () => {
+    const opened = openBotRow(dispatch, bot, selected);
+    const ask = waiting && opened === bot.threadId ? openWait(bot, visible) : undefined;
+    if (ask && ask.messageId !== lastPreviewable(visible)?.id) dispatch({ type: "focusMessage", threadId: bot.threadId, messageId: ask.messageId });
+  };
   const onSelect = (event: React.MouseEvent) => {
     if (renaming) return;
     const insideRenameInput = event.target instanceof HTMLInputElement;
-    if (botListItemPointerIntent(event.type, insideRenameInput) === "select") {
-      openBotRow(dispatch, bot, selected);
-    }
+    if (botListItemPointerIntent(event.type, insideRenameInput) === "select") openRow();
   };
 
   return (
@@ -701,7 +704,7 @@ export const BotListItem = memo(function BotListItem(props: BotRowProps) {
           if (drag && stepKey(event)) { event.preventDefault(); drag.step(bot.id, stepKey(event)!); return; }
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            openBotRow(dispatch, bot, selected);
+            openRow();
           }
         }}
         onContextMenu={onContextMenu}
