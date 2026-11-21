@@ -38,7 +38,6 @@ export function fetchTrace(id: string, at?: number): Promise<TraceDetail> {
   return api(`/api/usage/traces/${encodeURIComponent(id)}${at ? `?at=${Math.round(at)}` : ""}`);
 }
 
-/** "450ms", "6.9s", "51s", "1m 40s", "2h 5m": rounded before the unit is picked. */
 const JOB_TITLES = { memory: "trace.job.memory", "skill-review": "trace.job.skillReview", compaction: "trace.job.compaction" } as const;
 
 /** A run's title: what was asked, else the background job it was, else where it came from. */
@@ -49,6 +48,7 @@ export function traceRootTitle(root: Pick<TraceRootSummary, "title" | "source" |
   return job ? t(job, { bot }) : t(`trace.source.${root.source}`, { bot });
 }
 
+/** "450ms", "6.9s", "51s", "1m 40s", "2h 5m": rounded before the unit is picked. */
 export function formatDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return "";
   if (ms < 1_000) return `${Math.round(ms)}ms`;
