@@ -78,25 +78,25 @@ const FULL = "skills+voice+x+team";
  * either: lock a saving in by lowering the number. A Chief's list is longer
  * than another bot's only by the Chief-only names in find_tool's description. */
 const BUDGET_BASELINE: Record<string, number> = {
-  "default": 30565,
-  "voice": 31343,
-  "skills": 30592,
-  "skills+voice": 31370,
-  "non-chief": 30479,
-  "voice+non-chief": 31257,
-  "skills+non-chief": 30506,
-  "skills+voice+non-chief": 31284,
-  "skills+voice+cloud-home": 31387,
-  "skills+voice+non-chief+cloud-home": 31301,
-  "skills+voice+x": 31448,
-  "skills+voice+x+team": 31864,
-  "skills+skill-reader": 31008,
-  "default+legacy-switches": 30565,
-  "default+dusk": 30617,
-  "skills+voice+dusk": 31422,
-  "default+no-computer-pick": 29358,
-  "default+room": 29259,
-  "non-chief+room": 29173,
+  "default": 33415,
+  "voice": 34193,
+  "skills": 33442,
+  "skills+voice": 34220,
+  "non-chief": 33329,
+  "voice+non-chief": 34107,
+  "skills+non-chief": 33356,
+  "skills+voice+non-chief": 34134,
+  "skills+voice+cloud-home": 34237,
+  "skills+voice+non-chief+cloud-home": 34151,
+  "skills+voice+x": 34298,
+  "skills+voice+x+team": 34714,
+  "skills+skill-reader": 33858,
+  "default+legacy-switches": 33415,
+  "default+dusk": 33467,
+  "skills+voice+dusk": 34272,
+  "default+no-computer-pick": 32208,
+  "default+room": 32109,
+  "non-chief+room": 32023,
 };
 
 type RpcAnswer = { id: number; result?: { tools?: unknown[]; content?: Array<{ text: string }>; isError?: boolean }; error?: { code: number; message: string } };
@@ -189,7 +189,7 @@ const namedHidden = (wire: string) => {
 /** A bridged conversation that needs no harness: a search, a call that is not
  * the shape of one, and a name outside a non-Chief's profile. */
 const BRIDGE_REQUESTS = [
-  { method: "tools/call", params: { name: FIND_TOOL, arguments: { query: "schedule a recurring task every morning" } } },
+  { method: "tools/call", params: { name: FIND_TOOL, arguments: { query: "delete one of my routines for good" } } },
   { method: "tools/call", params: { name: USE_TOOL, arguments: { arguments: { thread_id: 7 } } } },
   { method: "tools/call", params: { name: USE_TOOL, arguments: { name: "propose_team_setup", arguments: {} } } },
 ];
@@ -265,7 +265,7 @@ describe("agents proxy tools/list golden with the tool bridge on", () => {
   it("keeps the same hot tools whatever the role and features, except the ones a profile does not have", () => {
     const hotOf = (name: string) => toolsOf(wires[name]!).slice(0, -2).map((tool) => tool.name);
     const base = hotOf("default");
-    expect(base).toEqual(["set_status", "send_message", "tool_result_read", "list_room_targets", "coordinate_bots", "list_bots", "list_rooms", "select_computer", "attach_file", "publish_page", "confirm_purchase", "post_to_room", "request_credential", "request_sign_in", "fill_login", "message_person", "memory_update", "trigger"]);
+    expect(base).toEqual(["set_status", "send_message", "tool_result_read", "list_room_targets", "coordinate_bots", "list_bots", "create_document", "list_rooms", "select_computer", "attach_file", "publish_page", "confirm_purchase", "post_to_room", "request_credential", "request_sign_in", "fill_login", "message_person", "memory_update", "trigger_info", "trigger"]);
     for (const name of Object.keys(PROFILES)) {
       const selects = PROFILES[name]!.DUSK_COMPUTER_SELECTION === "1";
       expect(hotOf(name).filter((tool) => tool !== "send_voice_note" && tool !== "read_skill"), name).toEqual(selects ? base : base.filter((tool) => tool !== "select_computer"));
@@ -337,7 +337,7 @@ describe("agents proxy with the tool bridge on, from the packaged bundle", () =>
     const env = { ...PROFILES["non-chief"]!, ...BRIDGE_ON };
     const fromSource = await proxyAnswers(PROXY_SOURCE, env, BRIDGE_REQUESTS);
     const [found, shapeless, outside] = await proxyAnswers(bundled, env, BRIDGE_REQUESTS);
-    expect((JSON.parse(found!.result!.content![0]!.text) as { matches: Tool[] }).matches[0]!.name).toBe("trigger_info");
+    expect((JSON.parse(found!.result!.content![0]!.text) as { matches: Tool[] }).matches[0]!.name).toBe("delete_trigger");
     expect(shapeless!.result!.isError).toBe(true);
     expect(shapeless!.result!.content![0]!.text).toContain('use_tool needs { "name": ');
     // a bot that is not a Chief: propose_team_setup is not one of its tools
@@ -366,7 +366,7 @@ describe("agents proxy tools/list wire size with the tool bridge on", () => {
         `  ${String(bytes(JSON.stringify(tool))).padStart(6)} ${String(bytes(JSON.stringify(tool.inputSchema))).padStart(6)}  ${tool.name}  (${name})`)),
     ];
     console.log(lines.join("\n"));
-    for (const [name, wire] of Object.entries(wires)) expect(bytes(wire), name).toBeLessThan(bytes(unbridgedWire(name)) * 0.56);
+    for (const [name, wire] of Object.entries(wires)) expect(bytes(wire), name).toBeLessThan(bytes(unbridgedWire(name)) * 0.62);
   });
 
   it.each(Object.keys(PROFILES))("%s stays within 2% of its budget baseline", (name) => {

@@ -172,6 +172,41 @@
       }
     },
     {
+      "name": "create_document",
+      "description": "Save a long structured result (plan, report, draft, a table over ~15 rows) as a document the person can open, edit and download: a file card here, kept in your panel under Files. Then reply in a line or two, never repeating it. Short answers and small tables stay in your message.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "markdown",
+              "sheet",
+              "html"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "description": "All of it: Markdown; for a sheet CSV with a header row; for html one static page, inline CSS."
+          },
+          "manual": {
+            "type": "boolean",
+            "description": "The person's standing rules for you or a workflow: you reread it, never change it."
+          }
+        },
+        "required": [
+          "title",
+          "kind",
+          "content"
+        ]
+      }
+    },
+    {
       "name": "list_rooms",
       "description": "List the shared rooms (team channels) you belong to, with the other members of each. Call this before post_to_room. One-to-one bot channels are never listed; discover individual teammates with list_bots. A room you are in but cannot post into is named without an id, together with the reason, so you can tell the user why.",
       "inputSchema": {
@@ -585,6 +620,53 @@
       }
     },
     {
+      "name": "trigger_info",
+      "description": "Read this bot's triggers (was list_triggers / list_trigger_events). list: its routines (schedules), app events and webhooks: ids, when they fire, on or paused, next run or last fire, problems, and the computer's authoritative current time and timezone, then its jobs and waits; trigger_id gives one trigger with its last 10 fires, and with include_address a webhook's or routine's private address (a post runs it: beats a frequent schedule), to paste into the setup of the app that sends to it. Before reporting completion, inspect related monitors and verify enabled=false and nextRunAt=null after stopping them with trigger. events: before a when=app_event trigger, the connected apps you may use, with their accounts and events, and popular apps not connected yet. usage: each automation's 7- and 30-day use.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "list",
+              "events",
+              "usage"
+            ]
+          },
+          "trigger_id": {
+            "type": "string",
+            "description": "list: one trigger's details and recent fires."
+          },
+          "include_address": {
+            "type": "boolean",
+            "description": "list, with a webhook's or routine's trigger_id: also its private address. For the bot that owns it, or a Chief of Staff."
+          },
+          "for_bot_id": {
+            "type": "string",
+            "description": "list: ANOTHER bot's triggers, from list_bots."
+          },
+          "app": {
+            "type": "string",
+            "description": "events: optional app slug, e.g. gmail."
+          },
+          "search": {
+            "type": "string",
+            "description": "events: optional words in event names."
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "trigger",
       "description": "Set up or change work that happens on its own (was create_trigger / manage_trigger): when <something happens>, a bot does <instructions>. create in this turn whenever the person describes recurring or event-based work (\"every morning send me…\", \"whenever I get an email from…\", \"when another app calls…\"); never ask for confirmation first. when=schedule runs on a time rule, cron included (for relative dates, the person's message carries the current time and timezone in its \"Current time when this message was sent\" line); when=app_event runs when something happens in a connected app (trigger_info action=events first; prefer it to a schedule that keeps checking); when=webhook gives an address another app sends to: the result carries its private address, so you can paste it into that app's setup yourself (never anywhere else). when=limit_reset runs when an AI's usage limit resets (\"run this when my limit resets\", or to finish work your own limit stopped). A schedule watching for something new (page, feed, price, chat, build) gets check, so it costs nothing until something changed; never make the AI poll. To come back to this chat later (\"check back in 20 min\"), use wait_until kind=time with follow_up. To the person these are automations: write name and instructions as they would say them. Something to do once, now, is not a trigger. update (only the fields to change), pause, resume and run_now (an app event or webhook gets a test event) act on one of the bot's routines, app events or webhooks, by its trigger_id from trigger_info. Before reporting a task finished, inspect related automations with trigger_info; pause a temporary monitor whose goal is met, then read its state back. Keep standing automations; delete_trigger deletes one only at the person's explicit request. Each applies at once; the person sees it with Edit, Pause and Undo. for_bot_id: a trigger of ANOTHER bot in your section, which keeps that bot's engine and permissions. email: your mail address; with trigger_id and email_from, their mail (to +email_alias) runs it.",
       "inputSchema": {
@@ -879,7 +961,7 @@
     },
     {
       "name": "find_tool",
-      "description": "Find a dusk bot tool that is not in your tool list. Say what you want to do in a few words, or give the tool's name. Each match comes back with its description and exact input schema; run one with use_tool. Tools reached this way: assignment_status, usage_limits, checklist, react, create_document, update_document, list_documents, list_threads, close_thread, start_thread, vm_exec, show_widget, show_html, unpublish_page, show_products, create_bot, list_team_setup, list_team_library, propose_team_setup, propose_bot_deletion, manage_room, web_search_many, x_search, research_search, research_endpoint, research_call, decide, extract, report_bug, app_settings, chat_app_bots, retry_thread, memory_log, session_search, trigger_info, delete_trigger, wait_until, list_waits, cancel_wait, background_job, propose_profile, propose_model, skills_list, skill_manage, mcp_server.",
+      "description": "Find a dusk bot tool that is not in your tool list. Say what you want to do in a few words, or give the tool's name. Each match comes back with its description and exact input schema; run one with use_tool. Tools reached this way: assignment_status, usage_limits, checklist, react, update_document, list_documents, list_threads, close_thread, start_thread, vm_exec, show_widget, show_html, unpublish_page, show_products, create_bot, list_team_setup, list_team_library, propose_team_setup, propose_bot_deletion, manage_room, web_search_many, x_search, research_search, research_endpoint, research_call, decide, extract, report_bug, app_settings, chat_app_bots, retry_thread, memory_log, session_search, delete_trigger, wait_until, list_waits, cancel_wait, background_job, propose_profile, propose_model, skills_list, skill_manage, mcp_server.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
