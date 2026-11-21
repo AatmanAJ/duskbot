@@ -56,3 +56,28 @@ it("says the first chat load failed instead of loading for ever, and loads when 
   expect(state.loadFailed).toBeUndefined();
   expect(state.bots.map((one) => one.name)).toEqual(["Fixture"]);
 });
+
+it("keeps asking every moment while the person's cloud wakes, without saying the load failed", async () => {
+  let waking = true;
+  vi.stubGlobal("EventSource", FixtureEventSource);
+  vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+    if (path.startsWith("/api/bots?")) return waking ? json({ error: "waking" }, 503) : json({ bots: [bot], groups: [] });
+    if (path === "/api/instances") return json({ instances: [] });
+    return json({});
+  }));
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  let state!: AppState;
+  function Probe() { state = useStore().state; return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root!.render(createElement(StoreProvider, null, createElement(Probe))));
+  await act(async () => { FixtureEventSource.opened[0]!.send({ kind: "hello", resumed: false, cursor: "fixture:0" }); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+  expect(state.loadWaking).toBe(true);
+  expect(state.loadFailed).toBeUndefined();
+
+  waking = false;
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1_600)); });
+  expect(state.hydrated).toBe(true);
+  expect(state.loadWaking).toBeUndefined();
+  expect(state.bots.map((one) => one.name)).toEqual(["Fixture"]);
+});

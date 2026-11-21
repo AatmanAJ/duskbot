@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { CommandKind, CommandView, ConnectorsAnswer, WorkspaceSummary } from "../../../../shared/dashboard-protocol";
+import type { CommandKind, CommandView, ConnectFinishAnswer as FinishAnswer, ConnectorsAnswer, WorkspaceSummary } from "../../../../shared/dashboard-protocol";
 import { api } from "../lib/api";
 import { cheer } from "../lib/cheer";
 import { toast } from "../lib/toast";
@@ -7,7 +7,9 @@ import { useCloud } from "./cloud";
 import { dropPending, isAwake, wakeCloud, type WakeDeps } from "./cloud-wake";
 import type { CloudDesktop } from "./contracts";
 
-export type AppFlowPhase = "waking" | "waiting" | "sign-in" | "done" | "failed";
+/** waiting: the workspace is making the sign-in; redirecting: this tab is going to it; sign-in: it opens in its own tab
+ *  (a workspace whose sign-in can't come back here); finishing: back from it, waiting for the workspace to see the app */
+export type AppFlowPhase = "waking" | "waiting" | "redirecting" | "sign-in" | "finishing" | "done" | "failed";
 export interface AppFlow {
   key: string;
   action: "connect" | "disconnect";
@@ -24,39 +26,23 @@ export interface AppFlow {
 export const PICKUP_MS = 15_000;
 /** taken but no link back by now: the sign-in is stuck on the workspace */
 export const ANSWER_MS = 30_000;
+/** back from the sign-in, how long the page waits for the workspace to report the app connected */
+export const FINISH_MS = 90_000;
 const COMMAND_POLL_MS = 700;
 const SIGN_IN_WAIT_MS = 5 * 60_000;
 const SIGN_IN_POLL_MS = 3_000;
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 export const flowKey = (workspaceId: string, slug: string) => `${workspaceId}:${slug}`;
 
-/** the tab opened inside the click (a popup opened later is blocked): it says what is happening until the sign-in loads */
-export interface SignInTab { say(text: string): void; go(url: string): void; close(): void }
-function openTab(label: string): SignInTab | null {
-  const tab = window.open("", "_blank");
-  if (!tab) return null;
-  const write = (title: string, text: string) => {
-    try {
-      tab.document.title = title;
-      tab.document.body.style.cssText = "font:15px/1.5 system-ui;padding:32px;max-width:560px;color:#1b1b1f;white-space:pre-line";
-      tab.document.body.textContent = text;
-    } catch {}
-  };
-  try { tab.opener = null; } catch {}
-  write(`connecting ${label}`, "");
-  return {
-    say: (text) => { if (!tab.closed) write(`connecting ${label}`, text); },
-    go: (url) => { if (!tab.closed) tab.location.href = url; },
-    close: () => { try { tab.close(); } catch {} },
-  };
-}
-
 export interface FlowDeps extends WakeDeps {
-  command(id: string, kind: CommandKind, target: string): Promise<{ command: CommandView }>;
+  command(id: string, kind: CommandKind, target: string, options?: { returnHere?: boolean }): Promise<{ command: CommandView }>;
   connections(): Promise<ConnectorsAnswer | null>;
+  /** this tab goes to the app's sign-in, which sends it back to the apps page */
+  go(url: string): void;
 }
 const browserDeps = (reload: () => Promise<ConnectorsAnswer | null>): FlowDeps => ({
   workspace: (id) => api.workspace(id), command: api.command, power: api.power, connections: reload, now: Date.now, sleep,
+  go: (url) => window.location.assign(url),
 });
 
 /** what to do next when a workspace never took the command, in its own terms */
@@ -70,7 +56,7 @@ export function notAnswering(ws: Pick<WorkspaceSummary, "name" | "kind">): strin
 export async function followCommand(ws: Pick<WorkspaceSummary, "id" | "name" | "kind">, kind: CommandKind, slug: string, deps: FlowDeps, onTaken?: () => void):
   Promise<{ ok: true; command: CommandView } | { ok: false; message: string }> {
   let id: string;
-  try { id = (await deps.command(ws.id, kind, slug)).command.id; }
+  try { id = (await deps.command(ws.id, kind, slug, kind === "app.connect" ? { returnHere: true } : undefined)).command.id; }
   catch (e) { return { ok: false, message: (e as Error).message }; }
   const started = deps.now();
   let taken = false;
@@ -90,22 +76,19 @@ export async function followCommand(ws: Pick<WorkspaceSummary, "id" | "name" | "
 
 const store = { flows: {} as Record<string, AppFlow>, listeners: new Set<() => void>() };
 function setFlows(next: Record<string, AppFlow>) { store.flows = next; store.listeners.forEach((fn) => fn()); }
-const running = (key: string) => store.flows[key]?.phase === "waking" || store.flows[key]?.phase === "waiting";
+const running = (key: string) => ["waking", "waiting", "redirecting", "finishing"].includes(store.flows[key]?.phase ?? "");
 const patch = (key: string, change: Partial<AppFlow>) => { if (store.flows[key]) setFlows({ ...store.flows, [key]: { ...store.flows[key]!, ...change } }); };
+const isConnected = (answer: ConnectorsAnswer | null, workspaceId: string, slug: string) => Boolean(answer?.byWorkspace[workspaceId]?.some((s) => s.toLowerCase() === slug));
 
-/** one sign-in from the click to the connected app; it outlives the page, so leaving apps never strands its tab */
-export async function runAppFlow(action: AppFlow["action"], ws: WorkspaceSummary, slug: string, label: string, deps: FlowDeps, tab: SignInTab | null) {
+/** one sign-in from the click to the app's own page: this tab goes there and comes back to finishSignIn; a workspace
+ *  whose sign-in can't come back hands a link to open instead, and the page waits for the app */
+export async function runAppFlow(action: AppFlow["action"], ws: WorkspaceSummary, slug: string, label: string, deps: FlowDeps) {
   const key = flowKey(ws.id, slug);
-  if (running(key)) return tab?.close();
+  if (running(key)) return;
   setFlows({ ...store.flows, [key]: { key, action, workspaceId: ws.id, workspaceName: ws.name, slug, label, phase: "waiting", url: null, message: null } });
-  const failed = (message: string) => {
-    tab?.say(`${message}\n\nyou can close this tab.`);
-    patch(key, { phase: "failed", message });
-    toast(message, "bad");
-  };
-  tab?.say(`asking ${ws.name} for the ${label} sign-in.`);
-  const answer = await followCommand(ws, action === "connect" ? "app.connect" : "app.disconnect", slug, deps,
-    () => tab?.say(`getting the ${label} sign-in from ${ws.name}.`));
+  // a failed connect stays in the corner pill; a disconnect has none, so it is told in a toast
+  const failed = (message: string) => { patch(key, { phase: "failed", message }); if (action === "disconnect") toast(message, "bad"); };
+  const answer = await followCommand(ws, action === "connect" ? "app.connect" : "app.disconnect", slug, deps);
   if (!answer.ok) return failed(answer.message);
   if (action === "disconnect") {
     await deps.connections();
@@ -115,13 +98,16 @@ export async function runAppFlow(action: AppFlow["action"], ws: WorkspaceSummary
   }
   const url = answer.command.url;
   if (!url) return failed(`${label} did not return a sign-in page.`);
-  tab?.go(url);
+  if (answer.command.returnsHere) {
+    patch(key, { phase: "redirecting", url });
+    deps.go(url);
+    return;
+  }
   patch(key, { phase: "sign-in", url });
   const until = deps.now() + SIGN_IN_WAIT_MS;
   while (deps.now() < until) {
     await deps.sleep(SIGN_IN_POLL_MS);
-    const connected = await deps.connections().catch(() => null);
-    if (connected?.byWorkspace[ws.id]?.some((s) => s.toLowerCase() === slug)) {
+    if (isConnected(await deps.connections().catch(() => null), ws.id, slug)) {
       patch(key, { phase: "done", url: null });
       cheer(`${label} is connected. your bots can use it now.`);
       return;
@@ -130,20 +116,45 @@ export async function runAppFlow(action: AppFlow["action"], ws: WorkspaceSummary
   patch(key, { phase: "failed", message: `${label} is not connected yet. finish signing in, then reload this page.` });
 }
 
+/** back on the apps page from a sign-in this page started: the state is taken once, then the page waits for the
+ *  workspace to report the app; a sign-in called off at the app says so */
+export async function finishSignIn(state: string, status: string | null, deps: FlowDeps & { finish(state: string, status: string | null): Promise<FinishAnswer> },
+  names: { workspace(id: string): string; app(slug: string): string }) {
+  let found: FinishAnswer;
+  try { found = await deps.finish(state, status); }
+  catch (e) { toast((e as Error).message, "bad"); return; }
+  const key = flowKey(found.workspaceId, found.slug), label = names.app(found.slug), workspaceName = names.workspace(found.workspaceId);
+  const base: AppFlow = { key, action: "connect", workspaceId: found.workspaceId, workspaceName, slug: found.slug, label, phase: "finishing", url: null, message: null };
+  if (found.outcome === "cancelled") {
+    setFlows({ ...store.flows, [key]: { ...base, phase: "failed", message: "the sign-in was called off before it finished. try again when you're ready." } });
+    return;
+  }
+  setFlows({ ...store.flows, [key]: base });
+  const until = deps.now() + FINISH_MS;
+  while (deps.now() < until) {
+    if (isConnected(await deps.connections().catch(() => null), found.workspaceId, found.slug)) {
+      patch(key, { phase: "done" });
+      cheer(`${label} is connected on ${workspaceName}. your bots can use it now.`);
+      return;
+    }
+    await deps.sleep(SIGN_IN_POLL_MS);
+  }
+  patch(key, { phase: "failed", message: `${label} signed in, but ${workspaceName} hasn't seen it yet. reload in a minute, or open dusk bot there.` });
+}
+
 const dropFlow = (key: string) => { const { [key]: _, ...rest } = store.flows; setFlows(rest); };
 
-/** a cloud we put to sleep wakes first, with no tab yet: a connect waits as a button in the corner pill, so its tab
- *  opens inside that click; a disconnect needs no tab and goes on its own */
-export async function startAppFlow(action: AppFlow["action"], ws: WorkspaceSummary, slug: string, label: string, wake: CloudDesktop | undefined, deps: FlowDeps, openSignIn: () => SignInTab | null) {
+/** a cloud we put to sleep wakes first: a connect waits as a button in the corner pill, a disconnect goes on its own */
+export async function startAppFlow(action: AppFlow["action"], ws: WorkspaceSummary, slug: string, label: string, wake: CloudDesktop | undefined, deps: FlowDeps) {
   const key = flowKey(ws.id, slug);
   if (running(key)) return;
   if (!wake || isAwake(wake.id, deps.now())) {
     dropPending(key);
-    return runAppFlow(action, ws, slug, label, deps, action === "connect" ? openSignIn() : null);
+    return runAppFlow(action, ws, slug, label, deps);
   }
   setFlows({ ...store.flows, [key]: { key, action, workspaceId: ws.id, workspaceName: ws.name, slug, label, phase: "waking", url: null, message: null } });
   const pending = action === "connect"
-    ? { key, label: `connect ${label} now`, run: () => { dropFlow(key); void runAppFlow(action, ws, slug, label, deps, openSignIn()); }, cancel: () => dropFlow(key) }
+    ? { key, label: `connect ${label} now`, run: () => { dropFlow(key); void runAppFlow(action, ws, slug, label, deps); }, cancel: () => dropFlow(key) }
     : undefined;
   const awake = await wakeCloud(wake, ws.name, { pending, deps });
   if (store.flows[key]?.phase !== "waking") return;
@@ -154,23 +165,31 @@ export async function startAppFlow(action: AppFlow["action"], ws: WorkspaceSumma
     return;
   }
   dropFlow(key);
-  if (action === "disconnect") return runAppFlow(action, ws, slug, label, deps, null);
+  if (action === "disconnect") return runAppFlow(action, ws, slug, label, deps);
+}
+
+export function useAppFlows(): Record<string, AppFlow> {
+  return useSyncExternalStore((fn) => { store.listeners.add(fn); return () => void store.listeners.delete(fn); }, () => store.flows, () => store.flows);
 }
 
 export function useAppCommands() {
   const { reloadConnections } = useCloud();
-  const flows = useSyncExternalStore((fn) => { store.listeners.add(fn); return () => void store.listeners.delete(fn); }, () => store.flows, () => store.flows);
+  const flows = useAppFlows();
+  const deps = () => browserDeps(reloadConnections);
   const start = (action: AppFlow["action"]) => (ws: WorkspaceSummary, slug: string, label: string, wake?: CloudDesktop) => {
-    void startAppFlow(action, ws, slug, label, wake, browserDeps(reloadConnections), () => openTab(label));
+    void startAppFlow(action, ws, slug, label, wake, deps());
   };
   return {
     flows,
     /** `wake`: the dusk cloud we put to sleep that runs this workspace; it wakes first */
     connect: start("connect"),
     disconnect: start("disconnect"),
+    finish: (state: string, status: string | null, names: Parameters<typeof finishSignIn>[3]) =>
+      finishSignIn(state, status, { ...deps(), finish: api.finishConnect }, names),
     dismiss: dropFlow,
   };
 }
 
 /** for tests */
 export const resetAppFlows = () => setFlows({});
+export const appFlowsNow = () => store.flows;

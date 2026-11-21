@@ -1,16 +1,14 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { storeApp } from "@/lib/store-app";
-import { Cloud, X } from "../icons";
 import type { CloudSource } from "@/lib/cloud-plan";
 import { investedBy, type InvestedFacts } from "../../shared/cloud-upsell";
 import { firstChatQuiet, firstReplyPending } from "@/lib/corner-popup";
 import { cloudUpsellAllowed, investedFacts, isInvested, markAlwaysOn, trackUpsell, watchUpsell } from "@/lib/cloud-upsell";
 import { endNudge, nextNudgeAt, noteNudgeSession, nudgeDay, nudgeEligible, nudgeShowing, nudgeVersion, takeNudge, watchNudge } from "@/lib/cloud-nudge";
-import { MASCOT_INK } from "@/lib/mascot";
 import { CLOUD_INTRO, dismissNotice, INVESTED_NOTICE, LATE_ROUTINE_NOTICE, launchNotice, noticeSeen, watchLaunchNotice } from "@/lib/notices";
 import { t } from "@/lib/i18n";
 import { api, useStore } from "@/state/store";
-import { DuskMark } from "./mascot-view";
+import { SpotCloudCard, SpotCtaCard, type SpotCta } from "./SidebarSpot";
 import { localDesktopPage } from "./onboarding/WelcomeGate";
 import { useCloudPlan } from "./ProIntroduction";
 import { deviceWord } from "./vps-link/parts";
@@ -40,23 +38,21 @@ export function useCloudUpsell(): { allowed: boolean | null; open: (source: Clou
   return { allowed, open };
 }
 
-/** a sleeping pixel bot that looks up while the pointer is on it */
-function NappingBot({ size }: { size: number }) {
-  const [near, setNear] = useState(false);
-  return <span aria-hidden="true" className="shrink-0" onPointerEnter={event => { if (event.pointerType === "mouse") setNear(true); }} onPointerLeave={() => setNear(false)}>
-    <DuskMark body="wisp" colour={MASCOT_INK.purple} state="sleeping" size={size} emphasized={near} label={null} />
-  </span>;
-}
-
 const CLOUD_NOTICES = new Set<string>([CLOUD_INTRO, LATE_ROUTINE_NOTICE]);
 const INVESTED_LINE = { bots: "cloudUpsell.invested.bots", messages: "cloudUpsell.invested.messages", routines: "cloudUpsell.invested.routines" } as const;
 // the invested pitch holds the card for the rest of the launch it first showed in
 let launchInvested: InvestedFacts | null = null;
 
-/** the small dusk cloud card at the foot of the sidebar, a few times on a day the app is used (lib/cloud-nudge.ts), never
- * during first run. A launch that already showed a cloud notice in the corner leaves it out, so the pitch is said once.
- * Someone clearly invested (shared/cloud-upsell.ts INVESTED) gets it in their own numbers instead, once per account. */
-export function SidebarCloudCard() {
+/** the dusk cloud offer in the sidebar's spot, in Give feedback's place, as the website's sidebar card: at most twice a
+ * day the app is used (lib/cloud-nudge.ts), never during first run, and only for an account without dusk cloud. A launch
+ * that already showed a cloud notice in the corner leaves it out, so the pitch is said once. Someone clearly invested
+ * (shared/cloud-upsell.ts INVESTED) gets it in their own numbers instead, once per account. `covered`: an update holds the
+ * spot, so no showing starts under it. */
+export function useSidebarCloudCta(covered = false): SpotCta | null {
+  return useSidebarOfferCta(covered);
+}
+
+function useSidebarOfferCta(covered: boolean): SpotCta | null {
   const { state, dispatch } = useStore();
   const { allowed, open } = useCloudUpsell();
   const [held, setHeld] = useState<InvestedFacts | null>(launchInvested);
@@ -65,7 +61,7 @@ export function SidebarCloudCard() {
   const settled = firstReplyPending(state) === false && !firstChatQuiet(state) && !state.welcomeOpen;
   // a corner cloud card claiming this launch hides this one right away: one dusk cloud offer on screen at a time
   const notice = useSyncExternalStore(watchLaunchNotice, launchNotice, () => null);
-  const eligible = nudgeEligible({ allowed, settled, cornerCard: Boolean(notice && CLOUD_NOTICES.has(notice)) });
+  const eligible = !covered && nudgeEligible({ allowed, settled, cornerCard: Boolean(notice && CLOUD_NOTICES.has(notice)) });
   const showing = nudgeShowing();
   const visible = eligible && showing;
   const record = state.config?.onboarding;
@@ -97,37 +93,25 @@ export function SidebarCloudCard() {
   useEffect(() => { if (!visible) reported.current = false; }, [visible]);
   useEffect(() => { if (visible) return watchUpsell(source); }, [visible, source]);
   if (!visible) return null;
-  return <SidebarCloudNudge invested={invested && by ? { by, count: invested[by] } : null}
-    onDismiss={() => { trackUpsell("dismiss", source); endNudge(true); }}
-    onStart={() => { trackUpsell("click", source); endNudge(); open(source); }} />;
+  const device = deviceWord();
+  const title = by && invested ? t(INVESTED_LINE[by], { count: invested[by] }) : t("cloudUpsell.nudge.title");
+  return {
+    id: by ? "cloud-invested" : "cloud",
+    title,
+    hint: t(by ? "cloudUpsell.invested.body" : "cloudUpsell.nudge.body", { device }),
+    art: "clock",
+    closeLabel: t("cloudUpsell.hide"),
+    card: by ? { title, body: t("cloudUpsell.invested.body", { device }), action: t("runsOn.getCloud"), invested: true }
+      : { body: t("cloudUpsell.side.body", { device }), action: t("cloudUpsell.side.action"), invested: false },
+    onClose: () => { trackUpsell("dismiss", source); endNudge(); },
+    onStart: () => { trackUpsell("click", source); endNudge(); open(source); },
+  };
 }
 
-/** the card itself: the bot panel's Keep it working pitch made small for the sidebar, or the invested line */
-export function SidebarCloudNudge({ invested, onDismiss, onStart }: {
-  invested: { by: keyof InvestedFacts; count: number } | null; onDismiss: () => void; onStart: () => void;
-}) {
-  const device = deviceWord();
-  return (
-    <section aria-labelledby="sidebar-cloud-title" data-sidebar-cloud-card="" data-invested={invested ? "" : undefined}
-      className="relative mb-2 rounded-xl bg-composer p-3 text-ink ring-[0.5px] ring-transparent [@media(max-height:600px)]:hidden">
-      <button type="button" onClick={onDismiss} aria-label={t("cloudUpsell.hide")}
-        className="absolute end-1.5 top-1.5 flex size-6 cursor-pointer items-center justify-center rounded-full text-ink/56 transition-[background-color,color] duration-[120ms] ease-[ease] hover:bg-ink/6 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus">
-        <X size={13} aria-hidden="true" />
-      </button>
-      <div className="flex items-start gap-2.5 pe-5">
-        {invested ? <span aria-hidden="true" className="shrink-0"><DuskMark body="kit" colour={MASCOT_INK.blue} state="happy" size={30} label={null} /></span> : <NappingBot size={30} />}
-        <div className="min-w-0">
-          <h2 id="sidebar-cloud-title" className="m-0 text-[13px] font-semibold leading-[1.35] text-ink [text-wrap:pretty]">
-            {invested ? t(INVESTED_LINE[invested.by], { count: invested.count }) : t("cloudUpsell.nudge.title")}</h2>
-          <p className="m-0 mt-0.5 text-[12px] font-medium leading-[1.45] text-ink-secondary [text-wrap:pretty]">
-            {t(invested ? "cloudUpsell.invested.body" : "cloudUpsell.nudge.body", { device })}</p>
-        </div>
-      </div>
-      <button type="button" data-sidebar-cloud-start="" className="ui-button ui-button-primary mt-2.5 w-full justify-center gap-1.5" onClick={onStart}>
-        <Cloud size={13} aria-hidden="true" />{t("rail.buy")}
-      </button>
-    </section>
-  );
+/** the offer on its own, as the spot draws it */
+export function SidebarCloudCard() {
+  const cta = useSidebarCloudCta();
+  return cta ? (cta.card ? <SpotCloudCard cta={cta} card={cta.card} /> : <SpotCtaCard cta={cta} />) : null;
 }
 
 /** the 24/7 line inside a flow that makes something run on its own (a schedule, an app event, another app sending

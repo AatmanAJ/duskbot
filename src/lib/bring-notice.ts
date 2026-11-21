@@ -5,6 +5,7 @@ import { useStore } from "@/state/store";
 import type { SetupDetection } from "../../shared/setup-import";
 import { localFinds, memorySource, type LocalFind } from "./first-run-import";
 import { welcomeFinishedThisLaunch } from "./onboarding";
+import { usePlaceSwitchQuiet } from "./place-switch";
 import { BRING_NOTICE, noticeSeen } from "./notices";
 import { detectSetupWithin, localSetupImport, setupImportApi, type SetupImportClient } from "./setup-import";
 
@@ -19,7 +20,8 @@ export function bringNoticeFind(detection: SetupDetection | null, now = Date.now
 export function useBringNotice(client: SetupImportClient = setupImportApi): { fact: boolean | null; find: LocalFind | null } {
   const { state } = useStore();
   const record = state.config?.onboarding;
-  const due = Boolean(state.config && record?.completedAt) && localSetupImport(state.config?.cloudHome === true)
+  const switched = usePlaceSwitchQuiet();
+  const due = !switched && Boolean(state.config && record?.completedAt) && localSetupImport(state.config?.cloudHome === true)
     && !noticeSeen(record, BRING_NOTICE) && !welcomeFinishedThisLaunch();
   const [find, setFind] = useState<LocalFind | null | undefined>(undefined);
   useEffect(() => {
