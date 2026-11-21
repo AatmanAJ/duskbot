@@ -52,7 +52,8 @@ export async function homeFixture(options: { costProfile?: ProviderCostProfile; 
   const notices: Array<{ cloudId: string; kind: string; at: number | null; link?: string }> = [];
   const alerts: string[] = [];
   const audit = createAudit({ dataDir, now, alert: entry => alerts.push(`${entry.action}:${entry.reason}`) });
-  const backups = createBackupStore({ dir: join(dataDir, "managed-backups"), now });
+  const disk = { free: 1024 ** 4 };
+  const backups = createBackupStore({ dir: join(dataDir, "managed-backups"), now, freeBytes: () => disk.free });
   const workspaces = { register: vi.fn(() => "workspace-1"), lastReportAt: vi.fn(() => null), remove: vi.fn() };
   const service = createCloudsService({ dataDir, now, home, ...(options.entitlements ? { entitlements: options.entitlements } : {}), sealer: createSealer(Buffer.alloc(32, 7)), workspaces,
     providers: { dedicated: createFakeCloudProvider(), pool: { ...createFakeCloudProvider(), suspend: async () => {}, resume: async () => {} } },
@@ -85,7 +86,7 @@ export async function homeFixture(options: { costProfile?: ProviderCostProfile; 
     power.idle = true; power.busy = [];
     await settle(c, x => x.status === "sleeping", 60, 5 * 60_000);
   }
-  return { api, provider, service, home, power, update, subscriptions, notices, alerts, audit, backups, dataDir, paid, settle, asleep, workspaces,
+  return { api, provider, service, home, power, update, subscriptions, notices, alerts, audit, backups, disk, dataDir, paid, settle, asleep, workspaces,
     advance(ms: number) { at += ms; }, now };
 }
 
