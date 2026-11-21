@@ -14,7 +14,7 @@ import { PASS, type RouteHandler } from "../routes/table.ts";
 import type { UsageTrigger } from "../usage-ledger.ts";
 import type { SavedSecretsKey } from "../saved-secrets.ts";
 import { createMessengerBridge, personLetIn, type MessengerBridgeDeps, type MessengerTransport } from "./bridge.ts";
-import { createDiscordApi, createDiscordGateway, createDiscordTransport, deferDiscordChoice, readDiscordInteraction, discordInviteUrl, discordMe, DiscordError, DISCORD_TOKEN, readDiscordMessage, type DiscordApi } from "./discord.ts";
+import { createDiscordApi, createDiscordGateway, createDiscordTransport, deferDiscordChoice, readDiscordInteraction, readDiscordReaction, discordInviteUrl, discordMe, DiscordError, DISCORD_TOKEN, readDiscordMessage, type DiscordApi } from "./discord.ts";
 import { MessengerSecretStore, MessengerSecretsUnavailable, type MessengerLink } from "./secrets.ts";
 import { MessengerState } from "./state.ts";
 import {
@@ -127,6 +127,7 @@ export function createMessengerHost(deps: MessengerHostDeps) {
     });
     if (!read) return;
     if ("choice" in read) { await bridge.choose(read.choice); return; }
+    if ("reaction" in read) { await bridge.react(read.reaction); return; }
     if ("added" in read) {
       const { chatId, title, by } = read.added;
       if (!personLetIn(one, by.id) || one.allowed.some((entry) => entry.kind === "chat" && entry.id === chatId)) return;
@@ -215,6 +216,7 @@ export function createMessengerHost(deps: MessengerHostDeps) {
       token: () => link(botId, "discord")?.token ?? null,
       onMessage: (data) => { void discordMessage(botId, data).catch(() => log("A Discord message could not be handled.")); },
       onInteraction: (data) => { void discordInteraction(botId, data).catch(() => log("A Discord button press could not be handled.")); },
+      onReaction: (data) => { const one = link(botId, "discord"), reaction = one ? readDiscordReaction(data, { botId, account: one.account }) : null; if (reaction) void bridge.react(reaction); },
       onState: (value, error) => setRuntime(botId, "discord", { state: value, delivery: "gateway", ...(error ? { error } : {}) }),
     });
     runners.set(runKey(botId, "discord"), gateway);
