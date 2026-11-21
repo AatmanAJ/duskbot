@@ -13,6 +13,8 @@ export const importNoteSchema = z.object({
   joined: count,
   /** Facts about the person added to About me. */
   facts: count,
+  /** Facts about the person that didn't fit in About me, kept word for word in the first bot's memory. */
+  aboutInMemory: count,
   /** Memories and notes kept in bots' memory. */
   memories: count,
   /** Open threads and recurring tasks kept in the first bot's memory. */
