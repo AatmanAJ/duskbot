@@ -1,7 +1,7 @@
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
 const PANEL_WIDTH_KEY = "dusk-computer-panel-width";
-export const PANEL_MIN_WIDTH = 360;
+const PANEL_MIN_WIDTH = 360;
 export const PANEL_MAX_WIDTH = 960;
 const PANEL_DEFAULT_WIDTH = 400;
 const PANEL_RESIZE_STEP = 40;
