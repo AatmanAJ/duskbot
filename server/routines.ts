@@ -24,7 +24,7 @@ import {
   routineFailure, routineHostWarning, skipNeedsNotice, supersededBy,
 } from "./routine-execution.ts";
 import {
-  dispatchRefusal, engineFacts, loadOwnerNotices, recoverRun, requeueOnce, weekRuns, type RoutineAlert, type RoutineFailureFacts, type RoutineOwnerNotice,
+  dispatchRefusal, engineFacts, loadOwnerNotices, recoverRun, requeueOnce, wakeBusyWaits, weekRuns, type RoutineAlert, type RoutineFailureFacts, type RoutineOwnerNotice,
 } from "./routine-recovery.ts";
 import { answeredInChat, matchesAsk, openAsk, settleAsk, stopDue, waitingFor, type RoutineRunAsk } from "./routine-waits.ts";
 import { failsLikeLastOutcome, outcomesNewestFirst } from "./routine-outcomes.ts";
@@ -923,7 +923,7 @@ export class RoutineManager {
   }
 
   get isTicking(): boolean { return this.ticking; }
-  lookAgain(): void { this.timer?.poke(); }
+  lookAgain(): void { this.timer?.poke(); } threadFreed(threadId: string): void { if (wakeBusyWaits(this.runs, threadId, this.now())) { this.saveLater(); this.timer?.poke(); } }
   private tickInBackground(): void { this.tick().catch((error) => console.error("routines: a scheduler pass failed", error)); }
 
   start() {

@@ -8048,7 +8048,7 @@ const sideSendFacts = (botId: string, threadId: string, send: Pick<SideSendFacts
 bus.subscribe((event: RuntimeEvent) => {
   if (shouldIgnoreProviderEvent(event)) return;
   if (event.type !== "turn.completed") return;
-  drainQueuedSends();
+  drainQueuedSends(); routines?.threadFreed(event.threadId);
 });
 
 // One drain at a time: the coordinator's changed hook can re-enter it, which would append the same held line twice.
