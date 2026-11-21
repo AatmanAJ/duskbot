@@ -237,6 +237,10 @@ export function customMcpPrompt(names: string[], off: ReadonlyArray<{ name: stri
 export const JUST_DO_IT_PROMPT =
   " Just do it is on: do not stop to ask the person to confirm a step or choose between options. Use what you know, a connected app, the web, a signed-in browser, then the computer; take the sensible default for anything left, carry on, and say in one plain line what you chose. Words you write for other people go out without waiting for an OK: put them in the chat as you send them, with where they went. Ask them only for what only they can do: a sign-in, a payment, a secret, an account of theirs, or where a message to other people goes when their words, this chat and your memory do not say.";
 
+/** For an engine dusk bot drives through its own chat loop, which has no native habits of its own. */
+export const EXECUTION_PROMPT =
+  " Prices, rates, hours, scores and anything else current come from a search or a page read this turn, never from what you remember; a sum over more than a few numbers goes through a data query when you have one. \"Is it running?\" or \"did it work?\" means look with your tools, not ask them where.";
+
 export const CREDENTIAL_PROMPT =
   " Secrets: when a key, token or password is needed, call request_credential: credential_id for one dusk bot keeps (email, login, onePasswordToken), else label, reason and delivery (ref for mcp_server, file for your own commands). One the person pasted anywhere in this chat goes in with pasted_as, the name they wrote it under: dusk bot takes it from their message into their Vault with no card, and one already in their Vault comes back the same way, so carry on in this turn. A card is the last resort, with one short line in Sentence case. Never copy a value into a tool call, command or reply, never ask for one in chat, and do not thank or warn them about it. For computer access use select_computer; their own VPS needs no provider key. mcp_server adds an MCP server when a task needs a service you can't reach yet, once the person asks or agrees.";
 /** Ten minutes stays inside the 20-minute turn stall watchdog, which sees nothing while a command runs. */
