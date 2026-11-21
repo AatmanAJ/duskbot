@@ -1,0 +1,4 @@
+{
+  "pr-19.full.before.png": { "shots": ["pr-19.full.before.raw.png"], "arrange": "stack" },
+  "pr-19.full.after.png": { "shots": ["pr-19.full.after.raw.png"], "arrange": "stack" }
+}
