@@ -18,7 +18,7 @@ export const MAX_BATCH_MS = 60_000;
 const tab = z.string().regex(/^(?:new|t[1-9]\d{0,8})$/u).describe("The tab, as t1, t2… from agent_browser_tabs or agent_browser_status. Omit it for the tab in front.");
 const actTab = z.string().regex(/^t[1-9]\d{0,8}$/u).describe("The tab to act in, as t1, t2…. Omit it for the tab in front.");
 const ref = z.string().min(1).max(64).describe("An element ref from the latest snapshot, such as e12.");
-const selector = z.string().min(1).max(2_048).describe("A CSS selector, role=button[name=\"Save\"] or text=Save, matching exactly one element in the page (not inside frames). Prefer a ref.");
+const selector = z.string().min(1).max(2_048).describe("A CSS selector (:has-text(\"…\") works too), role=button[name=\"Save\"] or text=Save, matching exactly one element in the page (not inside frames). Prefer a ref.");
 const x = z.number().min(0).max(16_384).describe("A point in the page's viewport as it is now, in CSS pixels, as your latest screenshot maps them; pass y too.");
 const y = z.number().min(0).max(16_384).describe("A point in the page's viewport as it is now, in CSS pixels, as your latest screenshot maps them; pass x too.");
 const timeoutMs = z.number().int().min(0).max(60_000).describe("How long to wait at most, in milliseconds. Defaults to 15000.");
@@ -98,6 +98,7 @@ export const TOOL_INPUTS = {
     dx: z.number().min(-100_000).max(100_000).optional().describe("Horizontal distance in CSS pixels; positive scrolls right."),
     dy: z.number().min(-100_000).max(100_000).optional().describe("Vertical distance in CSS pixels; positive scrolls down. Defaults to 600."),
     ref: ref.optional(), selector: selector.optional(),
+    toText: z.string().min(1).max(500).optional().describe("Keep scrolling, dy at a time, until this text shows, 30 scrolls at most: for a row far down a long or virtual list, or a post in a feed that loads more as it scrolls."),
     tab: actTab.optional(),
   }),
   agent_browser_upload: z.object({
@@ -148,25 +149,25 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   agent_browser_status: "Your browser's state: its tabs, the tab in front with its address, title and loading state, who controls it, any open dialog or file picker, and finished downloads with their file paths.",
   agent_browser_open: "Open a page in your browser and answer with its snapshot: the page's accessibility tree with element refs (e12) that the other tools act on. Waits for the page to load, at most 15 s.",
   agent_browser_navigate: "Go to an address in the current tab, or go back, forward or reload. Refs from earlier snapshots stop applying to the new page.",
-  agent_browser_snapshot: "The page's accessibility tree with element refs, across frames and shadow roots, plus what the page reported. Take one before acting when you have no current refs; refs expire when the page navigates or a person takes control. Capped near 20 KB; it lists what it left out.",
+  agent_browser_snapshot: "The page's accessibility tree with element refs, across frames and shadow roots, plus what the page reported. Take one only when you have no current refs: open, navigate and the answers of actions already carry them. Refs expire when the page navigates or a person takes control. Capped near 20 KB; it lists what it left out.",
   agent_browser_read: "The page's visible text, or one element's, for reading long content or a single value such as a price. Pass offset to read on.",
   agent_browser_screenshot: "A PNG of the visible page, the whole page, or one element; its answer says how the picture's pixels map to the page's CSS pixels, which change when a person resizes the panel watching the browser. Use it when the tree is not enough to see the page.",
-  agent_browser_click: "Click one element by ref (preferred) or selector, or a point. Waits until the element is visible, still and not covered. Returns early when the click opens a dialog.",
-  agent_browser_fill: "Clear a text field and put text in it, as a paste would. Set submit to press Enter afterwards.",
+  agent_browser_click: "Click one element by ref (preferred) or selector, or a point. Waits until the element is visible, still and not covered; a covered element is clicked where it shows or scrolled clear of a sticky bar, and one that stays covered or disabled is reported within seconds with what to do. The answer lists the controls the click brought up (a menu, a dialog, options) with refs, or the snapshot of a page it moved to: act on those directly. Returns early when the click opens a dialog.",
+  agent_browser_fill: "Clear a text field, a rich-text composer included, and put text in it, as a paste would; naming the label or box around a field fills the field inside. On a slider it sets the number. Set submit to press Enter afterwards.",
   agent_browser_type: "Type text key by key into a field (by ref or selector) or wherever the focus is, for fields that react to each key.",
   agent_browser_press: "Press a key or a key chord at the focus, such as Enter, Escape or Control+a.",
   agent_browser_select: "Choose options in a native <select> by value or label. A custom dropdown is not a <select>: click it open, then click its option.",
   agent_browser_check: "Check or uncheck a checkbox, radio button or switch, and confirm the page took it.",
   agent_browser_hover: "Move the mouse over an element or a point, for menus and tooltips that open on hover.",
   agent_browser_drag: "Drag one element (or point) onto another.",
-  agent_browser_scroll: "Scroll the page, or the scrollable element named by ref or selector, by dx and dy CSS pixels.",
-  agent_browser_upload: "Put files into a file input (ref or selector), or answer the file picker the page opened. Then submit its form as usual.",
+  agent_browser_scroll: "Scroll the page, or the scrollable element named by ref or selector, by dx and dy CSS pixels; with no element, an app whose page does not scroll has its largest scrolling list scrolled. Pass toText to scroll until that text shows instead of reading after every scroll. The answer says what text appeared.",
+  agent_browser_upload: "Put files into a file input (ref or selector; a dropzone or label around a hidden file input works too), or answer the file picker the page opened. Then submit its form as usual.",
   agent_browser_wait: "Wait until every condition given holds: a time, text on the page, an element appearing or going, the address, or a load state. 60 s at most.",
   agent_browser_eval: "Run JavaScript in the page and return its value. It needs the same control as clicking, and is refused while a filled password is still on the page.",
   agent_browser_dialog: "Accept or dismiss the alert, confirm or prompt dialog the page opened (agent_browser_status shows it). Nothing else works on the tab until it is answered.",
   agent_browser_tabs: "List, open, switch between or close your browser's tabs.",
   agent_browser_close: "Close a tab, or with no tab the whole browser. Saved sign-ins are kept.",
-  [BATCH_TOOL]: `Run several browser steps in one call: open, navigate, click, fill, type, press, select, check, hover, scroll, wait, read, snapshot and screenshot, each with its tool's own arguments. Prefer it whenever you already know the next steps, such as filling a form and submitting it, or going through a few pages: one call instead of one per step. It stops at the first step that fails and answers with each step's result, and on a failure the page's snapshot. Refs stop applying once a step moves to another page, so name later elements by selector (#id, text=Save, role=button[name="Save"]) or end with a snapshot and continue from its refs. ${MAX_BATCH_STEPS} steps, ${MAX_BATCH_MS / 1_000} s and 3 pictures at most.`,
+  [BATCH_TOOL]: `Run several browser steps in one call: open, navigate, click, fill, type, press, select, check, hover, scroll, wait, read, snapshot and screenshot, each with its tool's own arguments. Prefer it whenever you already know the next steps, such as filling a form and submitting it, or going through a few pages: one call instead of one per step. It stops at the first step that fails and answers with each step's result, and on a failure the page's snapshot; otherwise it ends with the controls the steps brought up, with refs, or the snapshot of the page they moved to. Refs stop applying once a step moves to another page, so name later elements by selector (#id, text=Save, role=button[name="Save"]) or end with a snapshot and continue from its refs. ${MAX_BATCH_STEPS} steps, ${MAX_BATCH_MS / 1_000} s and 3 pictures at most.`,
   [RESTART_TOOL]: "Close and restart your browser. Use it only when a browser tool says the browser must be restarted, or it stays busy after a call that did not answer. Open pages are closed back to one blank tab and form input is lost; sign-ins are kept. Afterwards open the page you need again and check whether the interrupted action already happened before repeating it.",
 };
 
@@ -211,8 +212,20 @@ const ALIASES: Readonly<Record<string, (args: Args) => { name: ToolName; args: A
   agent_browser_tab_close: (args) => ({ name: "agent_browser_tabs", args: { action: "close", ...(args.tab === undefined ? {} : { tab: tabArg(args.tab) }) } }),
 };
 
+/** Tools that name an element and take no text of their own: a `text` there means the element showing that text. */
+const BY_TEXT: ReadonlySet<ToolName> = new Set(["agent_browser_click", "agent_browser_hover", "agent_browser_check", "agent_browser_read", "agent_browser_screenshot", "agent_browser_select", "agent_browser_upload"]);
+
+/** `text: "Save"` on a tool that has no text, as models write it: the element showing that text; on scroll, the text to scroll to. */
+export function textArgument(name: ToolName, args: Args): Args {
+  if (typeof args.text !== "string" || args.ref !== undefined || args.selector !== undefined) return args;
+  const { text, ...rest } = args;
+  if (name === "agent_browser_scroll") return rest.toText === undefined ? { ...rest, toText: text } : args;
+  return BY_TEXT.has(name) ? { ...rest, selector: `text=${text}` } : args;
+}
+
 /** Arguments the old tools took under other names. */
 function oldArguments(name: ToolName, args: Args): Args {
+  args = textArgument(name, args);
   switch (name) {
     case "agent_browser_eval":
       return typeof args.script === "string" && args.expression === undefined ? { ...args, expression: args.script } : args;
@@ -256,8 +269,9 @@ export const MAX_BATCH_PICTURES = 3;
 
 /** One batch step as the tool call it stands for, checked against that tool's own schema. */
 export function batchStepCall(step: BatchStep): ParsedCall {
-  const { do: action, ...args } = step;
+  const { do: action, ...given } = step;
   const name = `agent_browser_${action}` as ToolName;
+  const args = TOOL_NAMES.has(name) ? textArgument(name, given) : given;
   const parsed = TOOL_INPUTS[name].strict().safeParse(args);
   if (!parsed.success) {
     const problems = parsed.error.issues.slice(0, 3).map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`).join("; ");

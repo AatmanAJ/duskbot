@@ -1,15 +1,23 @@
 import { join } from "node:path";
-import { CANCEL_ANSWERS, RETENTION_OUTCOMES, RETENTION_STEPS } from "../../../../shared/billing-api.ts";
+import { CANCEL_ANSWERS, RETENTION_OFFERS, RETENTION_OUTCOMES, RETENTION_STEPS } from "../../../../shared/billing-api.ts";
 import type { CancelSurvey, Cart, CartLine, LicenseView, RetentionInput, SubscriptionStatus } from "../../../../shared/billing-api.ts";
 import type { DesktopPlan, OrderInput } from "../clouds/types.ts";
 import { createJsonStore } from "./json-store.ts";
 import { validLedgerEntry } from "./ledger.ts";
 import type { LedgerEntry } from "./ledger.ts";
 
-export interface PendingChange { cart: Cart; totalCents: number; lines: CartLine[]; products: { productId: string; addons: Array<{ addonId: string; quantity: number }> }; cloudId: string | null }
+export interface PendingChange { cart: Cart; totalCents: number; lines: CartLine[]; products: { productId: string; addons: Array<{ addonId: string; quantity: number }> }; cloudId: string | null;
+  /** when it was sent to the provider; absent on older rows */
+  at?: number;
+  /** the provider started a new billing cycle with it (monthly to yearly) */
+  newCycle?: boolean;
+  /** its machine restarts into the new size as the change applies, not at its next idle sleep; absent on older rows */
+  resizeNow?: boolean }
+/** a confirmed change that starts at the next billing date (`at`) */
+export type ScheduledChange = PendingChange & { at: number };
 export type CloudAction =
   | { kind: "order"; cloudId: string; input: OrderInput }
-  | { kind: "change"; cloudId: string; plan: DesktopPlan }
+  | { kind: "change"; cloudId: string; plan: DesktopPlan; now?: boolean }
   | { kind: "activate"; cloudId: string; subscriptionId: string; plan: DesktopPlan }
   /** a new subscription brings back an ended cloud with its data; a fresh cloud when it no longer can */
   | { kind: "revive"; cloudId: string; subscriptionId: string; plan: DesktopPlan }
@@ -29,10 +37,15 @@ export interface StoredCheckout {
   trialDays?: number;
   createdAt: number; openUntil: number; subscriptionId: string | null; amountCents: number; lines: CartLine[];
 }
+export const DUNNING_STEPS = ["first", "day_14", "final"] as const;
+export type DunningStep = (typeof DUNNING_STEPS)[number];
+/** `trial`: the charge that failed was a trial's first, so its cloud's data goes `fixBy`, 7 days after the trial's end */
+export interface PaymentProblem { since: number; fixBy: number; sent: DunningStep[]; trial?: true }
 export interface StoredSubscription {
   id: string; accountId: string; providerSubscriptionId: string | null; checkoutId: string; cart: Cart; totalCents: number; lines: CartLine[];
   status: SubscriptionStatus; licenseId: string | null; cloudId: string | null; currentPeriodStart: number | null; currentPeriodEnd: number | null;
   pendingChange?: PendingChange;
+  scheduledChange?: ScheduledChange;
   /** where its checkout started (CHECKOUT_SOURCES), copied from the checkout */
   source?: string | null;
   lastEventAt?: number;
@@ -40,6 +53,10 @@ export interface StoredSubscription {
   trialEndsAt?: number;
   /** App Review's demo plan (POST /v1/billing/ops/review): never counted as revenue */
   review?: true;
+  /** a charge failed: its cloud stops at once; since the first failure, the date its data is deleted unless a payment goes
+   *  through first (the plan ends then), and the emails sent; dropped when a payment goes through, kept once the plan
+   *  ended so retention counts from the failure */
+  paymentProblem?: PaymentProblem;
   /** the payment provider's mode when it was made (dodo test or live; the fake provider is test); absent on older rows */
   mode?: BillingMode;
   cancelAtPeriodEnd: boolean; createdAt: number; updatedAt: number; version: number;
@@ -106,6 +123,7 @@ const cart: Check = shape({ interval: one("month", "year"), license: shape({ kin
   desktop: shape({ kind: one("none", "shared_s", "shared_m", "dedicated"), region: optional(str), spec: optional(shape({ vcpu: int, ramGb: int, diskGb: int })) }) });
 const line = shape({ kind: one("license", "members", "desktop", "discount"), label: str, amountCents: int });
 const plan = shape({ kind: one("shared_s", "shared_m", "dedicated"), placement: one("pool", "dedicated"), spec: shape({ vcpu: int, ramGb: int, diskGb: int }), botComputers: nullable(int) });
+const change = shape({ cart, totalCents: int, lines: array(line), products: shape({ productId: str, addons: array(shape({ addonId: str, quantity: int })) }), cloudId: nullable(str), at: optional(int), newCycle: optional(bool), resizeNow: optional(bool) });
 const valid = shape({
   teamInvites: optional(array(shape({ id: str, licenseId: str, email: str, tokenHash: str, invitedBy: str, createdAt: int, expiresAt: int, status: one("pending", "accepted", "cancelled"), closedAt: nullable(int), refusedAt: nullable(int) }))),
   teamLeaves: optional(array(shape({ id: str, cloudId: str, email: str, at: int, doneAt: nullable(int), tries: int, nextAt: int }))),
@@ -125,13 +143,13 @@ const valid = shape({
   ledger: optional(array(validLedgerEntry)),
   lastSync: optional(nullable(shape({ at: int, added: int, scanned: int }))),
   checkouts: array(shape({ id: str, accountId: str, email: str, kind: one("cart", "credits"), cart: nullable(cart), cloudId: nullable(str), providerSubscriptionId: optional(str), revive: optional(bool), providerSessionId: nullable(str), url: nullable(str), status: one("open", "completed", "expired"), source: nullable(str), createdAt: int, openUntil: int, subscriptionId: nullable(str), amountCents: int, lines: array(line) })),
-  subscriptions: array(shape({ id: str, accountId: str, providerSubscriptionId: nullable(str), checkoutId: str, cart, totalCents: int, lines: array(line), status: one("pending", "active", "payment_problem", "cancelled", "ended"), mode: optional(one("test", "live")), lastEventAt: optional(int), source: optional(nullable(str)), pendingChange: optional(shape({ cart, totalCents: int, lines: array(line), products: shape({ productId: str, addons: array(shape({ addonId: str, quantity: int })) }), cloudId: nullable(str) })), licenseId: nullable(str), cloudId: nullable(str), currentPeriodStart: nullable(int), currentPeriodEnd: nullable(int), cancelAtPeriodEnd: bool, createdAt: int, updatedAt: int, version: int })),
+  subscriptions: array(shape({ id: str, accountId: str, providerSubscriptionId: nullable(str), checkoutId: str, cart, totalCents: int, lines: array(line), status: one("pending", "active", "payment_problem", "cancelled", "ended"), mode: optional(one("test", "live")), lastEventAt: optional(int), paymentProblem: optional(shape({ since: int, fixBy: int, sent: array(one(...DUNNING_STEPS)), trial: optional(one(true)) })), source: optional(nullable(str)), pendingChange: optional(change), scheduledChange: optional(value => change(value) && int((value as { at: unknown }).at)), licenseId: nullable(str), cloudId: nullable(str), currentPeriodStart: nullable(int), currentPeriodEnd: nullable(int), cancelAtPeriodEnd: bool, createdAt: int, updatedAt: int, version: int })),
   licenses: array(shape({ id: str, ownerAccountId: str, kind: one("solo", "team"), seats: int, members: array(shape({ email: str, accountId: nullable(str), role: one("owner", "member"), addedAt: int })), priority: bool, subscriptionId: nullable(str), status: one("active", "grace", "expired"), validUntil: nullable(int) })),
   invoices: array(shape({ id: str, accountId: str, providerPaymentId: str, subscriptionId: nullable(str), checkoutId: nullable(str), amountCents: int, taxCents: optional(int), currency: str, status: one("paid", "failed", "refunded"), mode: optional(one("test", "live")), description: str, createdAt: int })),
   webhookEvents: array(shape({ id: str, at: int, type: str })),
   retention: optional(array(shape({ id: str, accountId: str, subscriptionId: str, reason: one(...CANCEL_ANSWERS), step: one(...RETENTION_STEPS), outcome: one(...RETENTION_OUTCOMES), at: int }))),
   retentionDiscounts: optional(array(shape({ id: str, accountId: str, subscriptionId: str, code: str, percent: int, cycles: int, at: int }))),
-  feedback: array(shape({ id: str, accountId: str, cloudId: nullable(str), subscriptionId: nullable(str), answer: one(...CANCEL_ANSWERS), expected: optional(str), improve: optional(str), at: int })),
+  feedback: array(shape({ id: str, accountId: str, cloudId: nullable(str), subscriptionId: nullable(str), answer: one(...CANCEL_ANSWERS), expected: optional(str), improve: optional(str), offer: optional(one(...RETENTION_OFFERS)), outcome: optional(one(...RETENTION_OUTCOMES)), at: int })),
 });
 function validState(value: unknown): value is BillingState {
   if (!valid(value)) return false;
