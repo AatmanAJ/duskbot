@@ -8086,7 +8086,7 @@ function drainQueuedSendsNow() {
   );
 }
 
-async function startOrQueueDirectMessage(botId: string, threadId: string, text: string, replyTo?: ReplyTarget, sendId?: string, sender?: ResolvedSender, trigger?: UsageTrigger, via?: "call", callId?: string, dataContext?: DataContext, app?: { context?: string; fromApp?: Message["fromApp"]; pointed?: Message["pointed"] }, mentions?: string[], relayed?: boolean) {
+async function startOrQueueDirectMessage(botId: string, threadId: string, text: string, replyTo?: ReplyTarget, sendId?: string, sender?: ResolvedSender, trigger?: UsageTrigger, via?: "call", callId?: string, dataContext?: DataContext, app?: { context?: string; fromApp?: Message["fromApp"]; pointed?: Message["pointed"] }, mentions?: string[], relayed?: boolean, recorded?: Message) {
   const decision = admit("direct", {}, {
     atCapacity: botAtThreadCapacity(botId, threadId),
     threadBusy: threadBusy(botId, threadId),
@@ -8095,7 +8095,7 @@ async function startOrQueueDirectMessage(botId: string, threadId: string, text: 
   });
   if (decision.action === "queue") {
     const queued = queueSteeredMessage(botId, threadId, text, {
-      replyToId: replyTo?.id, ...(relayed ? { relayed: true, origin: OUTSIDE } : {}),
+      replyToId: replyTo?.id, ...(relayed ? { relayed: true, origin: OUTSIDE } : {}), ...(recorded ? { rowId: recorded.id } : {}),
       sendId,
       dataContext, fromApp: app?.fromApp, mentions,
       reason: decision.reason,
@@ -8108,7 +8108,7 @@ async function startOrQueueDirectMessage(botId: string, threadId: string, text: 
     });
     return { ok: true as const, queued: true as const, queueId: queued.id, threadId, reason: decision.reason, why: waitWords.queued(threadId, decision.reason) };
   }
-  const message = await startTurn(botId, text, { threadId, replyTo, sendId, sender, trigger, via, callId, dataContext, app, mentions, allowRoomTurnElsewhere: true, ...(relayed ? { relayed: true } : {}) });
+  const message = await startTurn(botId, text, { threadId, replyTo, sendId, sender, trigger, via, callId, dataContext, app, mentions, allowRoomTurnElsewhere: true, ...(relayed ? { relayed: true } : {}), ...(recorded ? { userMessage: recorded } : {}) });
   return { ok: true as const, threadId, message };
 }
 
