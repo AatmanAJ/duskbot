@@ -11,7 +11,7 @@
 // without its own sandbox and the container is the isolation boundary.
 
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
 
 export const SETUP_COMMAND = "sudo duskbot browser setup";
@@ -104,4 +104,69 @@ export function sandboxBlocked({ platform = process.platform, read = (path: stri
   let restricted = false;
   try { restricted = read(USERNS_RESTRICTION).trim() === "1"; } catch {}
   return restricted && !exists(APPARMOR_PROFILE_PATH);
+}
+
+/** Where `browser setup` looks for a Chrome the AppArmor exemption can name: Google's own package, root-owned under /opt. */
+export const SYSTEM_CHROME = "/opt/google/chrome/chrome";
+
+export interface HostSetupDeps {
+  platform: NodeJS.Platform;
+  isRoot(): boolean;
+  /** What `browser install --with-deps` does: Chrome's system libraries; the exit code. */
+  installLibraries(): Promise<number>;
+  sandboxBlocked(): boolean;
+  exists(path: string): boolean;
+  writeProfile(path: string, text: string): void;
+  /** Loads the profile into the kernel (`apparmor_parser -r`). */
+  loadProfile(path: string): Promise<void>;
+  log(line: string): void;
+  error(line: string): void;
+}
+
+/** `sudo duskbot browser setup`: what the host needs for the browser, the command the browser's own errors name. */
+export async function setUpBrowserHost(deps: HostSetupDeps): Promise<number> {
+  if (deps.platform !== "linux") {
+    deps.log("nothing to set up on this host; run `duskbot browser install` to get the browser");
+    return 0;
+  }
+  if (!deps.isRoot()) {
+    deps.error(`this installs system libraries and an AppArmor profile, so it needs root: run \`${SETUP_COMMAND}\``);
+    return 1;
+  }
+  const installed = await deps.installLibraries();
+  if (installed !== 0) return installed;
+  if (!deps.sandboxBlocked()) {
+    deps.log("the browser's sandbox is allowed on this host");
+    return 0;
+  }
+  if (!deps.exists(SYSTEM_CHROME)) {
+    deps.error(`this host (Ubuntu 23.10+) only lets a browser sandbox itself with an AppArmor profile, and that profile can only name Google Chrome at ${SYSTEM_CHROME}. Install Google Chrome's .deb, then run \`${SETUP_COMMAND}\` again.`);
+    return 1;
+  }
+  try {
+    deps.writeProfile(APPARMOR_PROFILE_PATH, appArmorProfile(SYSTEM_CHROME));
+    await deps.loadProfile(APPARMOR_PROFILE_PATH);
+  } catch (error) {
+    deps.error(`could not allow the browser's sandbox: ${error instanceof Error ? error.message : String(error)}`);
+    return 1;
+  }
+  deps.log(`wrote ${APPARMOR_PROFILE_PATH}; the browser's sandbox is allowed for ${SYSTEM_CHROME}`);
+  return 0;
+}
+
+/** `duskbot browser setup` on this machine: its real root check, files and apparmor_parser. */
+export function setUpThisHost(installLibraries: () => Promise<number>, io: Pick<HostSetupDeps, "log" | "error">): Promise<number> {
+  return setUpBrowserHost({
+    platform: process.platform,
+    isRoot: () => process.getuid?.() === 0,
+    installLibraries,
+    sandboxBlocked: () => sandboxBlocked(),
+    exists: existsSync,
+    writeProfile: (path, text) => writeFileSync(path, text, { mode: 0o644 }),
+    loadProfile: (path) => new Promise((done, fail) => {
+      execFile("apparmor_parser", ["-r", path], { timeout: 30_000 }, (error, _stdout, stderr) => error ? fail(new Error(`apparmor_parser: ${String(stderr).trim() || error.message}`)) : done());
+    }),
+    log: io.log,
+    error: io.error,
+  });
 }

@@ -8,12 +8,14 @@ import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { Mic } from "../icons";
 import { useStore, visibleMessages, currentTaskBot, type Bot, type Group, type InstanceInfo, type Message } from "@/state/store";
 import { cn } from "@/lib/cn";
-import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
+import { usePhoneLayout } from "@/lib/use-media-query";
+import { phoneOffline } from "@/mobile/network";
 import { useMenuMotion } from "./MenuMotion";
 import { ELEVATED_CARD, ELEVATED_FLOAT } from "./elevated";
 import { activeLocale, t } from "@/lib/i18n";
 import { imeComposing, sendKeyLabel, sendsMessage, useSendKey } from "@/lib/send-key";
-import { alternateSend, alternateSendLabel, useFollowUpDefault } from "@/lib/follow-up"; import { followUpChoices, resolveFollowUp, type FollowUp } from "../../shared/follow-up";
+import { phoneApp } from "@/lib/store-app";
+import { alternateSend, useFollowUpDefault } from "@/lib/follow-up"; import { resolveFollowUp, sentFollowUp, type FollowUp } from "../../shared/follow-up";
 import {
   draftRevision,
   appendDraftAttachments,
@@ -72,17 +74,22 @@ import { composerPlaceholder, pendingQuestion, sendLabels, SIMPLE_COMPOSER, SIMP
 import { PendingApprovalActions, PendingApprovalPanel, pendingApprovals } from "./PendingApproval";
 import { CallButton } from "./CallView";
 import { ApprovalChip, ComposerPlusMenu, GoalToggle } from "./ComposerPlusMenu";
-import { PhonePlus } from "./PhonePlus";
+import { PhoneMicGhost, PhonePlus } from "./PhonePlus";
 import { useThreadApproval } from "./thread-approval";
 import { usePillHeight, useSlideOnChange, useStackedField } from "./composer-wrap";
 import "@/styles/composer.css";
-import { ComposerReplyStrip } from "./ReplyQuote";
+import { ComposerReplyStrip, ComposerSelectionQuote } from "./ReplyQuote";
+import { SelectionAskPill } from "./SelectionAskPill";
+import { setSelectionQuote, useSelectionQuote, withSelectionQuote } from "@/lib/selection-quote";
 import { ComposerVoiceStrip } from "./ComposerVoiceStrip";
+import { useSendHold } from "./use-send-hold";
+import { useSlotHandoff } from "./use-slot-handoff";
 import { VoiceFirstRunSheet } from "./VoiceFirstRunSheet";
 import { voiceShortcut, voiceShortcutLabel } from "@/lib/voice-input/shortcut";
 import { openSettings } from "@/lib/open-settings";
 import { NotesWaitingLine, useNotesIntake } from "./NotesWaiting"; import { looksLikeNotes, notesInFiles } from "@/lib/assistant-notes";
 import { escapeCancelsReply } from "@/lib/replies";
+import { useKeyGate } from "./ComposerKeyWarning";
 import { useStopPress } from "@/lib/stop-turn";
 import { useThreadRefs } from "./ThreadRefs";
 import {
@@ -91,7 +98,7 @@ import {
   doubleEnterSteerWindowExpiresAt,
   doubleEnterSteersQueue,
 } from "./ComposerQueuedMessages";
-import { liveCallEnabled, skillAuthoringEnabled } from "@/lib/feature-flags";
+import { liveCallEnabled, voiceCallsEnabled, skillAuthoringEnabled } from "@/lib/feature-flags";
 import { mentionChoicesForQuery, mentionQueryAt } from "@/lib/mentions"; import { mentionPicksFor, restoreMentionPicks } from "@/lib/mention-picks";
 import { serializeThreadRefs, threadTokenFromPaste, threadTokenSpacing } from "@/lib/thread-refs";
 import {
@@ -112,11 +119,11 @@ const supportsAgents = (instances: InstanceInfo[], candidate?: Bot) =>
 
 interface ComposerDraftSnapshot extends ComposerSendSnapshot {
   reply: Message | null;
+  quote: string | null;
 }
 
 type SlotGlyph = "waveform" | "mic" | "arrow-up" | "stop";
-/** A send the server never answers lets go of the grayed Send after this long. */
-export const SEND_HOLD_MAX_MS = 15_000;
+export { SEND_HOLD_MAX_MS } from "./use-send-hold";
 
 function SlotGlyphGhost({ glyph, ink }: { glyph: SlotGlyph; ink: string }) {
   return (
@@ -152,10 +159,11 @@ export function Composer({
   const { state, dispatch } = useStore();
   const { threads, currentBotId } = useThreadRefs();
   // On a phone the composer is a dock: a round + (attach and every other tool), then one pill with the field and the mic.
-  const singleRow = useMediaQuery(PHONE_LAYOUT);
+  const singleRow = usePhoneLayout();
   // On a wider screen: one pill holding a round +, the field, the mic and one round button in the bot's colour.
   const simpleDock = !singleRow;
-  const sendKey = useSendKey(); const followUpDefault = useFollowUpDefault();
+  // a software keyboard has no shift to hold for a new line, so a phone's return adds one and Send sends
+  const storedSendKey = useSendKey(); const sendKey = phoneApp() ? "mod-enter" : storedSendKey; const followUpDefault = useFollowUpDefault();
   const sendLabel = sendKeyLabel(sendKey);
   const threadId = group?.threadId ?? bot?.threadId ?? "";
   const currentGroupTask = group?.tasks?.find((task) => task.threadId === threadId);
@@ -209,6 +217,7 @@ export function Composer({
     (sent: ComposerDraftSnapshot) => {
       if (recoverFailedComposerSend(sent) === "restored") {
         restoreMentionPicks(sent.draftId, sent.mentions); if (sent.reply) onRestoreReply?.(sent.reply, sent.threadId);
+        if (sent.quote) setSelectionQuote(sent.draftId, sent.quote);
       }
     },
     [onRestoreReply],
@@ -258,7 +267,21 @@ export function Composer({
   const takeNotes = useNotesIntake();
   const stacked = useStackedField(inputRef, !singleRow, text, simpleDock) || (simpleDock && (attachments.length > 0 || Boolean(attachmentNotice)));
   // grok's expanded composer: the text above the buttons, attachments or a reply strip; corners and height change together
-  const multiline = simpleDock && (stacked || Boolean(replyTo));
+  const quote = useSelectionQuote(draftId);
+  const clearQuote = () => { markDraftEdited(draftId); setSelectionQuote(draftId, null); refocusInput(); };
+  const askAboutSelection = (words: string) => {
+    const shell = shellRef.current;
+    if (!shell || shell.getClientRects().length === 0) return;
+    markDraftEdited(draftId);
+    setSelectionQuote(draftId, words);
+    requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input || input.disabled) return;
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+  };
+  const multiline = simpleDock && (stacked || Boolean(replyTo) || Boolean(quote));
   const [composing, setComposing] = useState(false);
   const pillContentRef = useRef<HTMLDivElement>(null);
   const pillHeight = usePillHeight(shellRef, pillContentRef, simpleDock, multiline, composing);
@@ -435,13 +458,6 @@ export function Composer({
       inputRef.current?.setSelectionRange(next.caret, next.caret);
     });
   };
-  const teachTask = () => {
-    const learn = "/learn ";
-    editText(learn + text.replace(/^\/learn\s*/, "").trimStart());
-    setCaret(learn.length);
-    setChannelMode("chat");
-    requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(learn.length, learn.length); });
-  };
 
   const pendingCount = (state.pendingQueued[threadId] ?? []).length;
   const queuedMessages = state.pendingQueued[threadId] ?? [];
@@ -566,14 +582,7 @@ export function Composer({
 
   const pickers = useComposerFilePickers((files) => void pickFiles(files));
   const hasContent = Boolean(effectiveText.trim()) || attachments.length > 0;
-  // a sent message keeps Send, grayed, until the server has it; then the arrow crossfades to the mic (or Stop)
-  const [sendHeld, setSendHeld] = useState<string | null>(null);
-  useEffect(() => {
-    if (!sendHeld) return;
-    const timer = setTimeout(() => setSendHeld((held) => (held === sendHeld ? null : held)), SEND_HOLD_MAX_MS);
-    return () => clearTimeout(timer);
-  }, [sendHeld]);
-  useEffect(() => { setSendHeld(null); }, [threadId, bot?.id, group?.id]);
+  const { sendHeld, holdSend } = useSendHold(busy, singleRow, `${threadId}|${bot?.id}|${group?.id}`);
   const held = Boolean(sendHeld) && !hasContent && !locked;
   const filled = hasContent || held;
   const onCall = useOnCall();
@@ -583,11 +592,10 @@ export function Composer({
   // a Stop pressed here takes the button away at once: the turn reads as over before the server says so
   const stopPressed = Boolean(useStopPress(threadId || undefined));
   const stoppable = (busy || Boolean(!group && bot?.waitingForTeammates)) && !stopPressed;
-  const live = liveCallEnabled();
-  // Simple mode's round button is the mic (the call when live calls are on), Send while there is text, and Stop while the bot works.
-  const stopInSlot = simpleDock && stoppable && !locked && !filled && !calling;
-  // a phone shows one round button at the end of the pill: stop while it works, send once there is text, else the mic
-  const callShown = !filled && (singleRow ? !(busy && !stopPressed) : !stopInSlot);
+  const live = liveCallEnabled() || voiceCallsEnabled();
+  // the composer never shows Stop (the owner's rule): only send and voice, even while the bot works
+  const stopInSlot = false;
+  const callShown = !filled;
   // with live calls off the mic takes the call's place: the one round button at rest
   const micInSlot = !live && callShown && !locked && !recording;
   // the round button's glyph pops in only when it swaps here (call, send, stop); a fresh composer, as on a chat
@@ -596,8 +604,8 @@ export function Composer({
   const slotColor = bot?.color; const room = Boolean(group);
   const slot = useMemo(() => slotColors(slotColor, room), [slotColor, room]);
   // A one-to-one bot at work: Enter does the chosen follow-up and Ctrl/⌘ with it the other one. Rooms keep their own queue.
-  const followUpFor = (alternate: boolean) => resolveFollowUp({ running: busy && !group && Boolean(bot), alternate, preferred: followUpDefault, canSteer }) ?? undefined;
-  const steersNow = group ? canSteer : followUpFor(false) === "steer";
+  const followUpFor = (alternate: boolean) => sentFollowUp({ running: busy && !group && Boolean(bot), alternate, preferred: followUpDefault }) ?? undefined;
+  const steersNow = group ? canSteer : resolveFollowUp({ running: busy && !group && Boolean(bot), alternate: false, preferred: followUpDefault, canSteer }) === "steer";
   const sendNames = sendLabels({ busy, canSteer: steersNow, name: busyName, sendLabel });
   // grok's round button keeps one glyph stack and crossfades it; ours swaps the button, so the glyph it showed fades
   // out over the new one's
@@ -611,14 +619,29 @@ export function Composer({
   // fading ghost of it over Send
   // ...except after Stop: the square fades out over the mic coming back, as Send's arrow does
   // ...and after a held send lets go, the arrow fades out over whatever comes back; the press itself changes no glyph
+  // ...and the mic turns into Stop in place: the round button holds its spot and only its glyph changes
   if (glyphs.shape !== glyphShape) {
     setGlyphs(slotGlyph === glyphs.glyph
       ? { ...glyphs, shape: glyphShape, held }
-      : { shape: glyphShape, swapped: (slotGlyph !== "mic" && glyphs.glyph !== "mic") || glyphs.glyph === "stop" || glyphs.held, glyph: slotGlyph, from: glyphs.glyph, swaps: glyphs.swaps + 1, held, fromHeld: glyphs.held });
+      : { shape: glyphShape, swapped: (slotGlyph !== "mic" && glyphs.glyph !== "mic") || glyphs.glyph === "stop" || slotGlyph === "stop" || glyphs.held, glyph: slotGlyph, from: glyphs.glyph, swaps: glyphs.swaps + 1, held, fromHeld: glyphs.held });
   }
   // the mic at the end of the bar and the small one beside Send are two buttons, so neither slides across when the field
   // fills or empties (only Send or the reserved spot takes a place); focus on the old one carries to the new
-  const micPlace = filled ? "beside" : "end";
+  // beside a working bot's Stop the small mic springs in where the spacer was, so it mounts fresh there too
+  // a phone's Stop takes the mic's place at the end of the pill the same way
+  // the phone listens with two controls only, discard beside and keep in the round button's place
+  const phoneVoice = singleRow && phoneApp() && recording;
+  const phoneStop = false;
+  const micPlace = filled && !phoneVoice ? "beside" : (stopInSlot && !singleRow) || phoneStop ? "stop" : "end";
+  // when the turn ends on a phone the square fades out over the mic coming back to its place
+  const [micTrail, setMicTrail] = useState({ place: micPlace, from: micPlace, swaps: 0 });
+  const actionsRef = useSlotHandoff(singleRow);
+  const [listenedFrom, setListenedFrom] = useState<{ on: boolean; empty: boolean }>({ on: false, empty: true });
+  if (listenedFrom.on !== phoneVoice) setListenedFrom({ on: phoneVoice, empty: !hasContent });
+  if (micTrail.place !== micPlace) setMicTrail({ place: micPlace, from: micTrail.place, swaps: micTrail.swaps + 1 });
+  const micBack = singleRow && micPlace === "end" && micTrail.from === "stop";
+  // a phone's mic comes out of the round button as the field fills and slips back into it as it empties
+  const micOut = singleRow && micPlace === "beside" && micTrail.from === "end", micIn = singleRow && micPlace === "end" && micTrail.from === "beside";
   const micFocused = useRef(false);
   useLayoutEffect(() => {
     if (micFocused.current && document.activeElement !== micButtonRef.current) micButtonRef.current?.focus({ preventScroll: true });
@@ -657,6 +680,8 @@ export function Composer({
     const next = editFailedComposerSend(draftId, failed); restoreMentionPicks(draftId, failed.mentions); setCaret(next.length);
     requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(next.length, next.length); });
   };
+  const keyGate = useKeyGate({ text, reset: `${threadId}\n${effectiveText}`, messages: group ? undefined : bot?.messages, botName: bot?.name ?? group?.name ?? "",
+    keep: (rest) => { editText(rest); setCaret(rest.length); }, focus: () => requestAnimationFrame(() => inputRef.current?.focus()) });
   const send = (followUp: FollowUp | undefined = followUpFor(false)) => {
     if (locked || attachmentPending || unsentUpload) return;
     if (
@@ -673,7 +698,8 @@ export function Composer({
     const composed = composeMessage(serializeThreadRefs(effectiveText, threads, currentBotId), attachments);
     if (!composed) return;
     stopDictation();
-    const body = restoredRequestText(draftId) ?? composed;
+    const body = restoredRequestText(draftId) ?? withSelectionQuote(quote, composed);
+    if (keyGate.holds(body, followUp)) return;
     const sentDraft: ComposerDraftSnapshot = {
       draftId,
       revision: draftRevision(draftId),
@@ -682,13 +708,13 @@ export function Composer({
       requestText: body,
       attachments: [...attachments],
       reply: replyTo ?? null,
+      quote,
       replyToId: replyTo?.id,
       threadId,
       channelMode: effectiveChannelMode, mentions: picks.ids(body),
     };
     const sendId = sentDraft.sendId;
-    const onSettled = () => setSendHeld((current) => (current === sendId ? null : current));
-    setSendHeld(sendId);
+    const onSettled = phoneOffline() ? () => {} : holdSend(sendId);
     if (group) {
       dispatch({
         type: "sendGroup",
@@ -703,17 +729,17 @@ export function Composer({
       roomMessageSent(effectiveChannelMode, busy);
     } else if (bot) {
       const points = effectiveChannelMode === "goal" ? null : takePointedChips(threadId);
-      noteSendLaunch(sendId, inputRef.current);
+      noteSendLaunch(sendId);
       dispatch({
         type: "send", botId: bot.id, text: body, sendId: sentDraft.sendId, replyToId: replyTo?.id, threadId, mode: effectiveChannelMode, mentions: sentDraft.mentions,
         ...(points ? { pointed: points.pointed } : {}), ...(followUp ? { followUp } : {}),
         onError: () => { points?.restore(); restoreDraft(sentDraft); }, onSettled,
       });
-      directMessageSent(state.instances, bot.modelSelection?.instanceId, busy && followUp !== "steer");
+      directMessageSent(state.instances, bot.modelSelection?.instanceId, busy && (followUp !== "steer" || !canSteer));
     }
     setText("");
     setAttachments([]); picks.clear();
-    onConsumeReply?.();
+    onConsumeReply?.(); setSelectionQuote(draftId, null);
     setChannelMode("chat");
     // a click on the round button takes focus, and the button unmounts once the field is empty; grok hands it back
     if (!window.matchMedia?.("(hover: none) and (pointer: coarse)").matches) refocusInput();
@@ -909,13 +935,14 @@ export function Composer({
         )}
       </AnimatePresence>
       <div className="pointer-events-auto relative w-full">
+        {keyGate.warning(send)}
         <ComposerFailedSends sends={failedSends} onRetry={retryFailedSend} onEdit={editFailedSend} onDismiss={(failed) => forgetFailedComposerSend(draftId, failed.id)} />
         <SlashCommandMenu listRef={commandListRef} motion={commandMotion} commands={commandCandidates} highlight={highlight}
           onPick={pickCommand} onHighlight={setHighlight} />
         <MentionMenu listRef={mentionListRef} motion={mentionMotion} choices={candidates} highlight={highlight}
           everyoneCount={mentionEveryoneCount} onPick={pickMention} onHighlight={setHighlight} />
         {approval && (
-          <div className={cn("mb-2 overflow-hidden rounded-[24px]", ELEVATED_CARD)}>
+          <div data-approval-dock="" className={cn("mb-2 overflow-hidden rounded-[24px] shadow-[0_10px_32px_-14px_rgb(24_24_32/0.28),0_1px_3px_rgb(24_24_32/0.06)]", ELEVATED_CARD)}>
             <PendingApprovalPanel
               key={approval.requestId}
               pending={approval}
@@ -965,24 +992,16 @@ export function Composer({
           />
         <div ref={shellRef} data-tour="composer" data-multiline={multiline ? "" : undefined} data-drag-over={simpleDock && dragOver ? "" : undefined}
           style={pillHeight === undefined ? undefined : { height: pillHeight }} className={cn("@container/composer relative z-[1]", singleRow ? "flex items-end gap-2" : simpleDock ? cn(SIMPLE_COMPOSER, multiline ? "rounded-[18px]" : "rounded-[22px]") : cn("rounded-2xl px-2 py-1.5", ELEVATED_FLOAT))}>
-        {singleRow && !locked && (
-          <div className="flex shrink-0 items-center">
-            <PhonePlus
-              onAttach={pickers.files} attachChoices={pickers.choices}
-              goal={goal}
-              teach={canLearn ? teachTask : undefined}
-              approval={approvalChoice && modeBot && { name: modeBot.name, choice: approvalChoice }}
-              callBotId={live && bot && !group ? bot.id : undefined}
-            />
-          </div>
-        )}
-        <div ref={pillContentRef} className={singleRow ? cn("flex min-h-[52px] min-w-0 flex-1 flex-col justify-center rounded-[26px] py-1 pl-3 pr-1", ELEVATED_FLOAT) : simpleDock ? "flex shrink-0 flex-col" : "contents"}>
-        {replyTo && <ComposerReplyStrip message={replyTo} fallbackName={bot?.name} onClear={onClearReply} />}<ComposerAttachmentStrip items={attachments} onRemove={removeAttachment} onRetry={retryUpload} onDisplayInChatBox={displayPasteInChatBox} notice={attachmentNotice} onNotice={setAttachmentNotice} />
+        <div ref={pillContentRef} className={singleRow ? cn("flex min-h-[48px] min-w-0 flex-1 flex-col justify-center rounded-[24px] p-2", ELEVATED_FLOAT) : simpleDock ? "flex shrink-0 flex-col" : "contents"}>
+        {replyTo && <ComposerReplyStrip message={replyTo} fallbackName={bot?.name} onClear={onClearReply} />}
+        {quote && <ComposerSelectionQuote quote={quote} onClear={clearQuote} />}<SelectionAskPill enabled={!singleRow && !locked} onAsk={askAboutSelection} /><ComposerAttachmentStrip items={attachments} onRemove={removeAttachment} onRetry={retryUpload} onDisplayInChatBox={displayPasteInChatBox} notice={attachmentNotice} onNotice={setAttachmentNotice} />
         <div data-composer-row data-glyph-swap={glyphs.swapped ? "" : undefined} data-glyph-from-held={glyphs.swapped && glyphs.fromHeld ? "" : undefined} style={simpleDock ? slot.vars : undefined} className={cn("flex items-end", simpleDock ? cn("gap-2", stacked && "gap-y-2") : "gap-1", !singleRow && !simpleDock && "@max-[30rem]/composer:flex-wrap", stacked && "flex-wrap")}>
           {pickers.inputs}
+          {/* the phone's + is the pill's first control, at its left edge, the size of the others */}
+          {singleRow && !locked && <PhonePlus onAttach={pickers.files} attachChoices={pickers.choices} />}
           {!locked && !singleRow && (
             <div className={cn("flex items-center gap-1", simpleDock ? "shrink-0" : "flex-wrap")}>
-              {simpleDock && <ComposerPlusMenu onAttach={pickers.files} attachChoices={pickers.choices} goal={goal} teach={canLearn ? teachTask : undefined} />}
+              {simpleDock && <ComposerPlusMenu onAttach={pickers.files} attachChoices={pickers.choices} />}
               {/* a mode's chip shows only while it is on, so a choice made in the + menu or the bot panel stays in view */}
               {goal?.on && <GoalToggle {...goal} compact={simpleDock} />}
               {simpleDock && approvalChoice && profile && bot && approvalModeFor(bot) !== approvalModeFor(profile) && <ApprovalChip choice={approvalChoice} />}
@@ -990,12 +1009,13 @@ export function Composer({
           )}
           <MentionTextarea
           // grok keeps 80px clear at the field's end for its mic and voice buttons, whether or not the mic shows
-          wrapperClassName={cn(singleRow ? undefined : simpleDock ? cn(stacked ? "order-first basis-full" : locked && "me-9") : cn("@max-[30rem]/composer:order-first @max-[30rem]/composer:basis-full", stacked && "order-first basis-full"), recording && "hidden")}
+          wrapperClassName={cn(singleRow ? "px-1.5" : simpleDock ? cn(stacked ? "order-first basis-full" : locked && "me-9") : cn("@max-[30rem]/composer:order-first @max-[30rem]/composer:basis-full", stacked && "order-first basis-full"), recording && "hidden")}
           inputRef={inputRef}
           peers={[...(group ? members ?? [] : state.bots.filter((member) => member.id !== bot?.id)), ...teammates.peers]}
           everyone={Boolean(group && !group.dm)}
           dir="auto"
           rows={1}
+          enterKeyHint={sendKey === "enter" ? "send" : "enter"}
           value={text}
           onChange={(e) => {
             if (bot && !group) cueMascot(bot.id, "watch");
@@ -1023,7 +1043,9 @@ export function Composer({
           onClick={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
           onKeyDown={(e) => {
             // An input method's confirming Enter and arrows pick its own candidates, not a mention or command.
-            if (imeComposing(e.nativeEvent)) return;
+            // macOS can report keyCode 229 for arrows with no composition open, so arrows trust compositionstart only.
+            const arrow = e.key === "ArrowDown" || e.key === "ArrowUp";
+            if (arrow ? composing || e.nativeEvent.isComposing : imeComposing(e.nativeEvent)) return;
             if (commandPickerOpen) {
               if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                 e.preventDefault();
@@ -1093,7 +1115,7 @@ export function Composer({
             locked: setupLocked, approval: blocking, attaching: attachmentPending, attached: attachments.length > 0, listening: recording,
             replying: Boolean(replyTo), busy, group, members: members ?? [], goal: channelMode === "goal", botName: bot?.name ?? "",
             setupHint: group ? null : setupRequestPlaceholder(bot, threadId),
-            question: !group && pendingQuestion(bot?.messages),
+            question: !group && pendingQuestion(bot?.messages), narrow: phoneApp(),
           })}
           aria-label={t("composer.placeholder.bot", { name: group ? group.name : (bot?.name ?? "") })}
             className={cn(
@@ -1116,44 +1138,27 @@ export function Composer({
               className={singleRow ? "flex-1 py-1.5" : "mb-px mt-[3px] flex-1"}
             />
           )}
-          <div data-composer-actions className={cn("flex items-center", simpleDock ? "relative gap-2" : "gap-1", !singleRow && !simpleDock && "@max-[30rem]/composer:ml-auto", stacked && "ml-auto")}>
-          {(simpleDock ? stoppable : busy && !stopPressed) && !locked && (
-          <button
-            // the button leaves with the press: focus goes back to the field (not on a phone, where it would raise the keyboard)
-            onClick={() => { interruptTurn(); if (!singleRow) refocusInput(); }}
-            aria-label={t("chat.stopTurn")}
-            data-composer-stop={simpleDock ? (stopInSlot ? "slot" : "beside") : undefined}
-            className={cn(
-              "flex shrink-0 items-center justify-center rounded-full",
-              singleRow ? "size-10 bg-ink text-app"
-                : !simpleDock ? "size-8 text-ink-secondary hover:bg-raised hover:text-ink max-md:size-10"
-                : stopInSlot ? cn("composer-press size-7", slot.button.className)
-                : SIMPLE_CONTROL,
-            )}
-            style={stopInSlot ? slot.button.style : undefined}
-            title={t("chat.stop")}
-          >
-            <span aria-hidden className={cn("block rounded-[2.5px] bg-current", simpleDock ? "size-[10px]" : "size-[12px]", stopInSlot && "composer-glyph")} />
-          </button>
-        )}
+          <div ref={actionsRef} data-composer-actions className={cn("flex items-center", simpleDock ? "relative gap-2" : cn("gap-1", singleRow && "relative"), !singleRow && !simpleDock && "@max-[30rem]/composer:ml-auto", stacked && "ml-auto")}>
         {!locked && recording && (
           <button
             type="button"
             onClick={discardDictation}
+            data-composer-discard=""
             aria-label={t("composer.dictation.discard")}
             title={t("composer.voice.cancelHint")}
             className={cn(
               "flex shrink-0 items-center justify-center rounded-full",
-              simpleDock ? "size-7" : "size-8 max-md:size-10",
+              simpleDock ? "size-7" : "size-8",
               singleRow ? "text-ink-secondary hover:bg-raised hover:text-ink" : SIMPLE_CONTROL,
+              phoneVoice && cn("composer-press", listenedFrom.empty && "composer-mic-in"),
             )}
           >
-            <Icon name="close" size={14} />
+            <Icon name="close" size={phoneVoice ? 16 : 14} />
           </button>
         )}
         {/* the mic in the round button's place keeps the small control's place beside it, so Send or Discard takes
             that spot and nothing in the bar moves when the field fills, empties or starts listening */}
-        {micInSlot && !stoppable && <span aria-hidden="true" data-mic-spacer="" className={cn("shrink-0", simpleDock ? "size-7" : "size-8 max-md:size-10")} />}
+        {micInSlot && !stoppable && <span aria-hidden="true" data-mic-spacer="" className={cn("shrink-0", simpleDock ? "size-7" : "size-8")} />}
         {!locked && (
           <button
             key={micPlace}
@@ -1161,32 +1166,47 @@ export function Composer({
             type="button"
             onFocus={() => { micFocused.current = true; }}
             onBlur={() => { micFocused.current = false; }}
+            // on a phone the button that ends listening sends what was heard: one tap from speaking to sent
             onClick={toggleMic}
             data-voice-mic={recording ? "done" : "start"}
             disabled={dictation.phase === "finishing"}
             aria-label={recording ? t("composer.dictation.stop") : t("composer.dictation.start")}
             className={cn(
               "flex shrink-0 items-center justify-center rounded-full",
-              simpleDock ? "size-7" : "size-8 max-md:size-10",
-              recording
+              simpleDock ? "size-7" : "size-8",
+              (micPlace === "stop" || micOut) && "composer-mic-in",
+              micBack && "composer-mic-back",
+              phoneVoice ? cn("composer-press", slot.button.className)
+              : recording
                 ? "composer-press bg-ink text-app hover:bg-[color-mix(in_srgb,var(--color-ink)_88.5%,var(--color-menu))] disabled:opacity-40"
                 : micInSlot ? singleRow ? "composer-press bg-ink text-app hover:opacity-90" : "composer-press hover:brightness-[0.88]"
                 : singleRow ? "text-ink-secondary hover:bg-raised hover:text-ink" : SIMPLE_CONTROL,
             )}
-            style={micInSlot && !singleRow ? { backgroundColor: slot.fill, color: slot.ink } : undefined}
+            style={phoneVoice ? slot.button.style : micInSlot && !singleRow ? { backgroundColor: slot.fill, color: slot.ink } : undefined}
             title={recording ? t("composer.voice.stopHint", { key: voiceShortcutLabel() }) : t("composer.voice.hint", { key: voiceShortcutLabel() })}
           >
-            {recording ? <Icon name="check" size={14} />
+            {recording ? <Icon name="check" size={phoneVoice ? 16 : 14} />
               : simpleDock ? <Icon name="mic" variant="filled" size={16} className={micInSlot ? "composer-glyph" : undefined} /> : <Mic size={16} strokeWidth={1.75} absoluteStrokeWidth className="[&_rect]:fill-current" />}
           </button>
         )}
-        {live && callShown && bot && !group && <CallButton bot={bot} placement="composer" fill={singleRow ? undefined : slot.fill} ink={slot.ink} inverse={singleRow} />}
-        {filled && !locked && (
-          <ComposerSendButton compact={simpleDock} waits={!held && busy && !steersNow} label={sendNames.label} title={sendNames.title} look={slot.button}
-            disabled={held || attachmentPending || unsentUpload} onSend={(alternate) => send(followUpFor(alternate))} onChoose={send}
-            menu={held ? undefined : followUpFor(false) && { choices: followUpChoices(followUpDefault, canSteer), name: busyName, sendKey: sendLabel, alternateKey: alternateSendLabel(sendKey) }} />
+        {live && callShown && bot && !group && <CallButton bot={bot} placement="composer" fill={singleRow ? undefined : slot.fill} ink={slot.ink} inverse={singleRow} live={liveCallEnabled()} />}
+        {filled && !locked && !phoneVoice && (
+          <ComposerSendButton compact={simpleDock} waits={!held && busy && !steersNow && !phoneApp()} label={sendNames.label} title={sendNames.title} look={slot.button}
+            disabled={(held && !singleRow) || attachmentPending || unsentUpload} onSend={(alternate) => { if (!held) send(followUpFor(alternate)); }} onChoose={send}
+            menu={undefined} />
           )}
           {ghostGlyph && <SlotGlyphGhost key={glyphs.swaps} glyph={ghostGlyph} ink={slot.ink} />}
+          {micBack && (
+            <span aria-hidden="true" data-composer-stop-ghost key={`stop-${micTrail.swaps}`} className="composer-glyph-out pointer-events-none absolute bottom-0 right-0 z-[1] flex size-8 items-center justify-center rounded-full bg-ink text-app">
+              <span className="block size-[12px] rounded-[2.5px] bg-current" />
+            </span>
+          )}
+          {micIn && !recording && <PhoneMicGhost key={`mic-in-${micTrail.swaps}`} />}
+          {ghostGlyph === "stop" && !singleRow && (
+            <span aria-hidden="true" data-composer-mic-ghost key={`mic-${glyphs.swaps}`} className={cn(SIMPLE_CONTROL, "composer-mic-out pointer-events-none absolute bottom-0 right-9 flex items-center justify-center")}>
+              <Icon name="mic" variant="filled" size={16} />
+            </span>
+          )}
           </div>
         </div>
         </div>

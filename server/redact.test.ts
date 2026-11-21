@@ -1,7 +1,7 @@
 // The exact shapes the drivers write (ACP `env: [{name,value}]` and claude's mcpServers object), so a shape change breaks the test, not the secret.
 import { describe, expect, it } from "vitest";
 
-import { holdsCredential } from "../shared/redact.ts";
+import { firstCredential, holdsCredential } from "../shared/redact.ts";
 import { redactSecrets } from "./redact.ts";
 
 const flat = (value: unknown) => JSON.stringify(value);
@@ -56,6 +56,21 @@ describe("redactSecrets", () => {
     expect(out).toContain("retired-9");
     expect(out).toContain("/app/agents-proxy.js");
     expect(out).toContain("«redacted 24 chars»");
+  });
+
+  it("masks native log values whose names are credentials rather than keys", () => {
+    const out = flat(redactSecrets({
+      credential: "credential-value-1",
+      credentials: "credential-value-2",
+      cookie: "session=private-cookie-value",
+      passphrase: "private-passphrase-value",
+      privateKey: "private-key-value",
+      sessionKey: "private-session-key-value",
+    }));
+    for (const secret of ["credential-value-1", "credential-value-2", "private-cookie-value", "private-passphrase-value", "private-key-value", "private-session-key-value"]) {
+      expect(out).not.toContain(secret);
+    }
+    expect(out).toContain("credential");
   });
 
   it("masks a Composio key in an MCP header and an env object", () => {
@@ -300,6 +315,26 @@ describe("redactSecretsInText", () => {
   });
 });
 
+describe("dusk's own credentials in text", () => {
+  it("masks a workspace session, a stream ticket, a pairing credential and a pairing link's payload", () => {
+    const session = `dusk_sess_${"a".repeat(43)}`;
+    const ticket = `dusk_tick_${"b".repeat(32)}`;
+    const pairing = `omb_pair_${"c".repeat(43)}`;
+    const deep = `duskbot://pair?m=${"d".repeat(64)}`;
+    const universal = `https://dusk.bot/m/pair#m=${"e".repeat(64)}&c=ABCD1234`;
+
+    const out = redactSecretsInText([session, ticket, pairing, deep, universal].join("\n"));
+
+    for (const value of ["a".repeat(43), "b".repeat(32), "c".repeat(43), "d".repeat(64), "e".repeat(64), "ABCD1234"]) {
+      expect(out).not.toContain(value);
+    }
+    expect((out.match(/«redacted/g) ?? []).length).toBe(6);
+    expect(out).toContain("duskbot://pair?m=«redacted");
+    expect(out).toContain("https://dusk.bot/m/pair#m=«redacted");
+    expect(out).toContain("&c=«redacted");
+  });
+});
+
 describe("holdsCredential", () => {
   it("knows a provider key or a private key block, never a name, a placeholder or code that reads one", () => {
     for (const text of [
@@ -311,5 +346,23 @@ describe("holdsCredential", () => {
       "token = os.environ['GITHUB_TOKEN']", "API_KEY=your-key-here", "Authorization: Bearer YOUR_TOKEN_HERE", "Keep credentials out of the repo.",
       "-----BEGIN PUBLIC KEY-----", "GITLAB_TOKEN=glpat-your-token-here", `release notes mention ${"py" + "pi-"}AgE${"x".repeat(60)}`,
     ]) expect(holdsCredential(text), text).toBe(false);
+  });
+});
+
+describe("firstCredential", () => {
+  it("returns the earliest key holdsCredential sees, or a whole private key block", () => {
+    const anthropic = "sk-ant-ZZtestFAKE0123456789";
+    const github = `${"gh" + "p_"}${"A".repeat(24)}`;
+    expect(firstCredential(`use ${github} then ${anthropic}`)).toBe(github);
+    expect(firstCredential(`here is the key ${anthropic}, thanks`)).toBe(anthropic);
+    const pem = "-----BEGIN PRIVATE KEY-----\nMIIfake\n-----END PRIVATE KEY-----";
+    expect(firstCredential(`key:\n${pem}\nok`)).toBe(pem);
+  });
+
+  it("finds nothing where holdsCredential finds nothing", () => {
+    for (const ordinary of ["my password is hunter2", "SG.example.com", "set the API key in Settings"]) {
+      expect(holdsCredential(ordinary)).toBe(false);
+      expect(firstCredential(ordinary)).toBeNull();
+    }
   });
 });

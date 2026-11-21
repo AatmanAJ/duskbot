@@ -5,6 +5,7 @@
     0.85658 36%, 0.87645 38%, 0.89376 40%, 0.92183 44%, 0.94282 48%, 0.95838 52%, 0.96984 56%, 0.97823 60%, 0.98435 64%,
     0.98878 68%, 0.99198 72%, 0.99594 80%, 0.99829 90%, 1 100%);
   --composer-glyph-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --composer-bounce: linear(0, 0.063 4%, 0.235 9%, 0.47 15%, 0.7 21.5%, 0.87 28%, 0.98 35%, 1.035 42%, 1.05 48%, 1.04 55%, 1.015 66%, 0.998 80%, 1 100%);
 }
 
 .composer-pill {
@@ -58,6 +59,26 @@
 @keyframes composer-glyph-out {
   to { opacity: 0; transform: scale(0.5); }
 }
+/* a working bot's Stop takes the mic's place: the square turns in from a blur, the small mic springs in beside it and
+   fades back out when the turn ends */
+[data-glyph-swap] .composer-stop-glyph {
+  animation: composer-stop-in 260ms var(--composer-glyph-ease);
+}
+@keyframes composer-stop-in {
+  from { opacity: 0; transform: scale(0.4) rotate(-45deg); filter: blur(2px); }
+}
+.composer-mic-in {
+  animation: composer-mic-in 420ms var(--composer-bounce) 40ms backwards;
+}
+@keyframes composer-mic-in {
+  from { opacity: 0; transform: translateX(10px) scale(0.6); }
+}
+.composer-mic-out {
+  animation: composer-mic-out 150ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+@keyframes composer-mic-out {
+  to { opacity: 0; transform: translateX(10px) scale(0.6); }
+}
 
 .composer-drop {
   animation: composer-drop-in 120ms ease-out;
@@ -107,6 +128,8 @@
   [data-glyph-swap] .composer-glyph { animation-name: composer-glyph-fade; }
   .composer-pill[data-snap] { transition-duration: 0s, 120ms, 150ms; }
   .composer-glyph-out { animation-name: composer-glyph-fade-out; }
+  [data-glyph-swap] .composer-stop-glyph, .composer-mic-in { animation-name: composer-glyph-fade; }
+  .composer-mic-out { animation-name: composer-glyph-fade-out; }
 }
 :root[data-reduced-motion="true"] .composer-pill {
   transition-duration: 120ms, 120ms, 150ms;
@@ -117,6 +140,8 @@
 :root[data-reduced-motion="true"] [data-glyph-swap] .composer-glyph { animation-name: composer-glyph-fade; }
 :root[data-reduced-motion="true"] .composer-pill[data-snap] { transition-duration: 0s, 120ms, 150ms; }
 :root[data-reduced-motion="true"] .composer-glyph-out { animation-name: composer-glyph-fade-out; }
+:root[data-reduced-motion="true"] :is([data-glyph-swap] .composer-stop-glyph, .composer-mic-in) { animation-name: composer-glyph-fade; }
+:root[data-reduced-motion="true"] .composer-mic-out { animation-name: composer-glyph-fade-out; }
 :root[data-reduced-motion="true"] .upload-ring[data-indeterminate] .upload-ring-stroke { animation: none; stroke-dasharray: none; opacity: 0.4; }
 @keyframes composer-glyph-fade {
   from { opacity: 0; }

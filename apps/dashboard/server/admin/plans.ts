@@ -99,20 +99,20 @@ export function createPlanEditor(deps: { billing: Billing; now: () => number; au
     return async () => { billing.operator.setEnd(account, sub.id, end); return sub.id; };
   }
   /** the exact change a plan-length edit would make, and what the provider does with it; nothing is changed */
-  function preview(account: AccountRef, input: Record<string, unknown>): PlanPreview {
+  async function preview(account: AccountRef, input: Record<string, unknown>): Promise<PlanPreview> {
     const sub = needLive(account.id, input.subscription), plan = labelOf(bundleOf(account.id, sub.id)) ?? "plan";
     const renews = sub.currentPeriodEnd === null ? "no date" : openEnded(sub) ? "open-ended" : isoDay(sub.currentPeriodEnd);
     if (input.action === "interval") {
       const interval = intervalOf(input.interval);
       intervalAllowed(sub, interval);
       const next = billing.service.quote({ ...sub.cart, interval });
-      const charge = billing.service.previewChange(account, sub.id, next.cart, true).chargeNowCents;
-      const dodo = dodoBilled(sub);
+      const shown = await billing.service.previewChange(account, sub.id, next.cart), charge = shown.chargeNowCents;
+      const on = (at: number | null) => at === null ? "no date" : isoDay(at);
       return { action: "interval", subscription: sub.id, before: `${plan}, ${every(sub.cart.interval)}, ${money(sub.totalCents)} a ${sub.cart.interval}, renews ${renews}`,
         after: `${plan}, ${every(interval)}, ${money(next.totalCents)} a ${interval}`, chargeNowCents: charge,
-        effects: interval === "year"
-          ? [dodo ? `dodo charges the difference now, ${money(charge)}, to the card on file.` : `the difference, ${money(charge)}, is charged now.`, "the billing date resets to today, and the plan renews a year from now."]
-          : [dodo ? "dodo keeps the unused difference as credit on their subscription; nothing is refunded to the card." : "the unused difference is kept as credit; nothing is refunded.", "the billing date resets to today, and the plan renews monthly from now."] };
+        effects: shown.timing === "trial" ? ["they are in their trial: nothing is charged now.", `the trial still ends ${on(shown.nextChargeAt)}, and the first charge is ${money(next.totalCents)}.`]
+          : shown.timing === "scheduled" ? ["nothing is charged now; they keep the year they paid for.", `it switches on ${on(shown.effectiveAt)}, and ${money(next.totalCents)} is charged then.`]
+          : [`${money(charge)} is charged now, tax included: the year, less the unused part of this month.`, `the billing date resets to today, and the plan renews ${on(shown.nextChargeAt)}.`] };
     }
     if (input.action === "set_end") {
       const end = until(input.until, now());
@@ -162,7 +162,7 @@ export function createPlanEditor(deps: { billing: Billing; now: () => number; au
       const sub = target = needLive(account.id, input.subscription), interval = intervalOf(input.interval);
       inputs = { from: sub.cart.interval, interval };
       intervalAllowed(sub, interval);
-      run = async () => { await billing.service.operatorChange(account, sub.id, billing.service.quote({ ...sub.cart, interval }).cart, true); return sub.id; };
+      run = async () => { await billing.service.operatorChange(account, sub.id, billing.service.quote({ ...sub.cart, interval }).cart); return sub.id; };
     } else if (action === "set_end") {
       const end = until(input.until, now());
       inputs = { until: end };
@@ -192,5 +192,5 @@ export function createPlanEditor(deps: { billing: Billing; now: () => number; au
     const after = changed ? stored(changed) : null;
     await deps.audit(owner.id, auditAction, account.id, { ok: true, subscription: changed, before, after: describe(after), ...inputs });
   }
-  return { edit, preview: (account: AccountRef, input: Record<string, unknown>) => { try { return preview(account, input); } catch (error) { if (error instanceof BillingError) throw new PlanError(error.status, error.code, "That change is not possible in this plan's current state."); throw error; } }, subscriptions, info };
+  return { edit, preview: async (account: AccountRef, input: Record<string, unknown>) => { try { return await preview(account, input); } catch (error) { if (error instanceof BillingError) throw new PlanError(error.status, error.code, "That change is not possible in this plan's current state."); throw error; } }, subscriptions, info };
 }

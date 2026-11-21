@@ -1,6 +1,7 @@
 // The buying sheet's main-process side: the email sign-in, the kept checkout page, the Cloud's name and colour, and
 // "{name} is ready". Every handler takes the page's words as plain text and checks them here; no token, checkout
 // address or account leaves main (Copy link writes the clipboard from here).
+import path from "node:path";
 import { deflateSync } from "node:zlib";
 import environments from "./environments.cjs";
 import { CHECKOUT_SOURCES } from "./cloud-account.mjs";
@@ -10,7 +11,7 @@ export const CLOUD_COLORS = environments.ENTRY_COLORS;
 export const DEFAULT_CLOUD_COLOR = "blue";
 export const CLOUD_NAME_MAX = 28;
 /** Each colour in the default skin (src/lib/mascot.ts MAUS_COLORS), for the native menu's dot; the page uses the skin's own. */
-export const CLOUD_COLOR_HEX = Object.freeze({ blue: "#377FE6", teal: "#01A492", purple: "#8057C8", orange: "#E78531", red: "#D94B52", yellow: "#D8A729" });
+export const CLOUD_COLOR_HEX = Object.freeze({ blue: "#286ef9", teal: "#26cb96", purple: "#894ef0", orange: "#fb7c01", red: "#ef3a3f", yellow: "#e5a915" });
 // oxlint-disable-next-line no-control-regex
 const CONTROL = /[\x00-\x1f\x7f]/;
 
@@ -58,6 +59,21 @@ export function colorDotIcons(nativeImage) {
       } catch { made.set(color, null); }
     }
     return made.get(color) ?? null;
+  };
+}
+
+// macOS tints template images (a "Template" file name) for light and dark menus; elsewhere a black glyph would vanish on a
+// dark menu, so the popup keeps its colour dots there.
+export function placeKindIcons(nativeImage, resourcesDir, platform) {
+  if (platform !== "darwin") return null;
+  const made = new Map(), file = { computer: "Computer", cloud: "Cloud", server: "Server" };
+  return kind => {
+    if (!made.has(kind)) {
+      let image = null;
+      try { image = file[kind] ? nativeImage.createFromPath(path.join(resourcesDir, `place${file[kind]}Template.png`)) : null; } catch {}
+      made.set(kind, image && !image.isEmpty() ? image : null);
+    }
+    return made.get(kind);
   };
 }
 

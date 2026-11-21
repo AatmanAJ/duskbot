@@ -72,21 +72,18 @@ it("carries a send out of the composer, grows the reply out of the mascot, and k
   await act(async () => draw());
   expect(played.filter((one) => one.el.closest('[data-mid="hello"]')), "a row already there never animates").toHaveLength(0);
 
-  const field = document.createElement("textarea");
-  field.getBoundingClientRect = () => ({ left: 40, top: 500, width: 300, height: 20, right: 340, bottom: 520, x: 40, y: 500, toJSON: () => ({}) });
-  Object.defineProperty(field, "offsetWidth", { get: () => 300 });
-  noteSendLaunch("s1", field);
+  noteSendLaunch("s1");
   const optimistic: Message = { id: "optimistic-s1", kind: "text", role: "user", text: "plan my week", at: Date.now() + 5, sendId: "s1", parentId: "hello" };
   state = { ...state, bots: [{ ...bot, messages: [hello, optimistic], activeLeafId: optimistic.id }] };
   await act(async () => draw());
   const sent = host.querySelector('[data-mid="optimistic-s1"] [data-chat-bubble]')!;
-  expect(sent.closest("[data-arrival-own]"), "the send plays its own entrance instead of the row's rise").not.toBeNull();
-  expect(played.find((one) => one.el === sent)?.keyframes[0]?.transform).toMatch(/^translate\(/);
-  const fill = sent.querySelector(".bubble-morph-fill")!;
-  expect(played.find((one) => one.el === fill)?.keyframes).toEqual([{ opacity: 0 }, { opacity: 1 }]);
-  await act(async () => played.find((one) => one.el === fill)!.done());
-  expect(sent.querySelector(".bubble-morph-fill"), "the fill hands back to the bubble's own background").toBeNull();
-  expect(sent.classList.contains("bubble-morph")).toBe(false);
+  expect(sent.closest("[data-arrival-own]"), "the bubble rises on its own, so its row never rises as well").not.toBeNull();
+  // one fade, a grow from 0.9 and a 16px rise from its tail corner, by the composer
+  expect(played.filter((one) => one.el === sent).map((one) => one.keyframes)).toEqual([[
+    { opacity: 0, transform: "translateY(16px) scale(0.9)" }, { opacity: 1, transform: "translateY(0px) scale(1)" },
+  ]]);
+  expect(played.filter((one) => one.el === sent.closest("[data-arrival]")), "nor does its row").toHaveLength(0);
+  expect((sent as HTMLElement).style.transformOrigin).toBe("100% 100%");
 
   const before = played.length;
   const confirmed: Message = { ...optimistic, id: "server-1" };
@@ -102,7 +99,12 @@ it("carries a send out of the composer, grows the reply out of the mascot, and k
   const replyBubble = host.querySelector('[data-mid="reply"] [data-chat-bubble]')!;
   expect(played.find((one) => one.el === replyBubble)?.keyframes).toEqual([{ opacity: 0, transform: "scale(0.94)" }, { opacity: 1, transform: "scale(1)" }]);
   expect((replyBubble as HTMLElement).style.transformOrigin).toBe("0% 0%");
-  expect(played.some((one) => one.el.parentElement === replyBubble && one.keyframes[0]?.opacity === 0), "its words fade in whole").toBe(true);
+  expect(played.filter((one) => replyBubble.contains(one.el) && one.el !== replyBubble), "its words come with it, never an empty bubble first").toHaveLength(0);
+  const replyRow = host.querySelector('[data-mid="reply"]');
+  await act(async () => draw());
+  expect(host.querySelector('[data-mid="reply"]'), "a redraw keeps the landed reply's node").toBe(replyRow);
+  expect(host.querySelector('[data-mid="reply"] [data-chat-bubble]')).toBe(replyBubble);
+  expect(played.filter((one) => one.el === replyBubble), "and never grows it again").toHaveLength(1);
   expect(played.filter((one) => one.el === sent).length, "the send never plays again").toBe(1);
 
   const actions = () => host.querySelector('[data-mid="reply"] [data-testid="message-actions"]');

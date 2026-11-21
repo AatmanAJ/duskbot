@@ -204,6 +204,32 @@ describe("connect flow stages", () => {
     expect(flow.state.stage).toBe("connected");
   });
 
+  it("keeps the paste box with the server's reason when it turns a pasted code away, and takes another", async () => {
+    let done = false;
+    let tries = 0;
+    const { flow, calls } = harness([
+      [{ instanceId: "claude", driverKind: "claudeAgent", snapshot: { state: "available", authenticated: false }, authentication: { method: "paste-code" } }],
+      () => [{ instanceId: "claude", driverKind: "claudeAgent", snapshot: { state: "available", authenticated: done } }],
+    ], {
+      "POST /api/instances/claude/auth/start": () => ({ auth: { phase: "waiting", flowId: "c1", authorizationUrl: "https://claude.ai/oauth/authorize?x=1" } }),
+      "POST /api/instances/claude/auth/complete": () => {
+        tries += 1;
+        if (tries === 1) throw Object.assign(new Error("Paste the whole code shown on Anthropic's page after signing in."), { status: 400 });
+        done = true;
+        return { ok: true };
+      },
+    });
+    flow.start({ tile: "claude", candidates: ["claude"] });
+    await vi.advanceTimersByTimeAsync(0);
+    flow.submit("bad");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(flow.state).toMatchObject({ stage: "waiting", kind: "paste", flowId: "c1", problem: "Paste the whole code shown on Anthropic's page after signing in." });
+    flow.submit("GOODCODE#123");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls.filter((call) => call === "POST /api/instances/claude/auth/complete")).toHaveLength(2);
+    expect(flow.state.stage).toBe("connected");
+  });
+
   it("one at a time: starting another cancels the sign-in under way on the server", async () => {
     const { flow, calls, seen } = harness([[codex({ state: "available", authenticated: false }), { ...codex({ state: "available", authenticated: false }), instanceId: "githubCopilot", driverKind: "copilotAgent" }]], {
       "POST /api/instances/codex/auth/start": () => device,
@@ -486,19 +512,38 @@ describe("the provider's normal browser sign-in, relayed by this desktop for a r
       expect(flow.state).toEqual({ stage: "connected", reused: false });
     });
 
-    it("never opens Google's page when nothing here can catch the redirect", async () => {
+    it("a remote server in a browser, or a taken port here: Google's page opens and the address it lands on is pasted back", async () => {
       for (const relay of [fakeRelay(false).relay, undefined]) {
-        const { flow, opened, calls } = harness([[gemini(false)]], {
+        let done = false;
+        let completeBody = "";
+        const { flow, opened, calls } = harness([[gemini(false)], () => [gemini(done)]], {
           "POST /api/instances/antigravity/auth/start": oldServer,
-          "POST /api/instances/antigravity/auth/cancel": () => ({ ok: true }),
+          "POST /api/instances/antigravity/auth/complete": (init) => { completeBody = init?.body ?? ""; done = true; return { ok: true }; },
         }, relay ? { relay } : {});
         flow.start({ tile: "gemini", candidates: ["antigravity"] });
         await vi.advanceTimersByTimeAsync(0);
-        expect(opened).toEqual([]);
-        expect(calls).toContain("POST /api/instances/antigravity/auth/cancel");
-        expect(flow.state).toMatchObject({ stage: "failed", reason: "unavailable" });
-        expect((flow.state as { message: string }).message).toMatch(relay ? /port 51121/ : /desktop app/);
+        expect(opened).toEqual([googleLink]);
+        expect(calls).not.toContain("POST /api/instances/antigravity/auth/cancel");
+        expect(flow.state).toMatchObject({ stage: "waiting", kind: "redirect", link: googleLink });
+        flow.submit(" http://127.0.0.1:51121/?state=s&code=fixture ");
+        await vi.advanceTimersByTimeAsync(POLL_MS * 2);
+        expect(JSON.parse(completeBody)).toEqual({ flowId: "g1", callbackUrl: "http://127.0.0.1:51121/?state=s&code=fixture" });
+        expect(flow.state).toEqual({ stage: "connected", reused: false });
       }
+    });
+
+    it("a redirect wait ends by itself when the sign-in reached the server without a paste", async () => {
+      let done = false;
+      const { flow, calls } = harness([[gemini(false)], () => [gemini(done)]], {
+        "POST /api/instances/antigravity/auth/start": oldServer,
+      });
+      flow.start({ tile: "gemini", candidates: ["antigravity"] });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(flow.state).toMatchObject({ stage: "waiting", kind: "redirect" });
+      done = true;
+      await vi.advanceTimersByTimeAsync(POLL_MS * 3);
+      expect(flow.state).toEqual({ stage: "connected", reused: false });
+      expect(calls.some((call) => call.includes("/auth/complete"))).toBe(false);
     });
 
     it("on this machine the browser reaches the CLI directly", async () => {
