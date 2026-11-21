@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  botActivityAt,
+  byRecentActivity,
   activeBotsFirst,
   BOT_CHATS_SECTION_ID,
   BOTS_SECTION_ID,
@@ -102,13 +104,13 @@ describe("sidebar virtual sections", () => {
     expect(parts.pinnedBots).toEqual([]);
   });
 
-  it("lifts pinned bots from every group, the main Chief too, when pins are universal", () => {
+  it("lifts pinned bots from every group, the main Chief too", () => {
     const workChief = { id: "work-chief", chiefOfStaff: true, section: "Work", pinned: true };
     const home = { id: "home", section: "Home", pinned: true };
     const looseChief = { id: "loose", chiefOfStaff: true, pinned: true };
     const stay = { id: "stay", section: "Work" };
     const hidden = { id: "hidden", section: "Home", pinned: true, hidden: true };
-    const parts = partitionSidebarBots([workChief, home, looseChief, stay, hidden], { universalPins: true });
+    const parts = partitionSidebarBots([workChief, home, looseChief, stay, hidden]);
     expect(parts.pinnedBots.map((bot) => bot.id)).toEqual(["work-chief", "home", "loose"]);
     expect(parts.sectionChiefs).toEqual([]);
     expect(parts.unsectionedChief).toBeNull();
@@ -117,24 +119,22 @@ describe("sidebar virtual sections", () => {
     expect(home.section).toBe("Home");
   });
 
-  it("lists a group's pinned Chief with the pinned bots on every client; the main Chief keeps its own top slot", () => {
+  it("pins an unassigned main Chief like any other bot; unpinned, it keeps its own top slot", () => {
     const bots = [
       { id: "work-chief", chiefOfStaff: true, section: "Work", pinned: true },
-      { id: "home-chief", chiefOfStaff: true, section: "Home", pinned: true },
       { id: "main-chief", chiefOfStaff: true, pinned: true },
       { id: "plain-pinned", pinned: true },
       { id: "unpinned-chief", chiefOfStaff: true, section: "Work" },
       { id: "member", section: "Work" },
     ];
-    const local = partitionSidebarBots(bots);
-    expect(local.pinnedBots.map((bot) => bot.id)).toEqual(["work-chief", "home-chief", "plain-pinned"]);
-    expect(local.unsectionedChief?.id).toBe("main-chief");
-    expect(local.sectionChiefs.map((bot) => bot.id)).toEqual(["unpinned-chief"]);
-    expect(local.sectionedBots.map((bot) => bot.id)).toEqual(["member"]);
-    const universal = partitionSidebarBots(bots, { universalPins: true });
-    expect(universal.pinnedBots.map((bot) => bot.id)).toEqual(["work-chief", "home-chief", "main-chief", "plain-pinned"]);
-    expect(universal.unsectionedChief).toBeNull();
-    expect(universal.sectionChiefs.map((bot) => bot.id)).toEqual(["unpinned-chief"]);
+    const pinned = partitionSidebarBots(bots);
+    expect(pinned.pinnedBots.map((bot) => bot.id)).toEqual(["work-chief", "main-chief", "plain-pinned"]);
+    expect(pinned.unsectionedChief).toBeNull();
+    expect(pinned.sectionChiefs.map((bot) => bot.id)).toEqual(["unpinned-chief"]);
+    expect(pinned.sectionedBots.map((bot) => bot.id)).toEqual(["member"]);
+    const unpinned = partitionSidebarBots(bots.map((bot) => bot.id === "main-chief" ? { ...bot, pinned: false } : bot));
+    expect(unpinned.unsectionedChief?.id).toBe("main-chief");
+    expect(unpinned.pinnedBots.map((bot) => bot.id)).toEqual(["work-chief", "plain-pinned"]);
   });
 
   it("shows pinned-circle thread rows only while the circle grid is showing", () => {
@@ -289,7 +289,7 @@ describe("the primary tile", () => {
   const bot = (id: string, extra: Partial<{ chiefOfStaff: boolean; pinned: boolean; section: string }> = {}) => ({ id, ...extra });
 
   it("is the unsectioned Chief of Staff, pinned or not, taken out of the lists", () => {
-    const parts = partitionSidebarBots([bot("chief", { chiefOfStaff: true, pinned: true }), bot("atlas", { pinned: true }), bot("bea")], { universalPins: true });
+    const parts = partitionSidebarBots([bot("chief", { chiefOfStaff: true, pinned: true }), bot("atlas", { pinned: true }), bot("bea")]);
     const tiled = withPrimaryTile(parts, undefined);
     expect(tiled.primary?.id).toBe("chief");
     expect(tiled.unsectionedChief).toBeNull();
@@ -321,3 +321,19 @@ describe("active bots first", () => {
     expect(parts.sectionedBots).toEqual(["w1", "h1", "w2"]);
   });
 });
+
+describe("bots by recent activity", () => {
+  const bot = (id: string, at: number, extra: object = {}) => ({ id, tasks: [{ createdAt: 1, lastThreadOrderAt: at }], ...extra });
+
+  it("reads a bot's newest conversation, never a routine run or an archived one", () => {
+    expect(botActivityAt({ tasks: [{ createdAt: 5, updatedAt: 9 }, { createdAt: 2, lastThreadOrderAt: 20, routineRunId: "r" }, { createdAt: 3, lastThreadOrderAt: 30, archivedAt: 1 }] })).toBe(9);
+    expect(botActivityAt({ tasks: [], createdAt: 4 })).toBe(4);
+  });
+
+  it("puts a bot with something new first, then the most recent, and keeps the given order on a tie", () => {
+    const bots = [bot("a", 10), bot("b", 30), bot("c", 20, { unread: true }), bot("d", 30)];
+    const order = byRecentActivity(bots, (one) => Boolean((one as { unread?: boolean }).unread), botActivityAt).map((one) => one.id);
+    expect(order).toEqual(["c", "b", "d", "a"]);
+  });
+});
+

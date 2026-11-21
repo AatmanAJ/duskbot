@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { activityStepLabel, formatProgressSize, liveActivityLabel, liveActivityPhrases, phraseAt, phraseHoldMs, turnNowPhrases, NOTICE_LABEL_MAX } from "./live-activity";
+import { activityStepLabel, formatProgressSize, liveActivityLabel, liveActivityPhrases, phraseAt, phraseCycle, phraseHoldMs, rotationHoldMs, turnNowPhrases, NOTICE_LABEL_MAX } from "./live-activity";
 import { friendlyNowPhrases } from "./friendly-activity";
 import type { Message } from "@/state/store";
 
@@ -127,6 +127,35 @@ describe("phraseAt", () => {
   });
 });
 
+describe("phraseCycle: the working line's shuffle bag", () => {
+  const pool = Array.from({ length: 30 }, (_, index) => `Word ${index}`);
+
+  it("says every phrase once before any repeats, and never one twice in a row, across passes too", () => {
+    for (const seed of ["a", "b", "turn-7", "bot:thread:1|friendly:generic"]) {
+      const walk = Array.from({ length: pool.length * 4 }, (_, step) => phraseCycle(pool, seed, step));
+      for (let pass = 0; pass < 4; pass++) expect(new Set(walk.slice(pass * pool.length, (pass + 1) * pool.length)).size).toBe(pool.length);
+      for (let i = 1; i < walk.length; i++) expect(walk[i], `${seed} step ${i}`).not.toBe(walk[i - 1]);
+    }
+  });
+
+  it("is reproducible for a seed, differs across turns, and copes with tiny or repeated pools", () => {
+    const walk = (seed: string) => Array.from({ length: 10 }, (_, step) => phraseCycle(pool, seed, step)).join("|");
+    expect(walk("turn-1")).toBe(walk("turn-1"));
+    expect(new Set(["a", "b", "c", "d"].map(walk)).size).toBeGreaterThan(1);
+    expect(phraseCycle(["Typing…"], "x", 9)).toBe("Typing…");
+    const two = Array.from({ length: 6 }, (_, step) => phraseCycle(["A", "B", "A"], "x", step));
+    for (let i = 1; i < two.length; i++) expect(two[i]).not.toBe(two[i - 1]);
+  });
+
+  it("holds each phrase 7 to 9 seconds, so a long turn says a few calmly", () => {
+    for (let step = 0; step < 50; step++) {
+      const hold = rotationHoldMs("turn-1", step);
+      expect(hold).toBeGreaterThanOrEqual(7000);
+      expect(hold).toBeLessThanOrEqual(9000);
+    }
+  });
+});
+
 describe("turnNowPhrases: what the status line says is happening now", () => {
   it("says what the server just said about the turn, in its first sentence, until the engine reports", () => {
     const waiting = activity("notice: waiting for memory on this cloud. running now: 1. Ahead of this one: 0.", { ok: true });
@@ -143,6 +172,14 @@ describe("turnNowPhrases: what the status line says is happening now", () => {
     const short = activity("notice: Started fresh from the chat. Earlier steps may need a quick redo.", { ok: true });
     expect(turnNowPhrases(null, short)?.phrases).toEqual(["Started fresh from the chat"]);
     for (const phrase of [turnNowPhrases(null, long)!.phrases[0]!, turnNowPhrases(null, short)!.phrases[0]!]) expect(phrase.length).toBeLessThanOrEqual(NOTICE_LABEL_MAX);
+  });
+
+  it("never names a first reply's wait: the chat holds that row back while the turn runs, so the sidebar says Thinking as the chat does", () => {
+    const rescue = { botId: "pepper", threadId: "t", turnId: "turn-1", instanceId: "claude", ai: "Claude" };
+    const waiting = activity("notice: Pepper hasn't heard back from Verification fixture yet.", { rescue });
+    expect(turnNowPhrases(null, waiting)).toBeNull();
+    expect(friendlyNowPhrases(null, waiting).phrases[0]).not.toBe("Heads up");
+    expect(turnNowPhrases({ activity: "thinking" }, waiting)?.phrases[0]).toBe("Thinking");
   });
 
   it("names the file being written and how much, from the engine's own report", () => {
