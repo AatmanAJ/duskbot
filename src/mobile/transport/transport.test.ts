@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RelayGoneError } from "./relay";
 import { ASLEEP_PROBE_GAP_MS, asleepProbe, BearerEventSource, createSseParser, installTransport, mediaUrl, rewriteApiUrl } from "./transport";
-import { cloudAsleep, noteCloudPageActivity, resetCloudPowerForTests } from "@/lib/cloud-power";
+import { cloudAsleep, cloudGone, noteCloudPageActivity, resetCloudPowerForTests } from "@/lib/cloud-power";
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
@@ -81,7 +81,7 @@ describe("bearer event source", () => {
     expect(message.mock.calls[0][0]).toMatchObject({ type: "message", data: "hello", lastEventId: "9" });
     expect(error).toHaveBeenCalledOnce();
     expect(fetcher).toHaveBeenCalledOnce();
-    expect(fetcher.mock.calls[0]).toEqual(["https://workspace.test/api/events", expect.objectContaining({ credentials: "omit", redirect: "error", headers: { Authorization: "Bearer test-secret", Accept: "text/event-stream", "Cache-Control": "no-cache" } })]);
+    expect(fetcher.mock.calls[0]).toEqual(["https://workspace.test/api/events", expect.objectContaining({ credentials: "omit", redirect: "error", headers: { Authorization: "Bearer test-secret", Accept: "text/event-stream" }, cache: "no-store" })]);
   });
 
   it.each([401, 503])("closes on HTTP %s without retrying", async (status) => {
@@ -112,15 +112,17 @@ describe("bearer event source", () => {
 });
 
 function transportFixture() {
-  class EmptyElement {
+  class EmptyElement extends EventTarget {
     readonly attributes = new Map<string, string>();
     readonly tagName = "IMG";
     getAttribute(name: string) { return this.attributes.get(name) ?? null; }
     setAttribute(name: string, value: string) { this.attributes.set(name, value); }
+    hasAttribute(name: string) { return this.attributes.has(name); }
+    removeAttribute(name: string) { this.attributes.delete(name); }
     matches() { return true; }
     querySelectorAll() { return []; }
   }
-  class EmptyDocument {
+  class EmptyDocument extends EventTarget {
     elements: EmptyElement[] = [];
     querySelectorAll() { return this.elements; }
   }
@@ -174,6 +176,25 @@ describe("installed adapters", () => {
     } finally { restore(); }
     expect(browser.fetch).toBe(fetcher);
     expect(mediaUrl("/api/attachments/image")).toBe("/api/attachments/image");
+  });
+
+  it("hands native http image bytes as a File, so none above 0x7F turn into U+FFFD", async () => {
+    const { browser, fetcher } = transportFixture();
+    const restore = installTransport({ kind: "bearer", origin: "https://workspace.test", token: "test-secret" });
+    const png = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0x00, 0x80);
+    try {
+      await browser.fetch("/api/attachments?uploadId=a", { method: "POST", headers: { "content-type": "image/png" }, body: png });
+      const sent = fetcher.mock.calls[0][1]?.body;
+      expect(sent).toBeInstanceOf(File);
+      expect((sent as File).type).toBe("image/png");
+      expect(new Uint8Array(await (sent as File).arrayBuffer())).toEqual(png);
+      await browser.fetch(new Request("https://localhost/api/attachments", { method: "POST", headers: { "content-type": "image/png" }, body: png }));
+      const fromRequest = fetcher.mock.calls[1][1]?.body;
+      expect(fromRequest).toBeInstanceOf(File);
+      expect(new Uint8Array(await (fromRequest as File).arrayBuffer())).toEqual(png);
+      await browser.fetch("/api/chat", { method: "POST", body: "{\"text\":\"hi\"}" });
+      expect(fetcher.mock.calls[2][1]?.body).toBe("{\"text\":\"hi\"}");
+    } finally { restore(); }
   });
 
   it("keeps unrelated EventSource URLs native and only adds socket tokens over TLS", () => {
@@ -348,6 +369,18 @@ describe("a sleeping Cloud behind the phone's stream", () => {
     const source = new BearerEventSource("/api/events", undefined, { url: "https://workspace.test/api/events", token: "t", fetch: vi.fn(async () => { throw new TypeError("cors"); }), failed });
     await vi.waitFor(() => expect(source.readyState).toBe(source.CLOSED));
     expect(failed).toHaveBeenCalledOnce();
+  });
+  it("the probe and the stream both hear a deleted dusk cloud, and say it is gone", async () => {
+    const gone = () => new Response("This dusk bot was deleted.", { status: 410, headers: { "x-dusk-cloud-power": "gone" } });
+    asleepProbe(vi.fn(async () => gone()), "https://workspace.test", "secret", () => 0)();
+    await vi.waitFor(() => expect(cloudGone()).toBe(true));
+    expect(cloudAsleep()).toBe(false);
+    resetCloudPowerForTests();
+    const failed = vi.fn();
+    const source = new BearerEventSource("/api/events", undefined, { url: "https://workspace.test/api/events", token: "t", fetch: vi.fn(async () => gone()), failed });
+    await vi.waitFor(() => expect(source.readyState).toBe(source.CLOSED));
+    expect(cloudGone()).toBe(true);
+    expect(failed).not.toHaveBeenCalled();
   });
   it("the probe is a background read that marks the page asleep, at most once in its gap", async () => {
     let clock = 0;

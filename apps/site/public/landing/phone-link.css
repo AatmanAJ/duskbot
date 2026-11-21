@@ -1,0 +1,16 @@
+/* /m/pair and /m/signin: what a phone without the app lands on from the desktop's qr */
+.pl-head h1 { max-width: 9em; }
+.pl { display: flex; flex-direction: column; align-items: flex-start; gap: 24px; padding-bottom: clamp(64px, 8vw, 120px); }
+.pl-card { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 22px 24px; border-radius: 20px; background: var(--wash); max-width: 100%; }
+.pl-card[hidden], .pl-none[hidden], .pl-actions [hidden] { display: none; }
+.pl-label { margin: 0; font-size: 14px; line-height: 20px; color: var(--ink-3); }
+.pl-value { font-family: "Geist Mono", ui-monospace, monospace; font-size: clamp(26px, 7vw, 34px); line-height: 1.2; letter-spacing: 0.08em; color: var(--ink); user-select: all; -webkit-user-select: all; }
+.pl-email { margin: 0; font-family: inherit; font-size: 20px; letter-spacing: -0.01em; font-weight: 500; overflow-wrap: anywhere; }
+.pl-when { margin: 0 0 10px; font-size: 14px; line-height: 20px; color: var(--ink-3); }
+.pl-none { margin: 0; max-width: 34em; font-size: 16px; line-height: 1.55; color: var(--ink-2); }
+.pl-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.pl-actions .btn img, .pl-android img { image-rendering: pixelated; image-rendering: crisp-edges; }
+.pl-store { gap: 10px; }
+.pl-android { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 15px; line-height: 1.5; color: var(--ink-3); }
+.pl-actions .btn.light { background: var(--wash); }
+@media (hover: hover) { .pl-actions .btn.light:hover { background: #ebebe8; } }
