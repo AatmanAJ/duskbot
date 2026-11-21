@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
 import { z } from "zod";
 
-import type { MacJob, MacJobOutcome, MacToolName } from "../../shared/mac-control.ts";
+import type { MacJob, MacJobOutcome, MacJobTool } from "../../shared/mac-control.ts";
 
 export const MAC_POLL_MS = 25_000;
 /** How long a job waits for a Mac seen polling just now to take it; a Mac not seen lately gets the short wait. */
@@ -17,8 +17,12 @@ export const macJobOutcome = z.union([
   z.object({ ok: z.literal(true), result: z.object({
     text: z.string().max(1_000_000),
     image: z.object({ data: z.string().max(MAC_RESULT_MAX_BYTES), mimeType: z.enum(["image/png", "image/jpeg"]) }).optional(),
+    structured: z.record(z.string(), z.unknown()).optional(),
+    isError: z.literal(true).optional(),
+    outside: z.literal(true).optional(),
+    file: z.object({ name: z.string().min(1).max(255), data: z.string().max(MAC_RESULT_MAX_BYTES) }).optional(),
   }) }),
-  z.object({ ok: z.literal(false), error: z.string().max(4000) }),
+  z.object({ ok: z.literal(false), error: z.string().max(4000), ask: z.string().max(300).optional() }),
 ]);
 
 export interface MacDownload { name: string; bytes: number; open(): Readable }
@@ -30,8 +34,8 @@ type Job = {
 };
 
 export type MacRequest = {
-  tool: MacToolName; args: Record<string, unknown>; bot: { id: string; name: string };
-  timeoutMs: number; active(): boolean; offlineText: string; file?: MacDownload;
+  tool: MacJobTool; args: Record<string, unknown>; bot: { id: string; name: string };
+  timeoutMs: number; active(): boolean; offlineText: string; file?: MacDownload; approved?: true;
 };
 
 /** In-memory rendezvous between bot turns and the owner's Mac app: jobs wait in arrival order, every open long poll
@@ -63,7 +67,7 @@ export class MacJobs {
       const id = randomUUID();
       const job: Job = {
         delivery: {
-          id, tool: input.tool, arguments: input.args, bot: input.bot, expiresAt: this.now() + input.timeoutMs,
+          id, tool: input.tool, arguments: input.args, bot: input.bot, expiresAt: this.now() + input.timeoutMs, ...(input.approved ? { approved: true as const } : {}),
           ...(input.file ? { download: { path: `/api/mac/self/jobs/${id}/file`, name: input.file.name, bytes: input.file.bytes } } : {}),
         },
         active: input.active, sent: false, file: input.file, resolve,

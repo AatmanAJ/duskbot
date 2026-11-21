@@ -53,7 +53,7 @@ function mount() {
 const row = (id: string) => container.querySelector<HTMLElement>(`[data-panel-routine="${id}"]`)!;
 const open = (id: string) => flushSync(() => row(id).querySelector<HTMLButtonElement>("button[aria-haspopup=dialog]")!.click());
 /** a routine's details and actions open in a small sheet over the panel, never inside the list */
-const sheet = () => document.querySelector<HTMLElement>('[data-panel-modal="routine"]')!;
+const sheet = () => [...document.querySelectorAll<HTMLElement>('[data-panel-modal="routine"]')].find((el) => !el.closest("[data-leaving]"))!;
 const action = (_id: string, name: string) => sheet().querySelector<HTMLButtonElement>(`[data-routine-action="${name}"]`)!;
 const writes = () => fixture.api.mock.calls.filter(([, init]) => (init as { method?: string } | undefined)?.method).map(([path, init]) => {
   const { method, body } = init as { method: string; body?: string };
@@ -75,7 +75,7 @@ beforeEach(() => {
     if (next.type === "routineDeleted") fixture.state.routines = routines.filter((item) => item.id !== next.routineId);
     if (next.type === "routinePatched" || next.type === "routineDeleted") render();
   });
-  fixture.state = { hydrated: true, bots: [scout], groups: [], routines: [routine], webhooks: [], routineRuns: [], routinesFocus: { nonce: 0 }, config: {} };
+  fixture.state = { hydrated: true, bots: [scout], groups: [], routines: [routine], webhooks: [], webhookAttempts: [], routineRuns: [], routinesFocus: { nonce: 0 }, config: {} };
   applyAppTriggerSnapshot({ triggers: [], attempts: [], service: { available: true, plan: "desktop", eventsPerDay: 500, eventsToday: 0 } });
 });
 afterEach(() => { root?.unmount(); root = null; document.body.innerHTML = ""; copied.texts = []; });
@@ -93,6 +93,35 @@ describe("a bot's routines in its panel", () => {
     for (const part of ["When", "Every day at 9 AM", "Next:", "What to do", "Send me a summary of my inbox.", "Works on", "This computer", "Results go to", "Inbox digests", "Uses", "New mail", "Recent runs", "Three new emails, none urgent."]) expect(text).toContain(part);
     flushSync(() => sheet().querySelector<HTMLButtonElement>("[data-routine-run]")!.click());
     expect(fixture.dispatch).toHaveBeenCalled();
+  });
+
+  it("says what a waiting run waits on; Answer opens its chat, and says so when nothing there waits on the person", () => {
+    const waiting = { id: "run-w", routineId: "routine-1", routineName: "Morning summary", target: "bot", botId: "bot-a", runOn: "maus", scheduledFor: now - 60_000, startedAt: now - 60_000,
+      status: "waiting", manual: false, attention: "Which inbox should I read?", threadId: "thread-r", createdAt: now - 60_000 };
+    fixture.state.routineRuns = [waiting];
+    mount();
+    open("routine-1");
+    expect(sheet().textContent).toContain("Which inbox should I read?");
+    expect(sheet().textContent).not.toContain("It's waiting for your answer.");
+    flushSync(() => action("routine-1", "fix").click());
+    expect(fixture.dispatch.mock.calls.map(([next]) => next)).toEqual([
+      { type: "switchTask", botId: "bot-a", threadId: "thread-r" },
+      { type: "notice", notice: { kind: "note", botName: "Scout", text: "Nothing in its chat is waiting for your answer now." } },
+    ]);
+    fixture.dispatch.mockClear();
+    fixture.state.bots = [{ ...scout, tasks: [{ threadId: "thread-r", title: "Inbox digests", activity: "waiting-on-you" }] }];
+    render();
+    flushSync(() => action("routine-1", "fix").click());
+    expect(fixture.dispatch.mock.calls.map(([next]) => next)).toEqual([{ type: "switchTask", botId: "bot-a", threadId: "thread-r" }]);
+  });
+
+  it("is not Needs you while a run waits on nothing it names", () => {
+    fixture.state.routineRuns = [{ id: "run-w", routineId: "routine-1", routineName: "Morning summary", target: "bot", botId: "bot-a", runOn: "maus", scheduledFor: now - 60_000,
+      startedAt: now - 60_000, status: "waiting", manual: false, threadId: "thread-r", createdAt: now - 60_000 }];
+    mount();
+    open("routine-1");
+    expect(action("routine-1", "fix")).toBeNull();
+    expect(sheet().textContent).not.toContain("It's waiting for your answer.");
   });
 
   it("edits name, when and what in its sheet, and keeps a schedule no preset can say", async () => {
@@ -184,6 +213,29 @@ describe("a bot's routines in its panel", () => {
     await vi.waitFor(() => expect(fixture.api).toHaveBeenCalledWith("/api/app-triggers/acme/test", expect.objectContaining({ method: "POST" })));
   });
 
+  it("lists a webhook's recent deliveries, refused ones with why, and never a refused delivery's body", () => {
+    fixture.state.webhooks = [webhook];
+    const attempt = (id: string, at: number, extra: Record<string, unknown>) => ({ id, webhookId: "hook-1", receivedAt: now - at, ...extra });
+    fixture.state.webhookAttempts = [
+      attempt("a1", 60_000, { outcome: "accepted", statusCode: 202, preview: "{\"lead\":\"ok\"}" }),
+      attempt("a2", 50_000, { outcome: "rejected", statusCode: 401, reason: "Invalid webhook URL or secret (2 requests)" }),
+      attempt("a3", 40_000, { outcome: "rejected", statusCode: 400, reason: "Invalid JSON webhook body", preview: "PRIVATE-BODY" }),
+      attempt("a4", 30_000, { outcome: "rejected", statusCode: 413, reason: "Webhook body is too large" }),
+      { id: "other", webhookId: "hook-2", receivedAt: now, outcome: "rejected", statusCode: 401 },
+    ];
+    mount();
+    open("hook-1");
+    const lines = [...sheet().querySelectorAll<HTMLElement>("[data-webhook-delivery]")];
+    expect(lines.map((line) => line.dataset.webhookDelivery)).toEqual(["refused", "refused", "refused", "ok"]);
+    const text = lines.map((line) => line.textContent).join("\n");
+    expect(text).toContain("Refused: too large");
+    expect(text).toContain("Refused: not valid JSON");
+    expect(text).toContain("Refused: wrong or missing secret · 2 requests");
+    expect(text).toContain("Accepted");
+    expect(sheet().textContent).not.toContain("PRIVATE-BODY");
+    expect(sheet().textContent).not.toContain("Invalid webhook URL");
+  });
+
   it("opens the routine a chat card names, straight into its form when asked", async () => {
     mount();
     fixture.state.routinesFocus = { routineId: "routine-1", edit: true, nonce: 1 };
@@ -197,5 +249,50 @@ describe("a bot's routines in its panel", () => {
     mount();
     expect(container.textContent).toContain("Ask it in chat to set one up");
     expect(container.querySelector("[data-panel-action=new-routine]")).toBeNull();
+  });
+
+  it("shows its 7- and 30-day usage, slows a spiking poller with one tap, and gives the routine its own address", async () => {
+    const poller = { ...routine, schedule: { type: "interval" as const, everyMinutes: 15, anchorAt: now } };
+    fixture.state.routines = [poller];
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+    fixture.api.mockImplementation(async (...args: unknown[]) => {
+      const [path, init] = args as [string, { method?: string; body?: string } | undefined];
+      if (path.endsWith("/forecast")) return { runsPerWeek: 672, perRunUsd: 0.02, weekUsd: 13.44, shareOfWeek: 0.4, warnings: ["frequent", "spike"], runCosts: {}, spentUsd: 2,
+        usage: { week: { runs: 96, usd: 1.92, tokens: 1 }, month: { runs: 300, usd: 6, tokens: 1 } } };
+      if (path.startsWith("/api/webhooks/mail/")) return { mail: { address: "scout-1@in.dusk.bot", routes: [{ alias: "receipts", targetId: "routine-1", from: ["@shop.example"], address: "scout-1+receipts@in.dusk.bot" }] } };
+      if (path === "/api/webhooks" && init?.method === "POST") return { webhook: { ...webhook, id: "hook-r", routineId: "routine-1" }, credential: { url: "https://home.example/hooks/wh_r/whsec_r", endpointUrl: "https://home.example/hooks/wh_r", secret: "whsec_r" } };
+      if (path === "/api/routines/routine-1" && init?.method === "PATCH") return { routine: { ...poller, schedule: JSON.parse(init.body!).schedule } };
+      return {};
+    });
+    mount();
+    open("routine-1");
+    await settle(); render(); await settle();
+    const text = sheet().textContent!;
+    for (const part of ["Usage", "Last 7 days: 96 runs", "Last 30 days: 300 runs", "Used far more today than it usually does.", "scout-1+receipts@in.dusk.bot", "from @shop.example"]) expect(text).toContain(part);
+    flushSync(() => action("routine-1", "less-often").click());
+    await settle();
+    expect(writes()).toContainEqual(["/api/routines/routine-1", "PATCH", { schedule: { type: "interval", everyMinutes: 30, anchorAt: now } }]);
+    flushSync(() => action("routine-1", "address").click());
+    await settle(); await settle();
+    expect(writes()).toContainEqual(["/api/webhooks", "POST", { name: "Morning summary", prompt: "", botId: "bot-a", routineId: "routine-1" }]);
+    expect(copied.texts).toEqual(["https://home.example/hooks/wh_r/whsec_r"]);
+  });
+
+  it("pushes routine detail and edit pages natively on the phone instead of opening a desktop dialog", () => {
+    document.documentElement.dataset.mobileApp = "ios";
+    const shell = document.createElement("div");
+    shell.className = "dusk-mobile";
+    document.body.append(shell);
+    try {
+      mount();
+      open("routine-1");
+      expect(document.querySelector('[data-phone-pushed-page="routine"]')).not.toBeNull();
+      expect(document.querySelector("[data-phone-modal-layer]")).toBeNull();
+      flushSync(() => document.querySelector<HTMLButtonElement>('[data-phone-pushed-page="routine"] [data-routine-action="edit"]')!.click());
+      expect(document.querySelector('[data-phone-pushed-page="routine-edit"] form')).not.toBeNull();
+    } finally {
+      delete document.documentElement.dataset.mobileApp;
+      shell.remove();
+    }
   });
 });

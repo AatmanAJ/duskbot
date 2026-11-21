@@ -2,14 +2,20 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createJsonStore } from "../billing/json-store.ts";
 import { randomBytes } from "node:crypto";
-import type { AccountIntent, NotificationPrefs, OAuthProvider, SessionView } from "../../../../shared/account-api.ts";
+import type { AccountIntent, NotificationPrefs, OAuthProvider, SessionView, WebsiteHome } from "../../../../shared/account-api.ts";
 
 /** `notifications`: only what the owner changed (NOTIFICATION_DEFAULTS fill the rest); `onboardedAt`: first-run steps done;
  *  `avatarUrl`: the photo of the newest google sign-in that had one; `avatar`: the person's choice of avatar
  *  (shared/user-avatar.ts), absent for the default */
 export interface Account { id: string; email: string; name: string | null; avatarUrl?: string; avatar?: string; createdAt: number; notifications?: Partial<NotificationPrefs>; onboardedAt?: number;
+  /** where the website's first steps put the bots: "free" (this computer) or "cloud" (a plan picked, checkout opened) */
+  onboardedHome?: WebsiteHome;
   /** the app install whose sign-in made this account (its hand-back: the desktop sign-in code it opened the website with) */
-  signedUpFrom?: { name: string; platform: string; appVersion: string | null; at: number } }
+  signedUpFrom?: { name: string; platform: string; appVersion: string | null; at: number };
+  /** a limited admin role the owner grants from the panel; full admins come only from DUSK_ADMIN_EMAILS. never set by the account itself */
+  adminRole?: AdminRole }
+export const ADMIN_ROLES = ["growth"] as const;
+export type AdminRole = typeof ADMIN_ROLES[number];
 /** `revoke`: Apple's newest refresh token per client id (json), sealed with the auth secret, for the revoke on deletion;
  *  never sent to a client */
 export interface Identity { accountId: string; provider: OAuthProvider; subject: string; email: string | null; label: string | null; addedAt: number; revoke?: string }
@@ -20,7 +26,10 @@ export interface StoredCode { id: string; email: string; codeHash: string; pendi
 /** a desktop sign-in waiting for its approval, keyed by the device code's hash, kept so a restart between the app opening the
  *  approve page and the person approving it does not end it */
 export interface StoredDevice { id: string; userCode: string; device: { name: string; platform: string; appVersion: string | null }; expiresAt: number; interval: number; lastPollAt: number | null; accountId: string | null; denied: boolean; intent?: AccountIntent; createdAt?: number }
-interface AuthState { accounts: Account[]; identities: Identity[]; sessions: Session[]; codes?: StoredCode[]; devices?: StoredDevice[] }
+/** a phone sign-in code a desktop session made: only its hmac. kept past its end (and once used) for a while, so the phone
+ *  can say expired or used rather than wrong */
+export interface StoredPhoneCode { codeHash: string; accountId: string; sessionId: string; expiresAt: number; purgeAt: number; usedAt?: number }
+interface AuthState { accounts: Account[]; identities: Identity[]; sessions: Session[]; codes?: StoredCode[]; devices?: StoredDevice[]; phoneCodes?: StoredPhoneCode[] }
 
 export function createAuthStore(dataDir: string) {
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
@@ -39,5 +48,5 @@ export function createAuthStore(dataDir: string) {
     if (secret.length < 32) throw new Error("Invalid auth secret file.");
     chmodSync(secretPath, 0o600);
   }
-  return { state: store.state, secret, changed: store.changed, close: store.commit };
+  return { state: store.state, secret, changed: store.changed, changedRow: store.changedRow, close: store.commit };
 }
