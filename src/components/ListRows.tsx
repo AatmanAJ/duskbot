@@ -8,7 +8,7 @@ import { Icon } from "./Icon";
 import { DialogPane, GrokDialog, mdPrimaryCls, mdSecondaryCls, rowButtonCls } from "./ui/GrokDialog";
 import { SelectPill, type SelectPillOption } from "./ui/SelectPill";
 import { Toggle } from "./ui/Toggle";
-import { HeadArt, type ArtName } from "./ui/Art";
+import { ArtState, HeadArt, type ArtName } from "./ui/Art";
 import { SettingGlyph, type SettingGlyphName } from "./ui/SettingGlyph";
 
 /* The one row list the side panel, Settings and the settings sheets all draw: a small grey label over a white 12px card,
@@ -93,7 +93,9 @@ export function Card({ label, art, action, anchor, footnote, className, children
 }
 
 /** Grok's empty tab: centred 13/18 copy at 56% ink, right under the tabs and 16px in from each side. */
-export function PanelEmpty({ children, ...rest }: { children: ReactNode; "data-panel-empty"?: string }) {
+/** A list with nothing in it yet. Given art and a title, the pixel drawing, the title and this line as its hint. */
+export function PanelEmpty({ children, art, title, ...rest }: { children: ReactNode; art?: ArtName; title?: ReactNode; "data-panel-empty"?: string }) {
+  if (art && title) return <ArtState {...rest} data-art-state={rest["data-panel-empty"]} art={art} title={title}>{children}</ArtState>;
   return (
     <div {...rest} className="flex flex-col gap-2.5 px-4 py-4">
       <p className="text-pretty text-center text-[13px] leading-[18px] tracking-[0.015em] text-ink/[0.56]">{children}</p>
@@ -343,20 +345,33 @@ export function useSubPage(): SubPageNav {
   return useContext(SubPageContext);
 }
 
-const WIPE_MS = 200;
-const reducedMotion = () => document.documentElement.dataset.reducedMotion === "true" || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+export const WIPE_MS = 200;
+export const reducedMotion = () => document.documentElement.dataset.reducedMotion === "true" || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+
+/** The page on screen as it is drawn now, without ids: the outgoing layer of a wipe shows this copy, so leaving a page never
+ * mounts it a second time (its effects, reads and prompts would all run again for a 200ms slide). */
+export function snapshotLayer(layer: HTMLElement | null): DocumentFragment | null {
+  if (!layer) return null;
+  const copy = document.createDocumentFragment();
+  for (const child of layer.childNodes) copy.append(child.cloneNode(true));
+  copy.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
+  return copy;
+}
 
 /** Grok's in-dialog push between a list and a page of it (200ms, the app "out" curve): the incoming layer slides over the
  * outgoing one on push, the outgoing slides off it on pop. A change of `group` (another pane) swaps without motion. The
- * outgoing copy is drawn by `layer(at, false)`, inert and without ids. */
+ * outgoing layer is a still copy of what was on screen, inert; `layer(at, false)` draws it only when there is none. */
 export function WipeStack({ at, depth, group, layer }: { at: string; depth: number; group: string; layer: (at: string, live: boolean) => ReactNode }) {
   const [shown, setShown] = useState({ at, depth, group });
   const [wipe, setWipe] = useState<{ direction: "push" | "pop" | "fade"; from: string; scrollTop: number; id: number } | null>(null);
   const live = useRef<HTMLDivElement>(null);
+  const still = useRef<{ id: number; copy: DocumentFragment } | null>(null);
   if (at !== shown.at) {
     setShown({ at, depth, group });
     const within = group === shown.group && depth !== shown.depth;
     const scroller = live.current?.querySelector<HTMLElement>("[data-wipe-scroll]");
+    const copy = within ? snapshotLayer(live.current) : null;
+    still.current = copy ? { id: (wipe?.id ?? 0) + 1, copy } : null;
     // with reduced motion the page only fades in, no slide
     setWipe(within ? { direction: reducedMotion() ? "fade" : depth > shown.depth ? "push" : "pop", from: shown.at, scrollTop: scroller?.scrollTop ?? 0, id: (wipe?.id ?? 0) + 1 } : null);
   }
@@ -389,12 +404,13 @@ export function WipeStack({ at, depth, group, layer }: { at: string; depth: numb
           data-wipe={wipe.direction}
           data-wipe-out=""
           ref={(element) => {
+            if (element && still.current?.id === wipe.id && !element.childNodes.length) element.append(still.current.copy);
             const scroller = element?.querySelector<HTMLElement>("[data-wipe-scroll]");
             if (scroller) scroller.scrollTop = wipe.scrollTop;
           }}
           onAnimationEnd={(event) => { if (event.target === event.currentTarget) setWipe((current) => (current?.id === wipe.id ? null : current)); }}
         >
-          {layer(wipe.from, false)}
+          {still.current?.id === wipe.id ? null : layer(wipe.from, false)}
         </div>
       )}
     </div>

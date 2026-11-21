@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { builtInBrowserEnabled, llmThreadTitlesEnabled, parseSkillReviewSteps, phoneAppEnabled, roomMemoryCaptureEnabled, shareLearnedSkillsMode, showToolCallsEnabled, skillAuthoringEnabled, skillReviewEnabled, skillReviewSteps, skillReviewUnavailableEngines } from "./feature-flags";
+import { builtInBrowserEnabled, llmThreadTitlesEnabled, parseSkillReviewSteps, phoneAppEnabled, phoneAppPrompted, roomMemoryCaptureEnabled, shareLearnedSkillsMode, showToolCallsEnabled, skillAuthoringEnabled, skillReviewEnabled, skillReviewSteps, skillReviewUnavailableEngines } from "./feature-flags";
 
 describe("experimental feature flags", () => {
   it("keeps skill authoring on by default, before and after the config arrives", () => {
@@ -44,11 +44,15 @@ describe("experimental feature flags", () => {
     for (const bad of ["", "2", "101", "4.5", "-5", "ten"]) expect(parseSkillReviewSteps(bad)).toBeNull();
   });
 
-  it("hides the phone app until a build switches it on", () => {
+  it("shows and prompts the phone app in a plain build, since both phone apps are out, and hides it only when a build asks", () => {
     vi.stubEnv("VITE_DUSK_PHONE_APP", "");
-    expect(phoneAppEnabled()).toBe(false);
+    expect(phoneAppEnabled()).toBe(true);
+    expect(phoneAppPrompted()).toBe(true);
     vi.stubEnv("VITE_DUSK_PHONE_APP", "1");
     expect(phoneAppEnabled()).toBe(true);
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
+    expect(phoneAppEnabled()).toBe(false);
+    expect(phoneAppPrompted()).toBe(false);
     vi.unstubAllEnvs();
   });
 

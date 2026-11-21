@@ -61,6 +61,7 @@ function inventoryRunner(initial: ContainerFixture[]) {
         stderr: "",
       };
     }
+    if (command[0] === "stop" || command[0] === "kill") return { stdout: `${command.at(-1)}\n`, stderr: "" };
     if (command[0] === "rm") {
       if (removeFailure) throw removeFailure;
       const ref = command[2];
