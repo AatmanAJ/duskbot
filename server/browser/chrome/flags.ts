@@ -116,7 +116,9 @@ export function chromeArgs(input: ChromeFlagsInput): string[] {
   if (input.host !== "desktop") args.push("--disk-cache-size=52428800");
   if (input.host === "container") args.push("--disable-dev-shm-usage");
   if (input.sandbox === false) args.push("--no-sandbox");
-  if (input.startUrl !== null) args.push(input.startUrl ?? "about:blank");
+  // headless Chrome ignores the profile's restore_on_startup (Google Chrome 157): without the flag a restart reopens no tabs
+  // and drops the session cookies of every sign-in
+  args.push(input.startUrl === null ? "--restore-last-session" : input.startUrl ?? "about:blank");
   return args;
 }
 

@@ -34,7 +34,10 @@ export function personTimeZone(told: string | undefined): string {
   return told || hostTimeZone();
 }
 
-export function turnClockLine(at: number, timeZone: string): string {
+export const MID_CHAT_NOTE = " Mid-conversation: do not greet by time of day.";
+
+/** `greeting` false: mid-conversation, so the line names no part of the day a model would answer with "good afternoon". */
+export function turnClockLine(at: number, timeZone: string, greeting = true): string {
   let read: ReturnType<typeof parts>;
   try {
     read = parts(at, timeZone);
@@ -45,7 +48,8 @@ export function turnClockLine(at: number, timeZone: string): string {
   // longOffset spells UTC as a bare "GMT", and some ICU builds write the minus sign as U+2212.
   const offset = part("timeZoneName").replace(/^GMT/, "").replace("\u2212", "-") || "+00:00";
   const plain = plainTimeZone(read.timeZone);
-  return `${TURN_CLOCK_LEAD}${part("weekday")} ${partOfDay(Number(part("hour")))}, ${part("year")}-${part("month")}-${part("day")} ${part("hour")}:${part("minute")} ${read.timeZone} (${plain === read.timeZone ? "" : `${plain}, `}UTC${offset}).`;
+  const day = greeting ? `${part("weekday")} ${partOfDay(Number(part("hour")))}` : part("weekday");
+  return `${TURN_CLOCK_LEAD}${day}, ${part("year")}-${part("month")}-${part("day")} ${part("hour")}:${part("minute")} ${read.timeZone} (${plain === read.timeZone ? "" : `${plain}, `}UTC${offset}).${greeting ? "" : MID_CHAT_NOTE}`;
 }
 
 /** Not for an empty text or a slash command: a prefix would turn an engine's own command into prose. */

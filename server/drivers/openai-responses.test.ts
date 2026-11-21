@@ -430,7 +430,7 @@ describe("what Responses can answer", () => {
     }));
     const { end, events: seen } = await f.turn();
     expect(end).toMatchObject({ ok: false });
-    expect(failureOf(seen)).toContain("provider did not finish the response (length)");
+    expect(failureOf(seen)).toContain("finish_reason: length");
   });
 
   it("refuses a tool call cut off by an incomplete response without running it", async () => {
@@ -439,7 +439,7 @@ describe("what Responses can answer", () => {
     }));
     const { end, events: seen } = await f.turn();
     expect(end).toMatchObject({ ok: false });
-    expect(failureOf(seen)).toContain("truncated");
+    expect(failureOf(seen)).toContain("broken tool call");
     expect(seen.some((event) => event.type === "item.started")).toBe(false);
   });
 
@@ -518,7 +518,7 @@ describe("what Responses can answer", () => {
     const f = await fixture(onResponses((response) => events(response, [created, textDelta("Part")])));
     const { end, events: seen } = await f.turn();
     expect(end).toMatchObject({ ok: false });
-    expect(failureOf(seen)).toContain("Stream ended before completion");
+    expect(failureOf(seen)).toContain("stream closed before it finished");
   });
 
   it("reads frames far larger than a chat chunk", async () => {

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FrameTree } from "./frames.ts";
-import { classifyChallenge, settleNote, settlePage, type PageProbe, type SettleTarget } from "./settle.ts";
+import { checkboxVendor, classifyChallenge, settleNote, settlePage, type PageProbe, type SettleTarget } from "./settle.ts";
 
 const page = (over: Partial<PageProbe> = {}): PageProbe => ({
   title: "Shop", text: "Welcome to the shop", textLength: 2_500, nodes: 120, controls: 14, busy: false, scripts: [], iframes: [], selectors: [], ...over,
@@ -12,7 +12,10 @@ describe("bot-check interstitials", () => {
     ["an ordinary page", {}, [], null],
     ["an ordinary page that loads DataDome's script", { scripts: ["https://js.datadome.co/tags.js"] }, [], null],
     ["Cloudflare's waiting room", { title: "Just a moment...", text: "Checking if the site connection is secure", textLength: 80, controls: 0 }, [], { vendor: "Cloudflare", state: "checking" }],
-    ["Cloudflare's challenge script", { textLength: 100, scripts: ["https://shop.example/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1"] }, [], { vendor: "Cloudflare", state: "checking" }],
+    ["Cloudflare's challenge script on an empty page", { textLength: 100, controls: 0, scripts: ["https://shop.example/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1"] }, [], { vendor: "Cloudflare", state: "checking" }],
+    // x.com and many others load the script on every page: a short page with things to act on is no check
+    ["a short ordinary page that loads Cloudflare's script", { title: "Messages / X", text: "Messages\nNew message", textLength: 900, controls: 40,
+      scripts: ["https://x.com/cdn-cgi/challenge-platform/scripts/jsd/main.js"] }, [], null],
     ["Cloudflare's block page", { title: "Attention Required! | Cloudflare", text: "Sorry, you have been blocked" }, [], { vendor: "Cloudflare", state: "blocked" }],
     ["a DataDome captcha", { textLength: 10, iframes: ["https://geo.captcha-delivery.com/captcha/?initialCid=x&t=fe"] }, [], { vendor: "DataDome", state: "needs-user" }],
     ["a DataDome block", { textLength: 10 }, ["https://geo.captcha-delivery.com/captcha/?initialCid=x&t=bv"], { vendor: "DataDome", state: "blocked" }],
@@ -81,7 +84,28 @@ describe("settling a page before it is read", () => {
     const check = page({ title: "Just a moment...", textLength: 60, controls: 0 });
     const report = await settle(fakePage([check, check, check, "between", page()]));
     expect(report.challenge).toEqual({ vendor: "Cloudflare", state: "checking", cleared: true, waitedMs: 4_000 });
-    expect(settleNote(report)).toBe("The site ran a Cloudflare bot check first; it cleared by itself after 4 s.");
+    expect(settleNote(report)).toBe("Bot check: cleared (Cloudflare). The site ran a Cloudflare bot check first; it cleared by itself after 4 s.");
+  });
+
+  it("reads a normal page that loads Cloudflare's script at once, every time", async () => {
+    const dms = page({ title: "Messages / X", textLength: 900, controls: 40, scripts: ["https://x.com/cdn-cgi/challenge-platform/scripts/jsd/main.js"] });
+    for (let read = 0; read < 3; read++) {
+      const target = fakePage([dms]);
+      expect(await settle(target)).toEqual({});
+      expect(target.reads).toBe(1);
+    }
+  });
+
+  it("waits only briefly on a site whose check already cleared in this browser", async () => {
+    const check = page({ title: "Just a moment...", textLength: 60, controls: 0, host: "shop.example" });
+    const cleared = new Set<string>();
+    const first = settlePage(fakePage([check, check, page({ host: "shop.example" })]), { deadline: 100_000, cleared });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect((await first).challenge).toMatchObject({ cleared: true });
+    expect([...cleared]).toEqual(["shop.example"]);
+    const again = settlePage(fakePage([check]), { deadline: 100_000, cleared });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect((await again).challenge).toMatchObject({ cleared: false, waitedMs: 3_000 });
   });
 
   it("gives up after 15 s, and calls a Turnstile still showing then a check for a person", async () => {
@@ -93,6 +117,50 @@ describe("settling a page before it is read", () => {
     expect(turnstile.challenge).toMatchObject({ state: "needs-user", cleared: false });
     expect(settleNote(turnstile)).toMatch(/still shows a Cloudflare bot check after 15 s\. Never click it/);
     expect(settleNote(turnstile)).toMatch(/waits it out, reloads once and tries the person's own connection before anyone is asked/);
+  });
+
+  it("starts every read that met a check with its status and vendor", async () => {
+    const check = page({ title: "Just a moment...", textLength: 60, controls: 0 });
+    expect(settleNote(await settle(fakePage([check, page()])))).toMatch(/^Bot check: cleared \(Cloudflare\)\. /);
+    expect(settleNote(await settle(fakePage([check])))).toMatch(/^Bot check: checking \(Cloudflare\)\. The site still shows/);
+    expect(settleNote(await settle(fakePage([page({ title: "Attention Required! | Cloudflare", text: "Sorry, you have been blocked" })])))).toMatch(/^Bot check: blocked \(Cloudflare\)\. The site still shows a bot block/);
+    expect(settleNote(await settle(fakePage([page({ selectors: ["#px-captcha"] })])))).toMatch(/^Bot check: needs you \(PerimeterX\)\. .*call request_sign_in/);
+    expect(settleNote(await settle(fakePage([page({ title: "403 Forbidden", text: "Forbidden", textLength: 9, status: 403 })])))).toMatch(/^Bot check: blocked\. /);
+  });
+
+  it("gives a checkbox on the page 3 s to tick itself, then offers one click on it or hands it to the person", async () => {
+    const turnstile = ["https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/if/ov2/av0/rcv/abc/0x4AAA/auto/fbE/new/normal"];
+    const form = page({ title: "Sign up", textLength: 400, controls: 6 });
+    const ticks = fakePage([form, form, { ...form, answered: true }], turnstile);
+    const ticked = await settle(ticks);
+    expect(ticked.checkbox).toEqual({ vendor: "Cloudflare Turnstile", answered: true });
+    expect(settleNote(ticked)).toBe("Bot check: cleared (Cloudflare Turnstile). The page's checkbox ticked itself.");
+    const waits = fakePage([form], turnstile);
+    const waiting = await settle(waits);
+    expect(waiting.checkbox).toEqual({ vendor: "Cloudflare Turnstile", answered: false });
+    expect(waits.reads).toBe(7);
+    expect(settleNote(waiting)).toMatch(/^Bot check: needs you \(Cloudflare Turnstile\)\. The page has a "verify you are human" checkbox, which matters only to submit its form\. If you must submit it, call request_sign_in/);
+    const offered = settleNote(waiting, { x: 52.4, y: 301.6 });
+    expect(offered).toMatch(/^Bot check: needs one click \(Cloudflare Turnstile\)\. /);
+    expect(offered).toContain("checkbox is at 52,302. You may click that point once with agent_browser_click (x and y)");
+    expect(offered).toContain("Never click it a second time");
+  });
+
+  it("offers the one click on a check page too, and never on a block", async () => {
+    const check = page({ title: "Just a moment...", textLength: 60, controls: 0 });
+    const report = await settle(fakePage([check], ["https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/if/ov2"]));
+    expect(settleNote(report, { x: 40, y: 80 })).toMatch(/^Bot check: needs one click \(Cloudflare\)\. The site still shows a Cloudflare bot check after 15 s\. The checkbox is at 40,80\./);
+    const blocked = await settle(fakePage([page({ title: "Attention Required! | Cloudflare", text: "Sorry, you have been blocked" })]));
+    expect(settleNote(blocked, { x: 40, y: 80 })).not.toContain("checkbox is at");
+  });
+
+  it("knows a widget's checkbox frame from its other frames", () => {
+    expect(checkboxVendor("https://www.google.com/recaptcha/api2/anchor?ar=1&k=abc&size=normal")).toBe("reCAPTCHA");
+    expect(checkboxVendor("https://www.google.com/recaptcha/api2/bframe?k=abc")).toBeNull();
+    expect(checkboxVendor("https://www.google.com/recaptcha/api2/anchor?k=abc&size=invisible")).toBeNull();
+    expect(checkboxVendor("https://newassets.hcaptcha.com/captcha/v1/abc/static/hcaptcha.html#frame=checkbox&id=1")).toBe("hCaptcha");
+    expect(checkboxVendor("https://newassets.hcaptcha.com/captcha/v1/abc/static/hcaptcha.html#frame=challenge&id=1")).toBeNull();
+    expect(checkboxVendor("https://example.com/")).toBeNull();
   });
 
   it("does not wait on a check only a person or nobody can clear", async () => {

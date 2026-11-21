@@ -1,6 +1,7 @@
 /* grok bot motion tokens and keyframes, values read from its bundled css */
 :root {
   --dusk-inline-sign: 1;
+  --motion-scale: 1;
   --dusk-duration-instant: 50ms;
   --dusk-duration-fast: 100ms;
   --dusk-duration-normal: 150ms;
@@ -52,6 +53,11 @@
 @keyframes dusk-typing-dot { 0%, 60%, 100% { opacity: 0.35; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
 @keyframes dusk-breathe { 0%, 100% { opacity: 0.85; transform: scale(1); } 50% { opacity: 1; transform: scale(1.04); } }
 @keyframes dusk-zzz { 0% { opacity: 0; transform: translateY(0) scale(0.6); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateY(-12px) scale(1); } }
+/* the working mascot: one pixel (1/16 of its box) of bob and glance, a quick blink; each on its own layer */
+@keyframes working-mascot-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6.25%); } }
+@keyframes working-mascot-glance { 0%, 28% { transform: translateX(0); } 32%, 50% { transform: translateX(-6.25%); } 54%, 66% { transform: translateX(0); } 70%, 88% { transform: translateX(6.25%); } 92%, 100% { transform: translateX(0); } }
+@keyframes working-mascot-blink { 0%, 90%, 100% { transform: scaleY(1); } 94% { transform: scaleY(0.15); } }
+@keyframes working-mascot-blink-still { 0%, 90%, 100% { opacity: 1; } 94% { opacity: 0.3; } }
 
 .dusk-popup-in { animation: dusk-popup-in var(--dusk-duration-fast) var(--dusk-ease-sharp); }
 .dusk-dialog-in { animation: dusk-dialog-in var(--dusk-duration-slow) var(--dusk-ease-sharp) forwards; }
@@ -74,6 +80,45 @@
 .dusk-zzz { animation: dusk-zzz 2.4s ease-out infinite; }
 .dusk-zzz:nth-child(2) { animation-delay: -800ms; }
 .dusk-zzz:nth-child(3) { animation-delay: -1600ms; }
+.working-mascot-bob { animation: working-mascot-bob 1.4s ease-in-out infinite; }
+.working-mascot-glance { animation: working-mascot-glance 5.2s ease-in-out infinite; }
+.working-mascot-blink { animation: working-mascot-blink 3.8s ease-in-out infinite; }
+/* the chat's working mascot by what the bot is doing (src/lib/working-mood.ts): whole sprite pixels (6.25%) on step-end
+   keyframes so it stays crisp; each mood is one row per layer here, so its timing can be retuned in place */
+@keyframes mood-lean { 0%, 100% { transform: translateX(0); } 40% { transform: translateX(-6.25%); } 60% { transform: translateX(0); } }
+@keyframes mood-blink-slow { 0%, 84%, 100% { transform: scaleY(1); } 88%, 94% { transform: scaleY(0.15); } }
+@keyframes mood-bounce { 0%, 100% { transform: translateY(0); } 25% { transform: translateY(-6.25%); } 50% { transform: translateY(0); } }
+@keyframes mood-scan { 0%, 100% { transform: translateX(-6.25%); } 30% { transform: translateX(0); } 60% { transform: translateX(6.25%); } }
+@keyframes mood-nod { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(6.25%); } }
+@keyframes mood-tap { 0%, 100% { transform: translateY(0); } 8% { transform: translateY(-6.25%); } 16% { transform: translateY(0); } 26% { transform: translateY(-6.25%); } 34% { transform: translateY(0); } }
+@keyframes mood-flinch { 0% { transform: translate(-6.25%, 6.25%); } 45% { transform: translate(6.25%, 0); } 70% { transform: translate(-6.25%, 0); } 100% { transform: translate(0, 0); } }
+@keyframes mood-hop { 0% { transform: translateY(0); } 20% { transform: translateY(-6.25%); } 40% { transform: translateY(-12.5%); } 65% { transform: translateY(-6.25%); } 85%, 100% { transform: translateY(0); } }
+
+/* a mood's own faces already look about: only reading's eyes also scan along a line */
+[data-mood] .working-mascot-glance { animation: none; }
+[data-mood="reading"] .working-mascot-glance { animation: mood-scan 2.8s step-end infinite; }
+[data-face^="happy"] .working-mascot-blink { animation: none; }
+[data-mood="thinking"] .working-mascot-bob { animation: mood-lean 3.2s step-end infinite; }
+[data-mood="thinking"] .working-mascot-blink { animation: mood-blink-slow 4.2s ease-in-out infinite; }
+[data-mood="writing"] .working-mascot-bob { animation: mood-bounce 0.48s step-end infinite; }
+[data-mood="replying"] .working-mascot-bob { animation: mood-hop 420ms step-end, mood-bounce 0.48s step-end 2000ms infinite; }
+[data-mood="reading"] .working-mascot-bob { animation: none; }
+[data-mood="running"] .working-mascot-bob { animation: mood-nod 0.8s step-end infinite; }
+[data-mood="waiting"] .working-mascot-bob { animation: mood-tap 1.8s step-end infinite; }
+[data-mood="error"] .working-mascot-bob { animation: mood-flinch 320ms step-end, mood-lean 3.2s step-end 320ms infinite; }
+[data-mood="done"] .working-mascot-bob { animation: mood-hop 300ms step-end forwards; }
+[data-mood="done"] .working-mascot-blink { animation: none; }
+:root[data-reduced-motion="true"] :is(.working-mascot-bob, .working-mascot-glance) { animation: none; }
+:root[data-reduced-motion="true"] .working-mascot-blink { animation-name: working-mascot-blink-still; }
+
+.live-card { padding-top: 0; transition: padding-top 280ms var(--dusk-ease-out); }
+.live-card[data-peeking] { padding-top: 24px; }
+.live-card-peek { transition: transform 280ms var(--dusk-ease-out), opacity 160ms ease; }
+.live-card-peek[data-ducked] { transform: translateY(60%); opacity: 0; }
+.live-card-fold { display: grid; width: 0; min-width: 100%; grid-template-rows: 1fr; transition: grid-template-rows 280ms var(--dusk-ease-out); }
+.live-card-fold[data-folded] { grid-template-rows: 0fr; }
+.live-card-fold > * { min-height: 0; overflow: hidden; }
+:root[data-reduced-motion="true"] :is(.live-card, .live-card-peek, .live-card-fold) { transition: none; }
 
 /* bencho's press: a button gives to 96% on the out curve and lets go with a hair of overshoot; colours keep Grok's 120ms */
 .dusk-press {
@@ -109,4 +154,8 @@
   .dusk-chip-bump, .dusk-typing-dot, .dusk-breathe, .dusk-zzz {
     animation: none;
   }
+  [data-working-mascot] :is(.working-mascot-bob, .working-mascot-glance) { animation: none; }
+  [data-working-mascot] .working-mascot-blink { animation: working-mascot-blink-still 3.8s ease-in-out infinite; }
+  [data-mood="done"] .working-mascot-blink { animation: none; }
+  .live-card, .live-card-peek, .live-card-fold { transition: none; }
 }

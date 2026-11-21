@@ -2,6 +2,7 @@ import { useEffect, useRef, type MouseEvent, type MutableRefObject, type ReactNo
 import { X } from "@/icons";
 import { EASE_OUT, GLIDE, m } from "../ui/motion";
 import { withBase } from "../lib/router";
+import { useAdminRole } from "./api";
 
 /** which card a url param opens: the money card from revenue, or the person card from anywhere else */
 export type CardParam = "customer" | "person";
@@ -29,11 +30,13 @@ export function closeCard(param: CardParam) {
 
 /** a row that opens a card here; a new tab or window still gets the shareable url */
 export function CardLink({ param, id, className, children, title }: { param: CardParam; id: string; className?: string; children: ReactNode; title?: string }) {
+  const role = useAdminRole();
   const go = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     openCard(param, id);
   };
+  if (role !== "owner") return <span className={className} title={title}>{children}</span>;
   return <a href={withBase(cardHref(param, id))} onClick={go} className={className} title={title}>{children}</a>;
 }
 /** a person anywhere in the admin: opens their card over the page you're on */

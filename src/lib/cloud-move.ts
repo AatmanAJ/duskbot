@@ -36,6 +36,11 @@ export function runsOnStatus(connected: boolean, screen: "screen" | "loading" | 
  */
 export type CloudMoveStage = "buy" | "resume" | "preparing" | "ready" | "moving" | "moved" | "coming-back" | "manage" | "open" | "elsewhere";
 
+/** The account has a dusk cloud: never an offer to buy one, only the way to it. */
+export function hasDuskCloud(stage: CloudMoveStage | null): boolean {
+  return stage !== null && stage !== "buy" && stage !== "resume" && stage !== "elsewhere";
+}
+
 export function cloudMoveStage(view: CloudDesktopView | null, keep: KeepHereState | null): CloudMoveStage {
   if (!view) return "elsewhere";
   switch (view.step) {
