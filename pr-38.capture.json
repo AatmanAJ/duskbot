@@ -1,0 +1,18 @@
+{
+  "about": "A phone-sized window (390 x 844) with a reply that holds a five-column table. Before is the base of the pull request, after is its branch.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 390,
+  "height": 844,
+  "scale": 2,
+  "script": [
+    { "text": "Here is how the three plans compare.\n\n| Plan | Monthly | Best for | Support | Storage |\n|---|---|---|---|---|\n| Starter | $12 | Solo work | Email | 50 GB |\n| Team | $39 | Up to ten | Chat | 500 GB |\n| Business | $99 | Whole firm | Phone | 2 TB |\n\nTeam is the best fit for eight people." }
+  ],
+  "steps": [
+    { "type": { "name": "Message Pepper", "text": "Compare the three plans for a team of eight" } },
+    { "press": "Enter" },
+    { "settle": 60 },
+    { "waitMs": 800 },
+    { "shot": true }
+  ]
+}
