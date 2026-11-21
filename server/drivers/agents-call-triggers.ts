@@ -66,22 +66,24 @@ function normalizeScheduleInput(args: Json): NormalizedSchedule {
   const fields = type === "once"
     ? ["type", "at", "timeZone"]
     : type === "weekly" || type === "daily"
-      ? ["type", "time", "weekdays"]
+      ? ["type", "time", "weekdays", "timeZone", "exact"]
       : type === "interval"
         ? ["type", "every_minutes", "everyMinutes", "starts_at", "anchorAt", "weekdays", "every_day", "window_start", "window_end", "window", "all_day", "ends_at", "endsAt", "never_ends"]
         : type === "cron"
-          ? ["type", "expression", "timeZone"]
+          ? ["type", "expression", "timeZone", "exact"]
           : type === "limit_reset"
             ? ["type", "engine", "repeat"]
             : null;
   // Providers may send unused optional fields as null; any other unknown field refuses the call.
   const unsupported = fields && Object.keys(raw).find((key) => raw[key] != null && !fields.includes(key));
   if (unsupported) {
-    return { error: `Unsupported ${type} schedule field "${unsupported}". Weekly and daily times use the computer's timezone from trigger_info. ${SUPPORTED_SCHEDULES}` };
+    return { error: `Unsupported ${type} schedule field "${unsupported}". Weekly and daily times use the computer's timezone from trigger_info unless timeZone names another. ${SUPPORTED_SCHEDULES}` };
   }
+  if (raw.exact != null && typeof raw.exact !== "boolean") return { error: '"exact" must be true or false.' };
+  const exact = raw.exact === true ? { exact: true } : {};
   if (type === "cron") {
     try {
-      return { schedule: { ...normalizeCronSchedule({ type, expression: raw.expression, timeZone: raw.timeZone }) } };
+      return { schedule: { ...normalizeCronSchedule({ type, expression: raw.expression, timeZone: raw.timeZone }), ...exact } };
     } catch (error) {
       return { error: `${error instanceof Error ? error.message : "Invalid cron schedule"}. ${SUPPORTED_SCHEDULES}` };
     }
@@ -116,7 +118,9 @@ function normalizeScheduleInput(args: Json): NormalizedSchedule {
       if (!full) return { error: `Unsupported weekday "${String(day)}". Use full names: ${WEEKDAYS.join(", ")}.` };
       if (!normalized.includes(full)) normalized.push(full);
     }
-    return { schedule: { type: "weekly", time, weekdays: normalized } };
+    if (raw.timeZone == null) return { schedule: { type: "weekly", time, weekdays: normalized, ...exact } };
+    if (typeof raw.timeZone !== "string" || !raw.timeZone.trim()) return { error: '"timeZone" must be an IANA timezone such as Europe/London.' };
+    return { schedule: { type: "weekly", time, weekdays: normalized, timeZone: raw.timeZone.trim(), ...exact } };
   }
   if (type === "interval") {
     for (const flag of ["every_day", "all_day", "never_ends"]) {

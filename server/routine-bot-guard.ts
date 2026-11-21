@@ -2,7 +2,7 @@
 // (no stampede of every bot at 9:00), work that reads as the person's job runs on weekdays, a watch for something that
 // happens once ends 30 days on at the latest, and a second routine with the same instructions or check is refused with
 // the one already there. The person's own words win: "every day", "sharp", "every time" keep what the bot asked for,
-// and a reminder keeps the time it was asked for.
+// and a reminder or a time the person named keeps the time it was asked for.
 import { createHash } from "node:crypto";
 
 import type { RoutineRequestDefinition } from "../shared/routine-request.ts";
@@ -70,17 +70,18 @@ export function jitter<T extends { type: string; time?: string; expression?: str
 }
 
 /** The definition a bot's create proposes, with the defaults above; anything the person pinned stays as asked. */
-export function guardBotDefinition(definition: RoutineRequestDefinition, now: number): RoutineRequestDefinition {
+export function guardBotDefinition(definition: RoutineRequestDefinition, now: number, namedTime = false): RoutineRequestDefinition {
   const text = words(definition);
   const urgent = timeCritical(text);
   const schedule = definition.schedule;
   const weekdaysOnly = workOnly(text);
+  const moved = <T extends { type: string; time?: string; expression?: string }>(one: T) => namedTime ? one : jitter(one, definition.name, definition.instructions);
   if (schedule.type === "daily") {
     const weekdays = weekdaysOnly && allWeek(schedule.weekdays) ? WEEKDAYS : schedule.weekdays;
-    return { ...definition, schedule: { ...jitter(schedule, definition.name, definition.instructions), weekdays: [...weekdays] } };
+    return { ...definition, schedule: { ...moved(schedule), weekdays: [...weekdays] } };
   }
   if (schedule.type === "cron") {
-    const jittered = jitter(schedule, definition.name, definition.instructions);
+    const jittered = moved(schedule);
     return { ...definition, schedule: weekdaysOnly ? { ...jittered, expression: weekdaysCron(jittered.expression) } : jittered };
   }
   if (schedule.type === "interval") {
@@ -100,10 +101,10 @@ const whenOf = (schedule: { type: string; time?: string; weekdays?: readonly num
 
 /** A bot's new routine with the defaults, except where the bot already has one with these instructions at the time it
  * asked for: then it stays as asked, so the same request is still found to be a repeat. */
-export function guardAgainst(definition: RoutineRequestDefinition, existing: ReadonlyArray<{ prompt: string; schedule: { type: string } }>, now: number): RoutineRequestDefinition {
+export function guardAgainst(definition: RoutineRequestDefinition, existing: ReadonlyArray<{ prompt: string; schedule: { type: string } }>, now: number, namedTime = false): RoutineRequestDefinition {
   const asked = whenOf(definition.schedule);
   const twin = existing.some((routine) => routine.prompt.trim() === definition.instructions.trim() && whenOf(routine.schedule) === asked);
-  return twin ? definition : guardBotDefinition(definition, now);
+  return twin ? definition : guardBotDefinition(definition, now, namedTime);
 }
 
 const sameProbe = (a: RoutineProbe | undefined, b: RoutineProbe | undefined) =>

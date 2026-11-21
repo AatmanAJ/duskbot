@@ -9,7 +9,7 @@ import { UNDO_STALE, type DirectApply, type DirectApplyCheck } from "./direct-ap
 import { redactSecretsInText } from "./redact.ts";
 import { parseJson, schemaIssue, type JsonObject, type JsonValue } from "./schema.ts";
 import {
-  ENGINE_ID, intervalWindowMinutes, jsonObjectSchema, MAX_DATE_MS, ROUTINE_ID, routineProposalSchema, routineRequestCardDataSchema, storedScheduleSchema,
+  cronRule, ENGINE_ID, intervalWindowMinutes, namedTime, jsonObjectSchema, MAX_DATE_MS, ROUTINE_ID, routineProposalSchema, routineRequestCardDataSchema, storedScheduleSchema,
   storedSnapshotSchema, storedUndoSchema, TIME, type ParsedRoutineProposal, type RoutineToolChangesInput, type RoutineToolDefinitionInput,
   type RoutineToolScheduleInput,
 } from "./routine-request-schemas.ts";
@@ -275,9 +275,9 @@ function rfc3339Instant(value: string, offsetMessage: string): number {
 }
 
 function normalizeSchedule(schedule: RoutineToolScheduleInput, now: number, ownEngine?: string): RoutineRequestSchedule {
-  if (schedule.type === "cron") {
+  if (schedule.type === "cron" || (schedule.type === "weekly" && schedule.timeZone !== undefined)) {
     try {
-      return normalizeCronSchedule(schedule, now);
+      return normalizeCronSchedule(cronRule(schedule), now);
     } catch (error) {
       throw new RoutineRequestError(error instanceof Error ? error.message : "Invalid cron schedule");
     }
@@ -418,7 +418,7 @@ function normalizedOperation(
   if (validated.action === "create") {
     const operation: Extract<RoutineRequestOperation, { action: "create" }> = {
       action: "create",
-      routine: guardAgainst(normalizeDefinition(validated.routine, now, ownEngine), manager.listRoutines().filter((one) => one.botId === (validated.forBot?.botId ?? botId)), now),
+      routine: guardAgainst(normalizeDefinition(validated.routine, now, ownEngine), manager.listRoutines().filter((one) => one.botId === (validated.forBot?.botId ?? botId)), now, namedTime(validated.routine.schedule)),
     };
     if (validated.forBot) operation.forBot = validated.forBot; const twin = duplicateOf(manager.listRoutines(), validated.forBot?.botId ?? botId, operation.routine); if (twin) throw new RoutineRequestError(duplicateRefusal(twin), 409);
     return operation;
@@ -433,7 +433,7 @@ function normalizedOperation(
       action: "update",
       routineId: id,
       expectedUpdatedAt: current.updatedAt,
-      changes: withJitter(normalizeChanges(validated.changes, now, ownEngine), current),
+      changes: namedTime(validated.changes.schedule) ? normalizeChanges(validated.changes, now, ownEngine) : withJitter(normalizeChanges(validated.changes, now, ownEngine), current),
       ...(validated.forBot ? { forBot: validated.forBot } : {}),
     };
   }

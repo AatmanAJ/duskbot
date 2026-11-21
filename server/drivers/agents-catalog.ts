@@ -51,7 +51,11 @@ const ROUTINE_SCHEDULE_SCHEMA = {
     timeZone: {
       type: "string",
       maxLength: 128,
-      description: "Required for cron: the person's IANA timezone, such as Asia/Kolkata or UTC; never a numeric offset or an abbreviation.",
+      description: "Required for cron: the person's IANA timezone, such as Asia/Kolkata or UTC; never a numeric offset or an abbreviation. For weekly/daily: a zone the person named (\"10:00 London\" = Europe/London).",
+    },
+    exact: {
+      type: "boolean",
+      description: "true when the person named the time: kept to the minute. Omit when you picked it; it may move a few minutes.",
     },
     at: {
       type: "string",
@@ -60,7 +64,7 @@ const ROUTINE_SCHEDULE_SCHEMA = {
     },
     time: {
       type: "string",
-      description: "For type weekly or daily: local computer time in 24-hour HH:MM format, for example 09:00.",
+      description: "For type weekly or daily: 24-hour HH:MM, for example 09:00, in timeZone when given, else the computer's.",
     },
     weekdays: {
       type: "array",
