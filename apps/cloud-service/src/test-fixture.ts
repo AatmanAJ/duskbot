@@ -47,7 +47,7 @@ export async function homeFixture(options: { costProfile?: ProviderCostProfile; 
   const power: HomePower = { idle: false, busy: ["recent-activity"], lastActivityAt: null, nextDueAt: null, wokeAt: at };
   const update: HomeUpdateReport = { version: null, selfTest: null, runs: [] };
   const home = { update: vi.fn(async () => ({ ...update, runs: [...update.runs] })), healthy: vi.fn(async () => true), pair: vi.fn(async () => ({ code: "ABCD-EFGH-JKLM", expiresAt: at + 300_000 })),
-    power: vi.fn(async () => ({ ...power })), entitle: vi.fn(async (_origin: string, _secret: string, _token: string) => ({ expiresAt: at + DAY_MS })), sleep: vi.fn(async () => ({ ok: power.idle, nextDueAt: power.nextDueAt })), plan: vi.fn(async () => {}) };
+    power: vi.fn(async () => ({ ...power })), entitle: vi.fn(async (_origin: string, _secret: string, _token: string, _grant?: string | null) => ({ expiresAt: at + DAY_MS })), sleep: vi.fn(async () => ({ ok: power.idle, nextDueAt: power.nextDueAt })), plan: vi.fn(async () => {}) };
   const subscriptions: StoredSubscription[] = [];
   const notices: Array<{ cloudId: string; kind: string; at: number | null; link?: string }> = [];
   const alerts: string[] = [];
