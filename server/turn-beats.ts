@@ -110,9 +110,14 @@ interface Watch {
  * reply, so their ack is written as the turn starts rather than after the first tool. */
 const SETUP_ASK = /\b(?:remind|reminder|notify|alert|ping me|tell me (?:when|if|as soon)|let me know|keep an eye|watch|monitor|track|every (?:day|morning|evening|night|week|weekday|month|hour|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d)|each (?:day|morning|week|monday|tuesday|wednesday|thursday|friday)|daily|weekly|cancel|stop (?:the|my)|turn off|make it|change it|instead|skip|move it|set up|set an?|add (?:a|an|it)|wait,|actually,)/i;
 
+/** Asks to make something (an image, a chart, a deck) or go through what exists: the model often thinks for a long while
+ * before its first tool. */
+const MAKE_ASK = /\b(?:make (?:me |us )?(?:an?|the|my|some|\d+)\b|draw|sketch|illustrate|audit|go through)|\b(?:an?|the|my) (?:image|picture|thumbnail|logo|poster|banner|chart|graph|deck|slides?|spreadsheet|pdf)\b/i;
+const SETUP_ASK_PT_ES = /\b(?:tod[oa]s (?:os|as|los|las) (?:dias|días|semanas|manh(?:ã|a)s|mañanas|noites|noches|segundas|lunes)|tod[ao] (?:dia|día|semana|segunda|lunes)|cada (?:dia|día|semana|manh(?:ã|a)|mañana|hora)|lembr[ae]|recu(?:é|e)rd|avis[ae]|av(?:í|i)same|me avise|cancel[ae])/i;
+
 /** Whether a message asks for work that is worth an ack before any tool has run. */
 export function looksLikeWork(text: string, attachments: number): boolean {
-  return classifyTurn({ text, attachments, priorTurnUsedTools: false }) === "complex" || SETUP_ASK.test(text);
+  return classifyTurn({ text, attachments, priorTurnUsedTools: false }) === "complex" || SETUP_ASK.test(text) || MAKE_ASK.test(text) || SETUP_ASK_PT_ES.test(text);
 }
 
 function personaLines(bot: { name: string; soul?: string }): string {

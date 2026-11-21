@@ -294,7 +294,13 @@ describe("beat text", () => {
       "every monday 9am give me a summary of open brand deals", "make it 9:30 instead, and skip fridays", "wait, it's in Rust not Go", "cancel my daily standup reminder"]) {
       expect(looksLikeWork(setupAsk, 0)).toBe(true);
     }
-    for (const quick of ["what's the capital of Australia?", "thanks!", "how many days are in a leap year?"]) expect(looksLikeWork(quick, 0)).toBe(false);
+    for (const makeAsk of ["make me a thumbnail image for a video called 'I lived on ₹100 a day'", "make me a chart of revenue by product I can put in a deck",
+      "audit my automations: any duplicates or ones I don't need?", "todos os dias às 8h manda-me as 3 tarefas mais importantes do dia",
+      "recuérdame mañana a las 9 llamar al banco", "avisa-me quando o preço baixar"]) {
+      expect(looksLikeWork(makeAsk, 0)).toBe(true);
+    }
+    for (const quick of ["what's the capital of Australia?", "thanks!", "how many days are in a leap year?", "what makes a good logo?",
+      "qual é a capital da Austrália?", "make sense?"]) expect(looksLikeWork(quick, 0)).toBe(false);
   });
 
   it("is nothing for the engine when nothing was sent", () => {
