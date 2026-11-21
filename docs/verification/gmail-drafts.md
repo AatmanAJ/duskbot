@@ -1,12 +1,15 @@
 # Gmail draft creation, send approval and revision
 
 In the bot's Permissions settings, choose **Ask every time** under
-**Sending on your behalf**. Connected-app sends require consent at every
-access level, including Full access, regardless of the prompt's language.
-An Allow applies to the pending call, not later sends. **Allow a daily amount**
-instead authorizes automatic sends up to the configured cap, including at
-Full access. Reading and drafting never consume the allowance. Opaque app
-code execution needs consent because its effects cannot be counted.
+**Sending on your behalf** to hold every connected-app send on a card at every
+access level, regardless of the prompt's language. An Allow applies to the
+pending call, not later sends. **Allow a daily amount** authorizes automatic
+sends up to the configured cap, including at Full access. A Full-access bot
+with no sending rule of its own sends up to 25 actions a day on its own, except
+an email, which waits on a **Send this email?** review card (see
+[purchases.md](purchases.md)) and does not spend that allowance. Reading and
+drafting never consume the allowance. Opaque app code execution needs consent
+because its effects cannot be counted.
 
 Run the isolated server and bridge regressions:
 
@@ -26,6 +29,10 @@ Composio at a loopback stand-in. It verifies:
   refuses further sends after it is exhausted. Explicit draft-and-send
   requests follow the same policy. Sending a draft after a draft write also
   uses the configured policy.
+- At Full access with no sending rule, an email waits on its review card and
+  goes out only after Send, without spending the allowance; other sends go out
+  on their own up to 25 a day, the 26th is refused with no card, and a routine
+  that hits the cap reports it instead of waiting on anyone.
 - The draft tools create one reply draft and update its existing ID while
   retaining the Gmail thread. Repeated creation for the same thread within
   the originating request is refused, including after delegation and resuming.

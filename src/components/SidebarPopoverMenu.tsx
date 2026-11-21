@@ -11,6 +11,8 @@ import { Icon } from "./Icon";
 export interface SidebarMenuItem {
   key: string;
   label: string;
+  /** a quiet word after the label on its own line, like the account's plan */
+  labelNote?: string;
   subtitle?: string;
   note?: string;
   icon?: React.ReactNode;
@@ -29,6 +31,8 @@ export interface SidebarMenuItem {
   chevron?: boolean;
   /** a sentence that wraps instead of being cut short */
   wrap?: boolean;
+  /** the account's own row: a 32px face, the label over its subtitle */
+  large?: boolean;
   /** the row's tooltip, for what its one line leaves out */
   title?: string;
   onSelect: () => void;
@@ -141,21 +145,23 @@ function MenuRows({
             onPointerLeave={() => onRowLeave?.(item)}
             className={cn(
               "flex min-h-8 w-full items-center px-2 py-1.5 text-start text-[14px] leading-5 tracking-[0.01em] disabled:opacity-60 touch:min-h-10 focus-visible:outline-none",
+              item.large && "min-h-12",
               !grok && "rounded-[10px] focus-visible:bg-menu-hover",
               grok ? cn("gap-1.5 text-ink", GROK_ROW_FILL, item.submenu && openSubmenu === item.key && "before:bg-menu-hover")
                 : cn("gap-2.5", item.active || (item.submenu && openSubmenu === item.key && engaged) ? "bg-menu-active text-ink" : "text-ink hover:bg-menu-hover"),
+              item.large && "gap-2.5",
             )}
           >
             {item.icon && (
               <span
-                className={cn("flex shrink-0 items-center justify-center [&>svg]:size-4", grok ? "size-[18px]" : "size-4", item.wrap && "h-[18px] self-start", item.active ? "text-accent" : grok ? "text-ink/[0.66]" : "text-ink-secondary")}
+                className={cn("flex shrink-0 items-center justify-center", item.large ? "size-8" : cn("[&>svg]:size-4", grok ? "size-[18px]" : "size-4"), item.wrap && "h-[18px] self-start", item.active ? "text-accent" : grok ? "text-ink/[0.66]" : "text-ink-secondary")}
               >
                 {item.icon}
               </span>
             )}
             {item.subtitle || item.note ? (
               <span className="flex min-w-0 flex-1 flex-col">
-                <span className={item.wrap ? "break-words" : "truncate"}>{item.label}</span>
+                <span className={cn(item.wrap ? "break-words" : "truncate", item.large && "font-medium leading-[18px]")}>{item.label}{item.labelNote && <span className="font-normal text-ink-secondary"> · {item.labelNote}</span>}</span>
                 {item.subtitle && <span className="truncate text-[12px] font-normal leading-4 text-ink-secondary">{item.subtitle}</span>}
                 {item.note && <span className="text-[12px] font-normal leading-snug text-ink-tertiary">{item.note}</span>}
               </span>

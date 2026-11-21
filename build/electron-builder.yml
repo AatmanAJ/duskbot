@@ -44,6 +44,8 @@ files:
   - "!electron/resources/Dusk Bot Recorder.app/**"
   - "!**/node_modules/**"
   - package.json
+  # the phone relay hub a linked VPS runs; electron/phone-relay.mjs runs it for this computer's own phones
+  - apps/link-service/agent.mjs
 
 asar: true
 
@@ -234,6 +236,9 @@ linux:
       to: duckdb/node_modules
     - from: build/linux-dusk-browser.apparmor
       to: duskbot-browser.apparmor
+    # the icon an AppImage copies into the person's app menu (electron/appimage-menu-entry.mjs)
+    - from: build/icon.svg
+      to: icon.svg
   # the install folder is /opt/<productName>: package:linux passes -c.productName=dusk-bot, because Chromium splits the
   # setuid sandbox's path on spaces and "/opt/Dusk Bot" crashed every launch. the name people see is this one
   desktop:

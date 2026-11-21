@@ -4,6 +4,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+process.env.FAKE_CHAT_RETRY_SCALE = "0.001";
 
 import { ensureDirs, NATIVE_DIR } from "../config.ts";
 import { discardNativeLog, flushNativeLog } from "./native.ts";
@@ -56,6 +57,9 @@ describe("createOpenAIChatRuntime one-shot usage", () => {
     });
   };
   const choices = [{ message: { content: "helper result" }, finish_reason: "stop" }];
+  const completionModels = () => vi.mocked(fetch).mock.calls
+    .filter((call) => String(call[0]).endsWith("/chat/completions"))
+    .map((call) => JSON.parse(call[1]!.body as string).model);
 
   it("reports the actual helper model and known provider usage once, preserving the text result", async () => {
     const instance = await fixture({
@@ -64,7 +68,7 @@ describe("createOpenAIChatRuntime one-shot usage", () => {
     });
     const onUsage = vi.fn();
     await expect(instance.generateText!("summarize", { onUsage })).resolves.toBe("helper result");
-    expect(JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string).model).toBe("grok-3-mini");
+    expect(completionModels()[0]).toBe("grok-3-mini");
     expect(instance.models.default).toBe("grok-4.7");
     expect(onUsage.mock.calls).toEqual([[{ model: "grok-3-mini-actual", input: 120, output: 20, cachedInput: 100, costUsd: 0.004 }]]);
     await expect(instance.generateText!("plain summary")).resolves.toBe("helper result");
@@ -99,7 +103,7 @@ describe("createOpenAIChatRuntime one-shot usage", () => {
     const instance = await fixture({ choices });
     await expect(instance.generateText!("summarize", { model: "grok-4.7" })).resolves.toBe("helper result");
     await instance.generateText!("summarize");
-    expect(vi.mocked(fetch).mock.calls.map((call) => JSON.parse(call[1]!.body as string).model)).toEqual(["grok-4.7", "grok-3-mini"]);
+    expect(completionModels()).toEqual(["grok-4.7", "grok-3-mini"]);
     await instance.dispose();
   });
 
@@ -368,6 +372,7 @@ describe("createOpenAIChatRuntime tool approvals", () => {
       + 'data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}\n\n';
     const answer = 'data: {"choices":[{"index":0,"delta":{"content":"Done."}}]}\n\n'
       + 'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n';
+    let seen: RuntimeEvent[] = [];
     const run = async (replies: string[], rounds?: number, integrations?: SendTurnInput["integrations"]) => {
       const bodies: any[] = [];
       vi.stubGlobal("fetch", vi.fn(async (input: unknown, init?: RequestInit) => {
@@ -381,6 +386,7 @@ describe("createOpenAIChatRuntime tool approvals", () => {
         environment: { K: "synthetic" },
       });
       const events: RuntimeEvent[] = [];
+      seen = events;
       instance.adapter.onEvent((event) => events.push(event));
       try {
         await instance.adapter.sendTurn({
@@ -397,6 +403,23 @@ describe("createOpenAIChatRuntime tool approvals", () => {
     it("sends a failed call back once per round, then ends the turn as failed", async () => {
       expect(await run([toolCall("c1", "nope"), answer, toolCall("c2", "nope"), answer], 1))
         .toEqual({ requests: 4, corrective: 1, ok: false, stopReason: "tool_error" });
+    }, 20_000);
+
+    it("shows one reply however many rounds the failure gets: an answer a round may still replace is never streamed or posted", async () => {
+      const first = 'data: {"choices":[{"index":0,"delta":{"content":"X did not open."}}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n';
+      const last = 'data: {"choices":[{"index":0,"delta":{"content":"I could not post it: X is not connected. Connect X and I will post it."}}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n';
+      expect(await run([toolCall("c1", "nope"), first, first, last], 2)).toEqual({ requests: 4, corrective: 2, ok: false, stopReason: "tool_error" });
+      const replies = seen.flatMap((event) => event.type === "item.completed" && event.itemType === "assistant_text" ? [event.text] : []);
+      expect(replies).toEqual(["I could not post it: X is not connected. Connect X and I will post it."]);
+      expect(seen.flatMap((event) => event.type === "content.delta" && event.streamKind === "assistant_text" ? [event.delta] : []).join("")).toBe(replies[0]);
+      expect(seen.find((event) => event.type === "runtime.error")).toMatchObject({ partial: true, owned: true });
+    }, 20_000);
+
+    it("leaves the failure card for a reply that does not say what failed", async () => {
+      await run([toolCall("c1", "nope"), answer], 0);
+      const error = seen.find((event) => event.type === "runtime.error");
+      expect(error).toMatchObject({ partial: true });
+      expect(error).not.toHaveProperty("owned");
     }, 20_000);
 
     it("keeps the failure when the bot answers the round without running a tool", async () => {
@@ -761,7 +784,7 @@ describe("createOpenAIChatRuntime stream termination", () => {
   it("reports a stream truncated before finish_reason as an error, not an interrupt", async () => {
     const events = await runTurn('data: {"choices":[{"index":0,"delta":{"content":"Hel"}}]}\n\n');
     expect(events.find((event) => event.type === "runtime.error")).toMatchObject({
-      message: "Stream ended before completion",
+      message: "The model's reply stream closed before it finished. Try again, or switch this bot to another model.", errorCode: "stream_cut",
     });
     expect(events.at(-1)).toMatchObject({ type: "turn.completed", ok: false, stopReason: "error" });
   });

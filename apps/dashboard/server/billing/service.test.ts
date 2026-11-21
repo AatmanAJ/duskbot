@@ -8,7 +8,8 @@ import { BILLING_CONFIG } from "./plans.ts";
 import { quote } from "./pricing.ts";
 import { createFakeBillingProvider } from "./fake-provider.ts";
 import { createBillingStore } from "./store.ts";
-import { createBillingService } from "./service.ts";
+import { CHECKOUT_BURST, CHECKOUT_REUSE_MS, createBillingService } from "./service.ts";
+import { BillingProviderError } from "./types.ts";
 
 const owner = { id: "owner", email: "owner@example.com" }, stranger = { id: "stranger", email: "stranger@example.com" };
 const day = 86_400_000;
@@ -82,7 +83,8 @@ describe("billing service isolated fixture", () => {
     const newId = provider.sign("another_activation", deliveries[1].body); deliver([newId]);
     expect(store.state.subscriptions).toHaveLength(1); expect(clouds.activate).toHaveBeenCalledTimes(1);
     service.close(); store = createBillingStore(dataDir);
-    expect(store.state.subscriptions[0].id).toBe(sub.id); expect(statSync(join(dataDir, "billing.json")).mode & 0o777).toBe(0o600);
+    expect(store.state.subscriptions[0].id).toBe(sub.id);
+    if (process.platform !== "win32") expect(statSync(join(dataDir, "billing.json")).mode & 0o777).toBe(0o600);
     expect(readFileSync(join(dataDir, "billing.json"), "utf8")).not.toContain(provider.secret);
     expect(service.appState(owner)).toMatchObject({ entitlement: { plan: "pro", tier: "custom", status: "active" } });
   });
@@ -143,37 +145,13 @@ describe("billing service isolated fixture", () => {
     await expect(service.cancel(owner, sub.id, { answer: "other", improve: "x".repeat(2001) })).rejects.toMatchObject({ code: "invalid_request" });
     expect(() => service.feedback(stranger, { cloudId: sub.cloudId, survey: { answer: "later" } })).toThrow(expect.objectContaining({ code: "not_found" }));
   });
-  it("previews and applies an upgrade with a single-use confirmation", async () => {
-    const { sub } = await buy(); time = (sub.currentPeriodStart! + sub.currentPeriodEnd!) / 2;
-    const preview = service.previewChange(owner, sub.id, preset(2));
-    expect(preview).toMatchObject({ chargeNowCents: quote(preset(2), config).totalCents - quote(licensedDesktop(), config).totalCents, expiresAt: time + 600_000 }); expect(preview.confirmation).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    await service.change(owner, sub.id, preview.confirmation);
-    expect(sub).toMatchObject({ totalCents: quote(preset(2), config).totalCents, version: 2, cart: preset(2) });
-    expect(clouds.changePlan).toHaveBeenCalledExactlyOnceWith(sub.cloudId, { kind: "shared_m", placement: "pool", spec: { vcpu: 4, ramGb: 8, diskGb: 60 }, botComputers: 5 });
-    await expect(service.change(owner, sub.id, preview.confirmation)).rejects.toMatchObject({ code: "confirmation_required" });
-    expect(() => service.previewChange(owner, sub.id, preset(2))).toThrow(expect.objectContaining({ code: "already_on_plan" }));
-    expect(() => service.previewChange(owner, sub.id, preset(3))).toThrow(expect.objectContaining({ code: "plan_change_unavailable" }));
-    expect(() => service.previewChange(owner, sub.id, preset(2, "year"))).toThrow(expect.objectContaining({ code: "plan_change_unavailable" }));
-  });
-  it("moves a plan to a dedicated size when the cloud can move, and explains when it cannot", async () => {
-    const { sub } = await buy(desktopOnly()); time = (sub.currentPeriodStart! + sub.currentPeriodEnd!) / 2;
-    const dedicated: Cart = { ...desktopOnly(), desktop: { kind: "dedicated", region: "fsn1", spec: { vcpu: 8, ramGb: 16, diskGb: 160 } } };
-    expect(() => service.previewChange(owner, sub.id, dedicated)).toThrow(expect.objectContaining({ code: "plan_change_unavailable" }));
-    clouds.movable = vi.fn(() => true);
-    const preview = service.previewChange(owner, sub.id, dedicated);
-    expect(preview.chargeNowCents).toBeGreaterThan(0);
-    await service.change(owner, sub.id, preview.confirmation);
-    expect(clouds.movable).toHaveBeenCalledWith(sub.cloudId, expect.objectContaining({ kind: "dedicated", placement: "dedicated" }));
-    expect(clouds.changePlan).toHaveBeenLastCalledWith(sub.cloudId, { kind: "dedicated", placement: "dedicated", spec: { vcpu: 8, ramGb: 16, diskGb: 160 }, botComputers: null });
-    expect(sub.cart).toEqual(dedicated);
-  });
   it("expires and binds confirmations, detects price changes and preserves the plan on provider failure", async () => {
     const { sub } = await buy();
-    let preview = service.previewChange(owner, sub.id, preset(2)); time += 600_000;
+    let preview = await service.previewChange(owner, sub.id, preset(2)); time += 600_000;
     await expect(service.change(owner, sub.id, preview.confirmation)).rejects.toMatchObject({ code: "confirmation_required" });
-    preview = service.previewChange(owner, sub.id, preset(2)); config.desktops.shared_m.monthlyCents! += 100;
+    preview = await service.previewChange(owner, sub.id, preset(2)); config.desktops.shared_m.monthlyCents! += 100;
     await expect(service.change(owner, sub.id, preview.confirmation)).rejects.toMatchObject({ code: "price_changed" });
-    preview = service.previewChange(owner, sub.id, preset(2)); provider.failChangePlan = true;
+    preview = await service.previewChange(owner, sub.id, preset(2)); provider.failChangePlan = true;
     await expect(service.change(owner, sub.id, preview.confirmation)).rejects.toMatchObject({ status: 503, code: "unavailable" });
     expect(sub.totalCents).toBe(quote(licensedDesktop(), BILLING_CONFIG).totalCents); expect(clouds.changePlan).not.toHaveBeenCalled();
     await expect(service.change(stranger, sub.id, preview.confirmation)).rejects.toMatchObject({ code: "not_found" });
@@ -239,15 +217,17 @@ describe("billing service isolated fixture", () => {
   });
   it("adds and removes a desktop and updates seats without an unnecessary resize", async () => {
     const licenseOnly: Cart = { ...licensedDesktop(), desktop: { kind: "none" } }; const { sub } = await buy(licenseOnly);
-    await service.change(owner, sub.id, service.previewChange(owner, sub.id, licensedDesktop()).confirmation);
+    await service.change(owner, sub.id, (await service.previewChange(owner, sub.id, licensedDesktop())).confirmation);
     expect(clouds.activate).toHaveBeenCalledTimes(1); const cloudId = sub.cloudId;
     const team: Cart = { ...preset(1), license: { kind: "team", members: 5 } };
-    await service.change(owner, sub.id, service.previewChange(owner, sub.id, team).confirmation);
+    await service.change(owner, sub.id, (await service.previewChange(owner, sub.id, team)).confirmation);
     expect(clouds.changePlan).not.toHaveBeenCalled(); expect(service.licenses(owner.id)[0]).toMatchObject({ kind: "team", seats: 5 });
-    await service.change(owner, sub.id, service.previewChange(owner, sub.id, { ...team, desktop: { kind: "none" } }).confirmation);
-    // paid to the period's end: it runs until then, and the 30 days start there
-    const periodEnd = sub.currentPeriodEnd!; expect(periodEnd).toBeGreaterThan(time);
-    expect(clouds.end).toHaveBeenLastCalledWith(cloudId, periodEnd + 30 * day, periodEnd); expect(sub.cloudId).toBeNull();
+    // dropping the desktop is smaller: it waits for the next billing date, and the cloud runs until then
+    await service.change(owner, sub.id, (await service.previewChange(owner, sub.id, { ...team, desktop: { kind: "none" } })).confirmation);
+    expect(sub.scheduledChange?.cart.desktop.kind).toBe("none"); expect(sub.cloudId).toBe(cloudId); expect(clouds.end).not.toHaveBeenCalled();
+    time = sub.currentPeriodEnd!; deliver(provider.renew(sub.providerSubscriptionId!));
+    expect(sub.cart.desktop.kind).toBe("none"); expect(sub.scheduledChange).toBeUndefined();
+    expect(clouds.end).toHaveBeenLastCalledWith(cloudId, time + 30 * day); expect(sub.cloudId).toBeNull();
   });
   it("a failed first payment is not a plan and never blocks the next checkout", async () => {
     const first = await service.checkout(owner, { kind: "cart", cart: desktopOnly() });
@@ -302,25 +282,24 @@ describe("billing service isolated fixture", () => {
     expect(clouds.activate).toHaveBeenCalledTimes(1);
   });
   it("renews at the changed fake-provider price and streams an owner-only PDF", async () => {
-    const { sub } = await buy(); await service.change(owner, sub.id, service.previewChange(owner, sub.id, preset(2)).confirmation);
+    const { sub } = await buy(); await service.change(owner, sub.id, (await service.previewChange(owner, sub.id, preset(2))).confirmation);
     deliver(provider.renew(sub.providerSubscriptionId!)); expect(store.state.invoices.at(-1)!.amountCents).toBe(quote(preset(2), config).totalCents);
     service = createBillingService({ store, provider: { ...provider, invoiceUrl: async () => null }, clouds, config, publicUrl: "https://dashboard.test", now: () => time });
     expect(await service.invoiceDownload(owner.id, store.state.invoices[0].id)).toMatchObject({ pdf: { contentType: "application/pdf", body: expect.any(Buffer) } });
   });
   it("serializes license additions across subscriptions of the same account", async () => {
     const first = await buy(desktopOnly()), second = await buy({ ...desktopOnly(), interval: "year" });
-    const a = service.previewChange(owner, first.sub.id, licensedDesktop()), b = service.previewChange(owner, second.sub.id, { ...licensedDesktop(), interval: "year" });
+    const a = await service.previewChange(owner, first.sub.id, licensedDesktop()), b = await service.previewChange(owner, second.sub.id, { ...licensedDesktop(), interval: "year" });
     const results = await Promise.allSettled([service.change(owner, first.sub.id, a.confirmation), service.change(owner, second.sub.id, b.confirmation)]);
     expect(results[0].status).toBe("fulfilled"); expect(results[1]).toMatchObject({ status: "rejected", reason: { code: "already_subscribed" } });
     expect(provider.changeCalls).toHaveLength(1);
   });
   it("refuses missing product ids in real-provider mode and binds confirmations to subscriptions", async () => {
     const a = await buy(desktopOnly()), b = await buy({ ...desktopOnly(), interval: "year" });
-    const preview = service.previewChange(owner, a.sub.id, { ...desktopOnly(), desktop: { kind: "shared_m", region: "fsn1" } });
+    const preview = await service.previewChange(owner, a.sub.id, { ...desktopOnly(), desktop: { kind: "shared_m", region: "fsn1" } });
     await expect(service.change(owner, b.sub.id, preview.confirmation)).rejects.toMatchObject({ code: "confirmation_required" });
     service = createBillingService({ store, provider: { ...provider, name: "dodo" }, clouds, config, publicUrl: "https://dashboard.test", now: () => time });
-    const realPreview = service.previewChange(owner, a.sub.id, preset(2));
-    await expect(service.change(owner, a.sub.id, realPreview.confirmation)).rejects.toMatchObject({ code: "unavailable" });
+    await expect(service.previewChange(owner, a.sub.id, preset(2))).rejects.toMatchObject({ code: "unavailable" });
     await expect(service.checkout(stranger, { kind: "cart", cart: preset(1) })).rejects.toMatchObject({ code: "unavailable" });
     expect(provider.changeCalls).toHaveLength(0);
   });
@@ -407,7 +386,7 @@ describe("billing security regressions", () => {
     const deadline = sub.currentPeriodEnd! + config.graceDays * day;
     expect(clouds.get(sub.cloudId!)?.destroyAt).toBe(deadline);
     await expect(service.keep(owner, sub.id)).rejects.toMatchObject({ code: "not_subscribed" });
-    expect(() => service.previewChange(owner, sub.id, preset(2))).toThrow(expect.objectContaining({ code: "not_subscribed" }));
+    await expect(service.previewChange(owner, sub.id, preset(2))).rejects.toMatchObject({ code: "not_subscribed" });
     deliver([provider.sign("stale_activation", deliveries[1].body)]);
     expect(sub.status).toBe("payment_problem"); expect(clouds.get(sub.cloudId!)?.destroyAt).toBe(deadline);
     const updated = JSON.parse(deliveries[1].body.toString()).data;
@@ -428,13 +407,13 @@ describe("durable provider reconciliation", () => {
     const { sub } = await buy();
     const change = provider.changePlan;
     vi.spyOn(provider, "changePlan").mockImplementationOnce(async input => { await change(input); throw new Error("synthetic lost response"); });
-    const preview = service.previewChange(owner, sub.id, preset(2));
+    const preview = await service.previewChange(owner, sub.id, preset(2));
     await expect(service.change(owner, sub.id, preview.confirmation)).rejects.toMatchObject({ code: "unavailable" });
     expect(sub.totalCents).toBe(quote(licensedDesktop(), BILLING_CONFIG).totalCents); expect(sub.pendingChange).toBeDefined();
-    expect(() => service.previewChange(owner, sub.id, preset(2))).toThrow(expect.objectContaining({ code: "plan_change_unavailable" }));
     service.close(); store = createBillingStore(dataDir);
     service = createBillingService({ store, provider, clouds, config, publicUrl: "https://dashboard.test", now: () => time });
-    deliver(provider.renew(sub.providerSubscriptionId!));
+    // the next look at plans reads the provider back: the change it made is applied, never asked for twice
+    await expect(service.previewChange(owner, store.state.subscriptions[0].id, preset(2))).rejects.toMatchObject({ code: "already_on_plan" });
     expect(store.state.subscriptions[0]).toMatchObject({ totalCents: quote(preset(2), config).totalCents, cart: preset(2) });
     expect(store.state.subscriptions[0].pendingChange).toBeUndefined(); expect(provider.changeCalls).toHaveLength(1);
     expect(clouds.changePlan).toHaveBeenCalledTimes(1);
@@ -459,10 +438,13 @@ describe("durable provider reconciliation", () => {
 it("waits for a matching signed outcome before granting a Dodo upgrade", async () => {
   const { sub, deliveries } = await buy(); service.close();
   config.products = Object.fromEntries(["license_solo:month", "addon_shared_s:month", "plan_pro:month"].map(key => [key, key]));
-  service = createBillingService({ store, provider: { ...provider, name: "dodo" }, clouds, config, publicUrl: "https://dashboard.test", now: () => time });
+  // the provider's own record does not show the change yet (a payment still settling): it waits for the webhook
+  const shown = await provider.subscription(sub.providerSubscriptionId!);
+  service = createBillingService({ store, provider: { ...provider, name: "dodo", subscription: async () => shown }, clouds, config, publicUrl: "https://dashboard.test", now: () => time });
   const end = sub.currentPeriodEnd;
-  const result = await service.change(owner, sub.id, service.previewChange(owner, sub.id, preset(2)).confirmation);
+  const result = (await service.change(owner, sub.id, (await service.previewChange(owner, sub.id, preset(2))).confirmation)).subscription;
   expect(result.totalCents).toBe(quote(licensedDesktop(), BILLING_CONFIG).totalCents); expect(clouds.changePlan).not.toHaveBeenCalled();
+  await expect(service.previewChange(owner, sub.id, desktopOnly())).rejects.toMatchObject({ code: "change_in_progress" });
   const data = JSON.parse(deliveries[1].body.toString()).data;
   deliver([signed("subscription.plan_changed", data)]);
   expect(sub.pendingChange).toBeDefined(); expect(sub.totalCents).toBe(quote(licensedDesktop(), BILLING_CONFIG).totalCents);
@@ -550,9 +532,52 @@ describe("paying again after a plan ended", () => {
   });
 });
 
+describe("repeated starts", () => {
+  it("hands the same page back for the same plan started again within a minute, without another provider session", async () => {
+    const create = vi.spyOn(provider, "createCheckout");
+    const license: Cart = { interval: "month", license: { kind: "solo" }, desktop: { kind: "none" } };
+    const first = await service.checkout(owner, { kind: "cart", cart: license }, { source: "dash_license" });
+    for (let i = 0; i < 17; i++) { time += 2_000; expect(await service.checkout(owner, { kind: "cart", cart: license }, { source: "dash_license" })).toEqual(first); }
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(store.state.checkouts.map(checkout => checkout.status)).toEqual(["open"]);
+    expect(store.state.ledger?.filter(row => row.type === "checkout.started")).toHaveLength(1);
+    // a desktop plan keeps the cloud it reserved
+    const other = { id: "acct_desk", email: "desk@example.test" };
+    const desk = await service.checkout(other, { kind: "cart", cart: desktopOnly(), name: "Home" });
+    expect(await service.checkout(other, { kind: "cart", cart: desktopOnly(), name: "Home" })).toEqual(desk);
+    expect(clouds.order).toHaveBeenCalledTimes(1); expect(clouds.abandon).not.toHaveBeenCalled();
+  });
+  it("hands the page back whichever surface asks again, and makes a fresh one for another plan, name, or once the minute is over", async () => {
+    const first = await service.checkout(owner, { kind: "cart", cart: desktopOnly() }, { source: "app_card" });
+    expect(await service.checkout(owner, { kind: "cart", cart: desktopOnly() }, { source: undefined })).toEqual(first);
+    const otherPlan = await service.checkout(owner, { kind: "cart", cart: { ...desktopOnly(), interval: "year" } }, { source: "dash_billing" });
+    expect(otherPlan.checkoutId).not.toBe(first.checkoutId);
+    const otherName = await service.checkout(owner, { kind: "cart", cart: { ...desktopOnly(), interval: "year" }, name: "Work" }, { source: "dash_billing" });
+    expect(otherName.checkoutId).not.toBe(otherPlan.checkoutId);
+    time += CHECKOUT_REUSE_MS + 1;
+    const later = await service.checkout(owner, { kind: "cart", cart: { ...desktopOnly(), interval: "year" }, name: "Work" }, { source: "dash_billing" });
+    expect(later.checkoutId).not.toBe(otherName.checkoutId);
+    expect(store.state.checkouts.filter(checkout => checkout.status === "open").map(checkout => checkout.id)).toEqual([later.checkoutId]);
+  });
+  it("stops a burst of new pages from one account well under the hourly limit, and lets it buy again after a while", async () => {
+    const create = vi.spyOn(provider, "createCheckout");
+    const carts = [preset(1), { ...preset(1), interval: "year" as const }, preset(2), { ...preset(2), interval: "year" as const }, licensedDesktop()];
+    for (const cart of carts) { await service.checkout(owner, { kind: "cart", cart }, { source: "made_up" }); time += 1_000; }
+    expect(create).toHaveBeenCalledTimes(CHECKOUT_BURST.count);
+    // the open one again is still handed back; anything new waits
+    expect((await service.checkout(owner, { kind: "cart", cart: licensedDesktop() })).checkoutId).toBe(store.state.checkouts.at(-1)!.id);
+    await expect(service.checkout(owner, { kind: "cart", cart: preset(1) })).rejects.toMatchObject({ code: "rate_limited" });
+    expect(create).toHaveBeenCalledTimes(CHECKOUT_BURST.count);
+    time += CHECKOUT_BURST.windowMs;
+    await service.checkout(owner, { kind: "cart", cart: preset(1) });
+    expect(create).toHaveBeenCalledTimes(CHECKOUT_BURST.count + 1);
+  });
+});
+
 describe("one subscription per plan", () => {
   it("opens a fresh page instead of the unpaid one, frees what it held, and still takes a late payment on the old one", async () => {
     const first = await service.checkout(owner, { kind: "cart", cart: desktopOnly() });
+    time += CHECKOUT_REUSE_MS + 1;
     const again = await service.checkout(owner, { kind: "cart", cart: desktopOnly() });
     expect(again.checkoutId).not.toBe(first.checkoutId); expect(again.checkoutUrl).not.toBe(first.checkoutUrl);
     expect(store.state.checkouts.map(checkout => checkout.status)).toEqual(["expired", "open"]);
@@ -565,6 +590,7 @@ describe("one subscription per plan", () => {
   });
   it("closes the unpaid page when the plan is paid on the new one", async () => {
     await service.checkout(owner, { kind: "cart", cart: desktopOnly() });
+    time += CHECKOUT_REUSE_MS + 1;
     await service.checkout(owner, { kind: "cart", cart: desktopOnly() });
     deliver(provider.complete(store.state.checkouts[1].providerSessionId!));
     await expect(service.checkout(owner, { kind: "cart", cart: desktopOnly() })).rejects.toMatchObject({ code: "already_subscribed" });
@@ -635,7 +661,7 @@ describe("billing ledger", () => {
   it("classifies plan changes as upgrades and downgrades with the MRR before and after", async () => {
     const { sub } = await buy(desktopOnly());
     const bigger: Cart = { ...desktopOnly(), desktop: { ...desktopOnly().desktop, kind: "shared_m" } };
-    const preview = service.previewChange(owner, sub.id, bigger);
+    const preview = await service.previewChange(owner, sub.id, bigger);
     await service.change(owner, sub.id, preview.confirmation);
     const row = store.state.ledger!.find(item => item.type === "subscription.upgraded");
     expect(row).toMatchObject({ previousMrrCents: quote(desktopOnly(), config).totalCents, mrrCents: quote(bigger, config).totalCents });
@@ -703,6 +729,18 @@ describe("cancel flow and the stay-on discount", () => {
     expect(provider.discountCalls).toHaveLength(0);
   });
 
+  it("account closure with the cloud deleted now asks the provider only about plans it would still renew", async () => {
+    const cancelled = await buy(), otherMode = await buy(desktopOnly()), renewing = await buy(desktopOnly(), stranger);
+    await service.cancel(owner, cancelled.sub.id, { answer: "switching" });
+    store.state.subscriptions.find(sub => sub.id === otherMode.sub.id)!.mode = "live";
+    const refuse = vi.spyOn(provider, "cancelAtPeriodEnd").mockRejectedValue(new BillingProviderError("refused"));
+    await service.closeAccount(owner, { destroyDesktopsNow: true });
+    expect(refuse).not.toHaveBeenCalled();
+    expect(clouds.end).toHaveBeenCalledWith(cancelled.answer.cloudId, expect.any(Number));
+    expect(store.state.closures!.find(c => c.accountId === owner.id)!.completedAt).not.toBeNull();
+    await expect(service.closeAccount(stranger, { destroyDesktopsNow: true })).rejects.toMatchObject({ status: 503, code: "unavailable" });
+    expect(refuse.mock.calls).toEqual([[renewing.sub.providerSubscriptionId, true]]);
+  });
   it("records each step and a cancel with its reason, and validates the step", async () => {
     const { sub } = await buy();
     const seen: unknown[] = [];
@@ -824,5 +862,228 @@ describe("free trial", () => {
     expect(store.state.invoices.every(invoice => invoice.amountCents === 0)).toBe(true);
     time += 3 * day; deliver(provider.expire(sub.providerSubscriptionId!));
     expect(store.state.subscriptions[0].status).toBe("ended");
+  });
+});
+
+describe("plan switching", () => {
+  const plus = (interval: Cart["interval"] = "month") => ({ ...preset(1), interval });
+  const pro = (interval: Cart["interval"] = "month") => preset(2, interval);
+  const team = (interval: Cart["interval"] = "month") => preset(3, interval);
+  async function switchTo(sub: { id: string }, cart: Cart) {
+    const preview = await service.previewChange(owner, sub.id, cart);
+    return { preview, result: await service.change(owner, sub.id, preview.confirmation) };
+  }
+  const trialFirst = () => { config.trial = { days: 3 }; };
+  /** the provider's subscription as a webhook carries it */
+  const subscriptionEvent = (id: string) => {
+    const row = provider.subscriptions.get(id)!;
+    return { subscription_id: id, customer: { customer_id: row.customerId }, metadata: { checkoutId: row.input.checkoutId, accountId: row.input.accountId }, product_id: row.input.cart[0].productId,
+      addons: row.input.cart[0].addons.map(addon => ({ addon_id: addon.addonId, quantity: addon.quantity })), next_billing_date: new Date(row.nextBillingAt).toISOString(), cancel_at_next_billing_date: false, status: "active" };
+  };
+
+  it("trial plus to pro: nothing today, the trial keeps its end, the first charge is pro's, and the machine grows now", async () => {
+    trialFirst();
+    const { sub } = await buy(plus());
+    const trialEnd = sub.trialEndsAt!; expect(trialEnd).toBe(time + 3 * day);
+    time += day;
+    const { preview } = await switchTo(sub, pro());
+    expect(preview).toMatchObject({ timing: "trial", chargeNowCents: 0, taxCents: 0, effectiveAt: time, nextChargeCents: 5000, nextChargeAt: trialEnd });
+    expect(provider.changeCalls.at(-1)?.mode).toBe("trial"); expect(provider.charges).toEqual([]);
+    expect(sub).toMatchObject({ cart: pro(), totalCents: 5000, trialEndsAt: trialEnd, currentPeriodEnd: trialEnd });
+    expect(service.licenses(owner.id)[0]).toMatchObject({ kind: "solo", status: "active", seats: 1 });
+    expect(clouds.changePlan).toHaveBeenLastCalledWith(sub.cloudId, expect.objectContaining({ kind: "shared_m", spec: { vcpu: 4, ramGb: 8, diskGb: 60 } }), { now: true });
+    // dodo answers a trial switch with subscription.renewed whose next date is still the trial's end: the trial goes on
+    deliver([signed("subscription.renewed", { ...subscriptionEvent(sub.providerSubscriptionId!), next_billing_date: new Date(trialEnd).toISOString() })]);
+    expect(sub.trialEndsAt).toBe(trialEnd); expect(service.subscriptions(owner.id)[0]!.trialEndsAt).toBe(trialEnd);
+    time = trialEnd; deliver(provider.renew(sub.providerSubscriptionId!));
+    expect(store.state.invoices.at(-1)!.amountCents).toBe(5000); expect(sub.currentPeriodEnd).toBeGreaterThan(trialEnd);
+  });
+  it("trial pro to plus: nothing today, plus from the trial's end, the work license goes and the machine shrinks", async () => {
+    trialFirst();
+    const { sub } = await buy(pro()); const trialEnd = sub.trialEndsAt!;
+    const { preview } = await switchTo(sub, plus());
+    expect(preview).toMatchObject({ timing: "trial", chargeNowCents: 0, nextChargeCents: 2000, nextChargeAt: trialEnd });
+    expect(sub).toMatchObject({ cart: plus(), trialEndsAt: trialEnd }); expect(sub.licenseId).toBeNull();
+    expect(clouds.changePlan).toHaveBeenLastCalledWith(sub.cloudId, expect.objectContaining({ kind: "shared_s" }), { now: true });
+    time = trialEnd; deliver(provider.renew(sub.providerSubscriptionId!));
+    expect(store.state.invoices.at(-1)!.amountCents).toBe(2000);
+  });
+  it("a renewal charged before the trial's end ends the trial: the next switch is prorated, not free", async () => {
+    trialFirst();
+    const { sub } = await buy(plus()); time += day;
+    provider.subscriptions.get(sub.providerSubscriptionId!)!.nextBillingAt = time;
+    deliver(provider.renew(sub.providerSubscriptionId!));
+    expect(sub.trialEndsAt).toBe(time); expect(sub.currentPeriodStart).toBe(time); expect(sub.currentPeriodEnd).toBeGreaterThan(time + 27 * day);
+    time += 15 * day;
+    const { preview } = await switchTo(sub, pro());
+    expect(preview.timing).toBe("now"); expect(preview.chargeNowCents).toBeGreaterThan(0); expect(provider.changeCalls.at(-1)?.mode).toBe("keep_cycle");
+  });
+  it("plus to pro after the trial: charged now for the days left only, the billing date stays, and the provider's amount is the one shown", async () => {
+    const { sub } = await buy(plus()); const end = sub.currentPeriodEnd!;
+    time = sub.currentPeriodStart! + (end - sub.currentPeriodStart!) * 0.25;
+    const { preview } = await switchTo(sub, pro());
+    expect(preview).toMatchObject({ timing: "now", chargeNowCents: Math.round((5000 - 2000) * 0.75), effectiveAt: time, nextChargeCents: 5000, nextChargeAt: end });
+    expect(provider.changeCalls.at(-1)?.mode).toBe("keep_cycle"); expect(provider.charges).toEqual([{ subscriptionId: sub.providerSubscriptionId, cents: preview.chargeNowCents }]);
+    expect(sub).toMatchObject({ cart: pro(), totalCents: 5000, currentPeriodEnd: end }); expect(sub.pendingChange).toBeUndefined();
+    expect(service.licenses(owner.id)[0]).toMatchObject({ kind: "solo", status: "active" });
+    expect(clouds.changePlan).toHaveBeenLastCalledWith(sub.cloudId, expect.objectContaining({ kind: "shared_m" }), { now: true });
+  });
+  it("never charges more than was shown: a later confirm only gets cheaper, a higher price asks again", async () => {
+    const { sub } = await buy(plus());
+    const preview = await service.previewChange(owner, sub.id, pro());
+    time += 9 * 60_000;
+    await service.change(owner, sub.id, preview.confirmation);
+    expect(provider.charges[0]!.cents).toBeLessThanOrEqual(preview.chargeNowCents);
+    const back = await buy(desktopOnly(), stranger);
+    const shown = await service.previewChange(stranger, back.sub.id, { ...desktopOnly(), desktop: { kind: "shared_m", region: "fsn1" } });
+    vi.spyOn(provider, "previewChange").mockResolvedValueOnce({ chargeCents: shown.chargeNowCents + 1, taxCents: 0 });
+    await expect(service.change(stranger, back.sub.id, shown.confirmation)).rejects.toMatchObject({ code: "price_changed" });
+  });
+  it("plus to team: charged now for the time left, a two-seat team license, and the machine resizes to the team size in place", async () => {
+    const { sub } = await buy(plus()); time += 10 * day;
+    const { preview } = await switchTo(sub, team());
+    expect(preview.timing).toBe("now"); expect(preview.chargeNowCents).toBeGreaterThan(0);
+    expect(sub.cart).toEqual(team());
+    expect(service.licenses(owner.id)[0]).toMatchObject({ kind: "team", seats: 2, status: "active" });
+    expect(clouds.changePlan).toHaveBeenLastCalledWith(sub.cloudId, { kind: "dedicated", placement: "dedicated", spec: { vcpu: 8, ramGb: 16, diskGb: 160 }, botComputers: null }, { now: true });
+  });
+  it("a cloud off the managed backend never blocks the switch: the plan changes and the operator is told", async () => {
+    const { sub } = await buy(plus()); clouds.movable = vi.fn(() => false);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await switchTo(sub, team());
+    expect(sub.cart).toEqual(team()); expect(clouds.changePlan).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("ALERT"));
+  });
+  it("pro to plus mid-period: nothing now, pro and its license until the billing date, then plus and a smaller machine", async () => {
+    const { sub } = await buy(pro()); const end = sub.currentPeriodEnd!; time += 5 * day;
+    const { preview, result } = await switchTo(sub, plus());
+    expect(preview).toMatchObject({ timing: "scheduled", chargeNowCents: 0, effectiveAt: end, nextChargeCents: 2000, nextChargeAt: end });
+    expect(provider.changeCalls.at(-1)?.mode).toBe("scheduled"); expect(provider.charges).toEqual([]);
+    expect(result.subscription.scheduledChange).toMatchObject({ bundle: "starter", totalCents: 2000, at: end });
+    expect(sub.cart).toEqual(pro()); expect(clouds.changePlan).not.toHaveBeenCalled();
+    expect(service.licenses(owner.id)[0]).toMatchObject({ kind: "solo", status: "active" });
+    await expect(service.previewChange(owner, sub.id, plus())).rejects.toMatchObject({ code: "already_on_plan" });
+    time = end; deliver(provider.renew(sub.providerSubscriptionId!));
+    expect(sub).toMatchObject({ cart: plus(), totalCents: 2000 }); expect(sub.scheduledChange).toBeUndefined(); expect(sub.licenseId).toBeNull();
+    expect(store.state.invoices.at(-1)!.amountCents).toBe(2000);
+    expect(clouds.changePlan).toHaveBeenLastCalledWith(sub.cloudId, expect.objectContaining({ kind: "shared_s" }), { now: true });
+  });
+  it("undoes a scheduled downgrade by choosing the current plan again, and an upgrade replaces it", async () => {
+    const { sub } = await buy(pro()); time += day;
+    await switchTo(sub, plus());
+    const { preview } = await switchTo(sub, pro());
+    expect(preview).toMatchObject({ timing: "undo", chargeNowCents: 0 });
+    expect(provider.cancelScheduledCalls).toEqual([sub.providerSubscriptionId]); expect(sub.scheduledChange).toBeUndefined();
+    await switchTo(sub, plus()); expect(sub.scheduledChange).toBeDefined();
+    await switchTo(sub, team());
+    expect(sub.scheduledChange).toBeUndefined(); expect(sub.cart).toEqual(team());
+  });
+  it("a renewal moved earlier brings a scheduled change with it", async () => {
+    const { sub } = await buy(pro()); await switchTo(sub, plus());
+    const early = time + 2 * day;
+    await service.moveRenewal(owner, sub.id, early);
+    expect(sub.scheduledChange?.at).toBe(early);
+    provider.subscriptions.get(sub.providerSubscriptionId!)!.nextBillingAt = time + day;
+    time += day; deliver(provider.renew(sub.providerSubscriptionId!));
+    expect(sub).toMatchObject({ cart: plus(), totalCents: 2000 }); expect(sub.scheduledChange).toBeUndefined();
+  });
+  it("a renewal of the old plan past the date drops a scheduled change the provider let go", async () => {
+    const { sub } = await buy(pro()); await switchTo(sub, plus());
+    provider.subscriptions.get(sub.providerSubscriptionId!)!.scheduled = null;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    time = sub.currentPeriodEnd!; deliver(provider.renew(sub.providerSubscriptionId!));
+    expect(sub.scheduledChange).toBeUndefined(); expect(sub.cart).toEqual(pro());
+  });
+  it("monthly to yearly: the year less this month's unused part now, and a new yearly period from today", async () => {
+    const { sub } = await buy(pro()); const start = sub.currentPeriodStart!, end = sub.currentPeriodEnd!;
+    time = start + (end - start) / 2;
+    const yearly = quote(pro("year"), config).totalCents;
+    const { preview } = await switchTo(sub, pro("year"));
+    expect(preview).toMatchObject({ timing: "now", chargeNowCents: Math.round(yearly - 5000 * 0.5), nextChargeCents: yearly });
+    expect(provider.changeCalls.at(-1)?.mode).toBe("new_cycle");
+    expect(sub).toMatchObject({ cart: pro("year"), currentPeriodStart: time, currentPeriodEnd: preview.nextChargeAt });
+    expect(new Date(preview.nextChargeAt!).getUTCFullYear()).toBe(new Date(time).getUTCFullYear() + 1);
+    expect(clouds.changePlan).not.toHaveBeenCalled();
+  });
+  it("yearly to monthly on the same plan keeps the paid year and switches at its end", async () => {
+    const { sub } = await buy(pro("year")); const end = sub.currentPeriodEnd!;
+    const { preview } = await switchTo(sub, pro());
+    expect(preview).toMatchObject({ timing: "scheduled", chargeNowCents: 0, effectiveAt: end, nextChargeCents: 5000 });
+    expect(sub.cart).toEqual(pro("year"));
+  });
+  it("team to pro needs its extra members gone first", async () => {
+    const { sub } = await buy(team());
+    service.addMember(owner, sub.licenseId!, "teammate@example.com");
+    await expect(service.previewChange(owner, sub.id, pro())).rejects.toMatchObject({ code: "seats_full" });
+  });
+  it("a refused payment changes nothing and says so; a card check hands back the provider's payment page", async () => {
+    const { sub } = await buy(plus());
+    let preview = await service.previewChange(owner, sub.id, pro()); provider.failChangePlan = "refused";
+    await expect(service.change(owner, sub.id, preview.confirmation)).rejects.toMatchObject({ status: 402, code: "payment_failed" });
+    expect(sub.cart).toEqual(plus()); expect(sub.pendingChange).toBeUndefined();
+    provider.failChangePlan = false; provider.paymentUrl = "https://test.checkout.dodopayments.com/pay_3ds";
+    // the provider still shows plus: the card check was never paid
+    const plusSeen = await provider.subscription(sub.providerSubscriptionId!);
+    vi.spyOn(provider, "subscription").mockResolvedValue(plusSeen);
+    preview = await service.previewChange(owner, sub.id, pro());
+    const { paymentUrl } = await service.change(owner, sub.id, preview.confirmation);
+    expect(paymentUrl).toBe("https://test.checkout.dodopayments.com/pay_3ds"); expect(sub.pendingChange).toBeDefined();
+    await expect(service.previewChange(owner, sub.id, team())).rejects.toMatchObject({ code: "change_in_progress" });
+    // never paid: after an hour the change is let go and plans can be switched again
+    time += 61 * 60_000;
+    await expect(service.previewChange(owner, sub.id, team())).resolves.toMatchObject({ timing: "now" });
+    expect(sub.pendingChange).toBeUndefined();
+  });
+  it("keeps the cloud's region: a plan picked for another region still switches", async () => {
+    config.poolRegions.push("nbg1");
+    const { sub } = await buy(plus());
+    const { preview } = await switchTo(sub, { ...pro(), desktop: { kind: "shared_m", region: "nbg1" } });
+    expect(preview.timing).toBe("now"); expect(sub.cart.desktop.region).toBe("fsn1");
+  });
+});
+
+describe("a deleted account's email signing up again", () => {
+  async function deleteAfterBuying() {
+    const { sub } = await buy(desktopOnly());
+    const customerId = store.state.customers.find(row => row.accountId === owner.id)!.providerCustomerId!;
+    await service.closeAccount(owner, { destroyDesktopsNow: true }); service.accountDeleted(owner.id);
+    return { sub, customerId };
+  }
+  const again = { id: "owner_again", email: owner.email };
+  async function payAgain(customerId: string) {
+    const answer = await service.checkout(again, { kind: "cart", cart: desktopOnly() });
+    const checkout = store.state.checkouts.find(row => row.id === answer.checkoutId)!;
+    // dodo keeps one customer per email, so the new account's checkout lands on the deleted account's customer
+    provider.sessions.get(checkout.providerSessionId!)!.customerId = customerId;
+    deliver(provider.complete(checkout.providerSessionId!));
+  }
+  it("pays with the customer dodo kept for that email and gets the plan; the deleted rows no longer hold it", async () => {
+    const { customerId } = await deleteAfterBuying();
+    expect(store.state.customers.filter(row => row.providerCustomerId === customerId)).toEqual([]);
+    await payAgain(customerId);
+    expect(service.subscriptions(again.id)).toEqual([expect.objectContaining({ status: "active" })]);
+    expect(store.state.customers.filter(row => row.providerCustomerId === customerId).map(row => row.accountId)).toEqual([again.id]);
+  });
+  it("rebinds a customer an older build left on the deleted account, and warns on any refused event", async () => {
+    const { customerId } = await deleteAfterBuying();
+    store.state.customers.find(row => row.accountId.startsWith("anon_"))!.providerCustomerId = customerId;
+    await payAgain(customerId);
+    expect(service.subscriptions(again.id)).toEqual([expect.objectContaining({ status: "active" })]);
+    expect(store.state.customers.filter(row => row.providerCustomerId === customerId).map(row => row.accountId)).toEqual([again.id]);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    deliver([signed("payment.succeeded", { payment_id: "pay_x", subscription_id: "sub_x", customer: { customer_id: "cus_x" }, total_amount: 1, currency: "USD", metadata: { checkoutId: "chk_unknown" } })]);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/^billing: WARN payment\.succeeded pay_x .*not applied/));
+    expect(warn.mock.calls.flat().join(" ")).not.toContain(owner.email);
+  });
+  it("recovers a paid subscription whose webhook never applied from the provider", async () => {
+    const answer = await service.checkout(owner, { kind: "cart", cart: desktopOnly() });
+    const checkout = store.state.checkouts.find(row => row.id === answer.checkoutId)!;
+    const [, active] = provider.complete(checkout.providerSessionId!);
+    const data = JSON.parse(active.body.toString("utf8")).data;
+    Object.assign(provider, { list: async (resource: string) => resource === "subscriptions" ? [{ ...data, addons: undefined, created_at: new Date(time).toISOString() }] : [] });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await service.recoverUnapplied()).toEqual({ recovered: 1 });
+    expect(service.subscriptions(owner.id)).toEqual([expect.objectContaining({ status: "active" })]);
+    expect(await service.recoverUnapplied()).toEqual({ recovered: 0 });
   });
 });

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { SlackApi } from "./api.ts";
 import type { Message } from "../store.ts";
+import { isErrorDump } from "../../shared/failed-turn.ts";
 import { normalizeReaction } from "../../shared/reactions.ts";
 import { requestNeedsInput } from "../guarded-requests.ts";
 import { fromSlackText, splitSlackText, stripBotMention, toSlackMrkdwn } from "./mrkdwn.ts";
@@ -127,7 +128,7 @@ export function createSlackBridge(deps: SlackBridgeDeps): {
     const active = () => !stopped && !forgottenThreads.has(p.threadId) && generation === (botGenerations.get(p.botId) ?? 0) &&
       deps.link(p.botId)?.botToken === link?.botToken;
     if (!link || !active()) return;
-    for (const chunk of splitSlackText(toSlackMrkdwn(text))) {
+    for (const chunk of splitSlackText(toSlackMrkdwn(isErrorDump(text) ? TURN_FAILED : text))) {
       if (!active()) return;
       try {
         const response = await deps.api.queued(p.channel, () => deps.api.call("chat.postMessage", link.botToken,

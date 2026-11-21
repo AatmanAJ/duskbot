@@ -3,8 +3,10 @@ import {
   aiChoices,
   aiWorks,
   BEAT_ORDER,
+  cloudFirstRunDue,
   cloudSignInDue,
   companyModelCount,
+  computerAiIds,
   completionPatch,
   EMPTY_ONBOARDING,
   firstRunPatch,
@@ -115,6 +117,33 @@ describe("first run on a dusk bot Cloud home", () => {
   });
 });
 
+describe("first run on a cloud the desktop app set up", () => {
+  const cloud = { remoteClient: false, legacyDone: false, canSave: true, cloudHome: true };
+  const record = (hintsSeen: string[], extra: Partial<typeof EMPTY_ONBOARDING> = {}) => ({ ...EMPTY_ONBOARDING, hintsSeen, ...extra });
+
+  it("runs once the app opened it, before and after that computer's record arrives, until it ends there", () => {
+    expect(welcomeDue({ onboarding: EMPTY_ONBOARDING }, { ...cloud, fromApp: true })).toBe(true);
+    expect(welcomeDue({}, { ...cloud, fromApp: true })).toBe(true);
+    expect(welcomeDue({ onboarding: record(["cloud-welcome-done", "cloud-from-computer"]) }, cloud)).toBe(true);
+    expect(welcomeDue({ onboarding: record(["cloud-from-computer", "cloud-first-run-done"]) }, { ...cloud, fromApp: true })).toBe(false);
+  });
+
+  it("leaves a cloud already in use, or opened in a browser, to its own welcome", () => {
+    expect(welcomeDue({ onboarding: EMPTY_ONBOARDING }, cloud)).toBe(false);
+    expect(welcomeDue({ onboarding: record(["cloud-welcome-done"], { completedAt: "2026-11-14T00:00:00.000Z", version: WELCOME_VERSION }) }, { ...cloud, fromApp: true })).toBe(false);
+    expect(cloudFirstRunDue(record(["cloud-setup-hidden"]), true)).toBe(false);
+    expect(cloudFirstRunDue(record([], { firstTurnAt: "2026-11-14T00:00:00.000Z" }), true)).toBe(false);
+    expect(welcomeDue({ onboarding: record(["cloud-from-computer"]) }, { ...cloud, canSave: false })).toBe(false);
+  });
+
+  it("ends with its own mark, and reads the AIs that computer uses", () => {
+    const now = new Date("2026-11-17T00:00:00.000Z");
+    expect(firstRunPatch(record(["cloud-from-computer"]), now, { cloudHome: true }).onboarding.hintsSeen).toEqual(["cloud-from-computer", MET_CHIEF_HINT, "cloud-first-run-done"]);
+    expect(computerAiIds(record(["cloud-from-computer", "computer-ai:claude", "computer-ai:codex"]))).toEqual(["claude", "codex"]);
+    expect(computerAiIds(undefined)).toEqual([]);
+  });
+});
+
 describe("organisation sign-in in the engines beat", () => {
   const bridge = { begin: () => {} };
 
@@ -222,7 +251,7 @@ describe("persistence patches", () => {
 });
 
 describe("the first run's screens", () => {
-  it("is the welcome, where bots live, the account, dusk cloud's checkout, the AI, bringing things in, the phone and the cloud being made, in that order", () => {
+  it("is the welcome, the AI, the account, where bots live, dusk cloud's checkout, bringing things in, the phone, the cloud being made and the permissions, in that order", () => {
     expect(BEAT_ORDER).toEqual(["welcome", "account", "place", "checkout", "ai", "bring", "phone", "making", "permissions"]);
   });
 

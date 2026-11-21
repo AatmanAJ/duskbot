@@ -1,22 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/cn";
-import { phoneAppEnabled } from "@/lib/feature-flags";
-import { DEFAULT_BOT_NAME, introChips, introStaged, stageIntro, useWelcomingBot } from "@/lib/default-bot";
+import { phoneAppPrompted } from "@/lib/feature-flags";
+import { DEFAULT_BOT_NAME, introAsks, introAsksOffered, introChips, introStaged, stageIntro, useWelcomingBot } from "@/lib/default-bot";
 import { activeLocale, t } from "@/lib/i18n";
 import { detectSetupWithin, localSetupImport, setupImportApi } from "@/lib/setup-import";
 import { api, useStore, type Bot, type InstanceInfo, type Message } from "@/state/store";
 import { useTeamPeople, type TeamPeople } from "@/state/team-people";
 import { freeFallback } from "../../shared/ai-ranking";
 import { greetingName } from "../../shared/greeting-name";
+import { CLOUD_FROM_COMPUTER } from "../../shared/cloud-hints";
+import { hintSeen } from "@/lib/onboarding";
 import { followupText, type HelperFollowupFacts } from "../../shared/helper-followup";
 import { BotAvatar } from "./Avatar";
 import { joinedCorners, SIMPLE_BOT_BUBBLE, SIMPLE_BUBBLE_MAX } from "./chat-bubble";
 import { loadAppCards } from "./bot-settings/useBotApps";
 import { engineReady } from "./EngineLibrary";
+import { returnFocusToComposer } from "./AskCard";
 import { IntroChips } from "./HelperSetup";
 import { usePrefersReducedMotion } from "./mascot-clock";
 import { preloadConnectedApps } from "@/lib/connected-apps";
+import { CloudSignInLine, useMissingCloudAi } from "./onboarding/CloudSignInLine";
 
 /** How long after the part before each part arrives, when a first run has just landed here: the three lines, the typing
  * row, the follow-up and its chips. With no AI there is no typing row, and the follow-up comes `noAi` after the last line. */
@@ -28,12 +32,15 @@ const DELAYS = [INTRO_TIMING.first, INTRO_TIMING.line, INTRO_TIMING.line, INTRO_
 
 /** Dusk's three lines: who it is, what it does here, and that it is looking around. A Dusk that is not the Chief
  * keeps its helper's lines; a Team Cloud member's leaves their day to the team's Chief. */
-export function introLines(input: { name: string; chief: boolean; person?: string; team?: string }): string[] {
+/** `fromComputer`: a cloud the desktop app set up, where the Chief greets the person by the name it brought along;
+ * `carried`: what they told dusk bot there about themselves came too. */
+export function introLines(input: { name: string; chief: boolean; person?: string; team?: string; fromComputer?: boolean; carried?: boolean }): string[] {
   const team = input.team ? t("helperIntro.team", { team: input.team }) : "";
+  const carried = input.carried ? t("helperIntro.carried") : "";
   const lead = input.chief ? t("helperIntro.lead.chiefOfStaff") : input.team ? t("helperIntro.lead.member") : t("helperIntro.lead.helper");
-  const hello = input.chief ? t("helperIntro.hello", { name: input.name })
+  const hello = input.chief ? (input.person && input.fromComputer ? t("helperIntro.helloNamed", { name: input.name, person: input.person }) : t("helperIntro.hello", { name: input.name }))
     : input.person ? t("helperIntro.hi.helperNamed", { name: input.name, person: input.person }) : t("helperIntro.hi.helper", { name: input.name });
-  return [hello, [lead, team].filter(Boolean).join(" "), t("helperIntro.lookingAround")];
+  return [hello, [lead, team, carried].filter(Boolean).join(" "), t("helperIntro.lookingAround")];
 }
 
 /** The follow-up in the viewer's language. */
@@ -54,6 +61,8 @@ function thinksWith(bot: Bot | undefined, instances: readonly InstanceInfo[]): H
 
 interface Look {
   apps: string[] | null;
+  /** The connected apps' slugs, for fitting the first jobs (introAsks). */
+  slugs?: string[];
   phonePaired?: boolean;
   importFound?: boolean;
   settled: boolean;
@@ -67,13 +76,13 @@ function useLookAround(deep: boolean): Look {
     let active = true;
     const apps = Promise.all([preloadConnectedApps(), loadAppCards()])
       .then(([inventory, cards]) => Object.entries(inventory.services).filter(([, status]) => status.connected)
-        .map(([slug]) => cards.get(slug)?.label ?? slug))
+        .map(([slug]) => ({ slug, label: cards.get(slug)?.label ?? slug })))
       .catch(() => null);
     const phones = api<{ phones?: unknown[] }>("/api/phones").then((response) => (response.phones?.length ?? 0) > 0).catch(() => undefined);
     const look = deep && localSetupImport(false) ? detectSetupWithin(setupImportApi) : null;
     const timer = setTimeout(() => { if (active) setFound((now) => ({ ...now, settled: true })); }, LOOK_MS);
-    void Promise.all([apps, phones, look?.found ?? null]).then(([appNames, phonePaired, detection]) => {
-      if (active) setFound({ apps: appNames, phonePaired, importFound: Boolean(detection), settled: true });
+    void Promise.all([apps, phones, look?.found ?? null]).then(([connected, phonePaired, detection]) => {
+      if (active) setFound({ apps: connected?.map((app) => app.label) ?? null, slugs: connected?.map((app) => app.slug), phonePaired, importFound: Boolean(detection), settled: true });
     });
     return () => {
       active = false;
@@ -117,15 +126,19 @@ function useArrival(first: boolean, ai: boolean, ready: boolean): { shown: numbe
 export function SimpleHelperIntro({ botId, threadId, message, answered, followup }: {
   botId: string; threadId: string; message: Message; answered: boolean; followup?: Message;
 }) {
-  const { state } = useStore();
+  const { state, dispatch } = useStore();
   const welcoming = useWelcomingBot();
   const hidden = welcoming === botId;
   const bot = state.bots.find((candidate) => candidate.id === botId);
   const team = bot?.defaultBot?.person ? state.config?.team?.name : undefined;
   const person = greetingName(state.config?.profile?.name) || undefined;
-  const lines = introLines({ name: bot?.name ?? DEFAULT_BOT_NAME, chief: Boolean(bot?.chiefOfStaff), person, team });
+  const fromComputer = hintSeen(state.config?.onboarding, CLOUD_FROM_COMPUTER);
+  const carried = fromComputer && Boolean(state.config?.profile?.aboutMe?.trim());
+  const lines = introLines({ name: bot?.name ?? DEFAULT_BOT_NAME, chief: Boolean(bot?.chiefOfStaff), person, team, fromComputer, carried });
   const look = useLookAround(!answered);
   const ai = thinksWith(bot, state.instances);
+  // a new cloud whose AIs didn't come along: the one it misses is named, with its sign-in, in place of the AI chip
+  const missing = useMissingCloudAi(fromComputer && state.config?.cloudHome === true, ai === "own");
   const connects = whoConnectsAi(useTeamPeople());
 
   // A first run's intro plays once: it asks for the follow-up, which then stays in the conversation.
@@ -160,17 +173,20 @@ export function SimpleHelperIntro({ botId, threadId, message, answered, followup
   if (hidden) return null;
 
   const bubbles = [...lines.slice(0, Math.min(shown, 3)), ...(shown >= 5 && facts ? [followupLine(facts)] : [])];
-  const chips = answered || shown < ALL || !facts ? [] : introChips({
-    aiReady: ai === "own",
+  // the chips belong under these bubbles: none while the app connects, reconnects or the transcript is still loading
+  const onScreen = state.connected && bot?.transcriptLoaded !== false && bubbles.length > 0;
+  const chips = answered || !onScreen || shown < ALL || !facts ? [] : introChips({
+    aiReady: ai === "own" || missing !== null,
     ownBots: state.bots.filter((candidate) => !candidate.hidden && !candidate.defaultBot).length,
     onCloud: state.config?.cloudHome === true,
     team: Boolean(state.config?.team),
     remote: typeof window !== "undefined" && window.duskDesktop?.remoteClient?.active === true,
     appsConnected: Boolean(look.apps?.length),
     phonePaired: look.phonePaired,
-    phoneApp: phoneAppEnabled(),
+    phoneApp: phoneAppPrompted(),
     importFound: look.importFound,
   });
+  const ready = !answered && onScreen && shown >= ALL && facts !== null && introAsksOffered(ai);
   const typing = staged && ai !== "none" && shown === 4 && Boolean(bot);
   return (
     <div data-helper-intro={message.id} className="flex w-full flex-col items-start gap-1">
@@ -192,7 +208,8 @@ export function SimpleHelperIntro({ botId, threadId, message, answered, followup
           <span className="text-[14px] leading-5 text-ink-tertiary">{t("helperIntro.typing")}</span>
         </div>
       )}
-      <IntroChips chips={chips} />
+      {missing && onScreen && shown >= ALL && <CloudSignInLine tile={missing} />}
+      <IntroChips chips={chips} asks={introAsks(look.slugs ?? [])} onAsk={ready ? (answer) => { dispatch({ type: "answerCard", botId, threadId, messageId: message.id, answer }); returnFocusToComposer(); } : undefined} />
     </div>
   );
 }
