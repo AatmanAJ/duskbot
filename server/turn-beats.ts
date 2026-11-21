@@ -70,6 +70,8 @@ type Phase = "idle" | "writing" | "ready" | "posted" | "dropped";
 interface Beat {
   phase: Phase;
   text?: string;
+  /** An ack that asks for a detail the work cannot start without, instead of naming work underway. */
+  asks?: boolean;
   abort?: AbortController;
 }
 
@@ -154,6 +156,7 @@ export function beatPrompt(kind: BeatKind, input: { name: string; soul?: string;
       "Write the acknowledgement they see first.",
       "- One sentence, 6 to 20 words, present tense, naming the concrete action and object, like \"On it, pulling this week's Delhi to Goa fares.\" or \"Got it, comparing the three plans now.\" Write names and products exactly as the person did (EndNote, not \"the endnote\"). Say it in your own words, never their sentence back, and never a stock phrase like \"I'd be happy to help\".",
       "- When the work needs their own inbox, files, computer, account or a booking, name the check, never the work as underway: \"Checking your support inbox.\", not \"Going through your inbox now.\"",
+      "- When the work cannot start without a detail only the person can give (where they are, for a nearest or near-me ask that names no place; which of two accounts; a date they never gave), never say the work is underway: reply ASK: and one short question for just that detail, the one place a question is allowed (\"ASK: Which area or landmark are you near?\").",
       `- Reply exactly SKIP only if the message is a greeting, thanks or small talk, or ${input.name}'s setup says it asks before using tools. Any other ask for work gets an ack: a correction or a change ("wait, it's in Rust") gets one naming the change, and setting up a watch or an automation names what is being set up.`,
       SHARED_RULES(input.name),
     ].join("\n");
@@ -183,13 +186,20 @@ const ABOUT_ITSELF = /\ba (?:brief |short |quick )?confirmation\b|\bmy (?:reply|
 
 /** The model's reply as a chat line, or null when it declined or wrote something that is not one short message. */
 export function cleanBeat(kind: BeatKind, reply: string): string | null {
+  return cleanBeatLine(kind, reply)?.text ?? null;
+}
+
+/** An ack written as ASK: is the one question a beat may be. */
+export function cleanBeatLine(kind: BeatKind, reply: string): { text: string; asks: boolean } | null {
   let text = reply.replace(/\r/g, "").trim();
   text = text.replace(/^(?:message|ack|reply|answer)\s*:\s*/i, "").replace(/^["“'‘]+|["”'’]+$/g, "").trim();
+  const asks = kind === "ack" && /^ASK\s*:/.test(text);
+  if (asks) text = text.replace(/^ASK\s*:\s*/, "").replace(/^["“'‘]+|["”'’]+$/g, "").trim();
   if (!text || /\bSKIP\b/.test(text) || text.includes("```") || text.split("\n").filter((line) => line.trim()).length > 2) return null;
   text = redactSecretsInText(text.replace(/\s+/g, " ")).replace(/\s*!+/g, ".").replace(/\.\.+$/, ".");
   const words = text.split(" ").length;
-  if (words < 3 || words > MAX_WORDS[kind] || /\?\s*$/.test(text) || ABOUT_ITSELF.test(text)) return null;
-  return text;
+  if (words < 3 || words > MAX_WORDS[kind] || /\?\s*$/.test(text) !== asks || ABOUT_ITSELF.test(text)) return null;
+  return { text, asks };
 }
 
 /** What the engine reads before the next message: the lines the harness sent in its name, which it never saw itself. */
@@ -233,13 +243,14 @@ export function createTurnBeats(deps: TurnBeatsDeps) {
     });
     void written.then((reply) => {
       if (beat.phase !== "writing") return;
-      const text = cleanBeat(kind, reply);
-      if (!text) {
+      const line = cleanBeatLine(kind, reply);
+      if (!line) {
         beat.phase = "dropped";
         deps.log?.(`turn beats: the ${kind} for ${watch.threadId} was skipped`);
         return;
       }
-      beat.text = text;
+      beat.text = line.text;
+      beat.asks = line.asks;
       beat.phase = "ready";
       tick(watch);
     }, (error: unknown) => {
@@ -282,7 +293,8 @@ export function createTurnBeats(deps: TurnBeatsDeps) {
     // Its end was never heard (a quarantined event, a retired turn): nothing more to say for it.
     if (!deps.live(watch.threadId, watch.turnId)) return end(watch);
     if (ack.phase === "ready") {
-      if (engineSpoke) ack.phase = "dropped";
+      // a question for a detail is wrong once the turn is working without it
+      if (engineSpoke || (ack.asks && watch.tools > 0)) ack.phase = "dropped";
       else if (elapsed >= ACK_MIN_MS && (watch.tools > 0 || (elapsed >= ACK_IDLE_MS && !watch.asksFirst && (watch.thinking || deps.showsThinking?.(watch.threadId) === false)))) post(watch, "ack", ack);
     }
     if (ack.phase === "writing" || (ack.phase === "idle" && !engineSpoke && !watch.tools)) return;

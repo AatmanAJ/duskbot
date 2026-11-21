@@ -163,6 +163,25 @@ describe("turn beats", () => {
     expect(posts.map((p) => p.kind)).toEqual(["ack"]);
   });
 
+  it("asks for a missing detail instead of claiming a search that never runs, and drops the question once a tool runs", async () => {
+    const ask = "ASK: Which area or landmark are you near?";
+    const asking = setup({ replies: { ack: ask } });
+    asking.beats.start({ botId: "b", threadId: THREAD, text: "find the closest pharmacy open right now", attachments: 0, unattended: false });
+    expect(asking.prompts[0]!.prompt).toContain("never say the work is underway: reply ASK:");
+    asking.send(event({ type: "turn.started" }));
+    asking.send(event({ type: "content.delta", streamKind: "reasoning_text", delta: "No location given." }));
+    await vi.advanceTimersByTimeAsync(ACK_IDLE_MS + 100);
+    expect(asking.posts).toEqual([{ kind: "ack", text: "Which area or landmark are you near?", turnId: TURN }]);
+    vi.useRealTimers();
+
+    const working = setup({ replies: { ack: ask } });
+    working.beats.start({ botId: "b", threadId: THREAD, text: "find the closest pharmacy open right now", attachments: 0, unattended: false });
+    working.send(event({ type: "turn.started" }));
+    working.send(toolStart("WebSearch", { query: "pharmacy open now near Indiranagar" }, "s1"));
+    await vi.advanceTimersByTimeAsync(ACK_IDLE_MS * 2);
+    expect(working.posts).toEqual([]);
+  });
+
   it("never acks a silent turn that runs no tool, so no ack is left with nothing after it", async () => {
     const { beats, posts, send } = setup();
     beats.start({ botId: "b", threadId: THREAD, text: "Write three posts for X announcing dark mode", attachments: 0, unattended: false });
@@ -279,6 +298,9 @@ describe("beat text", () => {
     expect(cleanBeat("ack", "Message: Got it, pulling the reviews.")).toBe("Got it, pulling the reviews.");
     expect(cleanBeat("ack", "SKIP")).toBeNull();
     expect(cleanBeat("ack", "Want me to check prices too?")).toBeNull();
+    expect(cleanBeat("ack", "ASK: Which area are you near?")).toBe("Which area are you near?");
+    expect(cleanBeat("ack", "ASK: Looking for the closest pharmacy now.")).toBeNull();
+    expect(cleanBeat("plan", "ASK: Which format do you want?")).toBeNull();
     expect(cleanBeat("ack", "word ".repeat(40))).toBeNull();
     expect(cleanBeat("plan", "one\ntwo\nthree")).toBeNull();
     expect(cleanBeat("plan", "I'll give you a brief confirmation, leaving the other details unchanged. Before sending, I'll check that both corrections match your message.")).toBeNull();
