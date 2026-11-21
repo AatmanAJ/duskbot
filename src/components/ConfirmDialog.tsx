@@ -43,16 +43,14 @@ export interface ConfirmDialogProps {
 export function ConfirmDialog(props: ConfirmDialogProps) {
   const { open, onCancel, returnFocusRef } = props;
   const dialogRef = useRef<HTMLDivElement>(null);
-  const confirmRef = useRef<HTMLButtonElement>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  const initialFocus = useRef(confirmRef);
-  initialFocus.current = (props.tone ?? "danger") === "danger" ? cancelRef : confirmRef;
+  const opensOn = useRef<HTMLButtonElement>(null);
+  const opensOnCancel = (props.tone ?? "danger") === "danger";
   const cancelAction = useRef(onCancel);
   cancelAction.current = onCancel;
   useEffect(() => {
     if (!open) return;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    initialFocus.current.current?.focus();
+    opensOn.current?.focus();
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -85,7 +83,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
   useEffect(() => {
     if (!open) return;
     if (props.pending) dialogRef.current?.focus();
-    else initialFocus.current.current?.focus();
+    else opensOn.current?.focus();
   }, [open, props.pending]);
 
   const reduced = useMotionReduced();
@@ -100,7 +98,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
     <AnimatePresence onExitComplete={() => { setOpened(false); if (phone) void flushSystemControls(); else wakeSystemControls(); props.onClosed?.(); }}>
       {open && (
         <ConfirmLayer key="confirm" phone={phone} layer={props.layer} onCancel={onCancel} scrim={motion.scrim}>
-          <ConfirmDialogCard ref={dialogRef} confirmRef={confirmRef} cancelRef={cancelRef} animated enter={motion.sheet} {...props} />
+          <ConfirmDialogCard ref={dialogRef} confirmRef={opensOnCancel ? undefined : opensOn} cancelRef={opensOnCancel ? opensOn : undefined} animated enter={motion.sheet} {...props} />
         </ConfirmLayer>
       )}
     </AnimatePresence>,
