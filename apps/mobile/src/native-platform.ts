@@ -485,20 +485,42 @@ const UNSUPPORTED = new Set(["recognizer-unavailable", "unsupported-locale"]);
 // android has no separate speech permission, so `speech` is absent there
 const speechAllowed = (state: SpeechPermissions) => state.microphone === "granted" && (state.speech === undefined || state.speech === "granted");
 
-/** The VoiceBridge over the native recognizer. Permissions are asked on the first start; a refusal ends the session. */
+/** The VoiceBridge over the native recognizer. Permissions are asked on the first start; a refusal ends the session.
+ * The recognizers only end a session when asked, so a call's `endpointMs` is kept here: that long with no new words
+ * finishes the turn. */
 export function phoneSpeech(plugin: SpeechPlugin): VoiceBridge {
   const events = createVoiceEvents();
   let session = 0;
   let live = false;
   let listening: Promise<unknown> | undefined;
+  let endpointMs = 0;
+  let quiet: ReturnType<typeof setTimeout> | undefined;
+  const hold = () => {
+    if (quiet !== undefined) clearTimeout(quiet);
+    quiet = undefined;
+  };
   const ours = (event: { session?: number }) => live && event.session === session;
   const ended = (info: VoiceEnd) => {
+    hold();
     live = false;
     events.end(info);
   };
+  const finish = async () => {
+    hold();
+    if (!live) return;
+    try {
+      await plugin.finish();
+    } catch {
+      if (live) ended({ code: 0, reason: "completed" });
+    }
+  };
   const listen = () => listening ??= Promise.all([
     plugin.addListener("transcript", (event) => {
-      if (ours(event) && typeof event.text === "string") events.transcript({ partial: event.partial !== false, text: event.text });
+      if (!ours(event) || typeof event.text !== "string") return;
+      const partial = event.partial !== false;
+      events.transcript({ partial, text: event.text });
+      hold();
+      if (partial && endpointMs > 0 && event.text.trim()) quiet = setTimeout(() => void finish(), endpointMs);
     }),
     plugin.addListener("level", (event) => {
       if (ours(event) && typeof event.level === "number") events.level(Math.min(1, Math.max(0, event.level)));
@@ -515,6 +537,8 @@ export function phoneSpeech(plugin: SpeechPlugin): VoiceBridge {
     async speechStart(options) {
       session += 1;
       live = false;
+      hold();
+      endpointMs = options?.endpointMs && options.endpointMs > 0 ? options.endpointMs : 0;
       const mine = session;
       try {
         await listen();
@@ -539,16 +563,10 @@ export function phoneSpeech(plugin: SpeechPlugin): VoiceBridge {
     async speechStop() {
       session += 1;
       live = false;
+      hold();
       await plugin.stop().catch(() => {});
     },
-    async speechFinish() {
-      if (!live) return;
-      try {
-        await plugin.finish();
-      } catch {
-        if (live) ended({ code: 0, reason: "completed" });
-      }
-    },
+    speechFinish: finish,
     onSpeechTranscript: events.onSpeechTranscript,
     onSpeechEnd: events.onSpeechEnd,
     onSpeechLevel: events.onSpeechLevel,
