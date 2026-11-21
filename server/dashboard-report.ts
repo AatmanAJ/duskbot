@@ -30,6 +30,7 @@ interface MobileState {
 
 export interface DashboardCollectorDeps {
   dataDir: string;
+  environmentId?: string;
   cfg: AppConfig;
   bots(): readonly Pick<BotRecord, "id" | "name" | "computer" | "vpsAlias" | "color" | "mascotBody" | "modelSelection">[];
   managedVpsOwners(): vps.ManagedVpsOwner[];
@@ -220,7 +221,7 @@ export function createDashboardCollector(deps: DashboardCollectorDeps) {
     });
   }
   function workspace(): WorkspaceReport["workspace"] {
-    return { name: deps.deviceLabel() || hostname(), kind: deps.workspaceKind ?? (process.platform === "darwin" ? "mac" : process.platform === "win32" ? "windows" : "linux"), version: serverVersion(), platform: process.platform };
+    return { name: deps.deviceLabel() || hostname(), kind: deps.workspaceKind ?? (process.platform === "darwin" ? "mac" : process.platform === "win32" ? "windows" : "linux"), version: serverVersion(), platform: process.platform, ...(deps.environmentId ? { environmentId: deps.environmentId } : {}) };
   }
   const apps = () => deps.apps ? bounded(() => deps.apps!(), 20_000, null) : Promise.resolve(null);
   return { machine, computers, devices, activity: collectActivity, bots, plans, workspace, apps };

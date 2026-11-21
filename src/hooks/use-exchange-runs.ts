@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import type { Message } from "@/state/store";
-import { exchangeEntries, exchangeRuns, type ExchangeRun } from "@/lib/peer-exchange";
+import { exchangeEntries, exchangeOpenByDefault, exchangeRuns, type ExchangeRun } from "@/lib/peer-exchange";
 
 export interface ExchangeRows<T> {
   /** The run each folded item belongs to. */
@@ -34,14 +34,15 @@ export function useExchangeRows<T>(
     if (!next.delete(run.id)) next.add(run.id);
     return next;
   }), []);
-  const isOpen = useCallback((run: ExchangeRun<T>) => open.has(run.id), [open]);
+  // a toggled id flips the run from how it starts
+  const isOpen = useCallback((run: ExchangeRun<T>) => open.has(run.id) !== exchangeOpenByDefault(run.summary), [open]);
   const closedAbove = useCallback((index: number) => {
     const run = runAt.get(index - 1);
-    return run !== undefined && run.end === index - 1 && !open.has(run.id);
-  }, [runAt, open]);
+    return run !== undefined && run.end === index - 1 && !isOpen(run);
+  }, [runAt, isOpen]);
   const closedBelow = useCallback((index: number) => {
     const run = runAt.get(index + 1);
-    return run !== undefined && run.start === index + 1 && !open.has(run.id);
-  }, [runAt, open]);
+    return run !== undefined && run.start === index + 1 && !isOpen(run);
+  }, [runAt, isOpen]);
   return useMemo(() => ({ runAt, isOpen, toggle, closedAbove, closedBelow }), [runAt, isOpen, toggle, closedAbove, closedBelow]);
 }

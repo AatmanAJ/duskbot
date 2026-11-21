@@ -94,6 +94,7 @@ function fixture(kind: "direct" | "group", threadIds = ["first"]) {
     cancelYourComputerAsks: (threadId: string, generation?: string) => {
       if (generation === undefined || yourComputerAsks.get(threadId) === generation) yourComputerAsks.delete(threadId);
     },
+    cancelMacAsks() {},
     // the slice now carries the desktop scratch notes that sit between releaseTurnResources and bindTurnComputer
     BoxDiskNotes: class { record() {} note() { return ""; } },
     turnResources: { release() {} }, cloudComputerPower: { released() {} }, settlingResourceOwners: new Map(), turnComputerResources: new Map(), teamComputerTurns: new Map(), turnVpsTargets: new Map(), computerRelay: { close() {} },
@@ -333,7 +334,7 @@ function reloadFixture() {
     stopScreenPoller() {}, releaseLocalVmThread() {}, releaseTurnResources() {}, endForeignTurns() {}, vpsThreadEnded() {},
     watchdog: { settle() {} }, closeOpenApprovals() {}, directTurnBots: new Map(),
     finalizeDelegationWatch: (_threadId: string, _ok: boolean, _reply: string, why: string) => log.push(`delegation:${why}`),
-    routines: { failThread() {} }, failedTurnTool: (name: string) => ({ name, ok: false }),
+    routines: { failThread() {} }, failedTurnRow: (name: string) => ({ name, ok: false }),
     settleDirectFollowup: (generation: string, outcome: { text: string }) => settled.push({ generation, text: outcome.text }),
     retryDelegationsWaitingOn() {},
     drainQueuedSends() {},

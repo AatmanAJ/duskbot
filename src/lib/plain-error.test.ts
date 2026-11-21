@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { isTechnicalError, plainErrorLine } from "./plain-error";
+import { friendlyError, isTechnicalError, plainErrorLine } from "./plain-error";
 import { setLocale } from "./i18n";
 import { registrySaveFailure } from "../../shared/registry-save-failure";
 import { requestTooLargeMessage } from "../../shared/request-too-large";
@@ -69,4 +69,16 @@ describe("a provider refusing a message as too large", () => {
     expect(plainErrorLine(`  ${requestTooLargeMessage("vendor/model-1.5")}\n`)).toBe("このメッセージは vendor/model-1.5 には大きすぎます。新しいチャットを始めるか、より多くを受け付けるモデルを選んでください。");
     expect(plainErrorLine("this message is too large for the box.")).toBeUndefined();
   });
+});
+
+it("never shows an engine's internal error or a wall of text, only the plain line", () => {
+  const echoed = "Internal error: 'You are Campaign Manager, a personal bot in dusk bot.\\n\\nAbout you: kept in \"/Users/someone/.duskbot/workspaces/x/MEMORY.md\"'";
+  expect(isTechnicalError(echoed)).toBe(true);
+  expect(plainErrorLine(echoed)).not.toContain("Campaign Manager");
+  expect(isTechnicalError("The model said something long. ".repeat(12))).toBe(true);
+  expect(isTechnicalError("Your OpenAI key has run out of credits.")).toBe(false);
+});
+
+it("says a reply's quoted message is gone in the app's own sentence, not the server's lowercase English", () => {
+  expect(friendlyError(new Error("the message being replied to is no longer available"))).toBe("The message you replied to is gone. Remove the quote and send it again.");
 });

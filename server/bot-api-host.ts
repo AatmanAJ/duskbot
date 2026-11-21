@@ -4,6 +4,7 @@
 // Inside: the app's routes to switch it on, mint a key and switch it off, open only to whoever may edit the bot.
 import { z } from "zod";
 
+import { isErrorDump } from "../shared/failed-turn.ts";
 import { redactSecretsInText } from "../shared/redact.ts";
 import { BOT_API_UPGRADE, botApiEndpoint, type BotApiReply } from "../shared/bot-api.ts";
 import type { AdminActionRow } from "./admin-activity.ts";
@@ -101,7 +102,7 @@ function pendingCard(lines: readonly Message[]): boolean {
 }
 
 function replyText(lines: readonly Message[]): string {
-  return redactSecretsInText(lines.filter((line) => line.role === "bot" && line.kind === "text" && typeof line.text === "string" && line.text.trim())
+  return redactSecretsInText(lines.filter((line) => line.role === "bot" && line.kind === "text" && typeof line.text === "string" && line.text.trim() && !isErrorDump(line.text))
     .map((line) => line.text!.trim()).join("\n\n"));
 }
 

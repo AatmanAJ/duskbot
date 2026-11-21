@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { tmpdir } from "node:os";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -48,7 +48,7 @@ interface Options {
 }
 
 function fixture(options: Options = {}) {
-  const dataDir = mkdtempSync(join(tmpdir(), "dusk-internal-mcp-"));
+  const dataDir = mkdtempSync(join(homedir(), "dusk-internal-mcp-"));
   const cfg: Pick<AppConfig, "mcpServers"> = { mcpServers: structuredClone(options.servers ?? {}) };
   const mcpOAuth = new McpOAuthManager({ file: join(dataDir, "mcp-oauth.json") });
   let busy = false;
@@ -548,6 +548,18 @@ describe("internal mcp_server route, Full access", () => {
       expect.objectContaining({ name: "linear", owner: "managed", managedBy: "Acme IT", forThisBot: true }),
       expect.objectContaining({ name: "notes", owner: "elsewhere", forThisBot: false }),
     ]);
+  });
+
+  it("list says a shared server needs no sharing setting and how a bot whose selection leaves it out gets it", async () => {
+    const { call } = fixture({ servers: { notes, linear }, mcpServers: ["notes"] });
+    const { body } = await call("GET");
+    const [head, json] = [body.text!.slice(0, body.text!.indexOf("\n")), body.text!.slice(body.text!.indexOf("\n") + 1)];
+    expect(JSON.parse(json)).toEqual([
+      expect.objectContaining({ name: "notes", owner: "shared", forThisBot: true }),
+      expect.objectContaining({ name: "linear", owner: "shared", forThisBot: false }),
+    ]);
+    expect(head).toContain("no setting or preference that shares connections");
+    expect(head).toContain("action enable");
   });
 
   it("an update that sends back the address list showed keeps the saved address, headers and sign-in; a new address drops them", async () => {

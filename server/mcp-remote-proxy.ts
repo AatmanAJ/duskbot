@@ -307,6 +307,13 @@ async function directed(message: Json, signal: AbortSignal): Promise<unknown> {
   return upstream(message.method as string, message.params, signal);
 }
 
+const CALL_MS = Number(process.env.DUSK_REMOTE_MCP_CALL_MS) > 0 ? Number(process.env.DUSK_REMOTE_MCP_CALL_MS) : 120_000;
+function callTimeoutText(ms: number): string {
+  const wait = ms >= 60_000 ? `${Math.round(ms / 60_000)} minute${ms >= 90_000 ? "s" : ""}` : `${Math.round(ms / 1000)} seconds`;
+  return `This tool did not answer within ${wait}, so dusk bot stopped waiting for it. The service may still be working on it: `
+    + "check for its result another way, or try a smaller step, before running it again.";
+}
+
 async function handle(message: Json): Promise<void> {
   const id = requestKey(message.id);
   if (typeof message.method !== "string" || message.jsonrpc !== "2.0") {
@@ -327,9 +334,11 @@ async function handle(message: Json): Promise<void> {
   if (pending.has(id)) { error(message.id, -32600, "Duplicate request ID"); return; }
   const controller = new AbortController();
   pending.set(id, controller);
-  // Engines keep their own tool-call deadline (Gemini CLI and Qwen Code wait ten minutes) and cancel through this proxy.
-  const deadline = message.method !== "tools/call" ? 30_000 : directory ? 120_000 : undefined;
-  const signal = deadline === undefined ? controller.signal : AbortSignal.any([controller.signal, AbortSignal.timeout(deadline)]);
+  // Engines wait up to ten minutes for a call (Gemini CLI, Qwen Code) while Node's fetch gives up on a silent server after
+  // five, so a hung remote call stalled the turn and then failed as unreachable: it stops here first, saying why.
+  const deadline = message.method !== "tools/call" ? 30_000 : CALL_MS;
+  const timedOut = AbortSignal.timeout(deadline);
+  const signal = AbortSignal.any([controller.signal, timedOut]);
   try {
     const result = directory ? await directed(message, signal) : await upstream(message.method, message.params, signal);
     if (message.method === "initialize") initialized = true;
@@ -341,6 +350,7 @@ async function handle(message: Json): Promise<void> {
     else if (failure instanceof McpHttpError && failure.status === 401) error(message.id, -32603, CREDENTIALS_REFUSED);
     else if (failure instanceof McpHttpError && failure.kind === "status" && !signal.aborted) error(message.id, -32603, remoteStatusText(failure.status));
     else if (failure instanceof McpHttpError && failure.kind === "network" && failure.message === "request failed" && !signal.aborted) error(message.id, -32603, "Could not reach this MCP server. Check its URL and that it is online.");
+    else if (timedOut.aborted && !controller.signal.aborted) error(message.id, -32001, message.method === "tools/call" ? callTimeoutText(deadline) : "This MCP server did not answer in time.");
     else error(message.id, signal.aborted ? -32800 : -32603, signal.aborted ? "MCP request cancelled" : "Remote MCP request failed");
   } finally { pending.delete(id); }
 }
