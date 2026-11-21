@@ -1,15 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { api, useStore, type Action } from "@/state/store";
 import type { LocaleKey } from "@/locales";
+import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
+import { flushSystemControls, wakeSystemControls } from "@/lib/system-control";
+import { frames, sheetStep, sheetsUp, useChrome } from "@/mobile/chrome";
+import { createPushToken, registerNativePop } from "@/mobile/SheetPush";
+import { useConnectAppsPhoneBar } from "./use-phone-bar";
 import { connectorDescription } from "@/lib/app-catalog";
+import { closeExternalPage } from "@/lib/app-links";
 import { listLogins } from "@/lib/logins";
 import { connectorStatusMemory, preloadConnectedApps } from "@/lib/connected-apps";
 import { useMcpServers } from "@/lib/mcp-servers";
 import { HOSTED_MCP_APPS, type HostedConnections, type HostedMcpAppId } from "@/lib/hosted-mcp-apps";
 import { managedConnectorUnavailableReason } from "../../../shared/connector-availability";
 import { hasActiveConnection } from "@/lib/connector-status";
+import { skillsLibraryEnabled } from "@/lib/feature-flags";
 import type { SkillsLibrarySkillWire } from "../../../shared/wire";
 import { Icon } from "../Icon";
 import { DuskMark } from "../mascot-view";
@@ -24,8 +31,7 @@ import { AppFacts, AppPage, appFacts, type AppPageModel, type Way } from "./AppP
 import { OnePasswordBody } from "./OnePasswordBody";
 import { GmailPasswordNote, TokenCard } from "./TokenCard";
 import { useTokenApps } from "./use-token-apps";
-import { TOKEN_APPS, tokenApp, type TokenAppId } from "../../../shared/app-tokens";
-import { NATIVE_CONNECTORS } from "../../../shared/native-connectors";
+import { tokenApp, type TokenAppId } from "../../../shared/app-tokens";
 import type { OnePasswordStatus } from "../../../shared/logins";
 import { CategoryMenu } from "./CategoryMenu";
 import {
@@ -34,13 +40,13 @@ import {
 } from "./catalog";
 import { MCP_SERVERS_ID as MCP_PAGE, type ConnectAppsPage } from "./open";
 import { cachedConnectorCatalog, loadConnectorCatalog, useConnectors, type ConnectorPhase } from "./use-connectors";
-import { appLogo } from "./logos";
-import { composioLogo, loadComposioSnapshot, snapshotToolkit } from "./composio-snapshot";
+import { loadComposioSnapshot, snapshotToolkit } from "./composio-snapshot";
 import { prefetchRemoteApps, useRemoteApps } from "./use-remote-apps";
 import { idsOf, mergeEntries } from "./merge";
 import { WindowedRows } from "./WindowedRows";
-import type { DirectoryApp } from "../../../shared/connector-directory";
 import type { ToolkitCard } from "../ServiceIcon";
+import { CUSTOM_MCP, GMAIL, cardIcon, nativeEntries, remoteIcon } from "./native-entries";
+import { Group, Option, ResultGroup, ScrollThumb } from "./window-parts";
 import "./connect-apps.css";
 
 type NativeId = "x" | "email";
@@ -48,15 +54,12 @@ const NATIVE_IDS: readonly NativeId[] = ["email", "x"];
 const RECOMMENDED = "recommended";
 const ALL_APPS = "apps";
 const CONNECTED = "connected";
-/** Any MCP server by its URL, kept with the MCP servers Settings has. */
-const CUSTOM_MCP = "custom-mcp";
 // a section this long draws only the rows in view
 const WINDOW_FROM = 40;
 const SETTINGS = (section: "logins" | "skills"): Action => ({ type: "toggleAppSettings", open: true, section });
 // the longest the window waits for what it has not read yet before it draws its rows anyway
 const READY_WAIT_MS = 1_200;
 const OWN_KINDS: ReadonlySet<AppEntry["kind"]> = new Set(["native", "hosted", "logins", "token"]);
-const GMAIL = "gmail";
 const GMAIL_ADDRESS = /@(gmail|googlemail)\.com$/i;
 
 // what the last open learned, so the next one draws its first frame with it instead of filling in
@@ -78,51 +81,6 @@ export function stableOrder(entries: readonly AppEntry[], order: Map<string, num
 interface Section { key: string; title: string; note?: string; ids: string[]; viewAll?: ConnectAppsPage }
 /** One view's chips and sections, fixed when it is first drawn: later answers change a row's button, never its place. */
 interface Layout { view: number; categories: Category[]; sections: Section[] }
-
-function logoIcon(...names: string[]): AppEntry["icon"] {
-  const logo = appLogo(...names);
-  return logo ? { image: logo.src, padded: logo.padded, background: logo.background, scale: logo.scale } : {};
-}
-
-/** Grok's logo when it has one, then the catalog's own mark, then Composio's mark for the slug: never a favicon. */
-function cardIcon(card: ToolkitCard): AppEntry["icon"] {
-  const known = logoIcon(card.slug, card.label);
-  if (known.image) return known;
-  return { logo: card.logo ?? composioLogo(card.slug), padded: true };
-}
-
-/** Our bundled logo when we have one, else the vendor site's own icon through /api/site-icon. */
-function remoteIcon(app: DirectoryApp): AppEntry["icon"] {
-  const known = logoIcon(app.id, app.label);
-  return known.image ? known : { domain: app.domain };
-}
-
-
-const TOKEN_CATEGORY: Record<TokenAppId, string> = {
-  github: "developer code", notion: "documents notes", linear: "project management", airtable: "database", todoist: "task",
-  trello: "project management", clickup: "project management", hubspot: "crm", jira: "project management", shopify: "commerce",
-  stripe: "payments", cloudflare: "developer cloud", googledrive: "file storage", dropbox: "file storage",
-};
-
-function nativeEntries(): AppEntry[] {
-  return [
-    { id: "1password", kind: "logins", label: "1Password", description: t("connectApps.onePassword.description"), categories: ["credentials"], icon: logoIcon("1password"), website: "1password.com", keywords: "password vault logins" },
-    { id: "email", kind: "native", label: t("email.title"), description: t("email.description"), categories: ["communication"], icon: { glyph: "envelope", glyphPaint: "rgb(229 47 139)" }, keywords: "email mail imap smtp mailbox" },
-    { id: "x", kind: "native", label: t("apps.x.title"), description: t("apps.x.description"), categories: ["marketing"], icon: logoIcon("x"), website: "x.com", keywords: "x twitter posts", oneClick: true },
-    { id: GMAIL, kind: "native", label: "Gmail", description: t("tokenApps.gmail.description"), categories: ["communication"], icon: logoIcon("gmail"), website: "mail.google.com", keywords: "gmail google mail app password imap" },
-    ...TOKEN_APPS.map((app): AppEntry => ({
-      id: app.id, kind: "token", label: app.label, description: t(`tokenApps.description.${app.id}` as LocaleKey), categories: grokCategories([TOKEN_CATEGORY[app.id]]),
-      icon: logoIcon(app.id, app.label).image ? logoIcon(app.id, app.label) : { domain: app.domain }, website: app.domain, keywords: `${app.id} token api key`,
-      // a sign-in that comes back by itself is one click; a device code to type, or a token to paste, is not
-      ...(NATIVE_CONNECTORS.some((one) => one.id === app.id && one.flow !== "device") ? { oneClick: true } : {}),
-    })),
-    { id: CUSTOM_MCP, kind: "native", label: t("connectApps.customMcp"), description: t("connectApps.customMcp.description"), categories: ["code"], icon: { glyph: "plug" }, keywords: "custom mcp server url remote http headers oauth" },
-    ...HOSTED_MCP_APPS.map((app): AppEntry => ({
-      id: app.id, kind: "hosted", label: app.label, description: t(app.description), categories: ["finance"],
-      icon: "image" in app.icon ? { image: app.icon.image } : { glyph: "credit-card", glyphPaint: "rgb(48 49 54)" }, website: new URL(app.url).hostname.replace(/^mcp\./, ""), keywords: app.keywords, oneClick: true,
-    })),
-  ];
-}
 
 function decodeImage(src: string): Promise<void> {
   const image = new Image();
@@ -161,8 +119,14 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
     needsPanel: () => window.duskDesktop?.remoteClient?.active === true,
     openPanel: () => go({ kind: "detail", id: MCP_PAGE }),
   });
+  const chrome = useChrome();
+  const nativePush = Boolean(chrome?.beginPush && chrome.commitPush && chrome.popPage);
   const [page, setPage] = useState<ConnectAppsPage>(requested);
   const [trail, setTrail] = useState<ConnectAppsPage[]>([]);
+  const pageRef = useRef(page);
+  pageRef.current = page;
+  const nativeTrailRef = useRef<Array<{ prev: ConnectAppsPage; token: string; unreg: () => void }>>([]);
+  const mountedRef = useRef(true);
   const mcpServers = useMcpServers().servers;
   const [query, setQuery] = useState("");
   const [resultsOpen, setResultsOpen] = useState(false);
@@ -192,8 +156,29 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
   const browsing = page.kind === "home" || page.kind === "category";
   const pageKey = browsing ? "browse" : `${page.kind}:${"id" in page ? page.id : ""}`;
 
+  const clearNativeTrail = useCallback(() => {
+    const remaining = nativeTrailRef.current.splice(0);
+    for (const entry of remaining) entry.unreg();
+    const oldest = remaining[0];
+    if (oldest && chrome?.popPage && sheetsUp.system) {
+      sheetStep(async () => {
+        await chrome.popPage?.(oldest.token, { animated: false });
+        wakeSystemControls();
+      });
+    }
+  }, [chrome]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      clearNativeTrail();
+    };
+  }, [clearNativeTrail]);
+
   const opened = useRef({ requested, nonce });
   useEffect(() => {
+    clearNativeTrail();
     setPage(requested);
     setTrail([]);
     setNav(null);
@@ -201,7 +186,7 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
     if (opened.current.requested === requested && opened.current.nonce === nonce) return;
     opened.current = { requested, nonce };
     setView((count) => count + 1);
-  }, [requested, nonce]);
+  }, [requested, nonce, clearNativeTrail]);
   useEffect(() => {
     const timer = setTimeout(() => setWaited(true), READY_WAIT_MS);
     return () => clearTimeout(timer);
@@ -226,8 +211,8 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
   useEffect(() => {
     let alive = true;
     listLogins().then((answer) => { if (alive) setOnePassword(answer.onePassword ?? { connected: false }); }).catch(() => { if (alive) setOnePassword(null); });
-    fetch("/api/skills-library")
-      .then(async (response) => (response.ok ? ((await response.json()) as { skills?: SkillsLibrarySkillWire[] }).skills ?? [] : []))
+    (skillsLibraryEnabled(state.config) ? fetch("/api/skills-library") : Promise.resolve(null))
+      .then(async (response) => (response?.ok ? ((await response.json()) as { skills?: SkillsLibrarySkillWire[] }).skills ?? [] : []))
       .then((list) => { if (alive) setSkills(list); })
       .catch(() => { if (alive) setSkills([]); });
     return () => { alive = false; };
@@ -316,7 +301,9 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
       if (now === "connected" && known.current.get(entry.id) === "disconnected") added ??= entry;
       if (now !== "unknown") known.current.set(entry.id, now);
     }
-    if (added) setToast({ kind: "success", text: t("connectApps.added", { name: added.label }) });
+    if (!added) return;
+    closeExternalPage();
+    setToast({ kind: "success", text: t("connectApps.added", { name: added.label }) });
   }, [entries, connection, connectors.phase]);
   useEffect(() => {
     if (!connectors.error) return;
@@ -338,13 +325,96 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
   const go = (next: ConnectAppsPage) => {
     setResultsOpen(false);
     setActive(-1);
-    setTrail((past) => next.kind === "detail" || next.kind === "yours" ? [...past, page] : []);
+    const isPush = next.kind === "detail" || next.kind === "yours";
+    if (isPush && nativePush && chrome) {
+      sheetStep(async () => {
+        if (!mountedRef.current) return;
+        const ok = await chrome.beginPush!();
+        if (!mountedRef.current) {
+          if (ok) await chrome.cancelPush?.();
+          return;
+        }
+        const prev = pageRef.current;
+        if (!ok) {
+          setTrail((past) => [...past, prev]);
+          setNav(null);
+          setPage(next);
+          setView((count) => count + 1);
+          await frames(1);
+          await flushSystemControls();
+          return;
+        }
+        const token = createPushToken();
+        const entry = { prev, token, unreg: () => {} };
+        entry.unreg = registerNativePop(chrome, token, () => {
+          const at = nativeTrailRef.current.findIndex((item) => item.token === token);
+          if (at < 0) return;
+          const removed = nativeTrailRef.current.splice(at);
+          for (const item of removed) item.unreg();
+          if (!mountedRef.current) return;
+          setPage(removed[0]!.prev);
+          setTrail(nativeTrailRef.current.map((item) => item.prev));
+          setNav(null);
+          setView((count) => count + 1);
+        });
+        nativeTrailRef.current.push(entry);
+        setTrail(nativeTrailRef.current.map((item) => item.prev));
+        setNav(null);
+        setPage(next);
+        setView((count) => count + 1);
+        await frames(1);
+        await flushSystemControls();
+        await frames(2);
+        if (!mountedRef.current) {
+          const at = nativeTrailRef.current.findIndex((item) => item.token === token);
+          if (at >= 0) {
+            for (const item of nativeTrailRef.current.splice(at)) item.unreg();
+          }
+          await chrome.cancelPush?.();
+          return;
+        }
+        const committed = await chrome.commitPush!(token);
+        if (!committed) {
+          const at = nativeTrailRef.current.findIndex((item) => item.token === token);
+          if (at >= 0) {
+            const removed = nativeTrailRef.current.splice(at);
+            for (const item of removed) item.unreg();
+            if (mountedRef.current) {
+              setPage(removed[0]!.prev);
+              setTrail(nativeTrailRef.current.map((item) => item.prev));
+              setView((count) => count + 1);
+            }
+          }
+        }
+      });
+      return;
+    }
+    if (!isPush && nativeTrailRef.current.length > 0) clearNativeTrail();
+    setTrail((past) => isPush ? [...past, page] : []);
     const staysBrowsing = browsing && (next.kind === "home" || next.kind === "category");
-    setNav(next.kind === "detail" || next.kind === "yours" ? "push" : staysBrowsing ? null : "swap");
+    setNav(isPush ? "push" : staysBrowsing ? null : "swap");
     setPage(next);
     setView((count) => count + 1);
   };
   const back = () => {
+    if (nativePush && chrome && nativeTrailRef.current.length > 0) {
+      const top = nativeTrailRef.current.pop()!;
+      top.unreg();
+      sheetStep(async () => {
+        const popped = await chrome.popPage!(top.token);
+        if (mountedRef.current) {
+          setPage(top.prev);
+          setTrail(nativeTrailRef.current.map((item) => item.prev));
+          setNav(null);
+          setView((count) => count + 1);
+        }
+        await frames(1);
+        await flushSystemControls();
+        await frames(1);
+        if (popped) await chrome.finishPop?.();
+      });
+      return;
+    }
     setPage(trail.at(-1) ?? { kind: "home" });
     setTrail((past) => past.slice(0, -1));
     setNav("pop");
@@ -454,9 +524,9 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
     ];
     return names.length ? names.join(", ") : entry.description;
   };
+  const openEntry = (entry: AppEntry) => go({ kind: "detail", id: entry.kind === "custom" ? CUSTOM_MCP : entry.id });
   const row = (entry: AppEntry) => (
-    <AppRow key={entry.id} entry={entry} subtitle={subtitleOf(entry)} action={rowAction(entry)}
-      onOpen={() => go({ kind: "detail", id: entry.kind === "custom" ? CUSTOM_MCP : entry.id })} />
+    <AppRow key={entry.id} entry={entry} subtitle={subtitleOf(entry)} action={rowAction(entry)} onOpen={() => openEntry(entry)} />
   );
 
   const label = (category: Category) => t(CATEGORY_LABEL[category]);
@@ -568,6 +638,14 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
   const nativeSetters = useMemo(() => Object.fromEntries(NATIVE_IDS.map((id) => [id, setNative(id)])) as Record<NativeId, (value: boolean | null) => void>, [setNative]);
 
   const detailEntry = detailId ? byId.get(detailId) : undefined;
+  // a page asked for by an id this catalog does not have (a link from the website) searches for it instead
+  const missingId = page.kind === "detail" && ready && !detailEntry && page.id !== MCP_PAGE && page.id !== CUSTOM_MCP ? page.id : null;
+  useEffect(() => {
+    if (!missingId) return;
+    setQuery(missingId);
+    go({ kind: "home" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missingId]);
   // our own card leads only when it is one click; otherwise Composio's sign-in does, and ours waits under the other ways
   // gmail's app password card stays on its page even when Composio's listing is the row
   const hasOwnCard = (entry: AppEntry) => OWN_KINDS.has(entry.kind) || entry.id === GMAIL;
@@ -586,6 +664,10 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
   const gmailShown = detailEntry?.id === GMAIL && ownShown
     && (detailComposioLeads || !(composioConnected(detailEntry) && gmailConnected !== true));
   const sub = page.kind === "detail" || page.kind === "yours";
+  const phoneBarTitle = page.kind === "yours" ? t("connectApps.manage")
+    : page.kind === "detail" ? (page.id === MCP_PAGE ? t("connectApps.mcp") : page.id === CUSTOM_MCP ? t("connectApps.customMcp") : detailEntry?.label ?? t("connectApps.title"))
+      : t("connectApps.title");
+  const { phone, nativeBar, handleBack } = useConnectAppsPhoneBar(phoneBarTitle, trail.length, back, onClose);
 
   const body = (() => {
     if (page.kind === "detail" && (page.id === MCP_PAGE || page.id === CUSTOM_MCP)) {
@@ -669,21 +751,18 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
       return <AppPage model={model} />;
     }
     if (page.kind === "yours") {
-      const servers = (mcpServers ?? []).filter((server) => !byId.has(`mcp:${server.name}`) && !remote.ownsServer(server.name) && !HOSTED_MCP_APPS.some((app) => server.name === app.id || server.name.startsWith(`${app.id}-`)));
-      const serverEntry = (name: string): AppEntry => ({ id: `mcp:${name}`, kind: "native", label: name, description: t("connectApps.mcpServer"), categories: [], icon: { glyph: "server" } });
+      const offServers = entries.filter((entry) => entry.kind === "custom" && !isConnected.has(entry.id));
       return (
         <div className="ca-yours @container">
           <h1 className="ca-title ps-2" data-detail-hero-title="">{t("connectApps.manage")}</h1>
             <Group title={t("connectApps.installed")}>
-              {connected.length || servers.length
+              {connected.length || offServers.length
                 ? <div className="grid grid-cols-1 gap-x-2 gap-y-0.5 @xl:grid-cols-2">
                   {connected.map((entry) => (
-                    <AppRow key={entry.id} entry={entry} subtitle={entry.description} action={{ kind: "status", label: t("apps.connected"), tone: "connected" }} onOpen={() => go({ kind: "detail", id: entry.id })} />
+                    <AppRow key={entry.id} entry={entry} subtitle={entry.description} action={{ kind: "status", label: t("apps.connected"), tone: "connected" }} onOpen={() => openEntry(entry)} />
                   ))}
-                  {servers.map((server) => (
-                    <AppRow key={server.name} entry={serverEntry(server.name)} subtitle={t("connectApps.mcpServer")}
-                      action={server.enabled ? { kind: "status", label: t("apps.connected"), tone: "connected" } : { kind: "status", label: t("connectApps.off"), tone: "quiet" }}
-                      onOpen={() => go({ kind: "detail", id: MCP_PAGE })} />
+                  {offServers.map((entry) => (
+                    <AppRow key={entry.id} entry={entry} subtitle={entry.description} action={{ kind: "status", label: t("connectApps.off"), tone: "quiet" }} onOpen={() => openEntry(entry)} />
                   ))}
                 </div>
                 : <p className="ca-note">{t("connectApps.nothingInstalled")}</p>}
@@ -725,15 +804,23 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
   })();
 
   return (
-    <div className="ca-scrim" data-connect-apps="" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <div
+      className="ca-scrim"
+      data-connect-apps=""
+      data-native-bar={nativeBar ? "" : undefined}
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
       <div ref={dialog} data-tour="apps-panel" role="dialog" aria-modal="true" aria-label={t("connectApps.title")} tabIndex={-1} className="ca-dialog" onKeyDown={onDialogKey}>
         <div className="ca-layout" data-fit={page.kind === "detail" ? "" : undefined}>
+          {nativeBar && (
+            <div aria-hidden className={cn("mobile-edge mobile-sheet-edge pointer-events-none absolute inset-x-0 top-0 z-50 h-[calc(var(--m-safe-top)+10px)] transition-opacity duration-150", scrolled ? "opacity-100" : "opacity-0")} />
+          )}
           <button type="button" data-tour="apps-close" className="ca-icon-button ca-close" aria-label={t("connectApps.close")} onClick={onClose}>
             <Icon name="close" size={16} />
           </button>
           <div className="ca-bar" data-sub={sub ? "" : undefined}>
             {page.kind === "detail" && (
-              <button type="button" className="ca-icon-button" aria-label={t("connectApps.back")} onClick={back}>
+              <button type="button" className="ca-icon-button" aria-label={t("connectApps.back")} onClick={phone ? handleBack : back}>
                 <Icon name="chevron-left" size={16} />
               </button>
             )}
@@ -882,84 +969,3 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
     </div>
   );
 }
-
-function Group({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col">
-      <h3 className="ca-group-title">{title}</h3>
-      {children}
-    </section>
-  );
-}
-
-function ResultGroup({ label, show, children }: { label: string; show: boolean; children: ReactNode }) {
-  if (!show) return null;
-  return (
-    <div role="group" aria-label={label}>
-      <div className="ca-results-label" aria-hidden="true">{label}</div>
-      {children}
-    </div>
-  );
-}
-
-function Option({ index, active, onHover, onPick, icon, label }: {
-  index: number;
-  active: number;
-  onHover: (index: number) => void;
-  onPick: () => void;
-  icon?: ReactNode;
-  label: string;
-}) {
-  return (
-    <button type="button" role="option" id={`ca-option-${index}`} tabIndex={-1} aria-selected={index === active} className="ca-option"
-      onMouseMove={() => { if (index !== active) onHover(index); }} onClick={onPick}>
-      {icon}
-      <span>{label}</span>
-      <Icon name="chevron-right" size={12} />
-    </button>
-  );
-}
-
-/** The thin thumb, in a component of its own: it moves on every scroll frame and the window around it never renders for it. */
-function ScrollThumb({ scroller, page }: { scroller: React.RefObject<HTMLDivElement | null>; page: string }) {
-  const thumb = useScrollThumb(scroller, page);
-  if (!thumb) return null;
-  return (
-    <div role="presentation" className="ca-scrollbar" data-scrolling={thumb.scrolling ? "" : undefined}>
-      <div style={{ top: thumb.top, height: thumb.height }} />
-    </div>
-  );
-}
-
-function useScrollThumb(scroller: React.RefObject<HTMLDivElement | null>, key: string) {
-  const [thumb, setThumb] = useState<{ top: number; height: number; scrolling: boolean } | null>(null);
-  useEffect(() => {
-    const element = scroller.current;
-    if (!element) return;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const measure = (scrolling: boolean) => {
-      const { scrollHeight, clientHeight, scrollTop } = element;
-      if (scrollHeight <= clientHeight + 1) { setThumb(null); return; }
-      const track = clientHeight - 6;
-      const height = Math.max(20, (clientHeight / scrollHeight) * track);
-      setThumb({ top: (scrollTop / (scrollHeight - clientHeight)) * (track - height), height, scrolling });
-    };
-    const onScroll = () => {
-      measure(true);
-      clearTimeout(timer);
-      timer = setTimeout(() => measure(false), 800);
-    };
-    measure(false);
-    element.addEventListener("scroll", onScroll, { passive: true });
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => measure(false));
-    observer?.observe(element);
-    if (element.firstElementChild) observer?.observe(element.firstElementChild);
-    return () => {
-      clearTimeout(timer);
-      element.removeEventListener("scroll", onScroll);
-      observer?.disconnect();
-    };
-  }, [scroller, key]);
-  return thumb;
-}
-

@@ -10,6 +10,7 @@ import { useCloudOffer } from "@/lib/use-cloud-offer";
 import type { LocaleKey } from "@/locales";
 import { AccountsSheet, CloudSignOutConfirm } from "./AccountMenu";
 import { openSignIn } from "@/lib/sign-in-sheet";
+import { continueInBrowser } from "@/lib/account-intent";
 const browserSignIn = () => Boolean(window.duskDesktop?.cloudAccount?.continueInBrowser);
 import { Card } from "./SettingsPrimitives";
 import { CloudCancelPlan, type CloudRenewalActions } from "./CloudCancelPlan";
@@ -17,6 +18,7 @@ import { StagingMark } from "./cloud-buy/parts";
 import { CloudSetupSteps } from "./CloudSetupSteps";
 import { useCloudSendNotice } from "./CloudSendStrip";
 import { CloudFilesSettings } from "./CloudFilesSettings";
+import { openAccountDeletion } from "./bot-panel/StartFresh";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
 
 export { cloudPlanLabel };
@@ -126,7 +128,7 @@ function dashboardLabel(account: CloudAccountState, view: CloudPlanView): string
   const trial = account.trial && !account.renewal?.cancelled ? cloudTrialView(account.trial).action : null;
   if (trial) return trial.label;
   if (view.kind === "paid" || (view.kind === "unverified" && view.label)) return t("cloudAccount.manage");
-  if (account.machine?.status === "payment-problem") return t("cloudAccount.updatePayment");
+  if (account.machine?.status === "payment-problem" && !account.payment) return t("cloudAccount.updatePayment");
   return t("cloudAccount.dashboard");
 }
 
@@ -292,6 +294,10 @@ export function CloudAccountSettings({ linkRequest = 0, cloudHome = false, teamH
         {line && <p role="status" data-cloud-plan={view.kind} className="text-[15px] font-medium text-ink">{line}
           {view.kind === "paid" && view.checking && <span className="ms-2 text-[12px] font-normal text-ink-secondary">{t("cloudAccount.checking")}</span>}</p>}
         {account.status === "connected" && trialLines(account.trial)}
+        {account.status === "connected" && account.payment && <div data-cloud-payment="" className="flex flex-wrap items-center gap-3">
+          <p role="status" className="min-w-0 flex-1 text-[13px] leading-relaxed text-ink">{t(account.payment.trial ? "cloudAccount.trialNotice" : "cloudAccount.paymentNotice", { name: account.payment.name, date: day(account.payment.fixBy) })}</p>
+          <button type="button" disabled={busy} className="ui-button" onClick={() => void perform(async () => { if (await continueInBrowser({ kind: "billing" }) === "failed") throw new Error("billing did not open"); return bridge!.state(); })}>{t(account.payment.trial ? "cloudHome.upgrade" : "cloudAccount.updateCard")}</button>
+        </div>}
         {view.kind === "free" && addCloudButton}
         <div className="flex flex-wrap gap-2">
           {view.kind === "reauth"
@@ -302,6 +308,9 @@ export function CloudAccountSettings({ linkRequest = 0, cloudHome = false, teamH
           {!confirm && <button type="button" disabled={busy} className="ui-button" onClick={() => setConfirm(true)}>{t("cloudAccount.signOut")}</button>}
         </div>
         {account.status === "connected" && account.renewal && <CloudCancelPlan renewal={account.renewal} actions={renewal} />}
+        {/* its own explicit action, never part of Start fresh: the account page says it cancels the plan, and asks there */}
+        {account.status === "connected" && !confirm && <p data-cloud-delete-account="" className="text-[12px] text-ink-secondary">{t("cloudAccount.deleteAccountHint")}{" "}
+          <button type="button" disabled={busy} className="underline hover:text-ink" onClick={openAccountDeletion}>{t("cloudAccount.deleteAccount")}</button></p>}
         {view.kind === "free" && !confirm && <p className="text-[12px] text-ink-secondary">{t(window.duskDesktop?.accounts ? "cloudAccount.otherEmailOrTeam" : "cloudAccount.otherEmail")}{" "}
           <button type="button" data-cloud-other-email disabled={busy} className="underline hover:text-ink" onClick={() => (window.duskDesktop?.accounts ? setAddingEmail(true) : setConfirm(true))}>{t(window.duskDesktop?.accounts ? "cloudAccount.addOtherEmail" : "cloudAccount.useOtherEmail")}</button></p>}
         {addingEmail && <AccountsSheet adding="" onClose={() => setAddingEmail(false)} />}

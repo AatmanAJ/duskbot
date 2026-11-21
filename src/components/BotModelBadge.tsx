@@ -1,5 +1,6 @@
 import type { Bot, InstanceInfo } from "@/state/store";
 import { t } from "@/lib/i18n";
+import { isAutoFreeModel, unansweredReason } from "@/lib/simple-model-menu";
 import { InstanceProviderMark } from "./ProviderIcons";
 
 export function botModel(bot: Pick<Bot, "modelSelection">, instances: InstanceInfo[]): { instance: InstanceInfo; label: string } | null {
@@ -7,7 +8,8 @@ export function botModel(bot: Pick<Bot, "modelSelection">, instances: InstanceIn
   if (!instance) return null;
   const id = bot.modelSelection.model || instance.models?.default || "";
   const label = instance.models?.options?.find((option) => option.id === id)?.label ?? id;
-  return { instance, label: label || instance.displayName };
+  const reason = unansweredReason(instances, { instanceId: instance.instanceId, model: id });
+  return { instance, label: reason ?? (isAutoFreeModel(instance, id) ? t("model.free.name") : label || instance.displayName) };
 }
 
 export function botTooltip(bot: Pick<Bot, "name" | "title" | "chiefOfStaff" | "modelSelection">, instances: InstanceInfo[]): string {

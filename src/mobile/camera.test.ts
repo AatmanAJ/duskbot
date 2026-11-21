@@ -236,6 +236,32 @@ describe("native scanner session", () => {
     expect(onCode).toHaveBeenCalledOnce();
   });
 
+  it("a scanner the system draws full screen gets the page's words, hands back its buttons, and pauses while a code is redeemed", async () => {
+    let action: ((key: string) => void) | undefined;
+    const busy = vi.fn().mockResolvedValue(undefined);
+    const { fake } = driver({
+      start: vi.fn().mockResolvedValue({ fullScreen: true }),
+      listen: vi.fn(async (_code, _error, onAction) => { action = onAction; return [{ remove: vi.fn().mockResolvedValue(undefined) }]; }),
+      busy,
+    });
+    const scanning = vi.fn();
+    const onAction = vi.fn();
+    const overlay = { title: "Scan", hint: "Point at the code", close: "Close", torch: "Torch", actions: [{ key: "code", title: "Enter code", icon: "keyboard" }] };
+    const session = await scannerCamera(fake, scanning).start({ onCode: vi.fn(), overlay, onAction });
+    expect(fake.start).toHaveBeenCalledWith(overlay);
+    expect(session.fullScreen).toBe(true);
+    expect(session.torch).toBeUndefined();
+    expect(fake.torchAvailable).not.toHaveBeenCalled();
+    expect(scanning).toHaveBeenLastCalledWith(false);
+    action?.("code");
+    expect(onAction).toHaveBeenCalledWith("code");
+    session.busy?.(true, "Linking");
+    expect(busy).toHaveBeenCalledWith(true, "Linking");
+    await session.stop();
+    action?.("close");
+    expect(onAction).toHaveBeenCalledOnce();
+  });
+
   it("a camera that will not start leaves nothing running", async () => {
     const { fake } = driver({ start: vi.fn().mockRejectedValue(new Error("this device has no camera to scan with")) });
     const scanning = vi.fn();
