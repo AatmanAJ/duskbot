@@ -31,6 +31,12 @@ export function PixelMascot({ color = "blue", size = 64 }: { color?: MausColor; 
   return <MausAvatar color={color} size={size} state="idle" label="" />;
 }
 
+/** The desktop's starting mascot (its empty window while it connects): the same mark in its loading motion, for
+ * every moment the phone waits on its computer to start, connect or wake. */
+export function LoadingMascot({ size = 56, color = "green" }: { size?: number; color?: MausColor }) {
+  return <span aria-hidden className="inline-flex shrink-0"><MausAvatar color={color} size={size} state="loading" trackPointer={false} personality={false} label="" /></span>;
+}
+
 /**
  * The phone's one empty, error and waiting state: a small picture, a short title, a line that says what to do, and at
  * most one action. Used everywhere a list has nothing in it or a load failed, so they all read the same.

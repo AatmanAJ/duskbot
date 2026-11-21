@@ -310,11 +310,23 @@ describe("ClaudeDriver.decodeConfig", () => {
       expect(candidates.length).toBeGreaterThan(1);
       expect(new Set(candidates).size).toBe(candidates.length);
     } else {
-      expect(candidates).toHaveLength(3);
+      expect(candidates).toHaveLength(tmpdir() === "/tmp" ? 3 : 4);
       expect(candidates[1]).toMatch(/dusk-perm-[0-9a-f]{16}\.sock$/);
       expect(candidates[2]).toMatch(/dp-[0-9a-f]{8}\.sock$/);
-      expect(new Set(candidates).size).toBe(3);
+      expect(new Set(candidates).size).toBe(candidates.length);
       expect(brokerSocketCandidates("t-candidates")[2]).not.toBe(candidates[2]);
+    }
+  });
+
+  it.skipIf(process.platform === "win32")("offers a /tmp broker path when TMPDIR is too deep for a socket", () => {
+    const saved = process.env.TMPDIR;
+    process.env.TMPDIR = `/private/tmp/${"deep-folder/".repeat(10)}`;
+    try {
+      const candidates = brokerSocketCandidates("t-deep-tmp");
+      expect(candidates.at(-1)).toMatch(/^\/tmp\/dp-[0-9a-f]{8}\.sock$/);
+      expect(Buffer.byteLength(candidates.at(-1)!)).toBeLessThan(104);
+    } finally {
+      if (saved === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = saved;
     }
   });
 
@@ -359,6 +371,42 @@ describe("ClaudeDriver.decodeConfig", () => {
       }
     },
   );
+
+  it("denies an ask whose listener throws, instead of taking the process down", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "dusk-broker-listener-"));
+      // Windows binds pipes, not socket files; both are connectable by the same client code.
+      const socketPath = process.platform === "win32"
+        ? `\\\\.\\pipe\\dusk-broker-listener-${process.pid}-${Date.now()}`
+        : join(dir, "broker.sock");
+      const resolved: Array<{ source?: string; behavior?: string }> = [];
+      const broker = await createPermissionBroker({
+        socketPaths: [socketPath],
+        onAsk: () => { throw new Error("listener failed"); },
+        onResolve: (ask) => resolved.push(ask),
+      });
+      try {
+        const conn = connect(socketPath);
+        await new Promise<void>((resolve, reject) => {
+          conn.on("connect", resolve);
+          conn.on("error", reject);
+        });
+        const answered = new Promise<{ behavior?: string; message?: string }>((resolve) => {
+          let buf = "";
+          conn.on("data", (c) => {
+            buf += c;
+            const nl = buf.indexOf("\n");
+            if (nl !== -1) resolve(JSON.parse(buf.slice(0, nl)));
+          });
+        });
+        conn.write(JSON.stringify({ t: "ask", id: "ask-throw", tool: "Bash", input: { command: "echo hi" } }) + "\n");
+        expect(await answered).toMatchObject({ behavior: "deny" });
+        await expect.poll(() => resolved[0]?.source).toBe("system");
+        conn.end();
+      } finally {
+        broker.close();
+        rmSync(dir, { recursive: true, force: true });
+      }
+  });
 
   it.skipIf(process.platform === "win32")(
     "keeps a large non-ASCII ask whole across socket reads",
@@ -1628,6 +1676,24 @@ describe("ClaudeDriver turns (fake CLI)", () => {
       expect(added(seen.argv)).not.toContain(cwd);
     });
 
+    it("reads the chat's own folder, where compaction archives tool results, while it works in a project folder", async () => {
+      const dump = join(scratch, "read-scope-project.json");
+      process.env.FAKE_CLAUDE_DUMP = dump;
+      await create();
+      const { cwd: chat } = folders("b-project", "t-project");
+      mkdirSync(join(chat, "context-archive"), { recursive: true });
+      const project = mkdtempSync(join(scratch, "project-"));
+      await instance.adapter.sendTurn({ threadId: "t-project", botId: "b-project", text: "hi", cwd: project, approvalMode: "full" });
+      await recorder.until((e) => e.type === "turn.completed");
+      const seen = JSON.parse(readFileSync(dump, "utf8"));
+      expect(added(seen.argv)).toContain(chat);
+      const deny: string[] = seen.settings.permissions.deny;
+      for (const path of [chat, join(chat, "context-archive"), join(DATA_DIR, "task-workspaces"), join(DATA_DIR, "task-workspaces", "b-project")]) {
+        expect(deny).not.toContain(rule("Read", path));
+        expect(deny).not.toContain(rule("Read", path, true));
+      }
+    });
+
     it("in the bot box, adds the conversation's uploads instead of every upload", async () => {
       const dump = join(scratch, "read-scope-boxed.json");
       process.env.FAKE_CLAUDE_DUMP = dump;
@@ -2071,7 +2137,7 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     expect(await instance.snapshot()).toMatchObject({
       state: "available",
       version: "2.1.100 (Claude Code)",
-      update: { title: "Update Claude Code for context controls", command: expect.stringContaining("update") },
+      update: { title: "Update Claude Code", command: expect.stringContaining("update") },
     });
   });
 
@@ -2177,15 +2243,13 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     expect(claudeCliUpdate("2.1.267 (Claude Code)", "claude")).toBeUndefined();
     expect(claudeCliUpdate(null, "claude")).toBeUndefined();
     const olderSnapshot = claudeCliUpdate("2.1.232 (Claude Code)", "claude");
-    expect(olderSnapshot?.message).toContain("--system-prompt-snapshot");
-    expect(olderSnapshot?.message).toContain("resumed turns cannot refresh stale system prompts");
-    expect(olderSnapshot?.message).not.toContain("coordinated");
-    expect(olderSnapshot?.message).not.toContain("no compaction window");
+    expect(olderSnapshot?.message).toBe("Claude Code 2.1.232 is older than 2.1.267, so a bot can miss changes to its instructions in an ongoing chat. Update it to fix this.");
+    expect(olderSnapshot?.message).not.toMatch(/--|Engines/);
     expect(claudeCliUpdate("2.1.121 (Claude Code)", "claude")).toMatchObject({
       command: "claude update",
-      message: expect.stringContaining("--autocompact"),
+      message: expect.stringContaining("long chats are shortened later than they should be"),
     });
-    expect(claudeCliUpdate("1.0.100 (Claude Code)", "/opt/bin/claude")?.message).toContain("this machine's own Claude Code setup");
+    expect(claudeCliUpdate("1.0.100 (Claude Code)", "/opt/bin/claude")?.message).toContain("this computer's own Claude Code setup");
     expect(claudeCliUpdate("1.0.100 (Claude Code)", "/opt/bin/claude")?.command).toBe("/opt/bin/claude update");
   });
 
@@ -3986,6 +4050,43 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     expect(seen.argv).toContain("--effort");
     expect(seen.argv[seen.argv.indexOf("--effort") + 1]).toBe("xhigh");
     expect(seen.argv.filter((a: string) => a === "--effort")).toHaveLength(1);
+  });
+
+  it("sets each turn's effort on the live process, so a changed effort keeps it and an unset one is the default again", async () => {
+    await create(undefined, { FAKE_CLAUDE_VERSION: "2.1.314" });
+    const dump = join(scratch, "effort-control.json");
+    const controls = join(scratch, "effort-control.ndjson");
+    process.env.FAKE_CLAUDE_DUMP = dump;
+    process.env.FAKE_CLAUDE_CONTROL_LOG = controls;
+    try {
+      const pids: number[] = [];
+      for (const effort of ["low", undefined, undefined, "high"] as const) {
+        const completed = recorder.events.filter((e) => e.type === "turn.completed").length;
+        await instance.adapter.sendTurn({ threadId: "t-effort-control", text: "hi", ...(effort ? { effort } : {}) });
+        await recorder.until(() => recorder.events.filter((e) => e.type === "turn.completed").length > completed);
+        const seen = JSON.parse(readFileSync(dump, "utf8"));
+        expect(seen.argv).not.toContain("--effort");
+        pids.push(seen.pid);
+      }
+      expect(new Set(pids).size).toBe(1);
+      expect(instance.adapter.capabilities.effortPerTurn).toBe(true);
+      const levels = readFileSync(controls, "utf8").trim().split("\n").map((line) => JSON.parse(line))
+        .filter((frame) => frame.request?.subtype === "apply_flag_settings").map((frame) => frame.request.settings.effortLevel);
+      expect(levels).toEqual(["low", null, "high"]);
+    } finally {
+      delete process.env.FAKE_CLAUDE_CONTROL_LOG;
+    }
+  });
+
+  it("keeps effort on the command line for a CLI that cannot change it mid-session", async () => {
+    await create(undefined, { FAKE_CLAUDE_VERSION: "2.1.287" });
+    const dump = join(scratch, "effort-argv.json");
+    process.env.FAKE_CLAUDE_DUMP = dump;
+    await instance.adapter.sendTurn({ threadId: "t-effort-argv", text: "hi", effort: "low" });
+    await recorder.until((e) => e.type === "turn.completed");
+    const seen = JSON.parse(readFileSync(dump, "utf8"));
+    expect(seen.argv[seen.argv.indexOf("--effort") + 1]).toBe("low");
+    expect(instance.adapter.capabilities.effortPerTurn).toBe(false);
   });
 
   it("adds no effort flag when the turn has none", async () => {

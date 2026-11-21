@@ -14,6 +14,14 @@ test("recognizes the links Copy link and a dashboard make", () => {
   assert.equal(chatLinkFrom("DuskBot://Bot/abc"), "DuskBot://Bot/abc");
 });
 
+test("takes the account website's connect link for an app, and only a plain app id", () => {
+  assert.equal(chatLinkFrom("duskbot://apps/gmail"), "duskbot://apps/gmail");
+  assert.equal(chatLinkFromCommandLine(["/usr/bin/duskbot", "duskbot://apps/googlecalendar/"]), "duskbot://apps/googlecalendar/");
+  for (const other of ["duskbot://apps/", "duskbot://apps/../bot/x", "duskbot://apps/gmail?connect=1", "duskbot://apps/a%2Fb", "duskbot://apps/gmail/extra", `duskbot://apps/${"x".repeat(81)}`]) {
+    assert.equal(chatLinkFrom(other), null, other);
+  }
+});
+
 test("leaves every other link to its own handler", () => {
   for (const other of [
     "duskbot://cloud",

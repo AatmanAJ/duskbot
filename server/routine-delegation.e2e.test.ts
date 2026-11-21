@@ -103,9 +103,9 @@ describe("routine delegation through the isolated harness", () => {
     await oneSlotPerBot();
     const peerThread = (await botState(peer.id)).threadId;
     await control(["send", "--bot", peer.id, "--text", "An existing task occupies the peer."]);
-    expect((await dump(peerThread)).systemPrompt).not.toContain("Execute this routine now:");
+    expect((await dump(peerThread)).systemPrompt).not.toContain("Execute this routine now. These instructions already run on a schedule");
     const run = await start();
-    expect((await dump(run.threadId)).systemPrompt).toContain("Execute this routine now:");
+    expect((await dump(run.threadId)).systemPrompt).toContain("Execute this routine now. These instructions already run on a schedule");
     expect((await dump(run.threadId)).systemPrompt).toContain("use coordinate_bots for required handoffs");
     expect((await dump(run.threadId)).systemPrompt).toContain("after an accepted hand-off, end this turn for automatic resumption");
     const { receipts } = await delegate(run.threadId);
@@ -115,7 +115,7 @@ describe("routine delegation through the isolated harness", () => {
     expect((await runState(run.id)).finishedAt).toBeUndefined();
     const work = await awaitPeerWork(run.threadId);
     expect(work).toMatchObject({ id: receipts[0].requestId, status: "queued", mode: "work", reply: "resume", text: "Produce the fixture report." });
-    expect(work.threadId).not.toBe(peerThread);
+    expect(work.threadId).toBe(peerThread);
     expect(rows().find((node) => node.id === work.parentId)).toMatchObject({ threadId: run.threadId, botId: source.id, status: "waiting" });
     finish(peerThread);
     await dump(work.threadId);
@@ -127,7 +127,7 @@ describe("routine delegation through the isolated harness", () => {
     const finished = await runState(run.id);
     expect(finished.output).toContain(SETTLED);
     expect(finished.output).toContain(REPORT_FROM_PEER);
-    expect((await dump(run.threadId)).systemPrompt).toContain("Execute this routine now:");
+    expect((await dump(run.threadId)).systemPrompt).toContain("Execute this routine now. These instructions already run on a schedule");
     expect(peerWork(run.threadId)).toMatchObject({ status: "completed" });
     expect(rows().find((node) => node.id === work.parentId)?.status).toBe("completed");
     evidence.push({ waitedForBusyPeer: true, resumedRoutine: run.id, threadId: run.threadId, transcript });

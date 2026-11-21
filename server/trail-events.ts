@@ -2,6 +2,7 @@
 // how they ended; never their arguments or output), the cards that ask the person, waits for a computer, and engine
 // errors. A turn a person's send started carries that send's trail id (cid), so the app's trail and this one meet.
 import type { RuntimeEvent } from "../shared/runtime-events.ts";
+import { toolName } from "../electron/trail.mjs";
 import { trail, trailError } from "./trail.ts";
 
 const MAX_OPEN = 2000;
@@ -16,6 +17,15 @@ export function toolTarget(target: string | undefined): string | undefined {
   } catch { /* not an address */ }
   if (/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}(?::\d{1,5})?$/i.test(text) && !/\.(?:m?[jt]sx?|json|md|txt|py|sh|log|csv|png|jpe?g|pdf|html?|css)$/i.test(text)) return text.toLowerCase();
   return undefined;
+}
+
+/** the name a tool call is logged under: the engine's tool name ("Bash", "browser_open"), "shell" when the engine's
+ * title is the command itself, else its activity; never the title's text, a command or its arguments */
+export function loggedToolName(title: string | undefined, summary: string | undefined, activity: string | undefined): string {
+  const name = toolName(title);
+  const flat = (text: string) => text.replace(/\s+/g, " ").trim();
+  if (summary && (!name || (title && flat(summary).startsWith(flat(title))))) return "shell";
+  return name ?? toolName(activity) ?? "tool";
 }
 
 /** the computer or browser a wait was for, without its id: "computer", "browser" */
@@ -62,7 +72,7 @@ export function traceRuntimeEvents(bus: { subscribe(listener: (event: RuntimeEve
           break;
         case "item.started":
           if (event.itemType === "tool" && event.itemId) {
-            tools.set(`${event.threadId}:${event.itemId}`, { at: Date.now(), tool: (event.title ?? "tool").slice(0, 80), target: toolTarget(event.step?.target), activity: event.step?.activity });
+            tools.set(`${event.threadId}:${event.itemId}`, { at: Date.now(), tool: loggedToolName(event.title, event.summary, event.step?.activity), target: toolTarget(event.step?.target), activity: event.step?.activity });
             trimmed(tools);
           }
           break;
@@ -75,7 +85,7 @@ export function traceRuntimeEvents(bus: { subscribe(listener: (event: RuntimeEve
           }
           break;
         case "request.opened":
-          trail("bot.card.shown", { ...base, kind: event.requestType, tool: event.tool?.slice(0, 80), request: event.requestId });
+          trail("bot.card.shown", { ...base, kind: event.requestType, tool: loggedToolName(event.tool, event.commandLine ?? event.command?.command, undefined), request: event.requestId });
           break;
         case "request.resolved":
           trail("bot.card.resolved", { ...base, request: event.requestId });
