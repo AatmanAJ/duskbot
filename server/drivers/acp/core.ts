@@ -17,7 +17,7 @@ import { decodeInjectId } from "../local-inject.ts";
 import { DeviceAuthController, type DeviceSignIn } from "../device-auth.ts";
 import { deletePromptSplitReceipt, promptHalves, readPromptSplitReceipt, splitSessionPrompt, writePromptSplitReceipt } from "../prompt-split.ts";
 import type { PromptSplitReceipt } from "../prompt-split.ts";
-import { describeSpawnFailure, execCli, killCliTree, readOnlyBotFolders, spawnCli } from "../../procs.ts";
+import { closedOrKilled, describeSpawnFailure, execCli, killCliTree, readOnlyBotFolders, spawnCli } from "../../procs.ts";
 import { runAcpOneShot } from "./background-text.ts";
 import { sanitizeAcpToolMessage } from "./tool-log.ts";
 import { stripLeakedSystemHarnessMessages } from "../../../shared/system-message-guard.ts";
@@ -1892,19 +1892,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
                 void retireChild(threadId, child);
               }
             }
-            await Promise.allSettled([...children].map((child) => (
-              child.exitCode !== null || child.signalCode !== null
-                ? Promise.resolve(true)
-                : new Promise<boolean>((resolveStop) => {
-                    const done = () => { clearTimeout(timer); resolveStop(true); };
-                    child.once("close", done);
-                    const timer = setTimeout(() => {
-                      child.off("close", done);
-                      void killCliTree(child).then(resolveStop, () => resolveStop(false));
-                    }, 5_000);
-                    timer.unref?.();
-                  })
-            )));
+            await Promise.allSettled([...children].map((child) => closedOrKilled(child)));
           },
           onEvent: (listener) => {
             listeners.add(listener);
