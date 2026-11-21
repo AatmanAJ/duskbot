@@ -10,6 +10,6 @@ export const sidePanelCls = (overlay: boolean) => cn(
   // on a phone the panel is its own full-screen sheet: Grok's grey page under stacks of white segments, no edge
   "side-panel max-md:border-l-0",
   overlay
-    ? "md:inset-auto md:right-0 md:top-0 md:bottom-0 md:w-[320px]"
-    : "md:static md:z-auto md:shrink-0 md:w-[320px]",
+    ? "md:inset-auto md:right-0 md:top-0 md:bottom-0 md:w-[var(--side-panel-w,320px)]"
+    : "md:static md:z-auto md:shrink-0 md:w-[var(--side-panel-w,320px)]",
 );

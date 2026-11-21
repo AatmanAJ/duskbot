@@ -5,7 +5,7 @@
 // next flush, which the server runs whenever it releases what was queued behind a turn, ahead of that queue. A routine
 // that delivers to the brief posts no line: its answer goes to the brief, which reads it as a small JSON result.
 import { liveCardKind } from "../shared/live-approval.ts";
-import type { AutomationLine } from "../shared/routine-run.ts";
+import { SILENT_LINE, type AutomationLine } from "../shared/routine-run.ts";
 import { signInWaits } from "../shared/sign-in-request.ts";
 import { intlLocale } from "./language.ts";
 import { needsInputQuestion } from "./runtime-coordinator.ts";
@@ -15,15 +15,32 @@ import type { BotRecord, Message, Store } from "./store.ts";
 import { hostTimeZone } from "./turn-clock.ts";
 import { AUTHORITY, fromNote, routineWho } from "./provenance-label.ts";
 
-const QUIET = /^[\s*_`"'.!-]*nothing new[\s*_`"'.!-]*$/i;
 const NEEDS_INPUT = /^\s*needs input:\s*/i;
 
 export type RunReply = { quiet: true } | { quiet: false; text: string; question?: string };
 
-/** What a run's last reply says to the person. Its last line alone being NOTHING NEW keeps the run quiet. */
+// "Checked 14 emails." or "No new invoices." above the token narrates the check; any other line is a finding.
+const CHECK_NARRATION = /^(?:[-*>\d.)\s]*)(?:i\s+)?(?:checked|looked|scanned|reviewed|went through|searched|read|ran)\b|^(?:[-*>\s]*)(?:no|nothing|none|all quiet|still|same as|everything)\b/i;
+
+/** A reply ending on NOTHING NEW after a real finding: the finding without the token, or null when nothing above it is
+ * more than a note of what was checked (Hermes Agent: never combine [SILENT] with content). */
+export function findingBeforeSilence(lines: readonly string[]): string | null {
+  const above = lines.slice(0, -1).map((line) => line.trim()).filter((line) => line && !SILENT_LINE.test(line));
+  return above.some((line) => !CHECK_NARRATION.test(line)) ? lines.slice(0, -1).join("\n").trim() : null;
+}
+
+/** What a run's last reply says to the person. Its last line being NOTHING NEW keeps the run quiet, unless a finding
+ * stands above it. */
 export function readRunReply(text: string, attached = false): RunReply {
-  const lines = text.trim().split(/\r?\n/);
-  if (QUIET.test(lines.at(-1) ?? "") || (!text.trim() && !attached)) return { quiet: true };
+  let lines = text.trim().split(/\r?\n/);
+  if (!text.trim() && !attached) return { quiet: true };
+  if (SILENT_LINE.test(lines.at(-1) ?? "")) {
+    const finding = findingBeforeSilence(lines);
+    if (finding === null) return { quiet: true };
+    console.warn("automation: a reply ended on NOTHING NEW after a finding; the finding is delivered");
+    text = finding;
+    lines = finding.split(/\r?\n/);
+  }
   const question = needsInputQuestion(text);
   if (question === undefined) return { quiet: false, text: text.trim() };
   const at = lines.findLastIndex((line) => NEEDS_INPUT.test(line));
@@ -81,7 +98,7 @@ export function newestAutomationLines(messages: readonly Pick<Message, "id" | "a
 
 type Waiting =
   | { kind: "reply"; run: RoutineRun; messageId?: string }
-  | { kind: "failure"; run: RoutineRun; detail: string }
+  | { kind: "failure"; run: RoutineRun; detail: string; inOwnChat?: true }
   | { kind: "card"; run: RoutineRun; threadId: string; messageId: string };
 
 export interface AutomationReportDeps {
@@ -108,6 +125,17 @@ export function createAutomationReports(deps: AutomationReportDeps) {
     const bot = run.resultsThreadId && run.resultsThreadId !== run.threadId ? store.bot(run.botId) : undefined;
     const task = bot && !bot.hidden ? store.taskByThread(bot.id, run.resultsThreadId!) : undefined;
     return bot && task && !task.routineRunId ? { bot, threadId: task.threadId } : null;
+  };
+
+  /** A run in the bot's own chat that failed before that chat showed any failure of it: the line goes there. */
+  const ownChat = (run: RoutineRun): { bot: BotRecord; threadId: string } | null => {
+    if (!run.threadId || (run.resultsThreadId && run.resultsThreadId !== run.threadId)) return null;
+    const bot = store.bot(run.botId);
+    const task = bot && !bot.hidden ? store.taskByThread(bot.id, run.threadId) : undefined;
+    if (!bot || !task || task.routineRunId) return null;
+    const since = run.startedAt ?? run.scheduledFor;
+    const shown = store.messagesFor(run.threadId).some((message) => message.at >= since && message.kind === "activity" && message.tool?.ok === false);
+    return shown ? null : { bot, threadId: task.threadId };
   };
 
   const lineOf = (run: RoutineRun, extra: Pick<AutomationLine, "needsYou" | "failed" | "partial" | "recovered" | "copyOf">): AutomationLine => ({
@@ -153,7 +181,7 @@ export function createAutomationReports(deps: AutomationReportDeps) {
   /** False while the chat it goes to is busy. */
   const write = (line: Waiting): boolean => {
     const { run } = line;
-    const target = destination(run);
+    const target = line.kind === "failure" && line.inOwnChat ? ownChat(run) : destination(run);
     if (!target) {
       if (line.kind !== "card") deps.routines()?.noteReport(run.id, undefined);
       return true;
@@ -246,15 +274,32 @@ export function createAutomationReports(deps: AutomationReportDeps) {
       if (run.deliver === "brief") return deps.brief?.(run, turnId);
       const said = turnId ? store.activePath(run.threadId).findLast((message) => message.role === "bot" && message.kind === "text" && message.turnId === turnId) : replyOf(run);
       const reply = read(said);
+      if (reply.quiet && said) store.patchMessage(run.threadId, said.id, { quietRun: true });
       const bot = store.bot(run.botId);
       const target = destination(run);
       if (target && (!reply.quiet || lastSaidFailed(run, target.threadId))) hold(run.id, { kind: "reply", run, ...(said ? { messageId: said.id } : {}) });
       else if (reply.quiet) deps.routines()?.noteReport(run.id, { state: "quiet" });
       else if (bot) deps.notify("done", bot, run.threadId, reply.text);
     },
+    /** A run that worked in the person's own chat and found nothing new: its NOTHING NEW line is hidden, nobody is
+     * told, and it counts as quiet. False when it had something to say. */
+    quietInItsChat(run: RoutineRun, turnId?: string): boolean {
+      if (run.target !== "bot" || run.status !== "completed" || !run.threadId || run.deliver === "brief") return false;
+      const said = turnId ? store.activePath(run.threadId).findLast((message) => message.role === "bot" && message.kind === "text" && message.turnId === turnId) : replyOf(run);
+      const reply = read(said);
+      if (!reply.quiet) {
+        if (said?.text && SILENT_LINE.test(said.text.trim().split(/\r?\n/).at(-1) ?? "")) store.patchMessage(run.threadId, said.id, { text: reply.text });
+        return false;
+      }
+      if (said) store.patchMessage(run.threadId, said.id, { quietRun: true });
+      deps.routines()?.noteReport(run.id, { state: "quiet" });
+      return true;
+    },
     /** A run failed in a way the person is told about: one line says so where its reports go. */
     runFailed(run: RoutineRun, detail: string): void {
-      if (run.target === "bot" && run.status === "failed" && run.deliver !== "brief" && run.threadId && destination(run)) hold(run.id, { kind: "failure", run, detail });
+      if (run.target !== "bot" || run.status !== "failed" || run.deliver === "brief" || !run.threadId) return;
+      if (destination(run)) hold(run.id, { kind: "failure", run, detail });
+      else if (ownChat(run)) hold(run.id, { kind: "failure", run, detail, inOwnChat: true });
     },
     /** This run's result, questions and failure come to its bot's chat as lines of their own, or through the brief.
      * A missed run, or one that failed before it had a conversation, has no line to say so, and keeps its card,

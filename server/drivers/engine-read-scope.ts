@@ -11,7 +11,7 @@ import { spillDir } from "../mcp-gate-config.ts";
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
 
 /** Hidden even before they exist, so a warm engine process does not miss one made after it started. */
-const ALWAYS_HIDDEN_DATA = ["config.json", "messages.db", "runtime.db", "bots.json", "engine-homes", "providers", "ssh", "people", "browser"];
+const ALWAYS_HIDDEN_DATA = ["config.json", "config.json.last-good", "messages.db", "runtime.db", "bots.json", "engine-homes", "providers", "ssh", "people", "browser"];
 // a server installed before the rename keeps its old folder names until its installer runs again
 const INSTALL_FAMILIES = ["duskbot", LEGACY.devName].flatMap((name) => [["/var/lib", name], ["/etc", name], ["/run", name]] as const);
 
@@ -57,11 +57,14 @@ export function engineReadScope(input: ReadScopeInput): EngineReadScope {
   const own = botId ? join(dataDir, "workspaces", botId) : null;
   const soul = botId ? join(dataDir, "bots", botId) : null;
   const uploads = ids ? boxUploadsDir(dataDir, ids.botId, ids.threadId) : null;
+  // a chat working in a project folder still reads its own folder: compaction saves the folded tool results there
+  const chat = botId && ID.test(input.threadId) ? join(dataDir, "task-workspaces", botId, input.threadId) : null;
   const spill = resolve(spillDir(input.threadId));
   const shared = ["skills-library", "imported-skills"].map((name) => join(dataDir, name));
   const unboxedOnly = input.boxed ? [] : [join(dataDir, "attachments"), spill, ...shared.filter((dir) => existsSync(dir))];
   const granted = [...new Set([
     ...(own ? [own] : []),
+    ...(chat && existsSync(chat) ? [chat] : []),
     ...(uploads && (input.boxed || existsSync(uploads)) ? [uploads] : []),
     ...unboxedOnly,
     ...(input.extraReadable ?? []).map((path) => resolve(path)),
