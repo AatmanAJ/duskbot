@@ -1926,6 +1926,13 @@ describe("consequenceLine", () => {
     );
     expect(consequenceLine({ type: "once", at: 0 })).toBe("Will run once; that run starts a fresh session.");
   });
+
+  it("says a daily, weekday or weekly cron at one time in plain words", () => {
+    expect(consequenceLine({ type: "cron", expression: "0 10 * * 1-5", timeZone: "Europe/London" })).toBe("Weekdays at 10:00, UK time; each run starts a fresh session.");
+    expect(consequenceLine({ type: "cron", expression: "0 9 * * MON", timeZone: "Asia/Kolkata" })).toMatch(/^Mondays at 09:00, .+; each run starts a fresh session\.$/);
+    expect(consequenceLine({ type: "cron", expression: "30 8 * * *", timeZone: "Europe/London" })).toBe("Every day at 08:30, UK time; each run starts a fresh session.");
+    expect(consequenceLine({ type: "cron", expression: "0 9 1 * *", timeZone: "Europe/London" })).toBe("Will run at matching calendar times, UK time; each run starts a fresh session.");
+  });
 });
 
 describe("a bot's own routine changes", () => {

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto"; import { shapeNewRoutine } from "./routine-shape.ts"; import { duplicateOf, duplicateRefusal, guardAgainst, jitter } from "./routine-bot-guard.ts"; const withJitter = (changes: RoutineRequestChanges, current: Routine): RoutineRequestChanges => (changes.schedule ? { ...changes, schedule: jitter(changes.schedule, changes.name ?? current.name, changes.instructions ?? current.prompt) } : changes); import { cleanProbe } from "./routine-quiet.ts"; import { serverLine } from "./server-lines.ts";
+import { createHash } from "node:crypto"; import { shapeNewRoutine } from "./routine-shape.ts"; import { duplicateOf, duplicateRefusal, guardAgainst, jitter } from "./routine-bot-guard.ts"; const withJitter = (changes: RoutineRequestChanges, current: Routine): RoutineRequestChanges => (changes.schedule ? { ...changes, schedule: jitter(changes.schedule, changes.name ?? current.name, changes.instructions ?? current.prompt) } : changes); import { cleanProbe } from "./routine-quiet.ts"; import { serverLine } from "./server-lines.ts"; import { plainCronWhen } from "./routine-cron-words.ts";
 import { isDeepStrictEqual } from "node:util";
 
 import { cronScheduleLabel } from "../shared/cron-label.ts";
@@ -593,7 +593,7 @@ export function scheduleText(schedule: RoutineRequestSchedule, timeZone: string,
 
 export function consequenceLine(schedule: RoutineRequestSchedule, continuity = false): string {
   const session = continuity ? "each run starts a fresh session with the previous run's report" : "each run starts a fresh session";
-  if (schedule.type === "cron") return `Will run at matching calendar times, ${plainTimeZone(schedule.timeZone)}; ${session}.`;
+  if (schedule.type === "cron") return `${plainCronWhen(schedule) ?? `Will run at matching calendar times, ${plainTimeZone(schedule.timeZone)}`}; ${session}.`;
   if (schedule.type === "once") return "Will run once; that run starts a fresh session.";
   if (schedule.type === "limit_reset") {
     return schedule.repeat === "every_reset"
