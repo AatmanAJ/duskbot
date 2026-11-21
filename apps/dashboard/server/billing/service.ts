@@ -848,6 +848,7 @@ export function createBillingService(options: BillingServiceOptions) {
         const live = state.subscriptions.find(row => row.id === sub.id);
         if (answer === "later" || !live?.paymentProblem || live.status !== "payment_problem" || live.paymentProblem.since !== problem.since) continue;
         live.paymentProblem.retries = answer === "sent" ? Math.max(attempt + 1, live.paymentProblem.retries ?? 0) : PAYMENT_RETRY_DAYS.length;
+        if (answer === "sent") live.paymentProblem.retriedAt = now();
         live.updatedAt = now(); store.commit();
         if (answer === "sent") { sent++; console.log(`billing: charged subscription ${sub.id} again after its failed payment (retry ${attempt + 1} of ${PAYMENT_RETRY_DAYS.length})`); }
         else console.log(`billing: no more retries for subscription ${sub.id}: ${answer === "automatic" ? "the provider retries it" : "the provider can't retry it"}`);
@@ -859,6 +860,8 @@ export function createBillingService(options: BillingServiceOptions) {
     const problem = sub.paymentProblem, attempt = problem?.retries ?? 0;
     if (sub.status !== "payment_problem" || !problem || sub.cancelAtPeriodEnd || !sub.providerSubscriptionId || closureFor(sub.accountId)) return null;
     if (attempt >= PAYMENT_RETRY_DAYS.length || now() >= problem.fixBy || now() < problem.since + PAYMENT_RETRY_DAYS[attempt] * day) return null;
+    // retries stay spaced from the last one sent, even when several are past due
+    if (attempt > 0 && problem.retriedAt !== undefined && now() < problem.retriedAt + (PAYMENT_RETRY_DAYS[attempt] - PAYMENT_RETRY_DAYS[attempt - 1]) * day) return null;
     return attempt;
   }
   const sweep = () => {
