@@ -1,6 +1,7 @@
 // xAI API driver over the OpenAI chat-completions contract, with the shared retry policy.
-import type { ProviderDriver } from "../contracts.ts";
+import type { ModelCatalog, ProviderDriver } from "../contracts.ts";
 import { createOpenAIChatRuntime } from "./openai-chat.ts";
+import { xaiEffortLevels } from "./api-effort.ts";
 
 const DRIVER_KIND = "grok";
 const DEFAULT_URL = "https://api.x.ai/v1";
@@ -13,6 +14,22 @@ const MODELS = {
     { id: "grok-3-mini", label: "Grok 3 Mini" },
   ],
 };
+
+const NOT_CHAT = /image|imagine|video|embed|tts|voice|audio/;
+
+/** xAI's GET /models for this key, chat models only, in xAI's order; null when it lists none. */
+export function grokModelsFrom(body: unknown): ModelCatalog | null {
+  const rows = Array.isArray((body as { data?: unknown })?.data) ? (body as { data: unknown[] }).data : [];
+  const options: ModelCatalog["options"] = [];
+  for (const row of rows) {
+    const id = (row as { id?: unknown })?.id;
+    if (typeof id !== "string" || !/^grok-[\w.-]{1,80}$/.test(id) || NOT_CHAT.test(id) || options.some((option) => option.id === id)) continue;
+    const known = MODELS.options.find((option) => option.id === id);
+    options.push(known ? { ...known } : { id, label: id });
+  }
+  if (!options.length) return null;
+  return { default: options.some((option) => option.id === MODELS.default) ? MODELS.default : options[0]!.id, options };
+}
 
 export interface GrokConfig {
   tools?: boolean;
@@ -40,13 +57,28 @@ export const GrokDriver: ProviderDriver<GrokConfig> = {
   async create(input) {
     const { config } = input;
     const apiKey = input.environment[config.apiKeyEnv] ?? process.env[config.apiKeyEnv] ?? "";
-    return createOpenAIChatRuntime({
+    let catalog: ModelCatalog = MODELS;
+    const refreshModels = async () => {
+      if (!apiKey) return;
+      try {
+        const response = await fetch(`${config.url.replace(/\/+$/, "")}/models`, {
+          headers: { authorization: `Bearer ${apiKey}` }, redirect: "error", signal: AbortSignal.timeout(8_000),
+        });
+        if (!response.ok) { void response.body?.cancel().catch(() => {}); return; }
+        catalog = grokModelsFrom(await response.json()) ?? catalog;
+      } catch {}
+    };
+    void refreshModels();
+    const runtime = createOpenAIChatRuntime({
       input,
       driverKind: DRIVER_KIND,
       apiKey,
       apiUrl: config.url,
       tools: config.tools,
-      models: () => MODELS,
+      computerUse: true, imageInput: (model) => /^grok-(?:4|2-vision)/i.test(model) && !/code/i.test(model),
+      models: () => catalog,
+      refreshModels,
+      effort: { levels: ["low", "medium", "high", "xhigh"], forModel: xaiEffortLevels },
       requestBody: (model, messages, stream) => ({ model, messages, stream }),
       httpErrorLabel: "xAI",
       missingKeyError: `Save an xAI API key in Settings → API keys, or set ${config.apiKeyEnv}.`,
@@ -60,5 +92,6 @@ export const GrokDriver: ProviderDriver<GrokConfig> = {
         incoming: ({ text, usage }) => ({ text, usage }),
       },
     });
+    return Object.assign(runtime, { modelCatalogKey: DRIVER_KIND });
   },
 };

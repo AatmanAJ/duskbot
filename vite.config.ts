@@ -119,12 +119,17 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(version),
   },
+  // per checkout: a worktree links the same node_modules, and a second dev server rewriting node_modules/.vite under a
+  // running one makes that window's later imports (the screen viewer) fail until it restarts
+  cacheDir: fileURLToPath(new URL("./.dusk-scratch/vite", import.meta.url)),
+  // the screen viewer's dependency is bundled at start: found later, Vite re-bundles and fails the import in flight
+  optimizeDeps: { include: ["@novnc/novnc"] },
   test: {
     environment: "node",
     include,
     // DUSK_VITEST_E2E=host (CI's Windows and macOS shards) leaves the e2e files that run on Linux only.
     exclude: [...configDefaults.exclude, ...(hostE2eOnly() ? portableE2eFiles(root, include) : [])],
-    setupFiles: ["server/testing/setup.ts", "src/testing/all-locales.ts", "src/testing/quiet-canceled-animations.ts"],
+    setupFiles: ["server/testing/setup.ts", "src/testing/all-locales.ts", "src/testing/quiet-canceled-animations.ts", "src/testing/clear-exit-ghosts.ts"],
     // One file at a time by default: the suite spawns fake provider CLIs and real
     // harness servers, which a laptop feels. CI sets its runner's count (scripts/ci-scope.mjs).
     fileParallelism: workers > 1,
@@ -154,7 +159,8 @@ export default defineConfig({
     // packager output lands inside the repo — its HTML files must never
     // trigger dev full-page reloads
     watch: {
-      ignored: ["**/release/**", "**/build/**", "**/dist/**", "**/electron/resources/**", "**/.claude/**"],
+      // only this checkout's own .claude: a dev server run inside .claude/worktrees still sees its edits
+      ignored: ["**/release/**", "**/build/**", "**/dist/**", "**/electron/resources/**", `${root.replace(/\\/g, "/")}.claude/**`],
     },
     // the harness server owns every provider process; the app only ever
     // talks to /api — clients hold no transports

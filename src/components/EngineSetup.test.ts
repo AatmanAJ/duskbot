@@ -74,12 +74,38 @@ describe("managed engine setup errors", () => {
     expect(render(engine)).toContain("initialize timed out.");
   });
 
+  it("wraps long Antigravity profile paths inside the setup panel", () => {
+    const reason = `/home/dusk/.duskbot/providers/antigravity/${"provider-config-".repeat(5)}settings.json`;
+    const snapshots = [
+      { state: "unavailable" as const, reason },
+      { state: "unavailable" as const, authenticationUnavailableReason: reason },
+    ];
+    for (const snapshot of snapshots) {
+      const markup = render(managed(snapshot));
+      expect(markup).toContain(reason);
+      expect(markup).toContain("[overflow-wrap:anywhere]");
+    }
+  });
+
   it("preserves the installed engine's sign-in flow", () => {
     const engine = managed({ state: "available", authenticated: false, version: "1.1.1" });
     const markup = render(engine);
     expect(markup).toContain("Sign in with Google");
     expect(markup).not.toContain("install official Antigravity");
   });
+});
+
+it("says in plain words that an engine saved with a driver this build lacks can't be used, never the server's log line", () => {
+  vi.stubGlobal("window", { duskDesktop: { platform: "darwin" } });
+  const engine: InstanceInfo = {
+    ...instance({ state: "unavailable", reason: 'unknown driver "not-a-real-driver": kept as configured, unavailable here' }),
+    instanceId: "openaiCompat", driverKind: "not-a-real-driver", displayName: "not-a-real-driver", unknownDriver: true,
+  };
+  const markup = renderToStaticMarkup(createElement(StoreProvider, null, createElement(EngineSetup, { instance: engine })));
+  expect(markup).toContain("Saved by another version");
+  expect(markup).toContain("this version of dusk bot doesn’t know (“not-a-real-driver”)");
+  expect(markup).not.toContain("unknown driver");
+  expect(markup).not.toContain("isn’t ready");
 });
 
 describe("engines set up with a key in Settings", () => {

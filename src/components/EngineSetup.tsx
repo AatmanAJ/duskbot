@@ -350,13 +350,16 @@ function ManagedEngineSetup({ instance, signInOnly }: { instance: InstanceInfo; 
     else window.open(auth.authorizationUrl, "_blank", "noopener,noreferrer");
   });
 
+  const pasteCode = instance.authentication?.method === "paste-code";
+
   const complete = () => run("complete", async () => {
     if (!flow) return;
     await api(`/api/instances/${encodeURIComponent(instance.instanceId)}/auth/complete`, {
       method: "POST",
-      body: JSON.stringify({ flowId: flow.flowId, callbackUrl }),
+      body: JSON.stringify(pasteCode ? { flowId: flow.flowId, code: callbackUrl } : { flowId: flow.flowId, callbackUrl }),
     });
     setCallbackUrl("");
+    setFlow(null);
     await refreshInstances();
     await refreshModels(instance.instanceId);
   });
@@ -368,7 +371,7 @@ function ManagedEngineSetup({ instance, signInOnly }: { instance: InstanceInfo; 
 
   if (!signInOnly) {
     return (
-      <div className="mt-3">
+      <div className="mt-3 min-w-0">
         <button
           type="button"
           disabled={busy !== null}
@@ -381,13 +384,13 @@ function ManagedEngineSetup({ instance, signInOnly }: { instance: InstanceInfo; 
         <p className="mt-1.5 text-center text-[11px] text-ink-tertiary">
           {t("engineSetup.downloadNote", { mb: Math.ceil(managed.downloadBytes / 1024 / 1024) })}
         </p>
-        {error && <p className="mt-2 text-[12px] text-danger">{error}</p>}
+        {error && <p className="mt-2 min-w-0 text-[12px] text-danger [overflow-wrap:anywhere]">{error}</p>}
       </div>
     );
   }
 
   return (
-    <div className="mt-3 space-y-2">
+    <div className="mt-3 min-w-0 space-y-2">
       <button
         type="button"
         disabled={busy !== null}
@@ -402,7 +405,32 @@ function ManagedEngineSetup({ instance, signInOnly }: { instance: InstanceInfo; 
             : t("engineSetup.signInGoogle")}
       </button>
       {busy === "signin" && <p role="status" className="text-[12px] text-ink-secondary">{t("engineSetup.antigravitySlow")}</p>}
-      {flow && (
+      {flow && pasteCode && (
+        <form
+          className="rounded-lg border border-transparent bg-app px-2.5 py-2 text-[12px] text-ink-secondary"
+          onSubmit={(event) => { event.preventDefault(); if (callbackUrl.trim() && busy === null) void complete(); }}
+        >
+          <p className="leading-relaxed">{t("onboarding.meet.pasteHint", { name: "Google" })}</p>
+          <input
+            value={callbackUrl}
+            onChange={(event) => setCallbackUrl(event.target.value)}
+            aria-label={t("onboarding.meet.paste", { name: "Google" })}
+            placeholder={t("onboarding.meet.paste", { name: "Google" })}
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
+            className="mt-2 w-full rounded-md border border-transparent bg-inset px-2 py-1.5 text-[11px] text-ink outline-none focus:border-accent"
+          />
+          <button
+            type="submit"
+            disabled={!callbackUrl.trim() || busy !== null}
+            className="mt-2 w-full rounded-md bg-control px-2 py-1.5 font-medium text-ink disabled:opacity-50"
+          >
+            {busy === "complete" ? t("engineSetup.sending") : t("onboarding.meet.pasteSubmit")}
+          </button>
+        </form>
+      )}
+      {flow && !pasteCode && (
         <>
           <button type="button" onClick={() => void check()} className="w-full rounded-lg bg-control px-3 py-2 text-[12px] font-semibold text-ink hover:bg-raised-hover">
             {busy === "check" ? t("common.checking") : t("engineSetup.finishedSignIn")}
@@ -428,7 +456,7 @@ function ManagedEngineSetup({ instance, signInOnly }: { instance: InstanceInfo; 
           </details>
         </>
       )}
-      {error && <p className="text-[12px] text-danger">{error}</p>}
+      {error && <p className="min-w-0 text-[12px] text-danger [overflow-wrap:anywhere]">{error}</p>}
     </div>
   );
 }
@@ -601,7 +629,7 @@ export function EngineSetup({
   // The host does not open its sign-in and setup calls to a paired desktop, so point the person there instead.
   if (onHost) {
     return (
-      <div data-engine-setup-on-host className={cn(!unframed && "rounded-xl border border-transparent bg-control/30 p-3", className)}>
+      <div data-engine-setup-on-host className={cn("min-w-0", !unframed && "rounded-xl border border-transparent bg-control/30 p-3", className)}>
         <div className="text-[13px] font-semibold text-ink">{title}</div>
         <p className="mt-1 text-[12px] leading-relaxed text-ink-secondary">{t("remote.client.setUpOnHost", { name: instance.displayName })}</p>
       </div>
@@ -616,11 +644,22 @@ export function EngineSetup({
     return <GrokKeyInstead className={className} unframed={unframed} />;
   }
 
+  if (instance.unknownDriver) {
+    return (
+      <div data-engine-unknown-driver className={cn("min-w-0", !unframed && "rounded-xl border border-transparent bg-control/30 p-3", className)}>
+        <div className="text-[13px] font-semibold text-ink">{t("engineSetup.unknownDriver.title")}</div>
+        <p className="mt-1 min-w-0 text-[12px] leading-relaxed text-ink-secondary [overflow-wrap:anywhere]">
+          {t("engineSetup.unknownDriver.body", { driver: instance.driverKind })}
+        </p>
+      </div>
+    );
+  }
+
   if (!install || instance.snapshot.authenticationUnavailableReason) {
     return (
-      <div className={cn(!unframed && "rounded-xl border border-transparent bg-control/30 p-3", className)}>
+      <div className={cn("min-w-0", !unframed && "rounded-xl border border-transparent bg-control/30 p-3", className)}>
         <div className="text-[13px] font-semibold text-ink">{t("engineSetup.notReady", { name: instance.displayName })}</div>
-        <p className="mt-1 text-[12px] leading-relaxed text-ink-secondary">
+        <p className="mt-1 min-w-0 text-[12px] leading-relaxed text-ink-secondary [overflow-wrap:anywhere]">
           {instance.snapshot.authenticationUnavailableReason ?? instance.snapshot.reason ?? t("engineSetup.noReason")}
         </p>
       </div>
@@ -638,7 +677,7 @@ export function EngineSetup({
   }
 
   return (
-    <div className={cn(!unframed && "rounded-xl border border-transparent bg-control/30 p-3", className)}>
+    <div className={cn("min-w-0", !unframed && "rounded-xl border border-transparent bg-control/30 p-3", className)}>
       <div className="flex items-start gap-2.5">
         <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-inset text-ink-secondary">
           {signInOnly ? <LogIn size={14} /> : <Download size={14} />}
@@ -650,12 +689,12 @@ export function EngineSetup({
       </div>
 
       {reason && (quiet ? (
-        <details data-engine-setup-reason className="mt-2 text-[12px] leading-4 text-ink-tertiary">
+        <details data-engine-setup-reason className="mt-2 min-w-0 text-[12px] leading-4 text-ink-tertiary">
           <summary className="cursor-pointer select-none hover:text-ink-secondary">{t("engineSetup.details")}</summary>
-          <p className="mt-1 whitespace-pre-wrap">{reason}</p>
+          <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere]">{reason}</p>
         </details>
       ) : (
-        <p role="alert" className="mt-2 text-[12px] leading-relaxed text-danger">
+        <p role="alert" className="mt-2 min-w-0 text-[12px] leading-relaxed [overflow-wrap:anywhere] text-danger">
           {reason}
         </p>
       ))}

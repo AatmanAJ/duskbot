@@ -12,10 +12,12 @@ export interface PeerEntry {
   direction: "inbound" | "outbound"; peer: PeerRef;
   /** A step of the reply rather than a message: it folds with the exchange but is not counted. */
   step?: true;
+  /** "ask": this bot asked the peer; "answer": the peer's answer came back; "reply": this bot answering the peer. */
+  as?: "ask" | "answer" | "reply";
 }
 
 export type ExchangeSummary =
-  | { kind: "single"; direction: "inbound" | "outbound"; peer: PeerRef }
+  | { kind: "single"; direction: "inbound" | "outbound"; peer: PeerRef; as?: PeerEntry["as"] }
   | { kind: "fanout"; peers: PeerRef[] }
   | { kind: "thread"; count: number; peers: PeerRef[] };
 
@@ -28,7 +30,7 @@ function activityEntry(m: Message): PeerEntry | null {
   const target = m.threadRef?.botId ?? m.comm?.withBotId;
   if (m.roomRequest?.phase === "result") {
     const id = m.from?.botId ?? target;
-    return { direction: "inbound", peer: { id, name: m.from?.name ?? m.comm?.withName ?? "", color: m.from?.color ?? m.comm?.withColor } };
+    return { direction: "inbound", as: "answer", peer: { id, name: m.from?.name ?? m.comm?.withName ?? "", color: m.from?.color ?? m.comm?.withColor } };
   }
   // "X needs your input" is the asking bot's own row: it waits on the person, so it keeps its chip
   if (m.from && m.from.botId === target) return null;
@@ -36,7 +38,7 @@ function activityEntry(m: Message): PeerEntry | null {
   if (m.comm && m.comm.withBotId === m.from?.botId) return null;
   if (m.comm && !m.from && !m.comm.threadId) return null;
   if (tool.ok === false) return null;
-  return { direction: "outbound", peer: { id: target, name: m.handoff?.to.name ?? m.sentDirectly?.name ?? m.comm?.withName ?? "",
+  return { direction: "outbound", ...(m.threadRef ? { as: "ask" as const } : {}), peer: { id: target, name: m.handoff?.to.name ?? m.sentDirectly?.name ?? m.comm?.withName ?? "",
     color: m.handoff?.to.color ?? m.comm?.withColor } };
 }
 
@@ -93,7 +95,7 @@ export function exchangeEntries(messages: readonly Message[], threadBotId?: stri
     const recent = lastRequest && m.at - lastRequest.at <= REPLY_WINDOW_MS ? lastRequest.peer : null;
     const to = !replies ? null : m.requestMessageId ? peerLines.get(m.requestMessageId) ?? null : recent;
     if (to) {
-      entries.set(m.id, { direction: "outbound", peer: to, ...(m.kind === "text" ? {} : { step: true as const }) });
+      entries.set(m.id, { direction: "outbound", peer: to, as: "reply", ...(m.kind === "text" ? {} : { step: true as const }) });
       if (lastRequest) lastRequest.at = m.at;
     } else lastRequest = null;
   }
@@ -114,12 +116,18 @@ export function exchangeSummary(all: readonly PeerEntry[]): ExchangeSummary | nu
     peers.set(key, known && known.name ? known : entry.peer);
   }
   const unique = [...peers.values()];
-  if (entries.length === 1) return { kind: "single", direction: first.direction, peer: first.peer };
+  if (entries.length === 1) return { kind: "single", direction: first.direction, peer: first.peer, ...(first.as ? { as: first.as } : {}) };
   if (unique.length >= 2 && entries.length === unique.length && entries.every((entry) => entry.direction === "outbound")) {
     return { kind: "fanout", peers: unique };
   }
   return { kind: "thread", count: entries.length, peers: unique };
 }
+
+/** Each bot has one chat: a teammate's question to it, and its own question to a teammate, draw no line; what came back
+ * of its own ask shows inline under its line. */
+export const exchangeHidden = (summary: ExchangeSummary): boolean =>
+  summary.kind === "single" && ((summary.direction === "inbound" && summary.as !== "answer") || summary.as === "ask");
+export const exchangeOpenByDefault = (summary: ExchangeSummary): boolean => summary.kind === "single" && summary.as === "answer";
 
 export interface ExchangeRun<T> { id: string; start: number; end: number; items: T[]; entries: PeerEntry[]; summary: ExchangeSummary }
 

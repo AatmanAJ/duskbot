@@ -33,6 +33,9 @@ describe("visitsOf", () => {
     for (const dim of ["surface", "host", "keyword"] as const) expect(valuesOf(visits[0]!, dim)).toEqual([visits[0]![dim]]);
     expect(matches(visits[1]!, { surface: "account", host: "preview.dusk.bot", keyword: "dusk_bot" })).toBe(true);
     expect(valuesOf(visits[2]!, "keyword")).toEqual(["unknown"]);
+    expect(valuesOf({ ...visits[0]!, referrer: null, source: "launch-thread" }, "referrer"), "a ?ref or utm source stands in for a missing referrer").toEqual(["launch-thread"]);
+    expect(valuesOf({ ...visits[0]!, referrer: null, source: "direct" }, "referrer")).toEqual(["direct"]);
+    expect(valuesOf({ ...visits[0]!, referrer: "news.ycombinator.com", source: "Hacker News" }, "referrer")).toEqual(["news.ycombinator.com"]);
   });
 
   it("groups app sessions by install and day when needed and recognizes phone opens without platform context", () => {
@@ -246,7 +249,7 @@ describe("retention", () => {
   });
 });
 
-function funnelFixture(): FunnelInput {
+function funnelFixture(): FunnelInput & { events: StoredEvent[] } {
   const events = [site("a1", "a1", FROM, "/", { source: "ChatGPT", channel: "ai" }), site("b1", "b1", FROM, "/pricing", { channel: "search" }), link("a1", "a"), link("b1", "b")];
   for (const [i, step] of ["name", "plan", "app"].entries()) events.push(event("onboarding_step", FROM + (i + 2) * 1000, { step }, undefined, "a"));
   events.push(event("onboarding_done", FROM + 5000, {}, undefined, "a"), event("onboarding_step", FROM + 3000, { step: "plan" }, undefined, "b"));
@@ -282,6 +285,14 @@ describe("funnel", () => {
     expect(result.steps[0]).toMatchObject({ id: "signup", medianMs: null });
     expect(result.dropoff.signup).toEqual({ count: 1, lastPages: [{ key: "/onboarding", count: 1 }], lastEvents: [{ key: "page_view", count: 1 }], scroll: [0, 0, 0, 0] });
     expect(result.bySource.map(row => row.counts[0])).toEqual([1, 1]);
+  });
+
+  it("counts an account that set up in the desktop app as onboarded, so it can still reach the cloud and paid steps", () => {
+    const input = funnelFixture();
+    input.cloudChosen = new Map([...input.cloudChosen, ["b", FROM + 9000]]);
+    input.paired = new Map([...input.paired, ["b", FROM + 4000]]);
+    const result = funnel({ ...input, mode: "signups" });
+    expect(result.steps.slice(0, 7).map(step => [step.id, step.count])).toEqual([["signup", 2], ["onboarding_name", 2], ["onboarding_plan", 2], ["onboarding_app", 2], ["onboarded", 2], ["cloud", 2], ["paid", 1]]);
   });
 
   it("allows a waitlist join to reach the visitor signup step without an account", () => {

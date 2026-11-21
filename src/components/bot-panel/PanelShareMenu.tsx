@@ -3,6 +3,9 @@ import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
+import { phoneApp } from "@/lib/store-app";
+import { systemMenu } from "@/lib/system-menu";
+import { SheetPush } from "@/mobile/SheetPush";
 import { useStore, type Bot } from "@/state/store";
 import { BotAvatar } from "../Avatar";
 import { useChatMoreItems } from "../ChatMoreMenu";
@@ -19,6 +22,7 @@ interface Entry {
   key: string;
   title: string;
   hint: ReactNode;
+  detail?: string;
   tile: ReactNode;
   disabled?: boolean;
   keepOpen?: boolean;
@@ -27,6 +31,14 @@ interface Entry {
 
 const SHARE_KEYS = ["copy", "download"];
 const MORE_ICON: Record<string, IconName> = { usage: "gauge", activity: "list-checks" };
+const SHARE_SYMBOL: Record<string, string> = {
+  people: "person.2",
+  duplicate: "doc.on.doc",
+  copy: "doc.on.clipboard",
+  download: "arrow.down.circle",
+  usage: "gauge.with.needle",
+  activity: "checklist",
+};
 
 /** Grok's icon tile: a 36px elevated circle in a 40px slot. */
 function IconTile({ name }: { name: IconName }) {
@@ -64,17 +76,22 @@ function ShareMenu({ bot }: { bot: Bot }) {
     if (refocus) trigger.current?.focus();
   };
 
+  const trailingText = (key: string) => {
+    const trailing = items.find((item) => item.key === key)?.trailing;
+    return typeof trailing === "string" ? trailing : undefined;
+  };
   const status = (key: string) => {
     const trailing = items.find((item) => item.key === key)?.trailing;
     return trailing ? <span className="contents">{trailing}</span> : null;
   };
   const share: Entry[] = [
     team
-      ? { key: "people", title: t("botPanel.share.people"), hint: t("botPanel.share.peopleHint", { name: bot.name }), tile: <IconTile name="people" />, onSelect: () => setSharing(true) }
+      ? { key: "people", title: t("botPanel.share.people"), hint: t("botPanel.share.peopleHint", { name: bot.name }), detail: t("botPanel.share.peopleHint", { name: bot.name }), tile: <IconTile name="people" />, onSelect: () => setSharing(true) }
       : {
           key: "duplicate",
           title: t("botPanel.share.copy"),
           hint: t("botPanel.share.copyHint"),
+          detail: t("botPanel.share.copyHint"),
           // grok draws the bot and its copy: the copy up and to the right, paler
           tile: (
             <span aria-hidden="true" className="relative size-10 shrink-0">
@@ -88,20 +105,60 @@ function ShareMenu({ bot }: { bot: Bot }) {
       key: item.key,
       title: t(item.key === "copy" ? "botPanel.share.copyChat" : "botPanel.share.download"),
       hint: (item.key === "copy" && status("copy")) || t(item.key === "copy" ? "botPanel.share.copyChatHint" : "botPanel.share.downloadHint"),
+      detail: (item.key === "copy" && trailingText("copy")) || t(item.key === "copy" ? "botPanel.share.copyChatHint" : "botPanel.share.downloadHint"),
       tile: <IconTile name={item.key === "copy" ? "copy" : "arrow-bracket-to-down"} />,
       disabled: item.disabled,
       keepOpen: item.keepOpen,
       onSelect: item.onSelect,
     })),
   ];
-  const more: Entry[] = items.filter((item) => item.key in MORE_ICON).map((item) => ({
-    key: item.key,
-    title: item.label,
-    hint: item.key === "usage" ? <>{status("usage")}{" · "}{t("botPanel.share.usageHint")}</>
-      : t("botPanel.share.activityHint", { name: bot.name }),
-    tile: <IconTile name={MORE_ICON[item.key]!} />,
-    onSelect: item.onSelect,
-  }));
+  const more: Entry[] = items.filter((item) => item.key in MORE_ICON).map((item) => {
+    const usageText = item.key === "usage" ? trailingText("usage") : undefined;
+    return {
+      key: item.key,
+      title: item.label,
+      hint: item.key === "usage" ? <>{status("usage")}{" · "}{t("botPanel.share.usageHint")}</>
+        : t("botPanel.share.activityHint", { name: bot.name }),
+      detail: item.key === "usage"
+        ? (usageText ? `${usageText} · ${t("botPanel.share.usageHint")}` : t("botPanel.share.usageHint"))
+        : t("botPanel.share.activityHint", { name: bot.name }),
+      tile: <IconTile name={MORE_ICON[item.key]!} />,
+      onSelect: item.onSelect,
+    };
+  });
+
+  const openShare = () => {
+    const native = systemMenu();
+    if (native && trigger.current) {
+      const rect = trigger.current.getBoundingClientRect();
+      const nativeChrome = document.documentElement.hasAttribute("data-native-chrome");
+      const anchor = !nativeChrome && rect.width > 0 && rect.height > 0
+        ? rect
+        : new DOMRect(Math.max(16, window.innerWidth - 60), 12, 44, 44);
+      const all = [...share, ...more];
+      void native(anchor, [
+        ...share.map((entry) => ({
+          key: entry.key,
+          label: entry.title,
+          detail: entry.detail,
+          symbol: SHARE_SYMBOL[entry.key],
+          disabled: entry.disabled,
+        })),
+        ...more.map((entry, index) => ({
+          key: entry.key,
+          label: entry.title,
+          detail: entry.detail,
+          symbol: SHARE_SYMBOL[entry.key],
+          disabled: entry.disabled,
+          separated: index === 0,
+        })),
+      ]).then((key) => {
+        if (key !== null) all.find((entry) => entry.key === key)?.onSelect();
+      });
+      return;
+    }
+    setOpen(true);
+  };
 
   useLayoutEffect(() => {
     if (!open || !trigger.current) return;
@@ -172,7 +229,7 @@ function ShareMenu({ bot }: { bot: Bot }) {
         title={t("chat.export.heading")}
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => (open ? close() : setOpen(true))}
+        onClick={() => (open ? close() : openShare())}
         onKeyDown={(event) => {
           if (event.key === "Escape" && open) {
             event.preventDefault();
@@ -203,7 +260,20 @@ function ShareMenu({ bot }: { bot: Bot }) {
         ),
         document.body,
       )}
-      {sharing && team && <ShareBotDialog bot={bot} teamName={team} onClose={() => setSharing(false)} onChanged={setChange} />}
+      {phoneApp() ? (
+        team && (
+          <SheetPush
+            open={sharing}
+            onClose={() => setSharing(false)}
+            title={t("botAccess.title", { bot: bot.name })}
+            pageId="share-bot"
+          >
+            <ShareBotDialog embedded bot={bot} teamName={team} onClose={() => setSharing(false)} onChanged={setChange} />
+          </SheetPush>
+        )
+      ) : (
+        sharing && team && <ShareBotDialog bot={bot} teamName={team} onClose={() => setSharing(false)} onChanged={setChange} />
+      )}
       {change && <UndoToast key={`${change.text}:${JSON.stringify(change.after)}`} text={change.text}
         onUndo={() => saveAccess(bot.id, change.before)} onDone={settled} />}
     </>

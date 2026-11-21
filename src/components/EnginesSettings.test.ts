@@ -439,3 +439,18 @@ describe("Settings → AI in Simple mode", () => {
     expect(html).toMatch(/data-panel-page="custom-provider"[\s\S]*?Add a custom provider/);
   });
 });
+
+it("offers no Use it for a found engine whose saved driver this build lacks, and says why in plain words", () => {
+  vi.stubGlobal("window", {});
+  vi.stubGlobal("navigator", { userAgent: "Linux" });
+  fixture.bots = [];
+  fixture.instances = [{
+    instanceId: "cursor", driverKind: "not-a-real-driver", displayName: "Cursor", found: true, unknownDriver: true,
+    snapshot: { state: "unavailable", reason: 'unknown driver "not-a-real-driver": kept as configured, unavailable here' },
+    models: { default: "", options: [] },
+  }];
+  const markup = renderToStaticMarkup(createElement(EnginesSettings));
+  expect(markup).toContain("Saved by another version");
+  expect(markup).not.toContain("Use it");
+  expect(markup).not.toContain("unknown driver");
+});

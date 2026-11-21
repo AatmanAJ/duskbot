@@ -58,13 +58,29 @@ export function createDodoProvider(options: DodoProviderOptions): BillingProvide
     } catch { throw new BillingProviderError("refused"); }
   }
   const prefix = options.mode === "test" ? "test." : "";
+  // dodo sends a scheduled change only with full_immediately; prevent_change keeps the old plan until a charge goes through
+  const PRORATION = { trial: "do_not_bill", keep_cycle: "prorated_immediately_keep_cycle", new_cycle: "prorated_immediately", scheduled: "full_immediately" } as const;
+  const changeBody = (input: Parameters<BillingProvider["changePlan"]>[0]) => ({ product_id: input.productId, quantity: 1, proration_billing_mode: PRORATION[input.mode],
+    ...(input.mode === "scheduled" ? { effective_at: "next_billing_date" } : {}), on_payment_failure: "prevent_change", cancel_scheduled_change_plan: true,
+    addons: input.addons.map(addon => ({ addon_id: addon.addonId, quantity: addon.quantity })) });
   return {
     name: "dodo",
     async createCheckout(input) {
-      const result = await json("/checkouts", { product_cart: input.cart.map(line => ({ product_id: line.productId, quantity: line.quantity,
+      const name = input.customerId ? null : checkoutName(input.name, input.email);
+      const body = (named: boolean) => ({ product_cart: input.cart.map(line => ({ product_id: line.productId, quantity: line.quantity,
         ...(line.addons.length ? { addons: line.addons.map(addon => ({ addon_id: addon.addonId, quantity: addon.quantity })) } : {}) })),
-        customer: input.customerId ? { customer_id: input.customerId } : { email: input.email }, return_url: input.returnUrl, metadata: { checkoutId: input.checkoutId, accountId: input.accountId },
+        customer: input.customerId ? { customer_id: input.customerId } : { email: input.email, ...(named && name ? { name } : {}) }, return_url: input.returnUrl, metadata: { checkoutId: input.checkoutId, accountId: input.accountId },
         ...(input.trialDays ? { subscription_data: { trial_period_days: input.trialDays } } : {}) });
+      // the name only saves typing: a checkout dodo refuses with it is asked once more without it
+      const open = () => json("/checkouts", body(true)).catch((error: unknown) => {
+        if (!name || !(error instanceof BillingProviderError) || error.code !== "refused") throw error;
+        return json("/checkouts", body(false));
+      });
+      // dodo's create-checkout now and then fails with a 5xx or a dropped connection; one quiet retry opens the page
+      const result = await open().catch((error: unknown) => {
+        if (!(error instanceof BillingProviderError) || error.code !== "unavailable") throw error;
+        return open();
+      });
       if (typeof result.session_id !== "string" || !result.session_id) throw new BillingProviderError("refused");
       return { sessionId: result.session_id, url: allowedUrl(result.checkout_url, `${prefix}checkout.dodopayments.com`) };
     },
@@ -77,7 +93,33 @@ export function createDodoProvider(options: DodoProviderOptions): BillingProvide
     async cancelNow(id) { await request(`/subscriptions/${encodeURIComponent(id)}`, "PATCH", { status: "cancelled" }); },
     async setNextBillingDate(id, at) { await request(`/subscriptions/${encodeURIComponent(id)}`, "PATCH", { next_billing_date: new Date(at).toISOString() }); },
     async refundPayment(paymentId, reason) { await request("/refunds", "POST", { payment_id: paymentId, reason }); },
-    async changePlan(input) { await request(`/subscriptions/${encodeURIComponent(input.subscriptionId)}/change-plan`, "POST", { product_id: input.productId, quantity: 1, proration_billing_mode: "difference_immediately", on_payment_failure: "prevent_change", addons: input.addons.map(addon => ({ addon_id: addon.addonId, quantity: addon.quantity })) }); },
+    async previewChange(input) {
+      const result = await json(`/subscriptions/${encodeURIComponent(input.subscriptionId)}/change-plan/preview`, changeBody(input));
+      const summary = (result.immediate_charge as { summary?: Record<string, unknown> } | undefined)?.summary;
+      const total = summary?.total_amount, tax = summary?.tax ?? 0;
+      if (!summary || summary.currency !== "USD" || !Number.isSafeInteger(total) || (total as number) < 0 || (tax !== null && !Number.isSafeInteger(tax))) throw new BillingProviderError("refused");
+      // a scheduled change's preview prices the coming renewal, not today
+      return input.mode === "scheduled" || input.mode === "trial" ? { chargeCents: 0, taxCents: 0 } : { chargeCents: total as number, taxCents: (tax as number | null) ?? 0 };
+    },
+    async changePlan(input) {
+      const result = await request(`/subscriptions/${encodeURIComponent(input.subscriptionId)}/change-plan`, "POST", changeBody(input));
+      let link: unknown = null;
+      try { link = (JSON.parse(result?.body.toString("utf8") || "{}") as { payment_link?: unknown }).payment_link ?? null; } catch {}
+      return { paymentUrl: link === null ? null : allowedUrl(link, `${prefix}checkout.dodopayments.com`) };
+    },
+    async cancelScheduledChange(id) { await request(`/subscriptions/${encodeURIComponent(id)}/change-plan/scheduled`, "DELETE"); },
+    async subscription(id) {
+      const result = await request(`/subscriptions/${encodeURIComponent(id)}`, "GET");
+      let data: Record<string, unknown>;
+      try { data = JSON.parse(result!.body.toString("utf8")) as Record<string, unknown>; if (!data || typeof data !== "object") throw new Error(); } catch { throw new BillingProviderError("refused"); }
+      const addons = (value: unknown) => Array.isArray(value) ? value.filter((item): item is { addon_id: string; quantity: number } => !!item && typeof item.addon_id === "string" && Number.isSafeInteger(item.quantity))
+        .map(item => ({ addonId: item.addon_id, quantity: item.quantity })) : [];
+      const at = typeof data.next_billing_date === "string" ? Date.parse(data.next_billing_date) : NaN;
+      const scheduled = data.scheduled_change && typeof data.scheduled_change === "object" ? data.scheduled_change as Record<string, unknown> : null;
+      return { productId: typeof data.product_id === "string" ? data.product_id : null, addons: addons(data.addons), nextBillingAt: Number.isFinite(at) ? at : null,
+        status: typeof data.status === "string" ? data.status : null,
+        scheduled: scheduled ? { productId: typeof scheduled.product_id === "string" ? scheduled.product_id : null, addons: addons(scheduled.addons) } : null };
+    },
     // dodo (2026-11) has no discount field on PATCH /subscriptions; change-plan takes discount_codes, so the same
     // product and addons are sent again with the code, unbilled, from the next billing date
     async applyDiscount(input) {
@@ -100,4 +142,16 @@ export function createDodoProvider(options: DodoProviderOptions): BillingProvide
       } catch { throw new BillingProviderError("refused"); }
     },
   };
+}
+
+/** the name dodo's checkout shows filled in: the account's own, else a guess from the email ("jane.doe+x@" is "Jane Doe");
+ *  nothing when neither reads as a name */
+export function checkoutName(own: string | null | undefined, email: string): string | null {
+  const clean = (value: string) => value.replace(/[\p{C}<>"]/gu, "").replace(/\s+/g, " ").trim().slice(0, 60);
+  const given = own ? clean(own) : "";
+  if (/\p{L}/u.test(given)) return given;
+  const local = (email.split("@")[0] ?? "").split("+")[0]!;
+  const words = local.split(/[._\-\s]+/).map(word => word.replace(/[^\p{L}]/gu, "")).filter(word => word.length > 1);
+  const guess = clean(words.map(word => word[0]!.toUpperCase() + word.slice(1).toLowerCase()).join(" "));
+  return guess.length >= 2 ? guess : null;
 }

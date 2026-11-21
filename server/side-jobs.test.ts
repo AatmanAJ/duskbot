@@ -604,3 +604,56 @@ describe("memory upkeep through the resolver", () => {
 
   });
 });
+
+describe("the quick reply while a bot works", () => {
+  function quickSetup(options: { helper?: { instanceId: string } | null; free?: boolean; helperModel?: boolean } = {}) {
+    const fast = textEngine("api", "openai-compat", () => "api wrote this", { default: "big-model", options: [{ id: "big-model", label: "Big" }, { id: "big-model-mini", label: "Big mini" }] });
+    const codex = backgroundEngine("codex", "codex");
+    const free = backgroundEngine("opencode", "opencode");
+    const helper = textEngine("claude", "claudeAgent");
+    const instances = new Map<string, SideJobInstance>([["api", fast.instance], ["codex", codex.instance], ["pi", turnsOnly("pi", "piAgent")], ["claude", helper.instance]]);
+    const bots = new Map<string, SideJobBot>(["api", "codex", "pi"].map((id) => [id, { ...bot(id, id), ...(options.helperModel === false ? { helperModel: false } : {}) }]));
+    const booked: Booked[] = [];
+    const jobs = createSideJobs({
+      bot: (id) => bots.get(id), instance: (id) => instances.get(id) ?? null, refusal: () => undefined,
+      helper: () => options.helper ?? null, smallModels: { refused: () => new Set(), remember: () => {} },
+      book: (row, tokensReported) => booked.push({ row, tokensReported }),
+      ...(options.free === false ? {} : { freeBackup: () => free.instance }),
+    });
+    return { jobs, fast, codex, free, helper, booked };
+  }
+
+  it("runs on the bot's own engine, on its fastest model, as a separate call", async () => {
+    const { jobs, fast } = quickSetup();
+    const writer = jobs.text("side-reply", "api");
+    expect(writer?.via).toBe("engine");
+    await writer!.generateText("hi");
+    expect(fast.calls[0]?.options?.model).toBe("big-model-mini");
+  });
+
+  it("runs a CLI engine's own one-shot process when it has no quicker call", async () => {
+    const { jobs, codex, free } = quickSetup();
+    expect(await jobs.text("side-reply", "codex")!.generateText("hi")).toBe("codex's own engine wrote this");
+    expect(codex.calls).toHaveLength(1);
+    expect(free.calls).toHaveLength(0);
+  });
+
+  it("falls back to the helper, then to OpenCode's free backup, for an engine with no one-off call", async () => {
+    const withHelper = quickSetup({ helper: { instanceId: "claude" } });
+    expect(await withHelper.jobs.text("side-reply", "pi")!.generateText("hi")).toBe("claude wrote this");
+    expect(withHelper.free.calls).toHaveLength(0);
+
+    const freeOnly = quickSetup();
+    const writer = freeOnly.jobs.text("side-reply", "pi");
+    expect(writer?.via).toBe("helper");
+    await writer!.generateText("hi");
+    expect(freeOnly.free.calls).toHaveLength(1);
+    expect(freeOnly.booked[0]?.row.trigger).toEqual({ kind: "helper", botId: "pi", job: "side-reply" });
+  });
+
+  it("never sends a bot switched off the helper to the free backup, and other jobs never use it", () => {
+    expect(quickSetup({ helperModel: false }).jobs.text("side-reply", "pi")).toBeNull();
+    expect(quickSetup({ free: false }).jobs.text("side-reply", "pi")).toBeNull();
+    expect(quickSetup().jobs.text("turn-beat", "pi")).toBeNull();
+  });
+});
