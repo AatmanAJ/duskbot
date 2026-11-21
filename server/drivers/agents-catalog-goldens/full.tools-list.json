@@ -2046,7 +2046,7 @@
           },
           "payload": {
             "type": "object",
-            "description": "run_now on a webhook or app event (needed there): a realistic sample body as the sending app posts it, with the person's own name and email, so its real steps run once end to end."
+            "description": "run_now on a webhook or app event (needed there): a realistic sample body as the sending app posts it, with the person's own name and email; it runs as a real call, so its real steps run once end to end (write no test or dry-run case into instructions)."
           },
           "email_alias": {
             "type": "string",
