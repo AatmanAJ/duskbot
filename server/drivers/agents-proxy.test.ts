@@ -2412,7 +2412,7 @@ describe("tool bridge", () => {
   /** The main child's switches: a Chief with skills. */
   const CHIEF = { DUSK_SKILL_AUTHORING_ENABLED: "1", DUSK_CHIEF_OF_STAFF: "1", DUSK_COMPUTER_SELECTION: "1" };
   const CHIEF_ONLY = ["list_team_setup", "propose_team_setup", "propose_bot_deletion", "manage_room", "retry_thread"];
-  const HOT = ["set_status", "send_message", "tool_result_read", "list_room_targets", "coordinate_bots", "list_bots", "list_rooms", "select_computer", "attach_file", "publish_page", "confirm_purchase", "post_to_room", "request_credential", "request_sign_in", "fill_login", "message_person", "memory_update", "trigger"];
+  const HOT = ["set_status", "send_message", "tool_result_read", "list_room_targets", "coordinate_bots", "list_bots", "create_document", "list_rooms", "select_computer", "attach_file", "publish_page", "confirm_purchase", "post_to_room", "request_credential", "request_sign_in", "fill_login", "message_person", "memory_update", "trigger_info", "trigger"];
   let chief: Rpc;
   let plain: Rpc;
   let off: Rpc;
@@ -2467,7 +2467,7 @@ describe("tool bridge", () => {
       expect(await describes(plain), name).not.toContain(name);
     }
     expect(await describes(chief)).toContain("trigger");
-    expect(await describes(plain)).toContain("trigger_info");
+    expect(await describes(plain)).toContain("delete_trigger");
     // find_tool is a read and carries the marks the catalog's reads do; use_tool claims nothing
     const [findTool, useTool] = (await listed(chief)).slice(-2);
     expect(findTool.annotations).toEqual(unbridged.get("trigger_info").annotations);
@@ -2492,9 +2492,9 @@ describe("tool bridge", () => {
 
   it("find_tool finds a hidden tool from a natural request, with the description and schema the unbridged turn lists", async () => {
     const unbridged = new Map((await listed(rpc)).map((tool) => [tool.name, tool]));
-    const matches = matchesOf(await find(chief, "which routines do I have and when do they run next"));
+    const matches = matchesOf(await find(chief, "delete one of my routines for good"));
     expect(matches.length).toBeLessThanOrEqual(3);
-    const { name, description, inputSchema } = unbridged.get("trigger_info");
+    const { name, description, inputSchema } = unbridged.get("delete_trigger");
     expect(matches[0]).toEqual({ name, description, inputSchema });
     expect(matchesOf(await find(chief, "create a new specialist bot"))[0]!.name).toBe("create_bot");
     // a search that could not be made is a failed call, told how to search
