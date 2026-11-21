@@ -61,7 +61,7 @@ export async function seedTeamProfile({ origin, teamFetch, localRequest, tries =
 }
 
 /** This computer's stored picture, sent as the person's own upload on the team; null when it is not a picture we take. */
-async function uploadPicture(path, localRequest, team) {
+export async function uploadPicture(path, localRequest, team) {
   const local = await localRequest(path);
   const type = local.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
   if (!local.ok || !PICTURE_TYPES.has(type) || Number(local.headers.get("content-length") ?? 0) > SEED_PICTURE_MAX_BYTES) {

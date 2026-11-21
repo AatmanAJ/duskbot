@@ -1,10 +1,12 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
+import { AnimatePresence, useIsPresent, type HTMLMotionProps } from "motion/react";
 
 import { t } from "@/lib/i18n";
+import { dialogMotion } from "@/lib/motion-presets";
 import { confirmCancelCls, mdDangerCls, mdPrimaryCls } from "./ui/GrokDialog";
-import { ScrimMotion, SheetMotion } from "./ui/SheetMotion";
+import { ScrimMotion, SheetMotion, useMotionReduced } from "./ui/SheetMotion";
 
 export type ConfirmTone = "danger" | "neutral";
 
@@ -26,23 +28,26 @@ export interface ConfirmDialogProps {
   layer?: string;
   /** A small pixel picture over the title. */
   art?: ReactNode;
+  /** Its way out has finished playing after `open` turned false. */
+  onClosed?: () => void;
 }
 
 /**
- * Grok's confirmation modal: the confirm button takes focus, so Enter confirms and Escape cancels, and Tab moves to
- * Cancel. While pending, focus parks on the dialog. Portalled to <body>: the sidebar's translate below md would become
- * the containing block.
+ * Grok's confirmation modal: Escape cancels and Tab stays inside it. A danger confirm opens on Cancel, so a stray Enter
+ * cannot destroy anything; a neutral one opens on its confirm button. While pending, focus parks on the dialog.
+ * Portalled to <body>: the sidebar's translate below md would become the containing block.
  */
 export function ConfirmDialog(props: ConfirmDialogProps) {
   const { open, onCancel, returnFocusRef } = props;
   const dialogRef = useRef<HTMLDivElement>(null);
-  const confirmRef = useRef<HTMLButtonElement>(null);
+  const opensOn = useRef<HTMLButtonElement>(null);
+  const opensOnCancel = (props.tone ?? "danger") === "danger";
   const cancelAction = useRef(onCancel);
   cancelAction.current = onCancel;
   useEffect(() => {
     if (!open) return;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    confirmRef.current?.focus();
+    opensOn.current?.focus();
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -75,26 +80,45 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
   useEffect(() => {
     if (!open) return;
     if (props.pending) dialogRef.current?.focus();
-    else confirmRef.current?.focus();
+    else opensOn.current?.focus();
   }, [open, props.pending]);
 
-  if (!open) return null;
-
+  const motion = dialogMotion(useMotionReduced());
+  const [opened, setOpened] = useState(open);
+  useEffect(() => { if (open) setOpened(true); }, [open]);
+  if ((!open && !opened) || typeof document === "undefined" || !document.body) return null;
   return createPortal(
-    <div
-      className={`fixed inset-0 ${props.layer ?? "z-50"} flex items-center justify-center p-6`}
-      onMouseDown={(event) => event.target === event.currentTarget && onCancel()}
-    >
-      <ScrimMotion aria-hidden="true" className="ui-dialog-scrim pointer-events-none absolute inset-0" />
-      <ConfirmDialogCard ref={dialogRef} confirmRef={confirmRef} animated {...props} />
-    </div>,
+    <AnimatePresence onExitComplete={() => { setOpened(false); props.onClosed?.(); }}>
+      {open && (
+        <ConfirmLayer key="confirm" layer={props.layer} onCancel={onCancel} scrim={motion.scrim}>
+          <ConfirmDialogCard ref={dialogRef} confirmRef={opensOnCancel ? undefined : opensOn} cancelRef={opensOnCancel ? opensOn : undefined} animated enter={motion.sheet} {...props} />
+        </ConfirmLayer>
+      )}
+    </AnimatePresence>,
     document.body,
+  );
+}
+
+/** The dialog's layer, still drawn while it leaves but no longer taking presses or focus. */
+function ConfirmLayer({ layer, onCancel, scrim, children }: { layer?: string; onCancel: () => void; scrim: HTMLMotionProps<"div">; children: ReactNode }) {
+  const leaving = !useIsPresent();
+  return (
+    <div
+      className={`fixed inset-0 ${layer ?? "z-50"} flex items-center justify-center p-6`}
+      inert={leaving || undefined}
+      data-leaving={leaving ? "" : undefined}
+      onMouseDown={(event) => !leaving && event.target === event.currentTarget && onCancel()}
+    >
+      <ScrimMotion aria-hidden="true" data-raw-dialog="" className="ui-dialog-scrim pointer-events-none absolute inset-0" {...scrim} />
+      {children}
+    </div>
   );
 }
 
 export function ConfirmDialogCard({
   ref,
   confirmRef,
+  cancelRef,
   title,
   body,
   confirmLabel,
@@ -105,17 +129,23 @@ export function ConfirmDialogCard({
   alternative,
   pending = false,
   animated = false,
+  enter,
   art,
 }: ConfirmDialogProps & {
   ref?: React.Ref<HTMLDivElement>;
   confirmRef?: React.Ref<HTMLButtonElement>;
+  cancelRef?: React.Ref<HTMLButtonElement>;
   /** eases in as bencho's modal does; a card drawn inside another surface stays put */
   animated?: boolean;
+  /** the way in and out it plays, in place of the stylesheet's way in */
+  enter?: HTMLMotionProps<"div">;
 }) {
   const danger = tone === "danger";
   const Root = animated ? SheetMotion : "div";
+  const played = animated && enter ? { ...enter, "data-raw-dialog": "" } : {};
   return (
     <Root
+      {...played}
       ref={ref}
       role="alertdialog"
       tabIndex={-1}
@@ -136,7 +166,7 @@ export function ConfirmDialogCard({
         </div>
       </div>
       <div className="flex flex-wrap gap-2 py-3 pl-4 pr-3">
-        <button type="button" onClick={onCancel} disabled={pending} className={`${confirmCancelCls} flex-1`}>
+        <button ref={cancelRef} type="button" onClick={onCancel} disabled={pending} className={`${confirmCancelCls} flex-1`}>
           {cancelLabel}
         </button>
         {alternative && <button type="button" data-confirm-alternative onClick={alternative.onClick} disabled={pending}
@@ -159,10 +189,10 @@ export function askConfirm(request: ConfirmRequest): Promise<boolean> {
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
+    const closed = () => { root.unmount(); host.remove(); };
     const answer = (value: boolean) => {
-      root.unmount();
-      host.remove();
       resolve(value);
+      root.render(<ConfirmDialog open={false} {...request} onCancel={() => {}} onConfirm={() => {}} onClosed={closed} />);
     };
     root.render(<ConfirmDialog open {...request} onCancel={() => answer(false)} onConfirm={() => answer(true)} />);
   });
