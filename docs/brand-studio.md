@@ -31,11 +31,14 @@ run downloads the pinned agent-browser and its Chrome into `.dusk-scratch/`.
 | --- | --- | --- |
 | `--view NAME` | a named view, below | |
 | `--steps FILE` | a JSON array of steps, instead of `--view` | |
+| `--recipe FILE` | a `<slug>.capture.json`, below, instead of `--view` | |
+| `--app [STATE=]DIR` | the checkout whose app is captured; repeat as `before=DIR` and `after=DIR` for a pair | this checkout |
 | `--entry NAME` | with `--steps`: the preview page, `threads` (the whole app), `settings` or `dictation` (test pages) | `threads` |
 | `--script JSON` | with `--steps`: the fake engine's turn, as `ui launch --script` takes it | |
-| `--slug SLUG` | what the capture shows, lowercase-with-hyphens | required |
-| `--state STATE` | `before`, `after`, or any lowercase-with-hyphens word | `after` |
-| `--out-dir DIR` | where the raw PNG goes | `qa-assets` |
+| `--slug SLUG` | what the capture shows, lowercase-with-hyphens | required; a recipe's file name |
+| `--state STATE` | `before`, `after`, or any lowercase-with-hyphens word, for an `--app` with no state | `after` |
+| `--out-dir DIR` | where the raw PNG goes | `qa-assets`; a recipe's folder |
+| `--color NAME` | the seeded bot's colour | `orange` |
 | `--width`, `--height` | the window, in points | 1280 × 800 |
 | `--scale` | pixels per point | 2 |
 
@@ -58,24 +61,88 @@ Steps, for `--steps` or a new view:
   { "press": "Enter" },
   { "settle": 60 },
   { "waitMs": 300 },
+  { "waitFor": "document.body.innerText.includes('Not sent')" },
   { "eval": "document.querySelector('[data-tour=tools] button')?.click()" },
-  { "shot": "f01-open" }
+  { "reload": true },
+  { "appendRows": { "file": "usage/{month}.jsonl", "rows": [{ "botId": "{botId}", "at": "{now}" }] } },
+  { "shot": true },
+  { "shot": "f01-open", "only": "after" }
 ]
 ```
 
 `click` and `type` take an element's exact accessible name; find names with
-`control-dusk ui snapshot`. `settle` waits for the bot's turn to finish.
-`shot` screenshots at that point as `<slug>.<shot>.raw.png`; with no `shot`
-step, one screenshot is taken at the end as `<slug>.<state>.raw.png`.
+`control-dusk ui snapshot`. `settle` waits for the bot's turn to finish,
+`waitFor` until an expression is true in the page (at most 30 seconds).
+`reload` loads the page again and waits for it to draw. `appendRows` adds
+JSON lines to a file in the fixture's data directory, for rows the fake engine
+cannot produce; `{botId}`, `{now}` (the ISO time) and `{month}` (`YYYY-MM`) are
+filled in, and it writes nowhere else. `shot` screenshots at that point:
+`true` as `<slug>.<state>.raw.png`, a word as `<slug>.<word>.raw.png`. With no
+`shot` step, one screenshot is taken at the end as `<slug>.<state>.raw.png`.
+A step with `"only": "after"` runs just in the capture of that state.
 
 Every capture runs at the same window size, dark colour scheme and reduced
-motion, with Pepper's colour pinned, so two runs of one view differ only where
-the app does. The chat's time stamp ("Today 11:46") is the one thing that
-still changes between runs.
+motion, with Pepper's colour pinned and the text caret hidden (it blinks), so
+two runs of one view differ only where the app does.
 
-For a **before** shot, run the same command with `--state before` from a
-checkout of the base branch (for example a `git worktree` of `main`), with
-`--out-dir` pointing at the same folder as the after shot.
+### A before and after pair
+
+A new bot's colour is random and the app stamps what it shows with the time,
+so a pair is captured in one run, from two checkouts, in step:
+
+```sh
+git worktree add --detach ../base "$(git merge-base origin/main HEAD)"
+node --experimental-strip-types scripts/brand-studio/capture.ts \
+  --recipe qa-assets/chat-stop.capture.json --app before=../base --app after=.
+```
+
+Each `--app` gets its own fixture, started from that checkout (it needs its
+`node_modules`). Both get the same colour and window, and every step runs on
+both at once, starting clear of the end of a minute, so their time stamps
+agree. The pair then differs only in what the branch changes, plus whatever a
+step marked `only` does. A named shot that both states would write is refused:
+give it an `only`.
+
+### A capture recipe
+
+`<slug>.capture.json` holds everything a capture needs, and is kept beside the
+raw files it made, so anyone can make them again:
+
+```json
+{
+  "about": "A send the server refuses, then a reload. The refusal is a stand-in: fetch is wrapped for the capture.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1440,
+  "height": 600,
+  "scale": 2,
+  "script": [{ "text": "Done." }],
+  "steps": [
+    { "type": { "name": "Message Pepper", "text": "Book the 9am train" } },
+    { "press": "Enter" },
+    { "settle": 60 },
+    { "shot": true },
+    { "click": "Retry", "only": "after" },
+    { "shot": "retried", "only": "after" }
+  ]
+}
+```
+
+| Key | Meaning | Default |
+| --- | --- | --- |
+| `about` | for the reader: what it shows, and anything in it that is staged | |
+| `entry` | the preview page: `threads`, `settings` or `dictation` | `threads` |
+| `script` | the fake engine's turn, as `ui launch --script` takes it | the engine's own reply |
+| `toolCalls` | the fake engine's tool calls, as `ui launch --tool-calls` takes them | |
+| `color` | the seeded bot's colour | `orange` |
+| `width`, `height`, `scale` | the window | 1280 × 800, 2 |
+| `reducedMotion` | `false` lets the app animate, for a view that draws wrongly with motion reduced; wait its animations out with `waitMs` | `true` |
+| `steps` | the steps, as above | required |
+
+`--width`, `--height`, `--scale` and `--color` on the command line win over the
+recipe. Size the window to the content: a transcript that fits needs no
+scrolling, and a crop of the whole chat column (`"364,0,1000,HEIGHT"` at 1440
+points wide) keeps the app's own margin around the bubbles.
 
 ## Frame it
 
