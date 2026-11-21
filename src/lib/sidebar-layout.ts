@@ -203,17 +203,18 @@ export const SIMPLE_FIRST_SECTION_IDS: readonly SidebarSectionId[] = [PINNED_SEC
 /** After the departments, as grok puts its Unassigned. */
 export const SIMPLE_LAST_SECTION_IDS: readonly SidebarSectionId[] = [BOTS_SECTION_ID, CHANNELS_SECTION_ID, BOT_CHATS_SECTION_ID];
 
-export function simpleSidebarSections(ids: SidebarSectionId[]): SidebarSectionId[] {
-  const builtin = [...SIMPLE_FIRST_SECTION_IDS, ...SIMPLE_LAST_SECTION_IDS];
+export function simpleSidebarSections(ids: SidebarSectionId[], mainUnassigned = false): SidebarSectionId[] {
+  const first = mainUnassigned ? [...SIMPLE_FIRST_SECTION_IDS, BOTS_SECTION_ID] : SIMPLE_FIRST_SECTION_IDS;
+  const last = SIMPLE_LAST_SECTION_IDS.filter((id) => !first.includes(id));
   return [
-    ...SIMPLE_FIRST_SECTION_IDS.filter((id) => ids.includes(id)),
-    ...ids.filter((id) => !builtin.includes(id)),
-    ...SIMPLE_LAST_SECTION_IDS.filter((id) => ids.includes(id)),
+    ...first.filter((id) => ids.includes(id)),
+    ...ids.filter((id) => !first.includes(id) && !last.includes(id)),
+    ...last.filter((id) => ids.includes(id)),
   ];
 }
 
-export function simpleOrderedSections(ordered: SidebarSectionId[], simpleSaved: SidebarSectionId[]): SidebarSectionId[] {
-  return orderedSidebarSections(simpleSidebarSections(ordered), simpleSaved);
+export function simpleOrderedSections(ordered: SidebarSectionId[], simpleSaved: SidebarSectionId[], mainUnassigned = false): SidebarSectionId[] {
+  return orderedSidebarSections(simpleSidebarSections(ordered, mainUnassigned), simpleSaved);
 }
 
 export function moveSection(
