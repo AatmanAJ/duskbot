@@ -63,3 +63,22 @@ describe("browser loop breaker", () => {
     expect(terminalKind("Your card was declined.")).toBe("credit");
   });
 });
+
+describe("a site that says to slow down", () => {
+  it("tells the bot once per site to pause its checklist, and never stops the run for it", () => {
+    const h = harness();
+    h.open("https://x.com/messages");
+    const limited = text("Clicked e40. Text that appeared on the page: You are sending messages too fast. Try again later.");
+    const first = h.loops.answer("t1", "agent_browser_click", { ref: "e40" }, limited);
+    expect(first.content?.at(-1)?.text).toContain("call checklist pause");
+    expect(first.isError).toBeUndefined();
+    expect(h.loops.answer("t1", "agent_browser_click", { ref: "e41" }, limited)).toBe(limited);
+    expect(h.stops).toEqual([]);
+  });
+
+  it("does not read a long page that merely mentions a rate limit as one", () => {
+    const h = harness();
+    const article = text(`Opened https://blog.example.com/post. ${"How API rate limits work and why you should slow down. ".repeat(100)}`);
+    expect(h.loops.answer("t1", "agent_browser_navigate", { url: "https://blog.example.com/post" }, article)).toBe(article);
+  });
+});
