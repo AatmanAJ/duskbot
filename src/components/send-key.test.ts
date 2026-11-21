@@ -161,12 +161,15 @@ describe("an input method in the composer's menus", () => {
   it("leaves the Enter that confirms 山田 to the input method, not the mention menu", () => {
     render(createElement(Composer, { group: room, members: [{ ...bot, name: "山田" }] }));
     type(textarea(), "@山田");
+    // a real input method opens a composition before its candidate keys arrive
+    flushSync(() => textarea().dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })));
     for (const init of ime) {
       for (const key of ["Enter", "tab", "ArrowDown"]) {
         expect(press(textarea(), { ...init, key }).defaultPrevented, JSON.stringify({ ...init, key })).toBe(false);
       }
       expect(textarea().value).toBe("@山田");
     }
+    flushSync(() => textarea().dispatchEvent(new CompositionEvent("compositionend", { bubbles: true })));
     expect(press(textarea()).defaultPrevented).toBe(true);
     expect(textarea().value).toBe("@山田 ");
     expect(sends()).toEqual([]);
@@ -209,12 +212,8 @@ describe("a message sent while a one-to-one bot works", () => {
   const cannotSteer = { ...steers, capabilities: { queueing: false } } as unknown as InstanceInfo;
   const working = { ...bot, busy: true, tasks: [{ ...bot.tasks![0]!, busy: true }] };
   const followUps = () => sends().map((action) => action.followUp);
-  const sendButton = () => host.querySelector<HTMLButtonElement>("[data-composer-follow-up] > button")!;
+  const sendButton = () => host.querySelector<HTMLButtonElement>("button[data-composer-send]")!;
   const chooser = () => host.querySelector<HTMLButtonElement>('button[aria-label="Choose how to send this message"]');
-  const openChoices = () => {
-    flushSync(() => chooser()!.click());
-    return [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] [role="menuitem"]')];
-  };
 
   it("steers on Enter and queues with Ctrl/⌘, by key or by click", () => {
     fixture.instances = [steers];
@@ -225,7 +224,7 @@ describe("a message sent while a one-to-one bot works", () => {
       expect(sends().at(-1), JSON.stringify(init)).toMatchObject({ type: "send", text: "words", followUp });
     }
     type(textarea(), "clicked");
-    expect(sendButton().getAttribute("title")).toBe("Add this to what Pepper is doing · Ctrl+Enter: Queue");
+    expect(sendButton().getAttribute("title")).toBe("Add this to what Pepper is doing");
     flushSync(() => sendButton().click());
     type(textarea(), "ctrl-clicked");
     flushSync(() => sendButton().dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true })));
@@ -255,34 +254,26 @@ describe("a message sent while a one-to-one bot works", () => {
     expect(followUps()).toEqual(["steer", "queue"]);
   });
 
-  it("offers steer, queue and restart beside Send, each saying what it does", () => {
+  // while the bot works it is only voice and send: no steer, queue or restart menu
+  it("offers no menu of ways to send beside Send, only Send itself", () => {
     fixture.instances = [steers];
     render(createElement(Composer, { bot: working }));
-    expect(chooser()).toBeNull();
     type(textarea(), "start again with this");
-    const choices = openChoices();
-    expect(choices.map((choice) => choice.textContent)).toEqual([
-      "Steer nowInterrupt what Pepper is doingEnter",
-      "QueueRun after the current turnCtrl+Enter",
-      "Restart turnStart the turn over with this message",
-    ]);
-    flushSync(() => choices[2]!.click());
-    expect(sends().at(-1)).toMatchObject({ type: "send", text: "start again with this", followUp: "restart" });
+    expect(chooser()).toBeNull();
+    expect(sendButton()).not.toBeNull();
   });
 
-  it("always queues for a bot whose turn cannot be steered, and still offers restart", () => {
+  it("sends the person's choice even when it believes the turn cannot be steered: the server queues what the running engine cannot take", () => {
     fixture.instances = [cannotSteer];
     render(createElement(Composer, { bot: working }));
     type(textarea(), "a");
     press(textarea());
     type(textarea(), "b");
     press(textarea(), { ctrlKey: true });
-    expect(followUps()).toEqual(["queue", "queue"]);
+    expect(followUps()).toEqual(["steer", "queue"]);
     type(textarea(), "c");
-    expect(openChoices().map((choice) => choice.textContent)).toEqual([
-      "QueueRun after the current turnEnter",
-      "Restart turnStart the turn over with this message",
-    ]);
+    flushSync(() => sendButton().click());
+    expect(followUps()).toEqual(["steer", "queue", "steer"]);
   });
 
   it("leaves an idle bot and a room's queue as they were", () => {

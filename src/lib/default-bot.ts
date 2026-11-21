@@ -114,6 +114,26 @@ export function introChips(input: IntroFacts): IntroChip[] {
   ];
 }
 
+export type IntroAsk = "inboxSummary" | "today" | "week" | "price" | "research";
+
+const MAIL = new Set(["gmail", "outlook"]), CALENDAR = new Set(["googlecalendar", "outlook"]);
+
+/** The three first jobs on Dusk's starter card, each one real job one bot can finish in the first chat: a connected inbox
+ * or calendar first, then jobs that need nothing connected. */
+export function introAsks(apps: readonly string[]): IntroAsk[] {
+  return [
+    ...(apps.some((app) => MAIL.has(app)) ? ["inboxSummary" as const] : []),
+    ...(apps.some((app) => CALENDAR.has(app)) ? ["today" as const] : []),
+    "week" as const, "price" as const, "research" as const,
+  ].slice(0, 3);
+}
+
+/** The first jobs show while any AI answers, OpenCode's free backup included (most new people start on it); none while
+ * the bot has no AI to send them to. */
+export function introAsksOffered(ai: "own" | "backup" | "none"): boolean {
+  return ai !== "none";
+}
+
 let welcoming: string | null = null;
 const welcomingListeners = new Set<() => void>();
 

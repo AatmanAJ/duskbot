@@ -21,12 +21,12 @@ const digits = (value: string) => value.replace(/\D/g, "").slice(0, CODE_LENGTH)
 
 /** The phone's own dusk account sign-in, in the app's look: the providers the service has on, then an emailed code in one
  * field (the system offers it from Messages or Mail), with every problem said next to the field it is about. */
-export function MobileSignIn({ onSignedIn }: { onSignedIn: () => void }) {
+export function MobileSignIn({ onSignedIn, initialEmail = "" }: { onSignedIn: () => void; initialEmail?: string }) {
   const account = useMobileAccount();
   const platform = usePlatform();
   const id = useId();
   const [providers, setProviders] = useState<OAuthProvider[] | null>(null);
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(initialEmail);
   const [sent, setSent] = useState<Extract<CloudSignInStart, { outcome: "sent" }> | null>(null);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -42,7 +42,10 @@ export function MobileSignIn({ onSignedIn }: { onSignedIn: () => void }) {
     void signIn.providers().then((list) => { if (alive) setProviders(list); }, () => { if (alive) setProviders([]); });
     return () => { alive = false; };
   }, [signIn]);
-  useEffect(() => { if (account?.account) onSignedIn(); }, [account?.account, onSignedIn]);
+  const signInsAtOpen = useRef(account?.signIns ?? 0);
+  const signIns = account?.signIns ?? 0;
+  const signedInHere = Boolean(account?.account) && signIns !== signInsAtOpen.current;
+  useEffect(() => { if (signedInHere) onSignedIn(); }, [signedInHere, signIns, onSignedIn]);
   useEffect(() => {
     if (!sent) return;
     field.current?.focus();
@@ -102,10 +105,8 @@ export function MobileSignIn({ onSignedIn }: { onSignedIn: () => void }) {
           <label htmlFor={`${id}-email`} className="mb-1.5 block px-1 text-[15px] font-medium text-ink">{t("cloudBuy.signIn.email")}</label>
           <input id={`${id}-email`} ref={field} type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} disabled={busy}
             placeholder={t("mobile.entry.emailPlaceholder")} value={email} onChange={(event) => { setEmail(event.target.value); setProblem(null); }}
-            aria-invalid={Boolean(problem) || undefined} aria-describedby={problemText ? problemId : `${id}-help`} className={FIELD} />
-          {problemText
-            ? <ErrorLine id={problemId}>{problemText}</ErrorLine>
-            : <p id={`${id}-help`} className="mt-2 px-1 text-[14px] leading-5 text-ink-secondary">{t("mobile.entry.emailHelp")}</p>}
+            aria-invalid={Boolean(problem) || undefined} aria-describedby={problemText ? problemId : undefined} className={FIELD} />
+          {problemText && <ErrorLine id={problemId}>{problemText}</ErrorLine>}
         </div>
       ) : (
         <div className="mt-7 w-full text-left">
@@ -118,7 +119,7 @@ export function MobileSignIn({ onSignedIn }: { onSignedIn: () => void }) {
               setProblem(null);
               if (next.length === CODE_LENGTH) void verify(next);
             }}
-            className={`${FIELD} h-16 text-center font-mono text-[26px] tracking-[0.3em] tabular-nums placeholder:text-ink/[0.18]`} />
+            className={`${FIELD} text-center font-mono text-[21px] tracking-[0.16em] tabular-nums placeholder:text-ink/[0.18]`} />
           {problemText && <ErrorLine id={problemId}>{problemText}</ErrorLine>}
         </div>
       )}

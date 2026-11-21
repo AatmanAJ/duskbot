@@ -3,7 +3,7 @@ import { useStore } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import { removePlace, usePlaces, type RailPlace } from "@/lib/places";
-import { vpsLinkAvailable } from "@/lib/vps-link";
+import { thisComputerPage, vpsLinkAvailable } from "@/lib/vps-link";
 import { openCloudMove } from "@/lib/cloud-move";
 import { desktopShowsOtherServer } from "@/lib/other-server";
 import { useVpsCloudMove } from "@/lib/vps-cloud-move";
@@ -99,7 +99,8 @@ function WorkspaceRow({ place, onOpen, onRemove, busy }: { place: RailPlace; onO
 }
 
 /** Settings → Computer's first group: every workspace the bots can live in, with the current one marked and one click to
- * switch, then moving to dusk cloud (or getting one) and adding another. */
+ * switch, then moving to dusk cloud (or getting one) and adding another (only on this computer's own page, never in a
+ * dusk cloud or server window). */
 export function WorkspacesGroup({ onAdd }: { onAdd: () => void }) {
   const { state, dispatch } = useStore();
   const rail = usePlaces();
@@ -144,7 +145,7 @@ export function WorkspacesGroup({ onAdd }: { onAdd: () => void }) {
               onClick={() => dispatch({ type: "openCloudAdd", source: "app_settings" })} />
           : serverMove ? <NavRow data-settings-open="server-cloud-move" pixel={<PixelIcon name="cloud" size={24} />} title={t("vpsMove.title")} hint={t("vpsMove.perk.server")} onClick={moveServer} />
           : null} />
-        <NavRow data-settings-open="add-workspace" pixel={<PixelIcon name="plus" size={24} />} title={t("settings.docs.ws.add")} hint={t("settings.docs.ws.addHint")} onClick={onAdd} />
+        {thisComputerPage() && <NavRow data-settings-open="add-workspace" pixel={<PixelIcon name="plus" size={24} />} title={t("settings.docs.ws.add")} hint={t("settings.docs.ws.addHint")} onClick={onAdd} />}
         {(error || here.error) && <NoteRow tone="danger">{error || here.error}</NoteRow>}
       </SettingsRows>
     </SettingsGroup>

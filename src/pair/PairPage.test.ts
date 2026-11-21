@@ -6,7 +6,7 @@ const f = vi.hoisted(() => ({ effects: [] as EffectCallback[], pair: vi.fn() }))
 vi.mock("react", async original => ({ ...await original<typeof import("react")>(), useEffect: (effect: EffectCallback) => { f.effects.push(effect); } }));
 vi.mock("../lib/session", async original => ({ ...await original<typeof import("../lib/session")>(), pairWithCode: f.pair, readSessionState: vi.fn().mockResolvedValue({ kind: "unauthenticated", error: "" }) }));
 vi.mock("../components/DesktopWorkspaceSwitcher", () => ({ DesktopWorkspaceSwitcher: () => null }));
-import { PairPage, pairIntro, pairsAutomatically, pairTitle } from "./PairPage";
+import { IPHONE_HOME_SCREEN_HINT, inIphoneTab, PairPage, pairIntro, pairsAutomatically, pairTitle } from "./PairPage";
 import en from "../locales/en.json";
 
 const code = "ABCD-EFGH-JK23";
@@ -67,4 +67,17 @@ it("a team's Cloud is called by the team's name, a person's own Cloud My Cloud",
   expect(pairTitle(descriptor({ cloudHome: true }), "code")).toBe("My cloud");
   expect(pairTitle(descriptor({}), "email")).toBe("Sign in to Acme Labs");
   expect(pairTitle(null, "code")).toBe("Connect to this dusk bot");
+});
+
+it("in an iPhone tab, says to add the page to the Home Screen before entering the code, since that copy keeps its own sign-in", () => {
+  const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+  expect(inIphoneTab({ userAgent: iphone, standalone: false })).toBe(true);
+  expect(inIphoneTab({ userAgent: iphone, standalone: true }), "the Home Screen copy pairs right where it is").toBe(false);
+  expect(inIphoneTab({ userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/131.0" })).toBe(false);
+  expect(IPHONE_HOME_SCREEN_HINT).toContain("App Store");
+  expect(IPHONE_HOME_SCREEN_HINT).toContain("Add to Home Screen");
+  vi.stubGlobal("navigator", { userAgent: iphone, standalone: false });
+  expect(render(code)).toContain("data-pair-home-screen");
+  vi.stubGlobal("navigator", { userAgent: iphone, standalone: true });
+  expect(render(code)).not.toContain("data-pair-home-screen");
 });

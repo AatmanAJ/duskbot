@@ -2,6 +2,7 @@ import type { Routine, RoutineRun, RoutineStripEntry } from "./routines";
 import { runStrip } from "../../shared/routines";
 import en from "@/locales/en.json";
 import { activeLocale, t } from "./i18n";
+import { deviceHourCycle } from "@/lib/format-time";
 
 export function routineRunTime(run: RoutineRun): number {
   return run.createdAt || run.startedAt || run.scheduledFor;
@@ -27,7 +28,7 @@ export function routineRunTone(run: RoutineRun): string {
 }
 
 export function routineDateTime(at: number): string {
-  return new Date(at).toLocaleString(activeLocale(), { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return new Date(at).toLocaleString(activeLocale(), { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hourCycle: deviceHourCycle() });
 }
 
 export function routineFinished(routine: Routine): boolean {
@@ -57,7 +58,7 @@ export function routineRunsOn({ roomGoal, runOn, computer, cloudHome }: {
 
 const clockText = (time: string) => {
   const [hour, minute] = time.split(":").map(Number);
-  return new Date(2026, 0, 1, hour ?? 0, minute ?? 0).toLocaleTimeString(activeLocale(), { hour: "numeric", minute: "2-digit" });
+  return new Date(2026, 0, 1, hour ?? 0, minute ?? 0).toLocaleTimeString(activeLocale(), { hour: "numeric", minute: "2-digit", hourCycle: deviceHourCycle() });
 };
 
 /** "Runs 7:00 AM to 11:00 PM, quiet at night" for a routine that runs only in some hours; null for one that runs all day. */
@@ -67,6 +68,7 @@ export function hoursLine(schedule: Routine["schedule"]): string | null {
 
 /** "Changes to example.com", "New posts in example.com/feed", "The price on shop.example". */
 export function probeLine(probe: NonNullable<Routine["probe"]>): string {
+  if (probe.kind === "script") return t("routines.probe.script", { place: probe.command ?? "" });
   let place = probe.url;
   try { const url = new URL(probe.url); place = url.hostname + (url.pathname.length > 1 ? url.pathname : ""); } catch { /* as given */ }
   return t(`routines.probe.${probe.kind}`, { place });
