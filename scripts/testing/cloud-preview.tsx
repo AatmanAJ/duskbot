@@ -150,6 +150,15 @@ function Fixture() {
       setPanelOpen(true);
     }
   }, [bot?.id, dispatch]);
+  // the store keeps no open state for a panel mounted outside the bot panel, so its close button closes it here, after
+  // the panel's own handler has handed focus back
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest("[data-computer-panel-close]")) setPanelOpen(false);
+    };
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, []);
   useEffect(() => {
     if (state.config && state.config.features?.browser !== true) {
       dispatch({ type: "configStatus", config: { ...state.config, features: { ...state.config.features, browser: true },
