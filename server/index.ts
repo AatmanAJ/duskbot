@@ -5415,7 +5415,7 @@ const memoryUpkeep = createMemoryUpkeep({
   bot: (id) => store.bot(teamHost.baseBotId(id)) ?? undefined,
   engine: (botId) => sideJobs.text("memory", teamHost.baseBotId(botId)),
   busy: (botId) => botHasActiveTurn(teamHost.baseBotId(botId)),
-  addToAboutMe: (from, texts, replaces) => aboutMeFacts.learn(from, texts, replaces),
+  addToAboutMe: (from, texts, replaces) => aboutMeFacts.learn(from, texts, replaces), missed: (botId, texts) => (proactive.dreamer() === botId ? texts.filter((text) => proactive.commitments.commit({ text, who: "you asked dusk bot; not done yet" }, "upkeep") === "saved").length : 0),
   ...(CLOUD_TEAM ? {} : { general: {
     read: () => cfg.profile?.aboutMe ?? "",
     write: (aboutMe: string) => { saveConfig({ profile: { ...cfg.profile, aboutMe } }); Object.assign(cfg, loadConfig()); },
