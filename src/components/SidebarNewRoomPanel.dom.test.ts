@@ -38,12 +38,14 @@ it("needs two bots before a group chat can be made, and an unnamed group is name
   await tick("Pepper");
   expect(createButton().disabled).toBe(true);
   expect(document.body.textContent).toContain("Pick at least two bots.");
+  expect(document.getElementById(createButton().getAttribute("aria-describedby")!)?.textContent).toBe("Pick at least two bots.");
   await act(async () => { createButton().click(); });
   expect(dispatch).not.toHaveBeenCalled();
 
   await tick("Quill");
   expect(createButton().disabled).toBe(false);
   expect(document.body.textContent).not.toContain("Pick at least two bots.");
+  expect(createButton().hasAttribute("aria-describedby")).toBe(false);
   expect(document.querySelector("input")!.placeholder).toBe("Pepper and Quill");
   await act(async () => { createButton().click(); });
   expect(dispatch).toHaveBeenCalledWith({ type: "createGroup", memberIds: ["pepper", "quill"], name: "Pepper and Quill" });

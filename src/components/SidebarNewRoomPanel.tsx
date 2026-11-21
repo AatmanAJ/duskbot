@@ -1,11 +1,11 @@
-import { useState, type KeyboardEvent } from "react";
+import { useId, useState, type KeyboardEvent } from "react";
 import { track } from "@/lib/analytics";
 import { useStore } from "@/state/store";
 import { activeLocale, t } from "@/lib/i18n";
 import { BotPickerList } from "./BotPickerList";
-import { fieldLabelCls, GrokDialog, mdPrimaryCls, mdSecondaryCls, textFieldCls } from "./ui/GrokDialog";
+import { fieldLabelCls, GrokDialog, mdPrimaryCls, mdSecondaryCls, rowHintCls, textFieldCls } from "./ui/GrokDialog";
 
-export const MIN_GROUP_BOTS = 2;
+const MIN_GROUP_BOTS = 2;
 
 export function defaultGroupName(names: string[]): string {
   const shown = names.length > 3 ? [...names.slice(0, 2), t("sidebar.newChannel.more", { count: names.length - 2 })] : names;
@@ -26,6 +26,8 @@ export function NewRoomPanel({ onClose }: { onClose: () => void }) {
       return next;
     });
   const ready = picked.size >= MIN_GROUP_BOTS;
+  const needsMore = bots.length > 0 && !ready;
+  const hintId = useId();
   const fallbackName = ready ? defaultGroupName([...picked].map((id) => bots.find((bot) => bot.id === id)?.name ?? "").filter(Boolean)) : "";
   const create = () => {
     if (!ready) return;
@@ -47,7 +49,7 @@ export function NewRoomPanel({ onClose }: { onClose: () => void }) {
       onClose={onClose}
       footer={<>
         <button type="button" onClick={onClose} className={mdSecondaryCls}>{t("common.cancel")}</button>
-        <button type="button" onClick={create} disabled={!ready} className={mdPrimaryCls}>{t("sidebar.newChannel.create")}</button>
+        <button type="button" onClick={create} disabled={!ready} aria-describedby={needsMore ? hintId : undefined} className={mdPrimaryCls}>{t("sidebar.newChannel.create")}</button>
       </>}
     >
       <div className="flex flex-col gap-3">
@@ -60,7 +62,7 @@ export function NewRoomPanel({ onClose }: { onClose: () => void }) {
           <div className="rounded-[10px] border border-transparent p-1">
             <BotPickerList bots={bots} picked={picked} onToggle={toggle} emptyHint={t("sidebar.newChannel.emptyHint")} />
           </div>
-          {bots.length > 0 && !ready && <p className="px-1 text-[13px] leading-[18px] text-ink/68">{t("sidebar.newChannel.pickTwo")}</p>}
+          {needsMore && <p id={hintId} className={`px-1 ${rowHintCls}`}>{t("sidebar.newChannel.pickTwo")}</p>}
         </div>
       </div>
     </GrokDialog>
