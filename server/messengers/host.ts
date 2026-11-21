@@ -449,6 +449,7 @@ export function createMessengerHost(deps: MessengerHostDeps) {
     door: hookDoor,
     /** A conversation the bridge made for a chat-app chat. */
     isMessengerThread: (threadId: string) => state.isMessengerThread(threadId),
+    platformOf: (threadId: string) => state.platformOf(threadId),
     connect,
     disconnect,
     status: statuses,

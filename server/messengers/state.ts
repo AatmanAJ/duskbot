@@ -76,6 +76,11 @@ export class MessengerState {
     return Object.values(this.data.conversations).some((one) => one.threadId === threadId);
   }
 
+  /** The chat app a thread's conversation lives in, when it is one. */
+  platformOf(threadId: string): MessengerConversation["platform"] | null {
+    return Object.values(this.data.conversations).find((one) => one.threadId === threadId)?.platform ?? null;
+  }
+
   pending(): MessengerPending[] {
     return this.data.pending.map((one) => ({ ...one }));
   }
