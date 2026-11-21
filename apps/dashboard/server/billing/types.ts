@@ -8,6 +8,8 @@ export interface CreateCheckoutInput {
   checkoutId: string;
   accountId: string;
   email: string;
+  /** the account's own name, else none: the checkout's name field is filled from it or from the email */
+  name?: string | null;
   customerId: string | null;
   cart: ProviderCartLine[];
   returnUrl: string;
@@ -48,7 +50,19 @@ export interface VerifiedWebhook { id: string; at: number; event: BillingEvent }
 
 /** a percent off the subscription's next `cycles` renewals, made for one account and used once */
 export interface ApplyDiscountInput { subscriptionId: string; productId: string; addons: Array<{ addonId: string; quantity: number }>; percent: number; cycles: number; accountId: string }
-export interface ChangePlanInput { subscriptionId: string; productId: string; addons: Array<{ addonId: string; quantity: number }>; billing?: CreateCheckoutInput["billing"] }
+/** how a plan change bills (dodo change-plan, 2026-11):
+ *  trial: do_not_bill, the trial keeps its end date; keep_cycle: prorated_immediately_keep_cycle, the price difference for the
+ *  time left, billing date kept; new_cycle: prorated_immediately, unused time credited against a full new cycle starting now
+ *  (dodo refuses keep_cycle across intervals); scheduled: at next_billing_date, where dodo only takes full_immediately */
+export type ChangeMode = "trial" | "keep_cycle" | "new_cycle" | "scheduled";
+export interface ChangePlanInput { subscriptionId: string; productId: string; addons: Array<{ addonId: string; quantity: number }>; mode: ChangeMode; billing?: CreateCheckoutInput["billing"] }
+/** what the provider would charge for a change now, tax included */
+export interface ChangeQuote { chargeCents: number; taxCents: number }
+/** the provider's own record of a subscription's plan */
+export interface ProviderSubscription {
+  productId: string | null; addons: Array<{ addonId: string; quantity: number }>; nextBillingAt: number | null; status: string | null;
+  scheduled: { productId: string | null; addons: Array<{ addonId: string; quantity: number }> } | null;
+}
 
 /** payments backend: fake for tests and dev, dodo when configured. no method ever logs a secret. */
 export interface BillingProvider {
@@ -63,7 +77,13 @@ export interface BillingProvider {
   cancelNow(subscriptionId: string): Promise<void>;
   /** refunds a payment in full */
   refundPayment(paymentId: string, reason: string): Promise<void>;
-  changePlan(input: ChangePlanInput): Promise<void>;
+  /** the exact charge a change would make now; nothing changes */
+  previewChange(input: ChangePlanInput): Promise<ChangeQuote>;
+  /** a card that needs a check (3DS) answers `paymentUrl`, the provider's page that takes the payment */
+  changePlan(input: ChangePlanInput): Promise<{ paymentUrl: string | null }>;
+  /** drops a change waiting for the next billing date */
+  cancelScheduledChange(subscriptionId: string): Promise<void>;
+  subscription(subscriptionId: string): Promise<ProviderSubscription>;
   /** moves a live subscription's next renewal (dodo: PATCH next_billing_date, future dates only); nothing is charged or credited */
   setNextBillingDate?(subscriptionId: string, at: number): Promise<void>;
   /** puts a one-use discount on a live subscription's coming renewals; resolves with the provider's discount code */
