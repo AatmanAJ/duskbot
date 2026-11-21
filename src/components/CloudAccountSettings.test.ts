@@ -428,7 +428,7 @@ it("a paid plan with a Ready Cloud opens it on its phone pairing with one click,
   expect(bridge.connectHome).not.toHaveBeenCalled();
 });
 it("has no phone card while the phone app is hidden", async () => {
-  vi.stubEnv("VITE_DUSK_PHONE_APP", "");
+  vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
   await ready(readyCloud);
   expect(render().html).not.toContain("data-cloud-phone");
 });

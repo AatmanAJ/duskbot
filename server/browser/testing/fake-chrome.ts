@@ -322,7 +322,7 @@ export class FakeChrome implements CdpTransport {
       case "Runtime.callFunctionOn": {
         const fn = String(params.functionDeclaration);
         const args = (params.arguments as Array<{ value?: unknown }> | undefined) ?? [];
-        if (fn.includes("querySelectorAll(css)") || fn.includes("createTreeWalker")) {
+        if (fn.startsWith("function (css") || fn.includes("createTreeWalker")) {
           const wanted = String(args[0]?.value ?? "");
           const found = page.elements.map((element, i) => ({ element, i })).filter(({ element }) => (fn.includes("createTreeWalker") ? element.name.toLowerCase().includes(wanted.toLowerCase()) : element.selector === wanted));
           return found.length === 1 ? { result: { type: "object", objectId: `node-${found[0]!.i + 1}` } } : { result: { type: "number", value: found.length } };

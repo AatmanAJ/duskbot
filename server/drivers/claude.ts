@@ -19,6 +19,7 @@ import { claudeBilling, claudeCallUsage } from "./claude-billing.ts";
 import { claudeAuthFailure, claudeAuthRecovery } from "./claude-auth-recovery.ts";
 import { claudeModelExtras } from "./claude-model-extras.ts";
 import { AGENTS_DEFERRED_NOTE, claudeToolSearchSetting } from "./claude-tool-search.ts"; import { AGENTS_DEFER_ENV } from "./agents-mcp-env.ts"; import { unusableBuiltIns } from "./claude-unusable-tools.ts"; import { EMAIL_READ_TOOL_NAMES } from "../../shared/email.ts";
+import { cliExitCode } from "../../shared/usage-signals.ts";
 import { claudeElicitations } from "./claude-elicitation.ts";
 import { readCostHistory, recordCostState } from "./claude-cost-history.ts";
 import { classifyResumeFailure, mayReplay, rebuiltSessionNotice, recoveryPromptFor } from "../resume-recovery.ts";
@@ -226,15 +227,13 @@ export function claudeCliUpdate(version: string | null, cli: string): ProviderSn
   const missing = (Object.keys(CLAUDE_FLAG_FLOORS) as (keyof typeof CLAUDE_FLAG_FLOORS)[])
     .filter((flag) => !claudeCliSupports(parsed, flag));
   const effects = [
-    ...(missing.includes("--autocompact") ? ["no compaction window picked by dusk bot"] : []),
-    ...(missing.includes("--setting-sources") ? ["bots still see this machine's own Claude Code setup"] : []),
-    ...(missing.includes("--system-prompt-snapshot") ? ["resumed turns cannot refresh stale system prompts"] : []),
+    ...(missing.includes("--autocompact") ? ["long chats are shortened later than they should be"] : []),
+    ...(missing.includes("--setting-sources") ? ["bots also follow this computer's own Claude Code setup"] : []),
+    ...(missing.includes("--system-prompt-snapshot") ? ["a bot can miss changes to its instructions in an ongoing chat"] : []),
   ];
   return {
-    title: "Update Claude Code for context controls",
-    message:
-      `Claude Code ${parsed.join(".")} predates ${floor}, so bots run without ${missing.join(", ")}: ` +
-      `${effects.join("; ")}. Update it, then refresh Engines.`,
+    title: "Update Claude Code",
+    message: `Claude Code ${parsed.join(".")} is older than ${floor}, so ${new Intl.ListFormat("en", { type: "conjunction" }).format(effects)}. Update it to fix this.`,
     command: cli === "claude" ? "claude update" : `${cli} update`,
   };
 }
@@ -257,6 +256,7 @@ export interface ClaudeConfig {
 export const STATIC_CLAUDE_MODELS: ModelCatalog = {
   default: "claude-sonnet-5",
   options: [
+    { id: "claude-fable-5-2", label: "Claude Fable 5.2", contextWindow: 1_000_000 },
     { id: "claude-fable-5-1", label: "Claude Fable 5.1" },
     { id: "claude-fable-5", label: "Claude Fable 5" },
     { id: "claude-opus-5-5", label: "Claude Opus 5.5", contextWindow: 1_000_000 },
@@ -332,6 +332,7 @@ type AskResolutionSource = "user" | "timeout" | "system";
 const DENY_TIMEOUT_NOTE =
   "dusk bot: nobody answered this permission request in time. Skip this action and finish what you can without it.";
 const DUPLICATE_ASK_ID_NOTE = "dusk bot: duplicate ask id, skipping this request.";
+const ASK_UNAVAILABLE_NOTE = "dusk bot: the app could not show this request, so it was denied. Ask again if it is still needed.";
 
 function systemEndedReply(kind: Ask["kind"]): { behavior: AskBehavior; message: string } {
   return kind === "question"
@@ -422,16 +423,15 @@ export function permissionSocketPath(threadId: string, botId?: string) {
 }
 
 /** Broker bind paths, in order. Windows pipe names are never unlinkable (a hung child can hold one
- * for minutes), and macOS rejects socket paths past `sun_path`, hence the short temp fallbacks; the last is fresh each
- * launch, so a path another process still holds never fails a turn on its own. */
+ * for minutes), and macOS rejects socket paths past `sun_path` (104 bytes), hence the short temp fallbacks, then /tmp
+ * for a TMPDIR too deep for even those (every socket is chmod 0600); a `dp-` path is fresh each launch, so a path another
+ * process still holds never fails a turn on its own. */
 export function brokerSocketCandidates(threadId: string, botId?: string): string[] {
   const base = permissionSocketPath(threadId, botId);
   if (process.platform !== "win32") {
-    const scope = createHash("sha256")
-      .update(`${DATA_DIR}\0${process.pid}\0${botId ?? ""}\0${threadId}`)
-      .digest("hex")
-      .slice(0, 16);
-    return [base, join(tmpdir(), `dusk-perm-${scope}.sock`), join(tmpdir(), `dp-${randomBytes(4).toString("hex")}.sock`)];
+    const scope = createHash("sha256").update(`${DATA_DIR}\0${process.pid}\0${botId ?? ""}\0${threadId}`).digest("hex").slice(0, 16);
+    const fresh = (dir: string) => join(dir, `dp-${randomBytes(4).toString("hex")}.sock`);
+    return [base, join(tmpdir(), `dusk-perm-${scope}.sock`), fresh(tmpdir()), ...(tmpdir() === "/tmp" ? [] : [fresh("/tmp")])];
   }
   return [
     base,
@@ -508,12 +508,22 @@ export async function createPermissionBroker(opts: {
               JSON.stringify({ t: "answer", id: askId, behavior, message, source, ...(always ? { always: true } : {}) }) + "\n",
             );
           } catch {}
-          opts.onResolve({ ...ask, behavior, source });
+          try {
+            opts.onResolve({ ...ask, behavior, source });
+          } catch (error) {
+            console.error(`permission broker on ${boundPath}: resolve listener failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
         };
         const timer = kind === "question" ? undefined : setTimeout(() => finish("deny", DENY_TIMEOUT_NOTE, "timeout"), timeoutMs);
         timer?.unref?.();
         pending.set(askId, { ask, finish });
-        opts.onAsk(ask);
+        try {
+          opts.onAsk(ask);
+        } catch (error) {
+          // A throwing listener must not take the harness down with it: deny the call and let the turn carry on.
+          console.error(`permission broker on ${boundPath}: ask listener failed: ${error instanceof Error ? error.message : String(error)}`);
+          finish("deny", ASK_UNAVAILABLE_NOTE, "system");
+        }
       }
     });
   };
@@ -1718,6 +1728,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
               ...base(threadId, currentTurnId()),
               type: "runtime.error",
               message: `claude exited ${code} before result${session.stderr ? `: ${session.stderr.trim().slice(-300)}` : ""}`,
+              errorCode: cliExitCode({ code, output: true, version: cliVersion }),
             });
             settleResult({ ...held, ok: false, stopReason: "exit_before_result" });
           }
@@ -1858,6 +1869,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
             ...base(threadId, currentTurnId()),
             type: "runtime.error",
             message,
+            errorCode: cliExitCode({ code, output: Boolean(session.turn?.sawStreamDelta), version: cliVersion }),
           });
           settle(false, "exit_before_result");
         }
@@ -2029,6 +2041,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       get models() {
         return models;
       },
+      ...(config.managed || config.managedModels ? {} : { modelCatalogKey: "claude" }),
       refreshModels,
       ...(startupModelRefresh ? { startupModelRefresh } : {}),
       snapshot,

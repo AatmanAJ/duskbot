@@ -1,7 +1,7 @@
 {
   "name": "duskbot",
   "private": true,
-  "version": "0.2.14",
+  "version": "0.2.25",
   "description": "A local-first chat app for running a team of AI agents.",
   "homepage": "https://dusk.bot",
   "repository": {
@@ -29,7 +29,8 @@
     "dev": "vite",
     "mobile:preview": "node apps/mobile/scripts/phone-preview.mjs",
     "store:shots": "node --experimental-strip-types apps/mobile/store/capture.ts && node --experimental-strip-types apps/mobile/store/compose.ts",
-    "mobile:build": "pnpm --filter @duskbot/mobile build",
+    "test:phone-layout": "node --experimental-strip-types apps/mobile/store/layout-check.ts",
+    "mobile:build":"pnpm --filter @duskbot/mobile build",
     "mobile:gate": "node apps/mobile/scripts/release-gate.mjs",
     "mobile:release": "pnpm --filter @duskbot/mobile build && node apps/mobile/scripts/release-gate.mjs && pnpm --filter @duskbot/mobile exec cap sync",
     "companion": "node --experimental-strip-types apps/companion/src/index.ts",
@@ -126,6 +127,7 @@
     "motion": "^14.9.1",
     "node-datachannel": "0.33.6",
     "nodemailer": "10.3.1",
+    "onnxruntime-node": "1.31.1",
     "papaparse": "^5.7.0",
     "pdfjs-dist": "6.5.438",
     "qrcode-terminal": "0.12.0",

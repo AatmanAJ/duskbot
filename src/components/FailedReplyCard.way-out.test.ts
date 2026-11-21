@@ -55,6 +55,13 @@ describe("a failure card always offers a way on", () => {
     expect(fixture.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "toggleSettings", open: true, section: "model", botId: "echo" }));
   });
 
+  it("a folder that was moved or deleted: Working folder, which opens the bot's folder setting", async () => {
+    const buttons = await show(failed("This bot's folder client-site was moved or deleted. Pick a folder in the bot's settings."), vi.fn());
+    expect(labels(buttons)).toEqual(["Working folder", "Try again"]);
+    await act(async () => buttons[0]!.click());
+    expect(fixture.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "toggleSettings", open: true, section: "access", botId: "echo" }));
+  });
+
   it("a usage limit with no known reset: switch AI", async () => {
     expect(labels(await show(failed("You've hit your usage limit")))).toEqual(["Switch AI"]);
   });

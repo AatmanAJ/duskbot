@@ -4,9 +4,10 @@ import { storeApp } from "@/lib/store-app";
 import { aiSendAllowed } from "@/lib/ai-consent-gate";
 import { trailAction } from "@/lib/trail-actions";
 import { cloudAsleep, onCloudPower } from "../lib/cloud-power";
-import { chatInFront } from "@/lib/chat-in-front";
+import { cloudWakingLoad, WAKING_LOAD_MS } from "./waking-load";
+import { awayFromChat, chatInFront, noteChatInFront } from "@/lib/chat-in-front";
 import { answerOf, api, ApiError, snapshotArrays } from "./api";
-import { sendOutbox } from "./send-outbox";
+import { QueuedBehindError, sendOutbox } from "./send-outbox"; import { inThreadOrder } from "./send-order";
 import { chatSnapshotPath, MESSAGE_PAGE_SIZE, takeBootRead } from "./boot-reads";
 import { createContext, startTransition, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
@@ -20,13 +21,12 @@ import { isNotificationFeedAction, reduceNotificationFeed, type NotificationFeed
 import { bumpThreadUpdatedAt, mergeTaskStamps, rewindThreadUpdatedAt } from "./thread-stamps";
 import { botOpensTo, openBot, openThread, visibleNotificationThread } from "./thread-navigation";
 import { patchGroupTask } from "./thread-edits";
-import type { EngineInstall } from "./engine-install";
 import { optimisticMessageId, optimisticUserMessage, sendAnswerLost, sendArrived, sendReconciled } from "./optimistic-send";
 import { dropSentTurn, followSendReceipt, noteSentTurn } from "./sent-turn";
 import { applySendReceipt } from "./send-receipt";
 import { foldSnapshotOntoStreamed, patchedGroups, roomAnswers, snapshotPatch } from "./room-frames";
 import { savedStateAction, type SavedOwner, type SavedSnapshot } from "./saved-state";
-import { heldTranscript, keepBotNavigation, keepGroupNavigation, navigatedSince, visibleMessages } from "./snapshot-navigation";
+import { heldTranscript, keepBotNavigation, keepGroupNavigation, navigatedSince, openElsewhere, visibleMessages } from "./snapshot-navigation";
 import { createTranscriptCache, indexedDbShelf, reconcileTranscript, type CachedTranscript } from "./transcript-cache";
 import { TranscriptShelfScope } from "./transcript-scope";
 export { shownTranscript, visibleMessages } from "./snapshot-navigation";
@@ -67,13 +67,13 @@ import { answerResponse, dismissResponse } from "@/lib/card-answer";
 import { forgetLiveTurns, forgetStopPress, noteRuntimeTurn, sendStop } from "@/lib/stop-turn"; import { forgetTurnStatuses } from "@/state/turn-status"; import { forgetLiveReplies } from "@/state/live-reply";
 import { readLastConversation, rememberConversation } from "@/lib/last-conversation";
 import { readLastBotSection, rememberBotSection } from "@/lib/last-bot-section";
-import { showNotification } from "@/lib/notify";
+import { readOnArrival, showNotification } from "@/lib/notify";
 import { randomUuid } from "@/lib/random-uuid";
-import { speechOwner, spokenReplyStream } from "@/lib/spoken-reply-stream";
+import { callReplyEvent, callReplyOwner, callReplyStream, speechOwner, spokenReplyStream } from "@/lib/spoken-reply-stream";
 import { t } from "@/lib/i18n";
 import { createBotPatchQueue, flushWhenLeaving, keepaliveFits, type BotUpdatePatch } from "./bot-patch-queue"; import { createNewTaskOnce } from "./new-task-once";
 import { liveCallFromFrame, nextLiveCallLookup } from "./live-call";
-import { isNoAiRefusal, useChatErrorClear } from "./chat-error";
+import { isNoAiRefusal, refusalFoundAi, useChatErrorClear } from "./chat-error";
 import { openLiveEvents, publishLiveFrame, publishMissedFrames, withoutScreenPixels } from "@/lib/live-events";
 import { unlessRefused } from "@/lib/admin-scope";
 import { olderRunsSince, ROUTINE_RUNS_WINDOW_MS, trimRoutineRuns, withOlderRoutineRuns } from "./routine-runs";
@@ -84,7 +84,7 @@ import { useTranscriptCache } from "./use-transcript-cache";
 export type { MausColor } from "@/lib/mascot";
 export type { RoutineRunCardData } from "../../shared/routine-run";
 
-export interface OptionCardData extends Pick<WireOptionCard, "fixedOptions" | "webhookRequest" | "appTriggerRequest" | "yourComputer" | "waitRequest" | "stopped" | "accessRequest" | "mcpRequest" | "appAction"> {
+export interface OptionCardData extends Pick<WireOptionCard, "fixedOptions" | "webhookRequest" | "appTriggerRequest" | "yourComputer" | "waitRequest" | "stopped" | "accessRequest" | "mcpRequest" | "appAction" | "email" | "purchase"> {
   title: string;
   subtitle: string;
   options: string[];
@@ -109,7 +109,7 @@ export interface OptionCardData extends Pick<WireOptionCard, "fixedOptions" | "w
   undone?: boolean;
   routineRequest?: RoutineRequestCardData;
   skillRequest?: SkillRequestCardData;
-  outboundRequest?: { tool: string; app: string | null; calls?: Array<{ app: string | null; label: string }> };
+  outboundRequest?: { tool: string; app: string | null; calls?: Array<{ app: string | null; label: string }>; purchase?: true };
   teamMemoryRequest?: { section: string; entryId: string; kind: string; revision?: string };
   profileRequest?: ProfileRequestCardData;
   modelRequest?: ModelRequestCardData;
@@ -123,7 +123,7 @@ export type SecretRequestCardData = Omit<import("../../shared/wire").SecretReque
 
 export type ComputerControlState = { held: boolean; helpReason: string | null; help?: import("../../shared/wire").ComputerHelpRef | null };
 
-export interface Message extends Pick<import("../../shared/wire").WireMessage, "widget" | "app" | "fromApp" | "pointed" | "routedBy" | "quickModel" | "automation" | "routineStart" | "publishedPage" | "sender" | "setupSuggestion" | "helperIntro" | "helperFollowup" | "setupOffer" | "setupChoices" | "setupChoicesPending" | "setupChoicesUpdating" | "setupRequest" | "relay" | "inbox" | "sentDirectly" | "doneWhen" | "bugReport" | "media" | "unconfirmed" | "peerResume"> {
+export interface Message extends Pick<import("../../shared/wire").WireMessage, "widget" | "app" | "fromApp" | "pointed" | "routedBy" | "quickModel" | "automation" | "routineStart" | "publishedPage" | "products" | "document" | "sender" | "setupSuggestion" | "helperIntro" | "helperFollowup" | "setupOffer" | "setupChoices" | "setupChoicesPending" | "setupChoicesUpdating" | "setupRequest" | "relay" | "inbox" | "sentDirectly" | "doneWhen" | "bugReport" | "media" | "unconfirmed" | "peerResume"> {
   id: string;
   role: "bot" | "user";
   kind: "text" | "options" | "activity" | "screen" | "connector" | "secret" | "signin" | "routine.run" | "goal.run" | "digest" | "compaction" | "call" | "widget" | "app";
@@ -139,7 +139,7 @@ export interface Message extends Pick<import("../../shared/wire").WireMessage, "
   goalRun?: GroupGoalRunCardData;
   call?: import("../../shared/wire").LiveCallRecord;
   channelMode?: "chat" | "goal";
-  tool?: { name: string; ok?: boolean; spoken?: string; setup?: boolean; signIn?: boolean; claudeUpdate?: boolean; place?: PlaceRow; resolvedAt?: number; limitResetsAt?: number; partial?: boolean; reason?: import("../../shared/failed-turn").FailedReplyReason; blocker?: import("../../shared/failed-turn").BrowserBlocker; summary?: string; input?: string; output?: string ; itemId?: string; outputPath?: string; fullResult?: boolean; clipped?: boolean; rescue?: import("../../shared/first-reply-rescue").FirstReplyRescue; step?: import("../../shared/turn-progress").LiveStep; whose?: { person: string; app: string }; label?: string };
+  tool?: { name: string; ok?: boolean; spoken?: string; setup?: boolean; signIn?: boolean; claudeUpdate?: boolean; place?: PlaceRow; resolvedAt?: number; limitResetsAt?: number; limitHold?: import("../../shared/wire").LimitHoldState; partial?: boolean; owned?: boolean; reason?: import("../../shared/failed-turn").FailedReplyReason; blocker?: import("../../shared/failed-turn").BrowserBlocker; summary?: string; input?: string; output?: string ; itemId?: string; outputPath?: string; fullResult?: boolean; clipped?: boolean; rescue?: import("../../shared/first-reply-rescue").FirstReplyRescue; step?: import("../../shared/turn-progress").LiveStep; whose?: { person: string; app: string }; label?: string };
   steered?: boolean;
   via?: "api" | "call";
   callId?: string;
@@ -263,6 +263,7 @@ export interface ThreadOpener {
   botId: string;
   name: string;
   delegationId?: string;
+  kind?: "pair" | "work";
   at: number;
 }
 
@@ -335,6 +336,7 @@ export interface Bot extends DefaultBotFields, Pick<WireBot, "mascotFaceColor" |
   connectorScopes?: { apps: Record<string, "read" | "write"> }; phoneApps?: import("../../shared/phone-apps").PhoneApps;
   outbound?: { policy: "ask" | "allow"; dailyCap: number };
   fallback?: Array<{ instanceId: string; model: string }>;
+  limitMode?: WireBot["limitMode"];
   browser?: boolean;
   recordBrowserSteps?: boolean;
   memoryUpkeep?: boolean;
@@ -416,7 +418,7 @@ function taskPatchFields(patch: TaskUpdatePatch): Partial<Task> {
 }
 
 function openedUnreadDivider(state: AppState, threadId: string, unread: boolean, messages: readonly Message[], lastReadMessageId?: string): AppState["unreadDivider"] {
-  if (!unread) return state.unreadDivider?.threadId === threadId ? state.unreadDivider : null;
+  if (!unread || !awayFromChat(threadId)) return state.unreadDivider?.threadId === threadId ? state.unreadDivider : null;
   const messageId = firstUnreadMessageId(messages, lastReadMessageId);
   return messageId ? { threadId, messageId } : null;
 }
@@ -428,7 +430,7 @@ export type { BrowserEngineSummary, BrowserProfile, ConfigStatus, ManagedPolicyS
 // A section left out here is wiped from state.config whenever a config frame lands.
 export type ConfigStatusFrame = Pick<
   ConfigStatus,
-  "xai" | "mistral" | "cerebras" | "groq" | "greenference" | "meta" | "deepseek" | "xResearch" | "treg" | "anthropic" | "openai" | "openrouter" | "openaiCompat" | "composio" | "box" | "vps" | "rooms" | "mcp" | "threads" | "automaticRecovery" | "cacheKeepWarm" | "localVm" | "opencodeGo" | "tts" | "decider" | "helpers" | "imageGen" | "live" | "savedKeys" | "profile" | "language" | "features" | "onboarding" | "browserEngine" | "browserProfiles" | "managedPolicy" | "cloudHome" | "team" | "workspaceBanner"
+  "xai" | "mistral" | "cerebras" | "groq" | "greenference" | "meta" | "deepseek" | "xResearch" | "treg" | "anthropic" | "openai" | "openrouter" | "openaiCompat" | "composio" | "box" | "vps" | "rooms" | "mcp" | "threads" | "automaticRecovery" | "cacheKeepWarm" | "localVm" | "opencodeGo" | "tts" | "decider" | "helpers" | "imageGen" | "live" | "savedKeys" | "profile" | "language" | "talkingStyle" | "computerName" | "newBots" | "features" | "onboarding" | "browserEngine" | "browserProfiles" | "managedPolicy" | "cloudHome" | "team" | "workspaceBanner"
 >;
 
 export function configStatusFromFrame(frame: ConfigStatusFrame): ConfigStatus {
@@ -458,6 +460,7 @@ export function configStatusFromFrame(frame: ConfigStatusFrame): ConfigStatus {
     live: frame.live, savedKeys: frame.savedKeys,
     profile: frame.profile,
     language: frame.language,
+    talkingStyle: frame.talkingStyle, computerName: frame.computerName, newBots: frame.newBots,
     features: frame.features,
     onboarding: frame.onboarding,
     browserEngine: frame.browserEngine,
@@ -469,57 +472,8 @@ export function configStatusFromFrame(frame: ConfigStatusFrame): ConfigStatus {
 
 export type { EngineInstall } from "./engine-install";
 
-export interface InstanceInfo {
-  instanceId: string;
-  driverKind: string;
-  displayName: string;
-  icon?: import("../../shared/provider-icon").ProviderIcon;
-  readOnly?: boolean;
-  managed?: { organizationId: string; organizationName: string };
-  policy?: { organizationName: string; reason: string; team?: boolean };
-  snapshot: {
-    state: "available" | "unavailable";
-    reason?: string;
-    authenticated?: boolean;
-    chatgptPlan?: boolean;
-    /** Ready only through OpenCode's free no-login models: a backup, never "an AI already works". */
-    freeFallback?: boolean;
-    authenticationUnavailableReason?: string;
-    account?: { email?: string; organization?: string; method?: "login" | "api-key" };
-    version?: string | null;
-    update?: { title: string; message: string; command: string };
-    billing?: "metered" | "subscription";
-    warning?: { title: string; message: string };
-  };
-  /** What one tiny test message through this AI showed, for its current sign-in; absent until one is sent. */
-  aiTest?: import("../../shared/ai-ranking").AiTestState;
-  /** Why it didn't answer, in plain words, when it said (signed out, a used-up limit…). */
-  aiTestError?: string;
-  models: { default: string; options: Array<{ id: string; label: string; custom?: boolean; loaded?: boolean; provider?: string; variants?: ModelVariantOption[]; orgBlocked?: true }> };
-  capabilities?: {
-    computerMcp?: boolean;
-    agentsMcp?: boolean;
-    composioMcp?: boolean;
-    /** the engine can mount the native Email tools (a connected app without Composio), the paired phone's app tools and the Data tools */
-    emailMcp?: boolean; deviceMcp?: boolean; dataMcp?: boolean;
-    browserMcp?: boolean;
-    images?: boolean;
-    effortLevels?: readonly EffortLevel[];
-    modelVariants?: boolean;
-    queueing?: boolean;
-    localComputerMcp?: boolean;
-    approvalReview?: boolean;
-    backgroundText?: boolean;
-  };
-  access?: "subscription" | "custom" | "api";
-  authentication?: { method: "device-code" | "paste-code" | "browser" | "browser-pkce"; signOut?: boolean };
-  install?: EngineInstall;
-  cli?: string;
-  cliDefault?: string;
-  cliCandidates?: string[];
-  claudeAccount?: { configDir: string; signInCommand: string; signInShell: "powershell" | "sh"; isDefault: boolean };
-  freeUpSpace?: boolean; replyWaitMinutes?: number; modelsUnconfirmed?: true;
-}
+export type { InstanceInfo } from "./instance-info";
+import type { InstanceInfo } from "./instance-info";
 
 export type AppSettingsSection =
   | "general"
@@ -623,8 +577,12 @@ export interface AppState {
   hydrated?: true;
   /** the first chat snapshot failed; it is being asked for again (`retryLoad` asks now) */
   loadFailed?: true;
+  /** the first chat snapshot is waiting for the person's dusk cloud to wake; asked for again every moment meanwhile */
+  loadWaking?: true;
   error: string | null;
-  notice: { kind: "thread-gone" | "bot-gone" | "steer-images" | "note"; botName: string | null; text?: string } | null;
+  notice: { kind: "thread-gone" | "bot-gone" | "steer-images" | "note"; botName: string | null; text?: string;
+    /** an AI found on this computer the note offers to turn on */
+    found?: { instanceId: string; name: string } } | null;
   revealThread: { threadId: string; nonce: number } | null;
   mascotMotion: {
     botId: string;
@@ -731,7 +689,7 @@ export type Action =
       replyToId?: string;
       threadId?: string;
       dataContext?: import("../../shared/data-context").DataContext; pointed?: import("../../shared/app-frame/point").PointedElement[]; mode?: "chat" | "goal";
-      followUp?: import("../../shared/follow-up").FollowUp; mentions?: string[]; onError?: () => void;
+      followUp?: import("../../shared/follow-up").FollowUp; mentions?: string[]; onError?: () => void; voiceCall?: { callId: string };
       /** The server answered the send, or it failed: the composer lets go of its Send button. */
       onSettled?: () => void;
     }
@@ -758,7 +716,7 @@ export type Action =
       reviewedSha256?: string;
       alwaysAllow?: { botId: string; key: string };
       always?: boolean;
-      rememberCommand?: boolean;
+      rememberCommand?: boolean; edits?: import("../../shared/email-review").EmailEdits;
       onError?: (message: string) => void;
     }
   | { type: "newTask"; botId: string; projectId?: string; cwd?: string; onCreated?: () => void; onError?: (message: string) => void }
@@ -799,6 +757,7 @@ export type Action =
   | { type: "interrupt"; botId: string; threadId?: string; onError?: () => void }
   | { type: "connected"; value: boolean }
   | { type: "loadFailed" }
+  | { type: "loadWaking" }
   | { type: "error"; message: string | null }
   | { type: "notice"; notice: AppState["notice"] }
   | { type: "revealThread"; threadId: string }
@@ -810,6 +769,7 @@ export type Action =
   | { type: "focusMessage"; threadId: string; messageId: string; matchText?: string }
   | { type: "focusMessageConsumed"; nonce: number }
   | { type: "unreadDividerDone"; threadId: string }
+  | { type: "chatBackInFront"; threadId: string; away: boolean }
   | { type: "toggleAppSettings"; open?: boolean; section?: AppSettingsSection; cloudLink?: boolean; phonePairing?: boolean }
   | { type: "toggleShortcuts"; open?: boolean }
   | { type: "openCloudAdd"; source: import("@/lib/cloud-plan").CloudSource; signIn?: true }
@@ -926,7 +886,9 @@ export function reducer(state: AppState, action: Action): AppState {
         bots: action.bots.map((sent) => {
           const previous = state.bots.find((candidate) => candidate.id === sent.id);
           const bot = heldTranscript(previous, { ...sent, messages: sent.messages ?? [] }, !action.loadedThreads || action.loadedThreads.includes(sent.threadId));
-          return keepBotNavigation(previous, previous ? { ...bot, tasks: mergeTaskStamps(previous.tasks, bot.tasks) } : bot,
+          const merged = previous ? { ...bot, tasks: mergeTaskStamps(previous.tasks, bot.tasks) } : bot;
+          if (openElsewhere(previous, sent)) return { ...keepBotNavigation(previous, merged, true, action.taskIdsAtStart), transcriptStale: true };
+          return keepBotNavigation(previous, merged,
             action.preserveNavigation === true && navigatedSince(previous, action.navigationSince, state.transcriptGeneration), action.taskIdsAtStart);
         }),
         groups: action.groups.map((group) => {
@@ -942,6 +904,7 @@ export function reducer(state: AppState, action: Action): AppState {
         selectedId,
         hydrated: true as const,
         loadFailed: undefined,
+        loadWaking: undefined,
         backgroundThreadEvents: {},
         loadingOlder: {},
         transcriptGeneration: {},
@@ -1127,7 +1090,7 @@ export function reducer(state: AppState, action: Action): AppState {
         return {
           ...state,
           unreadDivider: openedUnreadDivider(state, room.threadId, room.unread, room.messages, room.lastReadMessageId),
-          unreadDividerPending: (room.transcriptLoaded === false || room.transcriptStale) && room.unread ? room.threadId : undefined,
+          unreadDividerPending: (room.transcriptLoaded === false || room.transcriptStale) && room.unread && awayFromChat(room.threadId) ? room.threadId : undefined,
           activeView: "chat",
           selectedId: action.id,
           groups: state.groups.map((g) => (g.id === action.id ? { ...g, unread: false } : g)),
@@ -1141,7 +1104,7 @@ export function reducer(state: AppState, action: Action): AppState {
             unreadDivider: opened
               ? openedUnreadDivider(state, opened.threadId, threadOpensUnread(opened), visibleMessages(opened), threadReadCursor(opened))
               : state.unreadDivider,
-            unreadDividerPending: (opened?.transcriptLoaded === false || opened?.transcriptStale) && threadOpensUnread(opened) ? opened.threadId : undefined,
+            unreadDividerPending: (opened?.transcriptLoaded === false || opened?.transcriptStale) && threadOpensUnread(opened) && awayFromChat(opened.threadId) ? opened.threadId : undefined,
             activeView: "chat",
             selectedId: action.id,
           },
@@ -1463,7 +1426,9 @@ export function reducer(state: AppState, action: Action): AppState {
     case "connected":
       return { ...state, connected: action.value };
     case "loadFailed":
-      return state.hydrated || state.loadFailed ? state : { ...state, loadFailed: true };
+      return state.hydrated || state.loadFailed ? state : { ...state, loadFailed: true, loadWaking: undefined };
+    case "loadWaking":
+      return state.hydrated || state.loadWaking ? state : { ...state, loadWaking: true, loadFailed: undefined };
     case "error":
       return {
         ...(action.message && state.selectedId
@@ -1517,6 +1482,21 @@ export function reducer(state: AppState, action: Action): AppState {
     case "focusMessageConsumed":
       if (!state.focusMessage || state.focusMessage.nonce !== action.nonce) return state;
       return { ...state, focusMessage: { ...state.focusMessage, consumed: true } };
+    case "chatBackInFront": {
+      const bot = state.activeView === "chat" ? state.bots.find((candidate) => candidate.id === state.selectedId && candidate.threadId === action.threadId) : undefined;
+      const room = state.activeView === "chat" ? state.groups.find((candidate) => candidate.id === state.selectedId && candidate.threadId === action.threadId) : undefined;
+      if (bot && threadOpensUnread(bot)) {
+        const divider = action.away ? firstUnreadMessageId(visibleMessages(bot), threadReadCursor(bot)) : null;
+        return updateBot({ ...state, ...(divider ? { unreadDivider: { threadId: action.threadId, messageId: divider } } : {}) }, bot.id,
+          (b) => ({ ...b, unread: Boolean(b.tasks?.some((task) => task.threadId !== b.threadId && task.unread)), tasks: b.tasks?.map((task) => task.threadId === b.threadId ? { ...task, unread: false } : task) }));
+      }
+      if (room?.unread) {
+        const divider = action.away ? firstUnreadMessageId(room.messages, room.lastReadMessageId) : null;
+        return { ...state, ...(divider ? { unreadDivider: { threadId: action.threadId, messageId: divider } } : {}),
+          groups: state.groups.map((group) => (group.id === room.id ? { ...group, unread: false } : group)) };
+      }
+      return state;
+    }
     case "unreadDividerDone":
       return state.unreadDivider?.threadId === action.threadId ? { ...state, unreadDivider: null } : state;
     case "openSignIn": {
@@ -2108,6 +2088,13 @@ export function retryLoad(): void {
   retryHydrate?.();
 }
 
+let rereadSnapshot: (() => void) | null = null;
+/** Reads the whole snapshot again while the live stream cannot open, so what it would have brought (a reply, a turn
+ * ending) still arrives. A no-op while a read is already under way. */
+export function rereadWithoutStream(): void {
+  rereadSnapshot?.();
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const taskWrites = useRef(new Map<string, { botId: string; updatesDefault: boolean; promise: Promise<BotAnnouncement>; execution: Promise<unknown>; patch: TaskUpdatePatch }>()).current;
   const withTaskWrites = (bot: BotAnnouncement): BotAnnouncement => ({
@@ -2128,6 +2115,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (state.selectedId) rememberConversation(state.selectedId);
   }, [state.selectedId]);
+  const shownChatThread = state.activeView === "chat"
+    ? (state.bots.find((bot) => bot.id === state.selectedId) ?? state.groups.find((group) => group.id === state.selectedId))?.threadId ?? null
+    : null;
+  useEffect(() => { noteChatInFront(shownChatThread); }, [shownChatThread]);
+  useEffect(() => {
+    const note = () => {
+      const back = noteChatInFront();
+      if (!back) return;
+      const now = stateRef.current;
+      if (now.activeView !== "chat") return;
+      const bot = now.bots.find((candidate) => candidate.id === now.selectedId && candidate.threadId === back.threadId);
+      const room = now.groups.find((candidate) => candidate.id === now.selectedId && candidate.threadId === back.threadId);
+      if (bot && threadOpensUnread(bot)) api(`/api/bots/${bot.id}/read`, { method: "POST", body: JSON.stringify({ threadId: bot.threadId }) }).catch(() => {});
+      else if (room?.unread) api(`/api/groups/${room.id}/read`, { method: "POST" }).catch(() => {});
+      else return;
+      rawDispatch({ type: "chatBackInFront", ...back });
+    };
+    window.addEventListener("focus", note);
+    window.addEventListener("blur", note);
+    document.addEventListener("visibilitychange", note);
+    return () => {
+      window.removeEventListener("focus", note);
+      window.removeEventListener("blur", note);
+      document.removeEventListener("visibilitychange", note);
+    };
+  }, []);
   useEffect(() => {
     try { globalThis.localStorage?.setItem(BOT_PANEL_OPEN_KEY, state.settingsOpen ? "1" : "0"); } catch {}
   }, [state.settingsOpen]);
@@ -2174,7 +2187,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const olderPagesInFlight = new Set<string>();
     const newTaskOnce = createNewTaskOnce();
     let creatingBot = false;
-    const showError = (e: unknown) => { if (isBotLimitRefusal(e)) return; if (isNoAiRefusal(e)) wrapped({ type: "notice", notice: { kind: "note", botName: null, text: e.message } }); else rawDispatch({ type: "error", message: friendlyError(e) }); };
+    const showError = (e: unknown) => { if (isBotLimitRefusal(e)) return; if (isNoAiRefusal(e)) { const found = refusalFoundAi(e); wrapped({ type: "notice", notice: { kind: "note", botName: null, text: e.message, ...(found ? { found } : {}) } }); } else rawDispatch({ type: "error", message: friendlyError(e) }); };
     const showSavedState = (owner: SavedOwner) => (error: unknown) => {
       showError(error);
       void api<SavedSnapshot>("/api/bots?messages=0").then((snapshot) => {
@@ -2479,11 +2492,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // the bot's working row shows with the bubble, not when the server answers the send
           if (threadId && botBeforeSend?.threadId === threadId && !botBeforeSend.busy) { forgetStopPress(threadId); noteSentTurn(threadId, sendId); }
           if (threadId) outbox?.hold({ kind: "bot", ownerId: action.botId, threadId, sendId, text: action.text, at: Date.now(), ...(action.replyToId ? { replyToId: action.replyToId } : {}), ...(action.mode ? { mode: action.mode } : {}), ...(action.mentions?.length ? { mentions: action.mentions } : {}) });
-          void waitForExecutionSettings(botBeforeSend ? [botBeforeSend] : [], threadId)
+          void inThreadOrder(threadId, () => outbox?.waitBehind(sendId) ? Promise.reject(new QueuedBehindError()) : waitForExecutionSettings(botBeforeSend ? [botBeforeSend] : [], threadId)
             .then(() => sendReconciled((signal) => api(`/api/bots/${action.botId}/messages`, {
                 method: "POST", signal,
-                body: JSON.stringify({ text: action.text, replyToId: action.replyToId, threadId, sendId, ...(action.dataContext ? { dataContext: action.dataContext } : {}), ...(action.pointed?.length ? { pointed: action.pointed } : {}), ...(action.mode === "goal" ? { mode: "goal" } : {}), ...(action.followUp ? { followUp: action.followUp } : {}), ...(action.mentions?.length ? { mentions: action.mentions } : {}) }),
-              }), arrived, undefined, threadId ? { threadId, sendId, text: action.text, replyToId: action.replyToId, channelMode: action.mode } : undefined))
+                body: JSON.stringify({ text: action.text, replyToId: action.replyToId, threadId, sendId, ...(action.dataContext ? { dataContext: action.dataContext } : {}), ...(action.pointed?.length ? { pointed: action.pointed } : {}), ...(action.mode === "goal" ? { mode: "goal" } : {}), ...(action.followUp ? { followUp: action.followUp } : {}), ...(action.mentions?.length ? { mentions: action.mentions } : {}), ...(action.voiceCall ? { voiceCall: action.voiceCall } : {}) }),
+              }), arrived, undefined, threadId ? { threadId, sendId, text: action.text, replyToId: action.replyToId, channelMode: action.mode } : undefined)))
             .then((sent) => {
               outbox?.release(sendId);
               if (threadId) followSendReceipt(sent, threadId, sendId);
@@ -2493,7 +2506,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             .catch((error) => {
               action.onSettled?.();
               if (threadId) dropSentTurn(threadId, sendId);
-              if (outbox && (!(error instanceof ApiError) || sendAnswerLost(error)) && outbox.keep(sendId)) return;
+              if (error instanceof QueuedBehindError || (outbox && (!(error instanceof ApiError) || sendAnswerLost(error)) && outbox.keep(sendId))) return;
               outbox?.release(sendId);
               if (threadId) {
                 rawDispatch({ type: "optimisticMessageRemoved", threadId, sendId });
@@ -2543,7 +2556,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 message: action.message,
                 reviewedSha256: action.reviewedSha256,
                 always: action.always,
-                rememberCommand: action.rememberCommand,
+                rememberCommand: action.rememberCommand, edits: action.edits,
               }),
             });
           void waitForExecutionSettings(executionBotsBeforeAction, action.threadId)
@@ -2563,7 +2576,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 }
               }
               const response = await respond();
-              if (response?.settlementPending && typeof response.message === "string") {
+              if (response?.outcome === "unavailable") action.onError?.(t("ask.unavailable"));
+              else if (response?.settlementPending && typeof response.message === "string") {
                 showError(new Error(response.message));
               }
             })
@@ -2718,7 +2732,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const arrived = () => sendArrived(stateRef.current.groups.find((group) => group.id === action.groupId && group.threadId === threadId)?.messages, sendId);
           const outbox = threadId ? sendOutbox() : null;
           if (threadId) outbox?.hold({ kind: "group", ownerId: action.groupId, threadId, sendId, text: action.text, at: Date.now(), ...(action.replyToId ? { replyToId: action.replyToId } : {}), ...(action.mode ? { mode: action.mode } : {}), ...(action.mentions?.length ? { mentions: action.mentions } : {}) });
-          void waitForExecutionSettings(executionBotsBeforeAction)
+          void inThreadOrder(threadId, () => outbox?.waitBehind(sendId) ? Promise.reject(new QueuedBehindError()) : waitForExecutionSettings(executionBotsBeforeAction)
             .then(() => sendReconciled((signal) => api(`/api/groups/${action.groupId}/messages`, {
               method: "POST", signal,
               body: JSON.stringify({
@@ -2728,11 +2742,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 sendId,
                 mode: action.mode ?? "chat", ...(action.mentions?.length ? { mentions: action.mentions } : {}),
               }),
-            }), arrived, undefined, threadId ? { threadId, sendId, text: action.text, replyToId: action.replyToId, channelMode: action.mode } : undefined))
+            }), arrived, undefined, threadId ? { threadId, sendId, text: action.text, replyToId: action.replyToId, channelMode: action.mode } : undefined)))
             .then((sent) => { outbox?.release(sendId); applySendReceipt(sent, sendId, action.text, rawDispatch); action.onSettled?.(); })
             .catch((error) => {
               action.onSettled?.();
-              if (outbox && (!(error instanceof ApiError) || sendAnswerLost(error)) && outbox.keep(sendId)) return;
+              if (error instanceof QueuedBehindError || (outbox && (!(error instanceof ApiError) || sendAnswerLost(error)) && outbox.keep(sendId))) return;
               outbox?.release(sendId);
               if (threadId) {
                 rawDispatch({ type: "optimisticMessageRemoved", threadId, sendId });
@@ -3081,12 +3095,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       resumeId: readLastConversation() ?? undefined,
     });
     const selectedPath = () => chatSnapshotPath(stateRef.current.selectedId || readLastConversation() || "");
+    let chatError: unknown;
     const loadAll = async (): Promise<boolean> => {
       const marks = beginLoad();
+      chatError = undefined;
       const chat = () =>
         readSnapshot<ChatSnapshot>(selectedPath()).then((answer) => snapshotArrays(answer, "bots")).then((answer) => {
           if (alive) applyChat(answer, marks);
-        });
+        }, (error: unknown) => { chatError = error; throw error; });
       const peripherals = peripheralParts.map((part) => ({
         key: part.key,
         load: () => loadPeripheral(part, true),
@@ -3101,7 +3117,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Hydrate only after the stream's hello; queue frames during the REST snapshot and apply them on top.
     let hydrated = false;
     let hydrationPromise: Promise<boolean> | null = null;
-    let loadRetry: ReturnType<typeof setTimeout> | undefined, loadAttempts = 0;
+    let loadRetry: ReturnType<typeof setTimeout> | undefined, loadAttempts = 0, wakingSince = 0;
     let rehydrateRequested = false;
     const pendingFrames: ServerFrame[] = [];
     let handleFrame: (frame: ServerFrame) => void;
@@ -3119,12 +3135,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         } while (alive && rehydrateRequested);
         if (!alive) return false;
         if (!loaded) {
+          // a dusk cloud waking up answers nothing useful for a while: keep asking every moment, not as a failure
+          if (cloudWakingLoad(chatError) && Date.now() - (wakingSince ||= Date.now()) < WAKING_LOAD_MS) {
+            rawDispatch({ type: "loadWaking" });
+            clearTimeout(loadRetry);
+            loadRetry = setTimeout(() => { if (!hydrated) void hydrate(); }, 1_500);
+            return false;
+          }
+          wakingSince = 0;
           rawDispatch({ type: "loadFailed" });
           clearTimeout(loadRetry);
           loadRetry = setTimeout(() => { if (!hydrated) void hydrate(); }, Math.min(30_000, 2_000 * 2 ** Math.min(loadAttempts++, 4)));
           return false;
         }
-        loadAttempts = 0;
+        loadAttempts = 0; wakingSince = 0;
         hydrated = true;
         for (const frame of pendingFrames.splice(0)) handleFrame(frame);
         return true;
@@ -3176,7 +3200,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           if (frame.message?.role === "bot" && frame.message?.kind === "text") {
             const owner = speechOwner(stateRef.current, frame.threadId);
-            spokenReplyStream.completeBotText(frame.threadId, frame.message.turnId, frame.message.text ?? "", owner, frame.message.id);
+            spokenReplyStream.completeBotText(frame.threadId, frame.message.turnId, frame.message.text ?? "", owner, frame.message.id); callReplyStream.completeBotText(frame.threadId, frame.message.turnId, frame.message.text ?? "", callReplyOwner(frame.threadId), frame.message.id);
           }
           break;
         }
@@ -3212,16 +3236,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           rawDispatch({ type: "groupPatched", group });
           break;
         }
-        case "notify":
+        case "notify": {
+          const shown = visibleNotificationThread(stateRef.current);
           // The wrapped dispatch: only it PATCHes unread:false back to the server.
           showNotification(
             frame.notification,
             (target) => openThread(dispatch, target, stateRef.current),
             stateRef.current.bots.find((bot) => bot.id === frame.notification.botId)?.avatarUrl,
-            visibleNotificationThread(stateRef.current),
+            shown,
           );
-          rawDispatch({ type: "notificationReceived", entry: frame.notification });
+          const seen = readOnArrival(frame.notification, shown, chatInFront());
+          rawDispatch({ type: "notificationReceived", entry: seen ? { ...frame.notification, read: true } : frame.notification });
+          if (seen) fetch(`/api/notifications/${encodeURIComponent(frame.notification.id)}/read`, { method: "POST" }).catch(() => {});
           break;
+        }
         case "notifications.read":
           bumpPeripheralVersion("notifications");
           rawDispatch({ type: "notificationsRead", ids: frame.ids });
@@ -3250,7 +3278,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           break;
         case "runtime": {
           if (frame.event.type === "content.delta" && frame.event.streamKind === "assistant_text" && frame.event.delta && !frame.event.synthetic) noteReplyTurn(frame.event.turnId);
-          spokenReplyStream.onRuntimeEvent(frame.event, speechOwner(stateRef.current, frame.event.threadId));
+          spokenReplyStream.onRuntimeEvent(frame.event, speechOwner(stateRef.current, frame.event.threadId)); callReplyEvent(frame.event);
           const action = runtimeFrameAction(frame.event);
           if (action) rawDispatch(action);
           break;
@@ -3331,6 +3359,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
     }); };
     retryHydrate = () => { if (!hydrated) { clearTimeout(loadRetry); void hydrate(); } };
+    rereadSnapshot = () => { if (!hydrationPromise) void hydrate(); };
     if (!bootChat) startLive(null);
     else void bootChat.then((answer) => {
       if (!alive) return;
@@ -3352,6 +3381,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       clearTimeout(hydrationFallback);
       clearTimeout(loadRetry);
       retryHydrate = null;
+      rereadSnapshot = null;
       for (const refresh of peripheralRefresh.values()) {
         if (refresh.timer) clearTimeout(refresh.timer);
       }
