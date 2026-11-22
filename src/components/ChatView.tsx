@@ -30,7 +30,7 @@ import {
   awayFromMainThread,
   openBot,
 } from "@/state/store";
-import { EngineSetup } from "./EngineSetup";
+import { EngineSetupCard } from "@/components/lazy-screens";
 import { CHATGPT_USAGE_URL, ManageUsageLink } from "./ChatGptPlanStatus";
 import { CODEX_USAGE_URL, codexUsageLimitReached } from "../../shared/codex-usage-limit";
 import { ClaudeUpdatePrompt } from "./ClaudeUpdatePrompt";
@@ -263,7 +263,7 @@ export function ErrorRow({
             <a href={PROVIDER_SAFETY_HELP_URL} target="_blank" rel="noreferrer" className="underline">{t("chat.error.providerSafetyLink")}</a>
           </p>
         ) : !usageUrl && setup ? (
-          <EngineSetup instance={setupInstance} className="mt-2 text-ink-secondary" />
+          <EngineSetupCard instance={setupInstance} className="mt-2 text-ink-secondary" />
         ) : null}
       </ChatErrorCard>
     </div>
