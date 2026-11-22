@@ -2,7 +2,7 @@
 // the welcome, where bots live, the phone, and the help-improve line on the last screen.
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
-import { QRCodeSVG } from "qrcode.react";
+import { PairingQr } from "../PairingQr";
 import { ChevronLeft, Check } from "../../icons";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -252,7 +252,7 @@ export function PhoneStep({ onNext }: { onNext: () => void }) {
         {showing && (
           <div data-phone-offer="" className="place-reveal mt-6 flex flex-col items-center gap-3 sm:items-start">
             <div role="img" aria-label={t("settings.mobile.qr")} className="rounded-[18px] bg-white p-2.5">
-              <QRCodeSVG value={pairing.offer.link} size={152} level="M" includeMargin={false} bgColor="#ffffff" fgColor="#1b1b1f" aria-hidden="true" />
+              <PairingQr value={pairing.offer.link} size={152} level="M" includeMargin={false} bgColor="#ffffff" fgColor="#1b1b1f" aria-hidden="true" />
             </div>
             {code && <code aria-label={t("settings.mobile.code")} className="select-all whitespace-nowrap font-mono text-[17px] leading-7 tracking-[0.1em] text-ink">{code}</code>}
             <p role="status" className="flex items-center gap-2 text-[13px] leading-[18px] text-ink-secondary">

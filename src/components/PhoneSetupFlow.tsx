@@ -12,7 +12,7 @@ import {
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import { AlertTriangle, Check, Loader2 } from "../icons";
-import { QRCodeSVG } from "qrcode.react";
+import { PairingQr } from "./PairingQr";
 import { phonePairingLink } from "../../shared/pairing-link";
 import {
   companionPairingAddressText,
@@ -1045,7 +1045,7 @@ export function PhoneSetupFlowView({ controller }: { controller: PhoneSetupContr
       {!c.pairingExpired && c.pairingLink && (
         <div className="flex justify-center px-3.5 pb-3">
           <div className="rounded-[10px] bg-white p-3 outline outline-[0.5px] -outline-offset-[0.5px] outline-transparent" aria-label={t("phone.code.qrAria")}>
-            <QRCodeSVG value={c.pairingLink} size={160} level="M" bgColor="#ffffff" fgColor="#111111" />
+            <PairingQr value={c.pairingLink} size={160} level="M" bgColor="#ffffff" fgColor="#111111" />
           </div>
         </div>
       )}
