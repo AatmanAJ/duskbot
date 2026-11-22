@@ -103,6 +103,20 @@ it("remembers real permission requests, scopes and revokes grants, and preserves
       await api("POST", `/api/threads/${bot.threadId}/respond`, { requestId: different.id, behavior: "deny" });
       expect(await different.reply).toMatchObject({ id: different.id, behavior: "deny" });
     }
+    const disguised = await ask(socket, command.replace(" ", "\u200b "));
+    await expect.poll(async () => Boolean(await card(bot.threadId, disguised.id))).toBe(true);
+    expect(disguised.answer()).toBeUndefined();
+    expect((await card(bot.threadId, disguised.id)).commandAllowlist).toBeUndefined();
+    expect((await card(bot.threadId, disguised.id)).allowSession).toBeUndefined();
+    expect((await card(bot.threadId, first.id)).allowSession).toBe(true);
+    const refused = await fetch(url + rulesPath, { method: "POST", headers: { origin: url, "content-type": "application/json" },
+      body: JSON.stringify({ ...candidate, command: command.replace(" ", "\u200b ") }) });
+    expect(refused.status).toBe(400);
+    expect((await refused.json() as { error: string }).error).toMatch(/hidden characters/);
+    await api("POST", `/api/threads/${bot.threadId}/respond`, { requestId: disguised.id, behavior: "allow", rememberCommand: true }, 403);
+    expect((await api("POST", `/api/threads/${bot.threadId}/respond`, { requestId: disguised.id, behavior: "allow" })).outcome).toBe("allowed-once");
+    expect(await disguised.reply).toMatchObject({ id: disguised.id, behavior: "allow" });
+    expect((await api("GET", rulesPath)).rules.map((rule: any) => rule.command)).toEqual([command]);
     await api("DELETE", rulesPath + "/" + saved.id);
     const revoked = await ask(socket, command);
     await expect.poll(async () => Boolean(await card(bot.threadId, revoked.id))).toBe(true);

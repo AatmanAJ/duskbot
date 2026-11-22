@@ -3,6 +3,7 @@ import { lstatSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, sep } from "node:path";
 
 import type { CommandAllowlistCandidate, CommandAllowlistRule } from "../shared/command-allowlist.ts";
+import { hasHiddenCharacters } from "../shared/hidden-characters.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { redactSecretsInText } from "./redact.ts";
 
@@ -47,9 +48,23 @@ export function validateCommandAllowlistCandidate(value: unknown): CommandAllowl
   return { command, cwd, providerInstanceId };
 }
 
+/** Security: a command with characters a reviewer cannot see may run something other than what its card showed, so it
+ * is never remembered and never matched, even by a rule saved before this check. */
+function rememberable(value: unknown): CommandAllowlistCandidate {
+  const candidate = validateCommandAllowlistCandidate(value);
+  if (hasHiddenCharacters(candidate.command)) throw invalid(HIDDEN_COMMAND_REFUSAL);
+  return candidate;
+}
+
+export const HIDDEN_COMMAND_REFUSAL = "Commands with hidden characters cannot be saved. Allow it once after checking the marked characters.";
+
+export function hasHiddenCommand(value: unknown): boolean {
+  return record(value) && typeof value.command === "string" && hasHiddenCharacters(value.command);
+}
+
 /** Runtime metadata that cannot identify an exact scope never auto-allows. */
 export function commandAllowlistCandidate(value: unknown): CommandAllowlistCandidate | null {
-  try { return validateCommandAllowlistCandidate(value); } catch { return null; }
+  try { return rememberable(value); } catch { return null; }
 }
 
 function validateBotId(botId: string): void {
@@ -105,7 +120,7 @@ export class CommandAllowlistStore {
   add(botId: string, value: CommandAllowlistCandidate): CommandAllowlistRule {
     this.assertWritable();
     validateBotId(botId);
-    const candidate = validateCommandAllowlistCandidate(value);
+    const candidate = rememberable(value);
     const existing = this.list(botId);
     const duplicate = existing.find((rule) => sameScope(rule, candidate));
     if (duplicate) return duplicate;
