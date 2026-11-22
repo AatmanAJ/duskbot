@@ -413,6 +413,19 @@ export function readThreadTail(threadId: string, legacyFile: string, limit: numb
   return importLegacy(threadId, legacyFile);
 }
 
+/** The `limit` rows stored before `beforeId`, oldest first, or null when the thread holds no such row. */
+export function readThreadBefore(threadId: string, beforeId: string, limit: number): Required<ThreadTailRows> | null {
+  const at = prepared("SELECT rowid FROM messages WHERE thread_id = ? AND id = ?").get(threadId, beforeId) as { rowid: number } | undefined;
+  if (!at) return null;
+  const rows = prepared("SELECT json FROM messages WHERE thread_id = ? AND rowid < ? ORDER BY rowid DESC LIMIT ?").all(threadId, at.rowid, limit + 1) as Array<{ json: string }>;
+  const hasMore = rows.length > limit;
+  if (hasMore) rows.length = limit;
+  rows.reverse();
+  const state = prepared(ACTIVE_LEAF).get(threadId) as { active_leaf_id: string | null } | undefined;
+  const newest = state?.active_leaf_id ? undefined : prepared("SELECT id FROM messages WHERE thread_id = ? ORDER BY rowid DESC LIMIT 1").get(threadId) as { id: string } | undefined;
+  return { messages: rows.map(rowToMessage), activeLeafId: state?.active_leaf_id || (newest?.id ?? null), hasMore };
+}
+
 function importLegacy(threadId: string, legacyFile: string): ThreadRows {
   let messages: Message[] = [];
   let activeLeafId: string | null = null;

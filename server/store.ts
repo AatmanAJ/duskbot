@@ -1121,13 +1121,28 @@ export class Store {
         return {
           messages: tail.messages,
           hasMore: tail.hasMore,
-          activeLeafId: tail.activeLeafId ?? tail.messages.at(-1)?.id ?? null,
+          activeLeafId: tail.activeLeafId || (tail.messages.at(-1)?.id ?? null),
         };
       }
     }
     const { messages, activeLeafId } = state;
     const start = Math.max(0, messages.length - limit);
     return { messages: messages.slice(start), hasMore: start > 0, activeLeafId };
+  }
+
+  /** The page before `beforeId`, or null when the conversation holds no such message. A thread not loaded yet is read a
+   * page from the database; rows stored without a parentId chain only on a full load, so those load it. */
+  messagesBefore(threadId: string, beforeId: string, limit: number): { messages: Message[]; hasMore: boolean; activeLeafId: string | null } | null {
+    threadId = this.roomThreadOf(threadId);
+    if (!this.threads.get(threadId)) {
+      const page = mdb.readThreadBefore(threadId, beforeId, limit);
+      if (page && page.messages.every((m) => m.parentId !== undefined)) return page;
+    }
+    const { messages, activeLeafId } = this.thread(threadId);
+    const end = messages.findIndex((m) => m.id === beforeId);
+    if (end === -1) return null;
+    const start = Math.max(0, end - limit);
+    return { messages: messages.slice(start, end), hasMore: start > 0, activeLeafId };
   }
 
   importTranscript(threadId: string, messages: Message[], activeLeafId: string | null, relinked?: ReadonlyArray<{ id: string; parentId: string | null }>): void {

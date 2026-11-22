@@ -33,24 +33,19 @@ export function pageMessage(message: Message): Message | Record<string, unknown>
 }
 
 /** A conversation's messages one page at a time (newest first when `before` is absent), and the page around one message. */
-export function messagePages(store: Pick<Store, "messagesFor" | "messagesTail" | "activeLeaf" | "withMediaSizes">) {
-  function messagePage(threadId: string, limit: number | undefined, before?: string | null) {
+export function messagePages(store: Pick<Store, "messagesFor" | "messagesTail" | "messagesBefore" | "activeLeaf" | "withMediaSizes">) {
+  function messagePage(threadId: string, limit: number | undefined) {
     if (limit === undefined) {
       return { messages: store.withMediaSizes(threadId, store.messagesFor(threadId)), activeLeafId: store.activeLeaf(threadId) };
     }
-    if (!before) {
-      const tail = store.messagesTail(threadId, limit);
-      return { messages: store.withMediaSizes(threadId, tail.messages).map(pageMessage), hasMore: tail.hasMore, activeLeafId: tail.activeLeafId };
-    }
-    const all = store.messagesFor(threadId);
-    const end = all.findIndex((msg) => msg.id === before);
-    const stop = end === -1 ? all.length : end;
-    const start = Math.max(0, stop - limit);
-    return {
-      messages: store.withMediaSizes(threadId, all.slice(start, stop)).map(pageMessage),
-      hasMore: start > 0,
-      activeLeafId: store.activeLeaf(threadId),
-    };
+    const tail = store.messagesTail(threadId, limit);
+    return { messages: store.withMediaSizes(threadId, tail.messages).map(pageMessage), hasMore: tail.hasMore, activeLeafId: tail.activeLeafId };
+  }
+
+  /** The page before `before`; null when the conversation holds no such message. */
+  function olderPage(threadId: string, limit: number, before: string) {
+    const page = store.messagesBefore(threadId, before, limit);
+    return page && { messages: store.withMediaSizes(threadId, page.messages).map(pageMessage), hasMore: page.hasMore, activeLeafId: page.activeLeafId };
   }
 
   function messageWindow(threadId: string, messageId: string, limit: number) {
@@ -63,5 +58,5 @@ export function messagePages(store: Pick<Store, "messagesFor" | "messagesTail" |
     return { messages: store.withMediaSizes(threadId, all.slice(start, stop)).map(pageMessage), hasMore: start > 0 };
   }
 
-  return { messagePage, messageWindow };
+  return { messagePage, olderPage, messageWindow };
 }

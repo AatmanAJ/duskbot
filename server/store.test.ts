@@ -674,6 +674,26 @@ describe("Store", () => {
     expect(whole.hasMore).toBe(false);
   });
 
+  it("messagesBefore reads an older page via SQL on a fresh Store, the same page a loaded thread gives", () => {
+    const store = new Store(selection);
+    const bot = store.createBot({}, { seedMessages: false });
+    const ids = Array.from({ length: 10 }, (_, i) => store.appendMessage(bot.threadId, { role: "user", kind: "text", text: `message ${i}` }).id);
+    const read = vi.spyOn(mdb, "readThread");
+    try {
+      const fresh = new Store(selection);
+      const page = fresh.messagesBefore(bot.threadId, ids[6]!, 3)!;
+      expect(read).not.toHaveBeenCalled();
+      expect(page.messages.map((m) => m.text)).toEqual(["message 3", "message 4", "message 5"]);
+      expect(page).toMatchObject({ hasMore: true, activeLeafId: ids[9] });
+      expect(fresh.messagesBefore(bot.threadId, ids[2]!, 5)).toMatchObject({ hasMore: false, messages: [{ id: ids[0] }, { id: ids[1] }] });
+      expect(fresh.messagesBefore(bot.threadId, "no-such-message", 3)).toBeNull();
+      expect(store.messagesBefore(bot.threadId, ids[6]!, 3)).toEqual(page);
+      expect(store.messagesBefore(bot.threadId, "no-such-message", 3)).toBeNull();
+    } finally {
+      read.mockRestore();
+    }
+  });
+
   it("caches a complete tail but never caches a zero-message page as an empty thread", () => {
     const store = new Store(selection);
     const bot = store.createBot({}, { seedMessages: false });
