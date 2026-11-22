@@ -452,9 +452,10 @@ export const ROLLBACK_COMMAND = `sudo -n ${HOME_CONTROL} rollback`;
 export const SNAPSHOT_COMMAND = `sudo -n ${HOME_CONTROL} snapshot`;
 export const SNAPSHOT_DONE_COMMAND = `sudo -n ${HOME_CONTROL} snapshot-done`;
 export const DESKTOP_STATUS_COMMAND = `sudo -n ${HOME_CONTROL} desktop-status`;
+export const PHONE_RELAY_ASIDE_COMMAND = `sudo -n sh -c 'f=${CLOUD_HOME.data}/phone-relay.json; if [ -f "$f" ]; then mv -f "$f" "$f.aside-$(date +%s)" && echo "moved aside"; else echo "none"; fi'`;
 
 export const HOME_IMAGE: MachineImage = {
   homeVolume: INSTABOX_HOME_VOLUME, packagePath: INSTABOX_PACKAGE_FILE, restorePath: INSTABOX_RESTORE_FILE,
   bootFile, claimBootFile, bootContent, setupScript: homeSetupScript,
-  installCommand, startCommand, restoreCommand: RESTORE_COMMAND, rollbackCommand: ROLLBACK_COMMAND, desktopStatusCommand: DESKTOP_STATUS_COMMAND,
+  installCommand, startCommand, restoreCommand: RESTORE_COMMAND, rollbackCommand: ROLLBACK_COMMAND, desktopStatusCommand: DESKTOP_STATUS_COMMAND, phoneRelayAsideCommand: PHONE_RELAY_ASIDE_COMMAND,
 };

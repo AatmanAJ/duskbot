@@ -17,6 +17,15 @@ import { verifyRelease, type ReleaseKey } from "./release-signing.ts";
 export interface HomeRelease { sha256: string; url?: string; file?: string; signature?: string; version?: string; clouds?: readonly string[] }
 export interface HomeUpdateState { guard: UpdateRecord; refused: string | null; stuck: boolean; retryAt: number | null }
 
+/** known open risk: a home on these versions exits at every start once phone-relay.json holds a tunnel (its bundled link
+ *  agent runs as a command), so it gets no link grant and its saved tunnel is moved aside before it starts */
+export const RELAY_EXITS_ON: readonly string[] = ["0.2.26"];
+/** the version a managed home runs, as its update record knows it; null before the record exists */
+export const homeVersion = (c: StoredCloud): string | null => c.managed?.update?.guard.current?.version ?? null;
+export const relayExits = (version: string | null) => version !== null && RELAY_EXITS_ON.includes(version);
+/** a link grant goes only to a home whose version is known and loads its phone relay safely */
+export const takesLinkGrant = (c: StoredCloud) => { const version = homeVersion(c); return version !== null && !relayExits(version); };
+
 /** how long a new version gets to answer and pass its self-test */
 export const SELF_TEST_WAIT_MS = 5 * 60_000;
 const INSTALL_RETRY_MS = 60 * 60_000;
@@ -102,8 +111,15 @@ export function createHomeUpdates(deps: HomeUpdateDeps) {
     log(c, "update_rolled_back", verdict.reason, { from, to: verdict.to.version, rerunFree: failedRuns.length });
     console.warn(`managed: ALERT cloud ${c.id}: the update to ${from} was rolled back to ${verdict.to.version} (${verdict.reason})`);
     deps.save(c);
+    if (relayExits(verdict.to.version)) await asideRelay(c);
     const started = await deps.provider.run(c.serverId!, deps.image.startCommand(x.origin, x.upstream), 120);
     if (!started.ok) throw new RetryableCloudError("Cloud home did not start after a rollback.");
+  }
+
+  async function asideRelay(c: StoredCloud) {
+    const done = await deps.provider.run(c.serverId!, deps.image.phoneRelayAsideCommand, 60);
+    if (!done.ok) console.warn(`managed: cloud ${c.id}: its saved phone relay tunnel could not be moved aside before it starts`);
+    else if (done.stdout.includes("moved aside")) log(c, "phone_relay_aside", "relay_exits", { version: homeVersion(c) });
   }
 
   /** the trial's verdict this pass: the home's own report of its self-test and runs; null while its self-test runs */
@@ -187,6 +203,6 @@ export function createHomeUpdates(deps: HomeUpdateDeps) {
     deps.save(c);
     return { ended: version };
   }
-  return { step, endTrial, state: (c: StoredCloud) => c.managed?.update ?? null };
+  return { step, endTrial, asideRelay, state: (c: StoredCloud) => c.managed?.update ?? null };
 }
 export type HomeUpdates = ReturnType<typeof createHomeUpdates>;

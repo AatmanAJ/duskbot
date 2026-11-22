@@ -87,4 +87,6 @@ export interface MachineImage {
   rollbackCommand: string;
   /** prints the bot computers' image state: ready, building, failed or none */
   desktopStatusCommand: string;
+  /** moves the home's saved phone relay tunnel aside (prints "moved aside" or "none") */
+  phoneRelayAsideCommand: string;
 }

@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DashboardState } from "../store.ts";
 import { createCloudsService } from "../clouds/service.ts";
+import { linkGrantSignerFromEnv, signLinkGrant } from "../link-grant.ts";
 import type { CloudEventKind } from "../clouds/service.ts";
 import { createFakeCloudProvider } from "../clouds/fake-provider.ts";
 import { createFakePoolDriver } from "../clouds/fake-pool-driver.ts";
@@ -131,9 +132,8 @@ export function createBilling(options: BillingOptions) {
   const entitlements = entitlementSignerFromEnv(env, { dataDir: options.dataDir, loopback, now, required: !loopback && (cloudProvider !== "off" || poolDriver !== "off" || managed !== null) });
   const sealer = createSealer(sealKey);
   const aiStash = createAiStash({ store: options.aiStash ?? memoryAiStashStore(now), sealer, now });
-  // known open risk: a home on 0.2.26 exits at start once its phone relay holds a tunnel (its bundled link agent runs as
-  // a command), so entitlement pushes carry no link grant until every home runs a release that loads the hub safely
-  const clouds = createCloudsService({ aiStash, entitlements, onEvent: options.cloudEvent, onStatus: options.cloudStatus, dataDir: options.dataDir, now, providers: { pool, dedicated }, home, sealer, managed, managedHome: realHome,
+  const linkGrants = linkGrantSignerFromEnv(env, { dataDir: options.dataDir, loopback });
+  const clouds = createCloudsService({ aiStash, entitlements, linkGrant: linkGrants ? cloud => signLinkGrant(cloud.accountId, linkGrants, now()).grant : null, onEvent: options.cloudEvent, onStatus: options.cloudStatus, dataDir: options.dataDir, now, providers: { pool, dedicated }, home, sealer, managed, managedHome: realHome,
     workspaces: {
       register({ accountId, name, publicKey }) {
         const id = `ws_${randomBytes(16).toString("base64url")}`;
