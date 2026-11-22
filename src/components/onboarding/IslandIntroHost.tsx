@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { IslandIntro } from "./IslandIntro";
-import { trapTab } from "./WelcomeFlow";
+import { lazyScreen } from "../lazy-screen";
+import { trapTab } from "./trap-tab";
+
+const IslandIntro = lazyScreen("IslandIntro", async () => (await import("./IslandIntro")).IslandIntro);
 
 const OPEN = "dusk:island-intro";
 let waiting: (() => void)[] = [];
