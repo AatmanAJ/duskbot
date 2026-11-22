@@ -77,3 +77,53 @@ describe("a signed-out AI reads signed out everywhere, from the workspace's own 
     expect(document.querySelector("[data-funnel-ai-connect]")).toBeNull();
   });
 });
+
+describe("a bot on the signed-out ChatGPT account while the other one is signed in", () => {
+  const codex = (authenticated: boolean): InstanceInfo => ({
+    instanceId: "codex", driverKind: "codex", displayName: "Codex", access: "subscription",
+    snapshot: { state: "available", authenticated }, authentication: { method: "browser" },
+    install: { command: { darwin: "npm install -g @openai/codex" }, docsUrl: "https://github.com/openai/codex", signInCommand: "codex login" },
+    models: { default: "gpt-6.2", options: [{ id: "gpt-6.2", label: "GPT-6.2" }, { id: "gpt-6.2-sol", label: "GPT-6.2 sol" }] },
+  } as unknown as InstanceInfo);
+  const plan = (authenticated: boolean, options = [{ id: "gpt-6.2-sol", label: "GPT-6.2 sol" }]): InstanceInfo => ({
+    instanceId: "chatgpt", driverKind: "codex", displayName: "ChatGPT plan", access: "subscription",
+    snapshot: { state: "available", authenticated, chatgptPlan: true }, authentication: { method: "browser-pkce" },
+    install: { command: { darwin: "npm install -g @openai/codex" }, docsUrl: "https://github.com/openai/codex", signInCommand: "codex login" },
+    models: { default: options[0]?.id ?? "", options },
+  } as unknown as InstanceInfo);
+  // a card is closed for good once the bot's AI changes, so each case fails a turn of its own
+  let turn = 0;
+  const signedOut = (): Message => ({ id: `signed-out-${++turn}`, role: "bot", kind: "activity", at: T0 + 2,
+    tool: { name: "error: ChatGPT needs you to sign in again.", ok: false, setup: true } });
+  const press = async (instances: InstanceInfo[], selection: Bot["modelSelection"]) => {
+    vi.useFakeTimers();
+    fixture.instances = instances;
+    fixture.bots = [{ id: "dusk", name: "dusk bot", threadId: "main", modelSelection: selection } as Bot];
+    const retry = vi.fn();
+    await mount(createElement(FailedReplyCard, { rows: trailingRows([ask, signedOut()]), botId: "dusk", threadId: "main", onRetry: retry }));
+    const signIn = [...document.querySelectorAll<HTMLButtonElement>("[data-chat-error] button")].find((button) => button.textContent === "Sign in")!;
+    await act(async () => { signIn.click(); vi.runAllTimers(); });
+    vi.useRealTimers();
+    return retry;
+  };
+
+  it("Sign in moves the bot to the signed-in account on the same model and tries again, never opening a Connected dialog", async () => {
+    const retry = await press([codex(true), plan(false)], { instanceId: "chatgpt", model: "gpt-6.2-sol" });
+    expect(fixture.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "setModel", botId: "dusk", threadId: "main", updateBotDefault: true,
+      selection: { instanceId: "codex", model: "gpt-6.2-sol" } }));
+    expect(retry).toHaveBeenCalledOnce();
+    expect(document.querySelector("[data-ai-cards]")).toBeNull();
+  });
+
+  it("takes the nearest model the signed-in account offers when the same one is not there", async () => {
+    await press([codex(false), plan(true, [{ id: "gpt-5.5", label: "GPT-5.5" }, { id: "gpt-6.2-sol", label: "GPT-6.2 sol" }])], { instanceId: "codex", model: "gpt-6.2" });
+    expect(fixture.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "setModel", selection: { instanceId: "chatgpt", model: "gpt-6.2-sol" } }));
+  });
+
+  it("still opens Connect an AI when neither ChatGPT account is signed in", async () => {
+    const retry = await press([codex(false), plan(false)], { instanceId: "chatgpt", model: "gpt-6.2-sol" });
+    expect(fixture.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "setModel" }));
+    expect(retry).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-ai-cards]")).not.toBeNull();
+  });
+});

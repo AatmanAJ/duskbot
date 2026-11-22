@@ -1,6 +1,7 @@
 import { createContext, useMemo, useState } from "react";
 import { t } from "@/lib/i18n";
-import { botEngine, claudeUpdateTarget } from "@/lib/failed-turn";
+import { botEngine, claudeUpdateTarget, signedInChatGpt } from "@/lib/failed-turn";
+import { modelSelectionForPick } from "@/lib/model-choices";
 import { blockerDetail, canOfferSignIn, currentFailureWords, failedReplyDetail, failedReplyKind, failedReplyTitle, mostActionable, restartAlreadyDid, trailingRows } from "@/lib/failed-reply";
 import { statusActivity } from "@/lib/activity-runs";
 import { lowerFirst } from "@/lib/lower-first";
@@ -170,6 +171,14 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
   const actions: CardAction[] = [];
   const retry = onRetry;
   let update = null;
+  const chatGpt = lead.bot && signedInChatGpt(lead.engine, state.instances, lead.bot.modelSelection.model);
+  const switchChatGpt = chatGpt && lead.bot ? () => {
+    const bot = lead.bot!;
+    dispatch({ type: "setModel", botId: bot.id, ...(group ? {} : { threadId: threadId ?? bot.threadId, updateBotDefault: true }),
+      selection: modelSelectionForPick(bot.modelSelection, chatGpt.instance, chatGpt.model) });
+    // the retry reads the bot's model from the next render
+    if (retry) setTimeout(retry, 0);
+  } : null;
   if (lead.kind === "place" && tool.place && leadBotId) {
     const view = placeRowViewFor(tool.place, seat, lowerFirst(worksOnSimpleLabel(lead.bot?.computer, platform)));
     detail = currentFailureWords(view.line);
@@ -206,7 +215,7 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
       if (action === "sign_in") {
         // Connect an AI, opened on this AI's card; an AI the flow can't sign in opens at its place in settings
         const tile = (canOfferSignIn(lead.kind, lead.engine) || signInNotice) && lead.engine && aiTileOf(lead.engine);
-        return { label: t("chat.notice.signIn"), onClick: () => tile ? setConnecting(tile) : dispatch(openEngines) };
+        return { label: t("chat.notice.signIn"), onClick: switchChatGpt ?? (() => tile ? setConnecting(tile) : dispatch(openEngines)) };
       }
       if (action === "update_key") return { label: t("failedReply.updateKey"), onClick: () => dispatch(openKeys) };
       if (action === "open_plan") return { label: t("failedReply.seePlan"), onClick: () => dispatch(openPlan) };
@@ -226,7 +235,7 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
   if (actions.length === 0 && !update && lead.kind !== "place" && leadBotId) actions.push({ label: t("chat.rescue.switchAi"), onClick: () => openBotSettings(dispatch, "model", { botId: leadBotId }) });
   // a sign-out notice beside a failure for another reason: still one card, its Sign in a pill on it
   const signInTile = lead.engine && aiTileOf(lead.engine);
-  if (signInNotice && !actions.some((action) => action.label === t("chat.notice.signIn"))) actions.unshift({ label: t("chat.notice.signIn"), onClick: () => signInTile ? setConnecting(signInTile) : dispatch(openEngines) });
+  if (signInNotice && !actions.some((action) => action.label === t("chat.notice.signIn"))) actions.unshift({ label: t("chat.notice.signIn"), onClick: switchChatGpt ?? (() => signInTile ? setConnecting(signInTile) : dispatch(openEngines)) });
   // a usage limit is a wait, not a failure: a calm notice that says until when
   const limited = lead.kind === "usage_limit";
   const limitAi = lead.engine ? providerName(lead.engine) : t("failedReply.limitHold.anAi");
