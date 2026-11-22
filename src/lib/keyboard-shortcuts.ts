@@ -94,6 +94,12 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
         winKeys: ["Ctrl", "Alt", "."],
       },
       {
+        id: "quote-selection",
+        description: "Quote selected text in your reply",
+        macKeys: ["⌘", "L"],
+        winKeys: ["Ctrl", "L"],
+      },
+      {
         id: "edit-last-message",
         description: "Edit your last message",
         macKeys: ["↑"],

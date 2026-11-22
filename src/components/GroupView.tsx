@@ -23,7 +23,8 @@ import { noteMediaSizes } from "@/lib/image-cache";
 import { RoomHoldsBanner } from "./RoomHoldsBanner";
 import { ThreadChip } from "./ThreadChip";
 import { ToolActivity } from "./ToolActivity";
-import { ThreadRefText } from "./ThreadRefs";
+import { OwnMessageText } from "./OwnMessageText";
+import { SelectionQuote } from "./SelectionQuote";
 import { handoffWorkIds, RoomWorkingLines, roomWorkingIds } from "./RoomWorkingLines";
 import { roomRetryRequest, roomRetryText } from "@/lib/room-retry";
 import { showToolCallsEnabled } from "@/lib/feature-flags";
@@ -256,7 +257,7 @@ function RoomTextMessage({
             <>
               {attachments && !mediaRow && <AttachmentGallery media={m.media} images={attachments.images} files={attachments.files} message={{ threadId: group.threadId, messageId: m.id }} eager={eager} className={!attachments.display ? "mb-0" : undefined} />}
               <div className={cn(collapsible && "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]")}>
-                <ThreadRefText text={display} peers={peers} everyone={!group.dm} />
+                <OwnMessageText text={display} peers={peers} everyone={!group.dm} />
               </div>{m.bugReport && <BugReportNote report={m.bugReport} />}
               {m.via === "api" && (
                 <div className="mt-1 text-[11px] text-ink-tertiary">{t("chat.viaBotApi")}</div>
@@ -1169,6 +1170,7 @@ export function GroupView({ group: room }: { group: Group }) {
       />}
       </div>
       </GlassScrollFrame>
+      <SelectionQuote root={transcriptRef} threadId={group.threadId} />
     </main>
   );
 }
