@@ -1,5 +1,5 @@
 import type { InstanceInfo, ModelSelection } from "@/state/store";
-import { needsCli, needsSignIn } from "@/components/EngineSetup";
+import { needsCli, needsSignIn } from "@/lib/engine-needs";
 import { t } from "./i18n";
 import { filterCustomModels, partitionCustomModels, suggestedModels } from "./custom-models";
 import { isCustomOnly, SIGN_IN_FAMILY_LABEL, signInFamily, splitEngineRail } from "./engine-rail";

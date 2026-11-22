@@ -1,6 +1,6 @@
 // The model picker looks for an engine's local models with a refresh that never holds it past the timeout.
 import type { InstanceInfo } from "@/state/store";
-import { needsCli } from "./EngineSetup";
+import { needsCli } from "@/lib/engine-needs";
 
 export const LOCAL_PROBE_TIMEOUT_MS = 5_000;
 

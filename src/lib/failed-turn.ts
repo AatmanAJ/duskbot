@@ -1,4 +1,4 @@
-import { offersSignIn } from "@/components/EngineSetup";
+import { offersSignIn } from "@/lib/engine-needs";
 import { t } from "@/lib/i18n";
 import { plainErrorLine } from "@/lib/plain-error";
 import type { Bot, InstanceInfo, Message } from "@/state/store";

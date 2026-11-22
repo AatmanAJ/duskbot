@@ -5,7 +5,7 @@ import { t } from "@/lib/i18n";
 import { formatDuration } from "@/lib/usage-trace";
 import type { Message } from "@/state/store";
 import { traceRootId } from "../../shared/usage-trace";
-import { TraceDialog } from "./usage/TraceView";
+import { TraceDialog } from "./lazy-screens";
 
 export function DigestChip({ message }: { message: Message }) {
   const [tracing, setTracing] = useState(false);

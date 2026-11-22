@@ -1,5 +1,5 @@
 // grok's failed-reply card: what stopped the newest replies, one card above the composer, never a row in the chat.
-import { offersSignIn } from "@/components/EngineSetup";
+import { offersSignIn } from "@/lib/engine-needs";
 import { statusActivity } from "@/lib/activity-runs";
 import { t } from "@/lib/i18n";
 import { peerLine } from "@/lib/peer-message";
