@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { InstanceInfo, ModelSelection } from "@/state/store";
 import { starKey, toggleStar, parseStarred } from "./starred-models";
 import { withRecent } from "./recent-models";
-import { answeringModelName, isAutoFreeModel, modelName, providerName, simpleModelMenu, SIMPLE_SEARCH_AFTER } from "./simple-model-menu";
+import { answeringModelName, isAutoFreeModel, modelName, notConnectedRows, providerName, simpleModelMenu, SIMPLE_SEARCH_AFTER } from "./simple-model-menu";
 
 vi.hoisted(() => {
   vi.stubGlobal("window", {});
@@ -117,6 +117,17 @@ describe("the Simple model menu", () => {
     expect(Object.fromEntries(built.connect.map((group) => [group.instance.instanceId, group.body]))).toEqual({
       cursor: { kind: "setUp" }, codex: { kind: "signIn" },
     });
+  });
+
+  it("offers no ChatGPT sign-in while one ChatGPT account is signed in and the other is not", () => {
+    const plan = (authenticated: boolean) => engine("chatgpt", "codex", "ChatGPT plan", "subscription", [],
+      { snapshot: { state: "available", authenticated, chatgptPlan: true } });
+    const signedOutCodex = { ...codex, snapshot: { state: "available" as const, authenticated: false } };
+    const rowsFor = (listed: InstanceInfo[]) => notConnectedRows(listed, menu(listed).connect).map((row) => [row.name, row.state]);
+    // Connect an AI draws the ChatGPT card Connected through the signed-in one, so a row here could never go away
+    expect(rowsFor([claude(), codex, plan(false)])).not.toContainEqual(["ChatGPT", "signIn"]);
+    expect(rowsFor([claude(), signedOutCodex, plan(true)])).not.toContainEqual(["ChatGPT", "signIn"]);
+    expect(rowsFor([claude(), signedOutCodex, plan(false)])).toContainEqual(["ChatGPT", "signIn"]);
   });
 
   it("says a provider is loading its models while it lists them, and offers to check again once it lists none", () => {
