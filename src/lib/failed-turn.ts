@@ -1,5 +1,5 @@
 import { engineReady } from "@/components/EngineLibrary";
-import { offersSignIn } from "@/components/EngineSetup";
+import { offersSignIn } from "@/lib/engine-needs";
 import { aiTileOf } from "@/components/onboarding/funnel";
 import { t } from "@/lib/i18n";
 import { failurePreviewLine } from "@/lib/failed-reply";

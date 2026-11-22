@@ -5,7 +5,7 @@
 // when a sign-in finishes. The first run, the Connect an AI dialog and Settings > Models all show this one grid.
 import { useEffect, useRef, useState } from "react";
 import { Check, Server } from "../../icons";
-import { EngineSetup } from "@/components/EngineSetup";
+import { EngineSetupCard } from "@/components/lazy-screens";
 import { engineReady } from "@/components/EngineLibrary";
 import { CursorMark, PresetProviderMark, ProviderMark } from "@/components/ProviderIcons";
 import { cn } from "@/lib/cn";
@@ -58,7 +58,7 @@ export function AiConnect({ tile, flow }: { tile: AiTile<InstanceInfo>; flow: Co
     <StageSwap stage={inAppConnect ? "connect" : "setup"} className="w-full">
       {inAppConnect
         ? <ConnectPanel flow={flow} name={aiName(instance)} driverKind={instance.driverKind} onTrouble={() => setTrouble(true)} />
-        : <EngineSetup instance={instance} {...setupFor(instance)} className="w-full rounded-2xl border-0 bg-ink/[0.035] p-4 text-start" />}
+        : <EngineSetupCard instance={instance} {...setupFor(instance)} className="w-full rounded-2xl border-0 bg-ink/[0.035] p-4 text-start" />}
     </StageSwap>
   );
 }

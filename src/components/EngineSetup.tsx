@@ -11,6 +11,7 @@ import { AppCopyNotice, AppCopySetup } from "./EngineAppCopy";
 import { installCommandFor, installsHere, noteAppCopySwitch } from "@/state/engine-install";
 
 export { installCommandFor };
+export { isApiKeyEngine, needsCli, needsSignIn, offersSignIn } from "@/lib/engine-needs";
 import { keyEntry, keyForInstance, type KeyId } from "./keys/key-catalog";
 import { openKeySettings } from "./keys/key-focus";
 import { KeyRow, SavedKeyLine } from "./keys/KeyRow";
@@ -18,19 +19,7 @@ import { OpenAiCompatUrl } from "./keys/KeyPanels";
 import { Card, CopyRow, ItemRow, NavRow, NoteRow, rowCls } from "./ListRows";
 import { openExternalLink } from "@/lib/app-links";
 import { friendlyError } from "@/lib/plain-error";
-
-export function needsSignIn(instance: InstanceInfo | undefined): boolean {
-  return instance?.snapshot.state === "available" && instance.snapshot.authenticated === false;
-}
-
-export function offersSignIn(instance: InstanceInfo | undefined): boolean {
-  return Boolean(instance && needsSignIn(instance) && instance.install
-    && !instance.snapshot.authenticationUnavailableReason && !apiKeySetup(instance));
-}
-
-export function needsCli(instance: InstanceInfo | undefined): boolean {
-  return instance?.snapshot.state !== "available";
-}
+import { apiKeySetup, isApiKeyEngine, needsCli, needsSignIn } from "@/lib/engine-needs";
 
 /** An AI app that simply isn't installed yet: the setup card says so, so the probe's own line is only news after a check. */
 export function notInstalledYet(reason: string | undefined): boolean {
@@ -461,20 +450,8 @@ function ManagedEngineSetup({ instance, signInOnly }: { instance: InstanceInfo; 
   );
 }
 
-export function isApiKeyEngine(instance: InstanceInfo | undefined): boolean {
-  if (!instance || instance.access !== "api" || instance.managed) return false;
-  return instance.driverKind !== "claudeAgent" || Boolean(instance.snapshot.version);
-}
-
 export function hasSavedApiKey(instance: InstanceInfo): boolean {
   return isApiKeyEngine(instance) && instance.snapshot.authenticated === true;
-}
-
-function apiKeySetup(instance: InstanceInfo): boolean {
-  if (!(isApiKeyEngine(instance) || instance.install?.settings === "connections") || instance.snapshot.authenticationUnavailableReason) return false;
-  // A key engine with its own CLI (DeepSeek Harness) is installed first, then given the key.
-  if (instance.snapshot.state !== "available") return !installsHere(instance.install) && !installCommandFor(instance.install);
-  return instance.snapshot.authenticated === false;
 }
 
 function inlineKey(instance: InstanceInfo): KeyId | undefined {

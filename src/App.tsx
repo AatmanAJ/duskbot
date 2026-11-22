@@ -33,7 +33,7 @@ import { usePhoneViewport } from "@/lib/phone-viewport";
 import { preloadConnectedApps } from "@/lib/connected-apps";
 import { ConnectAppsHost, connectAppsPageFor, openConnectApps } from "@/components/connect-apps";
 import {
-  BotSettingsDialog, CloudAddDialog, KeyboardShortcutsModal,
+  BotSettingsDialog, CloudAddDialog, InboxPanel, KeyboardShortcutsModal,
   preloadScreens, RemoteAgentSettingsPanel, RoomPanel, SettingsModal,
 } from "@/components/lazy-screens";
 import { useRoomPanelShown } from "@/lib/room-panel";
@@ -52,7 +52,6 @@ import { HomeLine } from "@/components/HomeLine";
 import { useTeamChats } from "@/state/team-chats";
 import { needsYouVersion, useTeamPeopleLoader } from "@/state/team-people";
 import { inboxVersion, useInboxLoader, useInboxPanel, useInboxReady } from "@/state/inbox";
-import { InboxPanel } from "@/components/inbox/InboxPanel";
 import { InboxColumn } from "@/components/inbox/InboxColumn";
 import { PlacesRail } from "@/components/PlacesRail";
 import { CloudHowTo } from "@/components/CloudHowTo";
