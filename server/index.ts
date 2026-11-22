@@ -3001,7 +3001,7 @@ const outsideLineage = createOutsideLineage({
   node: (id) => coordinator.node(id), active: () => coordinator.active(), language: (threadId) => threadLanguage(threadId),
 });
 const { outsideDrivenThread, cloudGuestDriven, cloudGuestDrivenHandoff, outsideWorkStaysHere, confinedWhy, guestEngineRefusal } = outsideLineage; function botApiThread(id: string): boolean { const owner = store.botByThread(id); return Boolean(owner && store.taskByThread(owner.id, id)?.botApi); }
-const { messagePage, messageWindow } = messagePages(store); const oneChat = createOneChat({ store, team: Boolean(CLOUD_TEAM), mainThread: (botId, apart) => mainThread(mainThreadTasks(botId).filter((task) => !apart.has(task.threadId)), store.bot(botId)?.threadId, store.bot(botId)?.mainThreadChoice),
+const { messagePage, olderPage, messageWindow } = messagePages(store); const oneChat = createOneChat({ store, team: Boolean(CLOUD_TEAM), mainThread: (botId, apart) => mainThread(mainThreadTasks(botId).filter((task) => !apart.has(task.threadId)), store.bot(botId)?.threadId, store.bot(botId)?.mainThreadChoice),
   confined: (from, to) => !outsideLineage.mayReach(from, to) || outsideDrivenThread(from) || outsideWorkStaysHere(from) || cloudGuestDriven(from) });
 const { cloudOwnerTurn, cloudThreadStarters, cloudBotOpened, cloudOwnerView, cloudReportFromOthers, roomTurnStarted, roomTurnEnded, roomRun } = createCloudOwnerTurns({
   store, cloudHome: CLOUD_HOME !== null, directRequest: (threadId) => directRequestOwners.get(threadId), threadStarter: (threadId) => threadStarters.get(threadId),
@@ -13315,7 +13315,7 @@ ROUTES.push(createThreadRoutes({ attached: (mime, bytes) => usageSignal("attachm
   desktopMutationToken: () => desktopMutationToken,
   companionMutationToken: () => companionMutationToken,
   cliOwnerToken: () => cliOwnerToken,
-  pageSize, messagePage, messageWindow, publicBotQueuedMessages, publicGroupState, wireBot,
+  pageSize, messagePage, olderPage, messageWindow, publicBotQueuedMessages, publicGroupState, wireBot,
   botComputerControlSnapshot, messageFileRootsForThread, viewerFor, visibleTo, coordinator, groupThreadIsWorking, memberDefaultBot: CLOUD_TEAM ? (email) => { const own = ensureDefaultBot(store, { dataDir: DATA_DIR, person: email, team: CLOUD_TEAM.name }); if (own) void duskOwnChat.claim(own); return own; } : undefined,
   uploads: uploadsFor(createUploadOwners(DATA_DIR), Boolean(CLOUD_TEAM)),
   attachmentInUse: (name) => threadsReferencing(name).length > 0 || store.bots.some((bot) => bot.avatarUrl === `/api/attachments/${name}`),

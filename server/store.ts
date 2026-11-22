@@ -44,6 +44,7 @@ import { sameModelSelection } from "../shared/thread-model.ts";
 import { initialGreetingMessage } from "./initial-greeting.ts"; import { createDefaultBot, defaultBotRefusal } from "./default-bot.ts";
 import { appsFromCreator } from "./inherited-apps.ts";
 import { ThreadCache, type ThreadState } from "./thread-cache.ts";
+import { pageBefore, tailPage, type ThreadPage } from "./thread-pages.ts";
 import { parseMemberRun } from "./room-member-runs.ts";
 import { isProjectEmoji } from "./project-emoji.ts";
 export { isProjectEmoji };
@@ -1115,26 +1116,14 @@ export class Store {
     return mdb.readThreadPreview(this.roomThreadOf(threadId), limit);
   }
 
-  /** Legacy rows without a parentId chain only on a full load, so a bounded page missing that context falls back to one. */
-  messagesTail(threadId: string, limit: number): { messages: Message[]; hasMore: boolean; activeLeafId: string | null } {
+  messagesTail(threadId: string, limit: number): ThreadPage {
     threadId = this.roomThreadOf(threadId);
-    let state = this.threads.get(threadId);
-    if (!state) {
-      const tail = mdb.readThreadTail(threadId, messagesFile(threadId), limit);
-      const legacyRows = tail.hasMore !== undefined && tail.messages.some((m) => m.parentId === undefined);
-      if (tail.hasMore !== true || legacyRows) {
-        state = this.threads.load(threadId, legacyRows ? mdb.readThread(threadId, messagesFile(threadId)) : tail);
-      } else {
-        return {
-          messages: tail.messages,
-          hasMore: tail.hasMore,
-          activeLeafId: tail.activeLeafId ?? tail.messages.at(-1)?.id ?? null,
-        };
-      }
-    }
-    const { messages, activeLeafId } = state;
-    const start = Math.max(0, messages.length - limit);
-    return { messages: messages.slice(start), hasMore: start > 0, activeLeafId };
+    return tailPage(this.threads, threadId, messagesFile(threadId), limit);
+  }
+
+  messagesBefore(threadId: string, beforeId: string, limit: number): ThreadPage | null {
+    threadId = this.roomThreadOf(threadId);
+    return pageBefore(this.threads, threadId, () => this.thread(threadId), beforeId, limit);
   }
 
   importTranscript(threadId: string, messages: Message[], activeLeafId: string | null, relinked?: ReadonlyArray<{ id: string; parentId: string | null }>): void {
