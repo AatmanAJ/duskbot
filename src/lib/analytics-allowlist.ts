@@ -1,6 +1,6 @@
 // Security: every value a product event carries is a count, a boolean, or a word from one of these lists. A key, a name,
 // an id, a URL or any other string the person or a server chose becomes "other" before it can reach track().
-import { BOT_ROLES } from "@/lib/bot-roles";
+import { CLASSIC_ROLE_IDS } from "@/lib/ready-bot-kit";
 import { BUILT_IN_INSTANCE_DRIVERS } from "@/lib/built-in-instances";
 import { CURATED_CONNECTOR_SLUGS } from "../../shared/connector-curated";
 import type { CredentialTargetId } from "../../shared/credential-request";
@@ -58,7 +58,7 @@ export function engineSlug(
 }
 
 export const APP: readonly string[] = CURATED_CONNECTOR_SLUGS;
-export const BOT_TEMPLATE: readonly string[] = BOT_ROLES.map((role) => role.id);
+export const BOT_TEMPLATE: readonly string[] = CLASSIC_ROLE_IDS;
 export const KEY_VIA = ["settings", "computer_panel", "chat_request", "apps", "model_picker"] as const;
 export type KeyVia = (typeof KEY_VIA)[number];
 export const KEY_RESULT = ["ok", "rejected", "unverified", "error"] as const;

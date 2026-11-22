@@ -6,6 +6,8 @@ export type ReadyBotCategory = "everyday" | "work" | "writing" | "design" | "sal
 
 export const READY_BOT_CATEGORIES: readonly ReadyBotCategory[] = ["everyday", "work", "writing", "design", "sales", "personal"];
 
+export const CLASSIC_ROLE_IDS = ["assistant", "inbox", "research", "coder", "community", "ops"] as const;
+
 export interface ReadyBot {
   id: string;
   category: ReadyBotCategory;

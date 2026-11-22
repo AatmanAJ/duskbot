@@ -1,4 +1,5 @@
-import { CLASSIC_ROLE_IDS, readyBot } from "./ready-bots";
+import { CLASSIC_ROLE_IDS } from "./ready-bot-kit";
+import { readyBot } from "./ready-bots";
 
 export interface BotRole {
   id: string;
