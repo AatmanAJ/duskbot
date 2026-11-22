@@ -60,10 +60,14 @@ describe("every pairing code waits for the presence check", () => {
     const root = new URL("../", import.meta.url);
     const drawing = (readdirSync(root, { recursive: true }) as string[])
       .filter((file) => file.endsWith(".tsx") && !file.startsWith("mobile"))
-      .filter((file) => readFileSync(new URL(file, root), "utf8").includes('from "qrcode.react"'))
+      .filter((file) => readFileSync(new URL(file, root), "utf8").includes("<PairingQr "))
       .map((file) => file.replace(/^components[\\/]/, "").split("\\").join("/"))
       .sort();
     expect(drawing).toEqual(["MobilePairingCard.tsx", "PhoneFlowRows.tsx", "PhoneSetupFlow.tsx", "ServerPairingCard.tsx", "TeamPhoneCard.tsx"]);
+    const library = (readdirSync(root, { recursive: true }) as string[])
+      .filter((file) => file.endsWith(".tsx") && !file.startsWith("mobile"))
+      .filter((file) => readFileSync(new URL(file, root), "utf8").includes('"qrcode.react"'));
+    expect(library.map((file) => file.split("\\").join("/"))).toEqual(["components/PairingQr.tsx"]);
     for (const file of drawing.filter((name) => name !== "PhoneFlowRows.tsx")) expect(source(file)).toContain("requireUserPresence");
   });
 
