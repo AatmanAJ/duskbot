@@ -8,7 +8,9 @@ import { PHONE_LAYOUT } from "@/lib/use-media-query";
 import { api, useStore } from "@/state/store";
 import { focusComposerWhenShown } from "../AskCard";
 import { PANEL_DOCKS_AT } from "../PanelSlot";
-import { WelcomeFlow } from "./WelcomeFlow";
+import { lazyScreen } from "../lazy-screen";
+
+export const WelcomeFlowScreen = lazyScreen("WelcomeFlow", async () => (await import("./WelcomeFlow")).WelcomeFlow);
 
 /**
  * Security: a remote page the desktop app loads gets a reduced but truthy window.duskDesktop without remoteClient, and is no
@@ -70,7 +72,7 @@ export function WelcomeGate({ viewer }: { viewer: WelcomeViewer | null }) {
   const fallback = state.bots.find((b) => !b.hidden && b.chiefOfStaff) ?? state.bots.find((b) => !b.hidden) ?? null;
   const replay = state.welcomeOpen && !due;
   return (
-    <WelcomeFlow
+    <WelcomeFlowScreen
       replay={replay}
       cloudHome={viewer.cloudHome === true}
       onDone={(botId) => {
