@@ -24,7 +24,7 @@ import { ENTITLEMENT_DEFAULT_TTL_MS } from "../../../shared/entitlement.ts";
 import { ManagedCloudError } from "../../dashboard/server/clouds/managed.ts";
 import type { HomeClient, HomePower, StoredCloud } from "../../dashboard/server/clouds/types.ts";
 import type { HomeLifecycleState } from "./state.ts";
-import type { HomeUpdates } from "./home-update.ts";
+import { homeVersion, relayExits, takesLinkGrant, type HomeUpdates } from "./home-update.ts";
 import { createEgressGuard } from "./egress.ts";
 
 /** how long open apps have between the owner's pause notice and the machine stopping (the reconciler's next pass or so) */
@@ -305,7 +305,7 @@ export function createLifecycle(deps: LifecycleDeps) {
     const token = deps.entitle(c);
     if (!token) return;
     const push = (grant: string | null) => deps.home.entitle!(homeOrigin(c), secret(c), token, grant);
-    const grant = deps.linkGrant?.(c) ?? null;
+    const grant = takesLinkGrant(c) ? deps.linkGrant?.(c) ?? null : null;
     let cause: string | null = null;
     try { await push(grant); }
     catch (error) {
@@ -941,6 +941,7 @@ export function createLifecycle(deps: LifecycleDeps) {
     if (egress.paused(c)) return sleepNow(c, "egress", "reconciler");
     if (!c.origin || !b.upstream) publish(c, b.upstream ?? c.origin ?? await provider.origin(c.serverId));
     if (b.wakeStartedAt !== null || c.status !== "running") {
+      if (relayExits(homeVersion(c))) await deps.updates?.asideRelay(c);
       // a resume that kept memory finds the home running (the start command says so); a cold boot starts it
       const started = await provider.run(c.serverId, image.startCommand(c.origin!, homeOrigin(c)), 120);
       if (!started.ok || !(await deps.home.healthy(homeOrigin(c), secret(c)))) {

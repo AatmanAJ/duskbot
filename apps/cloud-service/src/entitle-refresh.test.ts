@@ -1,16 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import type { StoredCloud } from "../../dashboard/server/clouds/types.ts";
-import { homeFixture } from "./test-fixture.ts";
+import { homeFixture, SHA } from "./test-fixture.ts";
 
 const HOUR = 3_600_000, MINUTE = 60_000;
 const entitlements = { sign: (cloud: StoredCloud) => `token-for-${cloud.id}` };
 const refused = (status: number, code: string) => Object.assign(new Error("Cloud home request failed."), { status, code });
 
 async function runningHome() {
-  const f = await homeFixture({ entitlements, linkGrant: () => "grant" });
+  const f = await homeFixture({ entitlements, linkGrant: () => "grant", release: () => ({ sha256: SHA, url: "https://packages.example.test/home.tgz", version: "0.2.27" }) });
   const { c } = await f.paid();
   expect(c.status).toBe("running");
   const pass = async (ms: number) => { f.advance(ms); c.nextAttemptAt = 0; await f.service.reconcile(); };
+  await pass(MINUTE);
+  expect(c.managed!.update?.guard.current?.version).toBe("0.2.27");
   return { f, c, pass };
 }
 
