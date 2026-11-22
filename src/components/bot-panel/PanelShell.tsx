@@ -8,7 +8,6 @@ import type { Bot, BotSettingsSection } from "@/state/store";
 import { Icon } from "../Icon";
 import { useCaptionChrome } from "../DesktopCapabilities";
 import type { useBotSettingsDerived } from "../bot-settings/useBotSettingsDerived";
-import { ComputerTab } from "./ComputerTab";
 import { panelTabs, screenViewAllowed } from "@/lib/store-app";
 import { PAGES, resolveTarget, TAB_LABEL, type PanelTab, type PanelTarget, type SimplePageId } from "./page-registry";
 import { lazyScreen } from "../lazy-screen";
@@ -22,6 +21,7 @@ export const PanelDetailsTab = lazyScreen("BotPanelDetails", async () => (await 
 export const PanelAdvancedTab = lazyScreen("BotPanelAdvanced", async () => (await import("./AdvancedTab")).AdvancedTab);
 export const PanelAvatarEditor = lazyScreen("BotPanelAvatar", async () => (await import("./AvatarEditorCard")).AvatarEditorCard);
 export const PanelPageBody = lazyScreen("BotPanelPages", async () => (await import("./pages")).PageBody);
+export const PanelComputerTab = lazyScreen("BotPanelComputer", async () => (await import("./ComputerTab")).ComputerTab);
 
 function initialTarget(section: BotSettingsSection | null, link: PanelLink | null): PanelTarget {
   return section ? resolveTarget(linkTarget(section, link)) : { tab: "details" };
@@ -165,7 +165,7 @@ export function BotPanel({ bot, derived, linkedSection, computerRequest = 0, onC
         animate={SWAP.animate}
       >
         {tab === "details" && <PanelDetailsTab bot={bot} derived={derived} onOpen={openPage} />}
-        {tab === "computer" && screenViewAllowed() && <ComputerTab bot={bot} derived={derived} onOpen={openPage} />}
+        {tab === "computer" && screenViewAllowed() && <PanelComputerTab bot={bot} derived={derived} onOpen={openPage} />}
         {tab === "advanced" && <PanelAdvancedTab bot={bot} derived={derived} onOpen={openPage} />}
       </MotionDiv>
     </>

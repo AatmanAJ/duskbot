@@ -117,8 +117,8 @@ vi.mock("@/state/store", async (importOriginal) => {
 });
 
 const { BotSettingsDialog } = await import("./BotSettingsDialog");
-const { BotPanel, PanelPageBody, PanelDetailsTab, PanelAdvancedTab, PanelAvatarEditor } = await import("./bot-panel/PanelShell");
-await Promise.all([PanelPageBody.preload(), PanelDetailsTab.preload(), PanelAdvancedTab.preload(), PanelAvatarEditor.preload()]);
+const { BotPanel, PanelPageBody, PanelDetailsTab, PanelAdvancedTab, PanelComputerTab, PanelAvatarEditor } = await import("./bot-panel/PanelShell");
+await Promise.all([PanelPageBody.preload(), PanelDetailsTab.preload(), PanelAdvancedTab.preload(), PanelComputerTab.preload(), PanelAvatarEditor.preload()]);
 const { PanelHero } = await import("./bot-panel/PanelHero");
 const { AvatarEditorCard } = await import("./bot-panel/AvatarEditorCard");
 const { DetailsTab } = await import("./bot-panel/DetailsTab");
@@ -208,7 +208,7 @@ const segment = (rendered: { nodes: Node[] }, attr: string) => {
   return found.props as { value: unknown; onChange: (value: string) => void; options: Array<{ value: string; label: unknown; disabled?: boolean }> };
 };
 const has = (rendered: { nodes: Node[] }, attr: string, value: unknown = true) => rendered.nodes.some((node) => node.props[attr] === value);
-const panelWrappers = new Map<unknown, unknown>([[DetailsTab, PanelDetailsTab], [AdvancedTab, PanelAdvancedTab], [AvatarEditorCard, PanelAvatarEditor]]);
+const panelWrappers = new Map<unknown, unknown>([[DetailsTab, PanelDetailsTab], [AdvancedTab, PanelAdvancedTab], [ComputerTab, PanelComputerTab], [AvatarEditorCard, PanelAvatarEditor]]);
 const ofType = (rendered: { nodes: Node[] }, type: unknown) => rendered.nodes.find((node) => node.type === type || node.type === panelWrappers.get(type));
 const click = (node: Node, detail = 1) => (node.props.onClick as (event: { detail: number }) => void)({ detail });
 const change = (node: Node, value: string) => (node.props.onChange as (event: unknown) => void)({ target: { value } });

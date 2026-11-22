@@ -4,7 +4,7 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./PanelShell", () => ({ PanelDetailsTab: { preload: () => Promise.resolve() }, PanelAdvancedTab: { preload: () => Promise.resolve() } }));
+vi.mock("./PanelShell", () => ({ PanelDetailsTab: { preload: () => Promise.resolve() }, PanelAdvancedTab: { preload: () => Promise.resolve() }, PanelComputerTab: { preload: () => Promise.resolve() } }));
 
 const saved = new Map<string, string>();
 vi.stubGlobal("localStorage", { getItem: (key: string) => saved.get(key) ?? null, setItem: (key: string, value: string) => void saved.set(key, value) });
