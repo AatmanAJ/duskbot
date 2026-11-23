@@ -1,0 +1,48 @@
+{
+  "about": "Pepper's routine sheet with two recent runs: one finished, one stopped while it ran. The dashed box is drawn by the capture, not the app: it lists each run row's text without the parts hidden from assistive tech, as a screen reader reads it. The routine is made through the routines route, run twice, and the second run is cancelled through its cancel route.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1280,
+  "height": 760,
+  "scale": 2,
+  "script": [
+    {
+      "waitMs": 2500
+    },
+    {
+      "text": "Three new emails, none urgent."
+    }
+  ],
+  "steps": [
+    {
+      "eval": "(async () => {\n  const j = async (path, init) => { const r = await fetch(path, { headers: { 'content-type': 'application/json' }, ...init }); return r.json(); };\n  const pepper = (await j('/api/bots')).bots.find((b) => b.name === 'Pepper');\n  const { routine } = await j('/api/routines', { method: 'POST', body: JSON.stringify({ name: 'Morning inbox', prompt: 'Sum up my inbox in one line.', botId: pepper.id, schedule: { type: 'daily', time: '09:00', weekdays: [0, 1, 2, 3, 4, 5, 6] } }) });\n  const runs = async () => (await j('/api/routines')).runs.filter((run) => run.routineId === routine.id);\n  const until = async (test) => { for (let i = 0; i < 120; i++) { const all = await runs(); if (test(all)) return all; await new Promise((r) => setTimeout(r, 250)); } throw new Error('runs never settled'); };\n  await fetch(`/api/routines/${routine.id}/run`, { method: 'POST' });\n  await until((all) => all.some((run) => run.status === 'completed'));\n  await fetch(`/api/routines/${routine.id}/run`, { method: 'POST' });\n  const busy = await until((all) => all.some((run) => run.status === 'running'));\n  const second = busy.find((run) => run.status === 'running');\n  await fetch(`/api/routine-runs/${second.id}/cancel`, { method: 'POST' });\n  await until((all) => all.some((run) => run.status === 'cancelled'));\n  return (await runs()).map((run) => run.status);\n})()"
+    },
+    {
+      "reload": true
+    },
+    {
+      "waitMs": 800
+    },
+    {
+      "click": "Open Pepper's profile"
+    },
+    {
+      "waitMs": 900
+    },
+    {
+      "eval": "(() => { const b = document.querySelector('[data-panel-routine] button[aria-haspopup=dialog]'); b?.click(); return Boolean(b); })()"
+    },
+    {
+      "waitMs": 900
+    },
+    {
+      "eval": "(() => {\n  const spoken = (el) => [...el.children].filter((c) => c.getAttribute('aria-hidden') !== 'true').map((c) => c.textContent.trim()).filter(Boolean).join(', ');\n  const rows = [...document.querySelectorAll('[data-routine-run]')];\n  const list = rows[0].closest('ul');\n  const box = document.createElement('div');\n  box.style.cssText = 'margin:14px 0 0;padding:10px 12px;border-radius:12px;border:1px dashed color-mix(in srgb, var(--color-ink) 30%, transparent);font:12px/18px ui-monospace,Menlo,monospace;color:var(--color-ink);white-space:normal';\n  box.innerHTML = '<div style=\"opacity:.6;margin-bottom:6px\">Capture overlay: each run as a screen reader reads it</div>' + rows.map((r) => '<div>' + spoken(r).replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</div>').join('');\n  list.after(box);\n  return rows.map(spoken);\n})()"
+    },
+    {
+      "waitMs": 400
+    },
+    {
+      "shot": true
+    }
+  ]
+}

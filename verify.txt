@@ -1,0 +1,18 @@
+## the new test on untouched main (dbfefd93d)
+   × a recent run says in words whether it worked, not only with a coloured mark 20ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+
+## the same test on this branch (470ce939c)
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9208 English strings)
+
+## related tests: src/components/routines src/components/automations src/lib/automations
+ Test Files  5 passed (5)
+      Tests  53 passed (53)
