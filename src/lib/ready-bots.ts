@@ -3,14 +3,12 @@ import type { ReadyBot } from "./ready-bot-kit.ts";
 import { assistant, callCoach, designCritic, ops, outreach, research, study, travel, writer } from "./ready-bots-catalog.ts";
 import { analyst, bookkeeper, coder, community, inbox, meetingNotes, social, support } from "./ready-bots-work.ts";
 
-export { READY_BOT_CATEGORIES, type ReadyBot, type ReadyBotCategory } from "./ready-bot-kit.ts";
+export { CLASSIC_ROLE_IDS, READY_BOT_CATEGORIES, type ReadyBot, type ReadyBotCategory } from "./ready-bot-kit.ts";
 
 export const READY_BOTS: ReadyBot[] = [
   assistant, ops, inbox, research, writer, coder, analyst, bookkeeper, meetingNotes, support, community, social, outreach, callCoach,
   designCritic, travel, study,
 ];
-
-export const CLASSIC_ROLE_IDS = ["assistant", "inbox", "research", "coder", "community", "ops"] as const;
 
 export function readyBot(id: string): ReadyBot | undefined {
   return READY_BOTS.find((bot) => bot.id === id);
