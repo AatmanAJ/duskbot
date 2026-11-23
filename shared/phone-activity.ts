@@ -75,6 +75,11 @@ export function turnActivityStart(startedAt: number): TurnActivityState {
   return { phase: "working", steps: 0, startedAt: Math.floor(startedAt) };
 }
 
+/** How a finished turn ends its activity: a turn that ran to its end is done, a quiet "(pass)" with no reply included. */
+export function endedTurnActivity(turn: { ok: boolean; stopped: boolean }): TurnActivityEvent {
+  return turn.ok && !turn.stopped ? { type: "done" } : { type: "stopped" };
+}
+
 export const turnActivityEnded = (state: TurnActivityState) => state.phase === "done" || state.phase === "stopped";
 
 /** The next state, or the same object when the event changes nothing; a finished activity takes no more events. */

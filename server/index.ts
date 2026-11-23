@@ -637,6 +637,7 @@ import { createDirectSockets } from "./routes/direct-sockets.ts";
 import { createBrowserViewerRoutes } from "./routes/browser-viewers.ts";
 import { localDesktopTarget, localVmViewerStatus } from "./desktop-viewer-targets.ts";
 import { viewerTargetId } from "../shared/desktop-viewer.ts";
+import { endedTurnActivity } from "../shared/phone-activity.ts";
 import { createComputerPreviews } from "./computer-previews.ts";
 import { createAntigravityLeftoverRoutes } from "./routes/antigravity-leftovers.ts";
 import { createAntigravityAccountRoutes } from "./routes/antigravity-accounts.ts";
@@ -7556,7 +7557,7 @@ bus.subscribe((event: RuntimeEvent) => {
       }
       const reply = lastReply.get(event.threadId) ?? "";
       const passedQuietly = streamedReplies.passedQuietly(event.threadId, { turnId: completedTurnId, startedAt: turnStartedAt.get(event.threadId), reply }) && event.ok && !stopped;
-      if (!internal) turnActivityToPhones(event.threadId, event.ok && !stopped && !passedQuietly ? { type: "done" } : { type: "stopped" }, { reply });
+      if (!internal) turnActivityToPhones(event.threadId, endedTurnActivity({ ok: event.ok, stopped }), { reply });
       if (personStops.stopped(event.threadId, completedTurnId)) pushStoppedTurn(completedTurnId);
       personStops.turnEnded(event.threadId, completedTurnId);
       lastReply.delete(event.threadId);
