@@ -1,0 +1,59 @@
+{
+  "about": "Two archived bots, Waffle and Crumpet, made through the API, then Settings > Advanced features > Archived bots > Restore all. The server refusing Crumpet is staged: fetch is wrapped in the page so that one PATCH answers 409 with a busy message that, like the server's own, does not name the bot; Waffle's PATCH goes to the real server.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1280,
+  "height": 760,
+  "scale": 2,
+  "steps": [
+    {
+      "eval": "(async () => {\n  const j = { 'content-type': 'application/json' };\n  const ids = {};\n  for (const [name, color] of [['Waffle', 'green'], ['Crumpet', 'blue']]) {\n    const made = await (await fetch('/api/bots', { method: 'POST', headers: j, body: JSON.stringify({ name }) })).json();\n    ids[name] = made.bot.id;\n    await fetch('/api/bots/' + made.bot.id, { method: 'PATCH', headers: j, body: JSON.stringify({ color, hidden: true }) });\n  }\n  localStorage.setItem('qa-crumpet', ids.Crumpet);\n  return JSON.stringify(ids);\n})()"
+    },
+    {
+      "reload": true
+    },
+    {
+      "waitMs": 800
+    },
+    {
+      "eval": "(() => {\n  const crumpet = localStorage.getItem('qa-crumpet');\n  const real = window.fetch.bind(window);\n  window.fetch = (input, init) => {\n    const url = typeof input === 'string' ? input : input.url;\n    if (init?.method === 'PATCH' && url.includes('/api/bots/' + crumpet)) {\n      return Promise.resolve(new Response(JSON.stringify({ error: 'This bot is busy with a task. Try again when it is done.' }), { status: 409, headers: { 'content-type': 'application/json' } }));\n    }\n    return real(input, init);\n  };\n  return true;\n})()"
+    },
+    {
+      "click": "You"
+    },
+    {
+      "waitMs": 400
+    },
+    {
+      "click": "Settings"
+    },
+    {
+      "waitMs": 700
+    },
+    {
+      "click": "Advanced features"
+    },
+    {
+      "waitMs": 600
+    },
+    {
+      "eval": "(document.querySelector('[data-settings-open=archived]').click(), true)"
+    },
+    {
+      "waitMs": 700
+    },
+    {
+      "shot": "f01-two-archived",
+      "only": "after"
+    },
+    {
+      "click": "Restore all"
+    },
+    {
+      "waitMs": 1200
+    },
+    {
+      "shot": true
+    }
+  ]
+}

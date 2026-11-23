@@ -1,0 +1,18 @@
+## the new test on untouched main (dbfefd93d)
+   × restore all keeps the bots it did restore when another one fails, and names the one left 23ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+
+## the same test on this branch (a4fb93885)
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9209 English strings)
+
+## related tests: src/components/ArchivedBotsPanel src/components/Sidebar src/components/SettingsPanes
+ Test Files  36 passed (36)
+      Tests  396 passed (396)
