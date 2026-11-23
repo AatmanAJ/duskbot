@@ -16,7 +16,7 @@ import { AiStep } from "./AiStep";
 import { BringStatus } from "./BringStep";
 import { CheckoutStep } from "./CheckoutStep";
 import { CloudBringStep, useCloudBringOffered } from "./CloudBringStep";
-import { cloudOwned, freeModel, funnelSteps, nextStep, previousStep, type FunnelPath, type FunnelStep } from "./funnel";
+import { cloudOwned, foundPicks, freeModel, funnelSteps, nextStep, previousStep, type FunnelPath, type FunnelStep } from "./funnel";
 import { useFreeWarmup } from "./free-warmup";
 import { funnelAccount, type FunnelAccountState } from "./funnel-account";
 import { FunnelBar, WelcomeStep } from "./FunnelSteps";
@@ -82,7 +82,7 @@ export function WelcomeFlow({
   /** the person's own cloud, which runs this first run when the desktop app that set it up opened it */
   cloudHome?: boolean;
 }) {
-  const { state, dispatch } = useStore();
+  const { state, dispatch, refreshInstances } = useStore();
   const maus = myDefaultBot(state.bots, useViewerEmail());
   const keepsDraft = !replay && !embedded;
   const root = useRef<HTMLDivElement>(null);
@@ -307,7 +307,11 @@ export function WelcomeFlow({
         track("onboarding_ai", { action: how });
         const free = how === "free" && !cloud ? freeModel(state.instances, engineReady) : undefined;
         freePick.current = free ? { instanceId: free.instanceId, model: free.models.default } : null;
-        next();
+        const picks = foundPicks(how, tested?.instance, state.instances, engineReady);
+        if (!picks.length) { next(); return; }
+        void Promise.allSettled(picks.map((instance) => api(`/api/instances/${encodeURIComponent(instance.instanceId)}`, { method: "PATCH", body: JSON.stringify({ chosen: true }), signal: AbortSignal.timeout(10_000) })))
+          .then(() => refreshInstances().catch(() => {}))
+          .finally(next);
       }} />;
       break;
     case "bring":

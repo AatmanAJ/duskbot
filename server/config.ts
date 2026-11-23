@@ -1068,6 +1068,15 @@ export function persistableInstanceConfigs(cfg: AppConfig): InstanceConfigMap {
   return map;
 }
 
+/** The instance map with this provider marked as the person's choice; null when it is unknown, hidden or chosen already. */
+export function withProviderChosen(cfg: AppConfig, instanceId: string): InstanceConfigMap | null {
+  const instances = persistableInstanceConfigs(cfg);
+  const entry = instances[instanceId];
+  if (!entry || entry.chosen === true || entry.hidden === true) return null;
+  entry.chosen = true;
+  return instances;
+}
+
 interface InstanceCliUpdate {
   ok: boolean;
   config: AppConfig;

@@ -50,6 +50,9 @@ export interface InstanceRouteDeps {
   releaseProvider?(instanceId: string): Promise<void>;
   /** Called when an engine finishes signing in or out so cached plan limits refresh promptly. */
   onAuthChanged?(): void;
+  /** Records the person's choice of a provider without reloading it: starting its sign-in here is that choice, so a
+   * provider the app only found on this computer is no longer passed over for new bots and sends with no AI. */
+  chooseProvider?(instanceId: string): void;
 }
 
 export function createInstanceRoutes(deps: InstanceRouteDeps): RouteHandler {
@@ -233,6 +236,7 @@ export function createInstanceRoutes(deps: InstanceRouteDeps): RouteHandler {
             return json(res, 403, { error: "Continue with ChatGPT on the computer running dusk bot. Hosted Pro sign-in requires OpenAI's hosted-app approval." });
           }
           const startBody = await readBody(req, 4096).catch(() => null);
+          deps.chooseProvider?.(instanceId);
           const started = await providerAuthSessions.start(instance, owner, { browser: startBody?.browser === true });
           if (started.phase === "succeeded") {
             registry.forgetSnapshots();

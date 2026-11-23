@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aiName, aiTiles, freeModel, funnelSteps, nextStep, previousStep } from "./funnel";
+import { aiName, aiTiles, foundPicks, freeModel, funnelSteps, nextStep, previousStep } from "./funnel";
 
 const ai = (instanceId: string, driverKind: string, ready = false, extra: Record<string, unknown> = {}) => ({
   instanceId, driverKind, displayName: instanceId, access: "subscription", snapshot: { state: ready ? "available" : "unavailable", ...extra },
@@ -71,5 +71,21 @@ describe("the AI grid", () => {
   it("offers the free model only when it is ready", () => {
     expect(freeModel([ai("opencodeGo", "opencodeGo", true, { freeFallback: true })], ready)?.instanceId).toBe("opencodeGo");
     expect(freeModel([ai("opencodeGo", "opencodeGo", false, { freeFallback: true })], ready)).toBeUndefined();
+  });
+});
+
+describe("the AIs the AI step records as chosen", () => {
+  const found = { found: true as const };
+  it("records the AI the person used, and every ready card they continued with, when the server only found it here", () => {
+    const claude = { ...ai("claude", "claudeAgent", true), ...found };
+    const codex = { ...ai("codex", "codex", true), ...found };
+    const grok = ai("grok", "grokAgent", true);
+    const cursor = { ...ai("cursor", "cursorAgent", false), ...found };
+    const all = [claude, codex, grok, cursor];
+    expect(foundPicks("own", claude, all, ready)).toEqual([claude]);
+    expect(foundPicks("own", grok, all, ready), "one already chosen needs nothing").toEqual([]);
+    expect(foundPicks("connected", undefined, all, ready).map((one) => one.instanceId).sort()).toEqual(["claude", "codex"]);
+    expect(foundPicks("free", claude, all, ready)).toEqual([]);
+    expect(foundPicks("later", claude, all, ready)).toEqual([]);
   });
 });

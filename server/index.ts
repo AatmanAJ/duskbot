@@ -185,7 +185,7 @@ import {
   roomMemoryCaptureEnabled,
   tidyHour,
   builtInBrowserEnabled,
-  persistableInstanceConfigs,
+  persistableInstanceConfigs, withProviderChosen,
   type AppConfig,
   vpsSshAlias, vpsIsThisServer,
   mergeVpsConfig,
@@ -13565,7 +13565,7 @@ ROUTES.push(createInstanceRoutes({
   providerConfigBusy: { get: () => providerConfigBusy, set: (busy) => { providerConfigBusy = busy; } },
   providerInstancesChanging, describeInstances, persistProviderInstance, configStatus, broadcast, testCliBinary,
   cliProbeEnvironment, threadBusy, botForThread, activeGroupTurnForBot, checkInstance: testedAi.check, cloudHome: placeFromEnv(process.env) === "cloud",
-  releaseProvider, onAuthChanged: () => { clearPlanUsageCache(); limitClock.invalidate(); },
+  releaseProvider, onAuthChanged: () => { clearPlanUsageCache(); limitClock.invalidate(); }, chooseProvider: (instanceId) => { const instances = withProviderChosen(cfg, instanceId); if (instances) { saveConfig({ instances }, { replaceInstances: true }); cfg.instances = instances; } },
 }));
 const modelCatalog = new ModelCatalogStore({ dataDir: DATA_DIR });
 ROUTES.push(createModelProviderRoutes({

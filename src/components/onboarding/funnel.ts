@@ -75,6 +75,8 @@ interface AiTileInstance {
   driverKind: string;
   access?: string;
   unknownDriver?: true;
+  /** found on this computer and never chosen: the server passes it over until the person picks it */
+  found?: true;
   snapshot: { state: string; authenticated?: boolean; freeFallback?: boolean; authenticationUnavailableReason?: string };
 }
 
@@ -126,6 +128,15 @@ export function aiTileOf(instance: { instanceId: string; driverKind: string }): 
 export function aiName(instance: { instanceId: string; driverKind: string; displayName: string }): string {
   const tile = TILES.find((one) => one.ids.includes(instance.instanceId) || one.drivers.includes(instance.driverKind));
   return tile && tile.id !== "local" ? tile.label : instance.displayName;
+}
+
+/** The AIs the person just picked on the AI step that the server only found on this computer: Use (own) picks the one it
+ * named, Continue (connected) every ready card it showed. Each is recorded as chosen, or the first send finds no AI. */
+export function foundPicks<Instance extends AiTileInstance>(how: string, named: Instance | undefined, instances: readonly Instance[],
+  ready: (instance: Instance) => boolean): Instance[] {
+  if (how === "own") return named?.found ? [named] : [];
+  if (how !== "connected") return [];
+  return aiTiles(instances, ready).map((tile) => tile.instance).filter((instance) => instance.found === true && ready(instance));
 }
 
 /** The ready free model, if there is one: a way to start now and connect a better AI later. */

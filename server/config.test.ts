@@ -21,7 +21,7 @@ import { cacheUntilConfigChanges,
   localVmMode,
   parseConfigPatch,
   parseStoredConfig,
-  persistableInstanceConfigs,
+  persistableInstanceConfigs, withProviderChosen,
   roomTurnTimeoutMinutes,
   mcpCallTimeoutMinutes,
   threadEventLogMaxBytes,
@@ -2453,5 +2453,15 @@ describe("X research's included relay token", () => {
   it("keeps the plan's research token and the person's own treg key as workspace credentials that never reach an engine", () => {
     expect(WORKSPACE_CREDENTIAL_ENV).toContain("DUSK_CLOUD_X_TOKEN");
     expect(WORKSPACE_CREDENTIAL_ENV).toContain("DUSK_TREG_KEY");
+  });
+});
+
+describe("a provider the person chose", () => {
+  it("is marked chosen once, never when hidden or unknown", () => {
+    const cfg = { instances: { claude: { driver: "claudeAgent" }, grok: { driver: "grokAgent", hidden: true } } } as unknown as AppConfig;
+    expect(withProviderChosen(cfg, "claude")?.claude).toMatchObject({ driver: "claudeAgent", chosen: true });
+    expect(withProviderChosen(cfg, "grok")).toBeNull();
+    expect(withProviderChosen(cfg, "nobody")).toBeNull();
+    expect(withProviderChosen({ instances: { claude: { driver: "claudeAgent", chosen: true } } } as unknown as AppConfig, "claude")).toBeNull();
   });
 });
