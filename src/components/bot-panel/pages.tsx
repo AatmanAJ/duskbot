@@ -20,7 +20,7 @@ import { LibraryPage } from "./LibraryTab";
 import type { SimplePageId } from "./page-registry";
 import { BotSwitch, buttonCls, Card, fieldCls, LinkRow, NoteRow, RadioRow, rowCls, SwitchRow, TextRow, TrashButton } from "./rows";
 import { ForgetUndoToast } from "./modals/MemoryModal";
-import { useMemoryEditor } from "./modals/use-memory-editor";
+import { forgetLabel, useMemoryEditor } from "./modals/use-memory-editor";
 import { useSkillActions } from "./modals/use-skill-actions";
 
 type Derived = ReturnType<typeof useBotSettingsDerived>;
@@ -107,7 +107,7 @@ export function MemoryPage({ bot }: PageContext) {
         ) : notes.map((note) => (
           <div key={`${note.path}:${note.line}:${note.text}`} data-memory-note={note.line ?? note.path} className={rowCls}>
             <div className="min-w-0 flex-1 text-[13px] leading-[1.45] text-ink">{note.text}</div>
-            <TrashButton label={t("botPanel.memory.forget")} disabled={saving} onClick={() => forget(note)} />
+            <TrashButton label={forgetLabel(note.text)} disabled={saving} onClick={() => forget(note)} />
           </div>
         ))}
         {error && <NoteRow tone="warn">{error}</NoteRow>}
