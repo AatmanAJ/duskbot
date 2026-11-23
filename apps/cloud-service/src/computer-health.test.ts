@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { CLOUD_HOME } from "../../../electron/legacy-names.mjs";
-import { COMPUTER_CHECK_MARK, COMPUTER_CHECK_SCRIPT } from "./home.ts";
+import { COMPUTER_CHECK_MARK, COMPUTER_CHECK_SCRIPT, computerCheckCommand } from "./home.ts";
 import { COMPUTER_CHECK_MS, parseComputerCheck } from "./computer-health.ts";
 import { cleanup, homeFixture } from "./test-fixture.ts";
 
@@ -54,7 +54,7 @@ printf 000; exit 7`);
     await listen(join(dir, "docker.sock")); await listen(join(dir, "gate.sock"));
     const script = COMPUTER_CHECK_SCRIPT.replaceAll("/etc/systemd/system", etc).replaceAll("/var/run/docker.sock", join(dir, "docker.sock")).replaceAll(CLOUD_HOME.root, root);
     writeFileSync(join(dir, "check"), script);
-    const run = () => execFileSync("bash", [join(dir, "check")], { encoding: "utf8", env: { PATH: `${bin}:/usr/bin:/bin:/usr/sbin:/sbin`, HOME: dir } }).trim();
+    const run = (refresh = false) => execFileSync("bash", [join(dir, "check"), ...(refresh ? ["refresh"] : [])], { encoding: "utf8", env: { PATH: `${bin}:/usr/bin:/bin:/usr/sbin:/sbin`, HOME: dir } }).trim();
     const asked = () => existsSync(join(dir, "systemctl.log")) ? readFileSync(join(dir, "systemctl.log"), "utf8") : "";
     const set = (flag: string, on = true) => { if (on) writeFileSync(join(dir, flag), ""); else rmSync(join(dir, flag), { force: true }); };
     return { dir, etc, run, asked, set };
@@ -89,13 +89,20 @@ printf 000; exit 7`);
     expect(m.run()).toBe("down docker");
   });
 
-  it("restarts a gate still running an older package's code, once", async () => {
+  it("restarts a gate still running an older package's code once, and only when asked to (the home is idle)", async () => {
     const m = await machine();
     m.set("docker-up"); m.set("gate-up"); writeFileSync(join(m.dir, "gate-started"), "50\n");
-    expect(m.run()).toBe("healed units gate-code");
-    expect(m.run()).toBe("ok");
+    expect(m.run()).toBe("healed units");
+    expect(m.asked()).not.toContain("restart omb-docker-gate.service");
+    expect(m.run(true)).toBe("healed gate-code");
+    expect(m.run(true)).toBe("ok");
     m.set("gate-up", false); m.set("gate-broken");
     expect(m.run()).toBe("down gate");
+  });
+
+  it("sends the refresh only with the idle flag, under the fake machine's mark", () => {
+    expect(computerCheckCommand(false)).toMatch(new RegExp(`' ${COMPUTER_CHECK_MARK}$`));
+    expect(computerCheckCommand(true)).toMatch(new RegExp(`' ${COMPUTER_CHECK_MARK} refresh$`));
   });
 });
 

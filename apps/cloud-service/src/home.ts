@@ -462,11 +462,13 @@ export const COMPUTER_CHECK_MARK = "dusk-computer-check";
  * back. Idempotent. Prints one line of fixed words: `ok`, `none` (no docker here), `healed <what>...` or `down docker|gate`.
  * - drop-ins: the gate restarts without a start limit, and docker.service wants it, so a docker restart brings it back
  * - docker: started (or restarted when it does not answer its ping three times)
- * - the gate: restarted when its socket gives no HTTP 200 to /_ping, or when it started before the installed package
- *   (it still runs the gate code of an older package)
+ * - the gate: restarted when its socket gives no HTTP 200 to /_ping, or, with the argument `refresh` (sent only while
+ *   the home is idle, as a restart cuts live bot computer sessions), when it started before the installed package (it
+ *   still runs the gate code of an older package)
  */
 export const COMPUTER_CHECK_SCRIPT = `set -u
 # ${COMPUTER_CHECK_MARK}
+refresh="\${1:-}"
 gate=omb-docker-gate.service
 unit=/etc/systemd/system/$gate
 installed=${ROOT}/installed
@@ -505,7 +507,7 @@ if [ -f "$unit" ]; then
   [ -n "$sock" ] || sock=/run/${HOME_GATE_RUN}/docker.sock
   gping() { [ -S "$sock" ] && [ "$(curl -s -o /dev/null -w '%{http_code}' -m 5 --unix-socket "$sock" http://docker/_ping 2>/dev/null)" = 200 ]; }
   stale=""
-  if [ -f "$installed" ] && systemctl is-active --quiet $gate; then
+  if [ "$refresh" = refresh ] && [ -f "$installed" ] && systemctl is-active --quiet $gate; then
     since="$(date -d "$(systemctl show -p ActiveEnterTimestamp --value $gate)" +%s 2>/dev/null)" || since=""
     if [ -n "$since" ] && [ "$since" -lt "$(stat -c %Y "$installed")" ]; then stale=1; fi
   fi
@@ -521,11 +523,11 @@ if [ -f "$unit" ]; then
 fi
 if [ -n "$fixed" ]; then echo "healed$fixed"; else echo ok; fi
 `;
-export const COMPUTER_CHECK_COMMAND = `sudo -n bash -c ${shellQuote(COMPUTER_CHECK_SCRIPT)}`;
+export const computerCheckCommand = (refreshGate: boolean) => `sudo -n bash -c ${shellQuote(COMPUTER_CHECK_SCRIPT)} ${COMPUTER_CHECK_MARK}${refreshGate ? " refresh" : ""}`;
 
 export const HOME_IMAGE: MachineImage = {
   homeVolume: INSTABOX_HOME_VOLUME, packagePath: INSTABOX_PACKAGE_FILE, restorePath: INSTABOX_RESTORE_FILE,
   bootFile, claimBootFile, bootContent, setupScript: homeSetupScript,
   installCommand, startCommand, restoreCommand: RESTORE_COMMAND, rollbackCommand: ROLLBACK_COMMAND, desktopStatusCommand: DESKTOP_STATUS_COMMAND, phoneRelayAsideCommand: PHONE_RELAY_ASIDE_COMMAND,
-  computerCheckCommand: COMPUTER_CHECK_COMMAND,
+  computerCheckCommand,
 };

@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { COMPUTER_CHECK_MARK, DESKTOP_IMAGE_STATUS, homeControlScript, homeSetupScript, HOME_CONTROL, HOME_SCREEN_DIRECT_PORTS } from "./home.ts";
 import { createReleaseFile, MISBLAMED, type HomeRelease } from "./home-update.ts";
+import { COMPUTER_CHECK_MS } from "./computer-health.ts";
 import { signRelease, type ReleaseKey } from "./release-signing.ts";
 import { createPolicySource, signPolicy, verifyPolicy } from "./update-policy.ts";
 import { homeFixture, cleanup } from "./test-fixture.ts";
@@ -200,7 +201,13 @@ describe("staged home updates", () => {
     t.offer(release("1.1.0"));
     await t.pass(); await t.pass();
     expect(t.commands().filter(x => x.includes("omb-home install") && x.includes(sha("1.1.0")))).toHaveLength(0);
+    // a computer found down is not checked again on every pass: each repair attempt holds a reconciler lane for minutes
+    const checks = () => t.commands().filter(x => x.includes(COMPUTER_CHECK_MARK)).length;
+    const tried = checks();
     t.f.advance(2 * 60_000);
+    await t.pass();
+    expect(checks()).toBe(tried);
+    t.f.advance(COMPUTER_CHECK_MS);
     await t.pass();
     expect(t.c.managed!.installed).toBe(sha("1.1.0"));
     // the gate is checked again right after the new package starts
