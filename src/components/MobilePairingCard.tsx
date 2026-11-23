@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Check, ChevronLeft, ChevronRight, KeyRound, QrCode } from "../icons";
-import { QRCodeSVG } from "qrcode.react";
+import { PairingQr } from "./PairingQr";
 
 import type { MobileDevice, MobilePairingRequest, MobilePairingResponse } from "../../shared/mobile-link";
 import { companionBridge } from "@/lib/companion-bridge";
@@ -272,7 +272,7 @@ export function MobilePairingCard({ remote, children }: {
         <>
           {qrStep ? (
             <div role="img" aria-label={t("settings.mobile.qr")} aria-busy={!offer} className="flex size-[232px] items-center justify-center rounded-[16px] bg-white p-3">
-              {offer ? <QRCodeSVG value={offer.link} size={208} level="M" includeMargin={false} bgColor="#ffffff" fgColor="#1b1b1f" aria-hidden="true" />
+              {offer ? <PairingQr value={offer.link} size={208} level="M" includeMargin={false} bgColor="#ffffff" fgColor="#1b1b1f" aria-hidden="true" />
                 : <span className="size-[208px] animate-pulse rounded-[8px] bg-[#1b1b1f]/[0.06] motion-reduce:animate-none" />}
             </div>
           ) : offer && offer.code === null ? (

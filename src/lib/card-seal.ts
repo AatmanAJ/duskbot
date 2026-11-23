@@ -1,4 +1,3 @@
-import { Aes256Gcm, CipherSuite, DhkemP256HkdfSha256, HkdfSha256 } from "@hpke/core";
 import {
   CARD_SECRET_INFO, cardSecretAAD, SEALED_VALUE_INFO, sealedValueAAD, sealKeySigningInput,
   type CardSealKey, type SealedCardSecret, type SealPurpose,
@@ -60,6 +59,7 @@ export async function trustSealKey(key: CardSealKey): Promise<void> {
 async function hpkeSeal(plain: Uint8Array, key: CardSealKey, info: string, aad: Uint8Array): Promise<SealedCardSecret> {
   try {
     await trustSealKey(key);
+    const { Aes256Gcm, CipherSuite, DhkemP256HkdfSha256, HkdfSha256 } = await import("@hpke/core");
     const suite = new CipherSuite({ kem: new DhkemP256HkdfSha256(), kdf: new HkdfSha256(), aead: new Aes256Gcm() });
     const recipientPublicKey = await suite.kem.importKey("jwk", { kty: "EC", crv: "P-256", x: key.x, y: key.y, ext: true, key_ops: [] }, true);
     const sealed = await suite.seal({ recipientPublicKey, info: new TextEncoder().encode(info) }, plain, aad);
