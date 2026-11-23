@@ -9,7 +9,7 @@ Secrets stay in `~/.config/duskbot/dusk.env` (mode 600). Commands here read them
 `CF` below is shorthand for exporting the Cloudflare token for wrangler:
 
 ```sh
-CF='export CLOUDFLARE_API_TOKEN="$(sed -n "s/^CLOUDFLARE_API_TOKEN=//p" ~/.config/duskbot/dusk.env | tr -d "\"\x27")" CLOUDFLARE_ACCOUNT_ID="$(sed -n "s/^CLOUDFLARE_ACCOUNT_ID=//p" ~/.config/duskbot/dusk.env | tr -d "\"\x27")"'
+CF='export CLOUDFLARE_API_TOKEN="$(sed -n "s/^CLOUDFLARE_API_TOKEN=//p" ~/.config/duskbot/dusk.env | tr -d "\"\047")" CLOUDFLARE_ACCOUNT_ID="$(sed -n "s/^CLOUDFLARE_ACCOUNT_ID=//p" ~/.config/duskbot/dusk.env | tr -d "\"\047")"'
 ```
 
 ## Before: record what to roll back to
