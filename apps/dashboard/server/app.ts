@@ -140,6 +140,8 @@ export function pagePolicy(html: string): string {
 const PAGE_ROUTES = ["/sign-in", "/signin", "/signup", "/welcome", "/claim", "/cloud", "/clouds", "/billing", "/usage", "/account", "/workspaces", "/bots", "/connectors", "/settings", "/devices", "/connect"];
 
 /** what the service answers itself on a shared origin; everything else outside the page base is the site's */
+/** a pairing's 503 is the person's own cloud home not answering: the cloud backend's outages cover that, not this service */
+export const HOME_DID_NOT_ANSWER = /^\/api\/cloud\/desktop\/(?:teams\/[^/?]+\/)?pairing(?:\?|$)/;
 const ACCOUNT_PREFIXES = ["/v1/", "/api/cloud/", "/api/public", "/api/bots", BUG_REPORT_PATH, DASHBOARD_DISCOVERY_PATH];
 /** the owner's panel: the same page bundle at its own top-level path, served only to an admin's session */
 export const ADMIN_PATH = "/admin";
@@ -1146,7 +1148,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
       res.setHeader("x-request-id", requestId);
       res.once("finish", () => {
         if (res.statusCode === 429) ops.noteLimited(clientIp(req, options.trustProxy ?? false));
-        if (res.statusCode >= 500 && !reported.has(res) && !(res.statusCode === 503 && closed))
+        if (res.statusCode >= 500 && !reported.has(res) && !(res.statusCode === 503 && (closed || HOME_DID_NOT_ANSWER.test(req.url ?? ""))))
           incidents.report({ source: "server", name: `Http${res.statusCode}`, message: `${req.method ?? "GET"} answered ${res.statusCode}`, key: `http-${res.statusCode}`, route: req.url, status: res.statusCode, requestId });
       });
       return requestIp.run(clientIp(req, options.trustProxy ?? false), () => route(req, res)).catch(error => {
