@@ -469,6 +469,8 @@ export interface StreamPlugin {
     headers?: Record<string, string>;
     body?: string;
     connectTimeout?: number;
+    /** ios: fail a stream whose response head has not come in this many ms */
+    headTimeout?: number;
     readTimeout?: number;
     stream?: boolean;
     followRedirects?: boolean;
@@ -494,6 +496,12 @@ function fromBase64(b64: string): Uint8Array<ArrayBuffer> {
   for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
   return out;
 }
+
+/** The event stream and a relay read write their head as soon as they open (the server's hello, the relay's first line):
+ * a dial that has not heard it in this long is a dead connection. Other streams, a browser view's, may wait for a browser
+ * to start before their head. */
+const STREAM_CONNECT_MS = 10_000;
+const STREAM_HEAD_GRACE_MS = 2_000;
 
 export function createNativeStreamFetch(plugin: StreamPlugin, webFetch?: typeof fetch): typeof fetch {
   let nextId = 0;
@@ -577,24 +585,29 @@ export function createNativeStreamFetch(plugin: StreamPlugin, webFetch?: typeof 
       parsed.pathname.endsWith("/api/events") ||
       parsed.pathname.endsWith("/stream") ||
       parsed.searchParams.get("stream") === "1";
+    const promptHead = parsed.pathname.endsWith("/api/events") || parsed.searchParams.get("stream") === "1";
     try {
       const openPromise = plugin.open({
         id,
         url: parsed.toString(),
         method: request.method,
         headers,
-        connectTimeout: isStream ? 10_000 : 8_000,
+        connectTimeout: isStream ? STREAM_CONNECT_MS : 8_000,
+        ...(promptHead ? { headTimeout: STREAM_CONNECT_MS } : {}),
         stream: isStream,
         followRedirects: request.redirect !== "error" && request.redirect !== "manual",
         ...(rawBody && rawBody.length ? { body: toBase64(rawBody) } : {}),
       });
+      let headTimer: ReturnType<typeof setTimeout> | undefined;
       const abortPromise = new Promise<never>((_, reject) => {
         rejectOpen = reject;
         if (request.signal.aborted) {
           reject(request.signal.reason ?? new DOMException("Aborted", "AbortError"));
         }
+        if (promptHead) headTimer = setTimeout(() => reject(new TypeError("The stream did not open in time")), STREAM_CONNECT_MS + STREAM_HEAD_GRACE_MS);
       });
-      const { status, headers: resHeaders, body: inlineBody } = await Promise.race([openPromise, abortPromise]);
+      const opened = await Promise.race([openPromise, abortPromise]).finally(() => clearTimeout(headTimer));
+      const { status, headers: resHeaders, body: inlineBody } = opened;
       if (request.signal.aborted) {
         cleanup(true);
         throw request.signal.reason ?? new DOMException("Aborted", "AbortError");

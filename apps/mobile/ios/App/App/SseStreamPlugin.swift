@@ -22,8 +22,10 @@ public class SseStreamPlugin: CAPPlugin, CAPBridgedPlugin {
         let wantStream: Bool
         let followRedirects: Bool
         var resolved = false
+        var responded = false
         var streaming = false
         var closedByClient = false
+        var headTimedOut = false
         var status = 0
         var resHeaders: [String: String] = [:]
         var buffer = Data()
@@ -63,6 +65,7 @@ public class SseStreamPlugin: CAPPlugin, CAPBridgedPlugin {
                 completionHandler(.cancel)
                 return
             }
+            entry.responded = true
             let http = response as? HTTPURLResponse
             let status = http?.statusCode ?? 200
             var resHeaders: [String: String] = [:]
@@ -110,7 +113,9 @@ public class SseStreamPlugin: CAPPlugin, CAPBridgedPlugin {
 
             if !entry.resolved {
                 entry.resolved = true
-                if let error {
+                if entry.headTimedOut {
+                    entry.call.reject("The connection timed out.")
+                } else if let error {
                     entry.call.reject(error.localizedDescription)
                 } else {
                     entry.call.resolve([
@@ -157,6 +162,8 @@ public class SseStreamPlugin: CAPPlugin, CAPBridgedPlugin {
         session.invalidateAndCancel()
     }
 
+    private static let beatingStreamIdleSeconds: TimeInterval = 60
+
     private static func isStreamingUrl(_ url: URL) -> Bool {
         let path = url.path.lowercased()
         if path.hasSuffix("/api/events") || path.hasSuffix("/stream") { return true }
@@ -179,6 +186,7 @@ public class SseStreamPlugin: CAPPlugin, CAPBridgedPlugin {
         let headers = call.getObject("headers") ?? [:]
         let bodyBase64 = call.getString("body")
         let connectTimeoutMs = call.getInt("connectTimeout") ?? 8_000
+        let headTimeoutMs = call.getInt("headTimeout").flatMap { $0 > 0 ? $0 : nil }
         let reqStream = call.getBool("stream") ?? false
         let followRedirects = call.getBool("followRedirects") ?? false
 
@@ -200,7 +208,14 @@ public class SseStreamPlugin: CAPPlugin, CAPBridgedPlugin {
             request.setValue(val, forHTTPHeaderField: rawKey)
         }
 
-        request.timeoutInterval = wantStream ? 60 * 60 * 24 : max(TimeInterval(connectTimeoutMs) / 1000.0 + 4.0, 15.0)
+        // URLSession's timeoutInterval is an idle limit between packets, not a connect limit. A stream that names a head
+        // timeout (the event stream, a relay read) beats on its own (a 15 s ping, a 10 s beat), so a minute of silence is a
+        // dead connection; the head watchdog below bounds the dial.
+        if wantStream {
+            request.timeoutInterval = headTimeoutMs != nil ? Self.beatingStreamIdleSeconds : 60 * 60 * 24
+        } else {
+            request.timeoutInterval = max(TimeInterval(connectTimeoutMs) / 1000.0 + 4.0, 15.0)
+        }
 
         if let bodyBase64, !bodyBase64.isEmpty, method != "GET", method != "HEAD",
            let payload = Data(base64Encoded: bodyBase64) {
@@ -214,6 +229,14 @@ public class SseStreamPlugin: CAPPlugin, CAPBridgedPlugin {
             self.entriesByTask[task.taskIdentifier] = entry
             self.tasksById[id] = task
             task.resume()
+            guard wantStream, let headTimeoutMs else { return }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + .milliseconds(headTimeoutMs)) { [weak self] in
+                self?.queue.addOperation { [weak self] in
+                    guard let self, let live = self.entriesByTask[task.taskIdentifier], live === entry, !entry.responded else { return }
+                    entry.headTimedOut = true
+                    task.cancel()
+                }
+            }
         }
     }
 
