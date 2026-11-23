@@ -180,7 +180,8 @@ function parseRe2Escape(pattern: string, index: number, inClass: boolean): numbe
     if (ch !== "0" && octal.length === 1) return -1;
     return Number.parseInt(octal, 8) <= 0o377 ? index + 1 + octal.length : -1;
   }
-  if ((ch >= "8" && ch <= "9") || (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z")) return -1;
+  // go escapes only ascii punctuation; a letter, digit or non-ascii character after a backslash is an error.
+  if ((ch >= "8" && ch <= "9") || (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch > "\x7f") return -1;
   return index + 2;
 }
 

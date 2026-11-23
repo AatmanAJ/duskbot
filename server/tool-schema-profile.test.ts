@@ -183,6 +183,7 @@ describe("fitting a tool schema to Antigravity's RE2 regex rules", () => {
       "^a{1001}$",
       "^a{5,2}$",
       "^(unclosed",
+      "^\\é$",
     ]) {
       expect([invalid, isRe2Compatible(invalid)]).toEqual([invalid, false]);
     }
