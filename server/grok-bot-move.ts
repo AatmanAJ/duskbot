@@ -5,9 +5,9 @@
 // counts and ids only.
 import { randomUUID } from "node:crypto";
 
-import { GROK_EXPORT_MAX_CHARS, GROK_FROM, GROK_NOTES_FILE, grokMovePlan, type GrokBot, type GrokImportErrorCode } from "../shared/grok-import.ts";
+import { GROK_EXPORT_MAX_CHARS, GROK_FROM, GROK_NOTES_FILE, grokMovePlan, type GrokBot, type GrokImportErrorCode, type GrokMovePlan } from "../shared/grok-import.ts";
 import {
-  GROK_ORIGIN_APP, GROK_SECTION, grokExportFileName, grokExportFilePattern, grokExportRequest, grokPromptUrl,
+  GROK_ORIGIN_APP, GROK_SECTION, grokExportFileName, grokShortId, grokExportFilePattern, grokExportRequest, grokPromptUrl,
   type GrokAcceptExportResult, type GrokDetection, type GrokExportApplied, type GrokExportProblem, type GrokFoundBot,
   type GrokMoveBotProgress, type GrokMoveChoice, type GrokMoveProgress, type GrokMoveStep, type GrokRequestText,
   type GrokUndoPreview, type GrokUndoResult, type GrokWaitingList,
@@ -184,6 +184,12 @@ export class GrokMover {
     (this.deps.log ?? ((text: string) => console.log(text)))(`[grok-move] ${line}`);
   }
 
+  private packageOfItsOwn(plan: GrokMovePlan, rosterId: string): PackageDocument {
+    const taken = this.deps.store.bots.some((bot) => !bot.hidden && bot.installedPackage?.id === plan.packageId);
+    if (!taken) return plan.document;
+    return { ...plan.document, package: { ...plan.document.package, id: `${plan.packageId}-${grokShortId(rosterId)}` } };
+  }
+
   private hereFor(rosterId: string): BotRecord | undefined {
     return this.deps.store.bots.find((bot) => isGrokBot(bot, rosterId) && !bot.hidden);
   }
@@ -338,7 +344,7 @@ export class GrokMover {
         memories: [], userFacts: [], skills: [], routines: [], apps: [], color: grokColor(source),
       };
       const plan = grokMovePlan(draft, { from: GROK_FROM, appNamesOnly: true, timeZone: this.deps.timeZone() });
-      const imported = await this.deps.importPackage(plan.document);
+      const imported = await this.deps.importPackage(this.packageOfItsOwn(plan, source.rosterId));
       const made = imported.bots[0];
       if (!made) throw new Error("no bot");
       const body = grokBody(source.shape);
