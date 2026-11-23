@@ -218,6 +218,29 @@ describe("alert throttling", () => {
     await incidents.tick();
     expect((await store.list({ limit: 10 })).map(item => item.name).sort()).toEqual(["clouds warn", "managed alert", "managed warn"]);
   });
+  it("puts each kind of node process warning in the daily email once, never in an email of its own", async () => {
+    const { time, mailer, incidents, store } = setup();
+    const target = { error: () => {}, warn: () => {} } as unknown as Pick<Console, "error" | "warn">;
+    const restore = tapConsole(incidents, target);
+    const warn = (pid: number, count: number) => {
+      target.error(`(node:${pid}) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. ${count} error listeners added to [Gunzip]. MaxListeners is 10. Use emitter.setMaxListeners() to increase limit`);
+      target.error("(Use `node --trace-warnings ...` to show where the warning was created)");
+    };
+    warn(4028072, 11);
+    warn(4031999, 12);
+    restore();
+    await incidents.flushNew();
+    expect(mailer.outbox).toEqual([]);
+    await incidents.tick();
+    expect((await store.list({ limit: 10 })).map(item => `${item.name}:${item.count}`)).toEqual(["MaxListenersExceededWarning:2"]);
+    time.now = Date.parse("2026-11-13T08:01:00Z");
+    await incidents.tick();
+    expect(mailer.outbox.map(mail => mail.subject)).toEqual(["1 problem not emailed yet on dusk bot"]);
+    expect(mailer.outbox[0]!.text).toContain("MaxListenersExceededWarning");
+    time.now = Date.parse("2026-11-14T08:01:00Z");
+    await incidents.tick();
+    expect(mailer.outbox).toHaveLength(1);
+  });
   it("never cuts a subject inside a word", async () => {
     const { mailer, incidents } = setup();
     incidents.report({ source: "log", name: "managed alert", message: "ALERT managed backups: under 20 GiB free on the backup disk; new backups are skipped until there is room" });
