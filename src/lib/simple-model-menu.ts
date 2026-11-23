@@ -41,7 +41,7 @@ export type MenuGroupBody =
   | { kind: "policy"; organization: string; team?: boolean }
   | { kind: "setUp" }
   | { kind: "signIn" }
-  | { kind: "empty"; loading: boolean }
+  | { kind: "empty"; loading: boolean; failed?: boolean }
   | {
     kind: "models";
     rows: MenuModelRow[];
@@ -99,6 +99,8 @@ export interface SimpleMenuInput {
   probing: ReadonlySet<string>;
   loading: boolean;
   refreshing?: string | null;
+  /** The engine whose last Check again failed. */
+  refreshFailed?: string | null;
   /** Always offer the search, which then also looks through providers not connected yet. */
   searchAll?: boolean;
   /** The person's starred models (starKey), in starred order. */
@@ -215,7 +217,7 @@ export function simpleModelMenu(input: SimpleMenuInput): SimpleMenu {
     if (instance.policy) return query ? null : { kind: "policy", organization: instance.policy.organizationName, ...(instance.policy.team ? { team: true } : {}) };
     if (needsCli(instance)) return query ? null : { kind: "setUp" };
     const { signedOut, own, all } = models.get(instance.instanceId)!;
-    if (all.length === 0) return query ? null : signedOut ? { kind: "signIn" } : { kind: "empty", loading: input.refreshing === instance.instanceId };
+    if (all.length === 0) return query ? null : signedOut ? { kind: "signIn" } : { kind: "empty", loading: input.refreshing === instance.instanceId, ...(input.refreshFailed === instance.instanceId ? { failed: true } : {}) };
     const currentSelection = instance.instanceId === selection.instanceId ? selection : undefined;
     const botSelection = bot.follows === false && bot.selection.instanceId === instance.instanceId ? bot.selection : undefined;
     const row = (option: ModelChoice) => modelRow(instance, provider, all, option, selection, starred);
