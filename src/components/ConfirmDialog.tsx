@@ -17,7 +17,7 @@ export type ConfirmTone = "danger" | "neutral";
 export interface ConfirmDialogProps {
   open: boolean;
   title: string;
-  body: ReactNode;
+  body?: ReactNode;
   confirmLabel: string;
   /** The way out, "Cancel" unless given. */
   cancelLabel?: string;
@@ -222,7 +222,7 @@ export function ConfirmDialogCard({
       aria-modal="true"
       aria-busy={pending}
       aria-labelledby="confirm-dialog-title"
-      aria-describedby="confirm-dialog-body"
+      aria-describedby={body ? "confirm-dialog-body" : undefined}
       data-tone={tone}
       className="ui-dialog relative flex w-full max-w-[320px] flex-col outline-none"
     >
@@ -231,9 +231,11 @@ export function ConfirmDialogCard({
         <h2 id="confirm-dialog-title" className="m-0 min-w-0 text-[14px] font-semibold leading-[22px] tracking-[-0.15px] text-ink">
           {title}
         </h2>
-        <div id="confirm-dialog-body" className="text-[14px] leading-[22px] tracking-[-0.15px] text-ink/56 text-pretty">
-          {body}
-        </div>
+        {body && (
+          <div id="confirm-dialog-body" className="text-[14px] leading-[22px] tracking-[-0.15px] text-ink/56 text-pretty">
+            {body}
+          </div>
+        )}
       </div>
       <div className="flex flex-wrap gap-2 py-3 pl-4 pr-3">
         <button ref={cancelRef} type="button" onClick={onCancel} disabled={pending} className={`${confirmCancelCls} flex-1`}>

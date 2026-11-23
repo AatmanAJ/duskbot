@@ -7142,7 +7142,6 @@
       "keys.row.hide": "0614b215f176965250914592e6a61f3cb4e74ebf73521afdb48789ff8925e788",
       "keys.row.replace": "95e154398a4bc0091aa4d6b607472ac5a89e41fbc84a3a49f823314d6de9eebc",
       "keys.row.remove": "c3812fc4acb861d5182fc2b8155f327f736fbe5e5eb86a7bd7afcb6dc5497282",
-      "keys.row.removeConfirm": "fe5729766ebe80eb67984aaee98e07a4e1af0fe2b7b1c578f65d03d51ca0f0e1",
       "keys.row.useOwn": "d287bf193f7044d53d9f030f6981286b6d5517e3e8cf25a95e3488528a28e40f",
       "keys.row.getKey": "36d2f296e03d65fd53dedf77b0f1e994db6e4f58d6ceacd9a345eda4feca8665",
       "keys.row.endsIn": "5207d662ac36a15c6629cd174184ee832751e17789d59e0415b6ef0865391b91",
@@ -9896,7 +9895,9 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "keys.row.removeTitle": "224c2f1b26cfc4cfffa129528669b42909ca19739462554fdc46145abb196043",
+      "keys.row.removeBody": "0adcd185fcce42bda8c21cc209717debcefb113ef60dd0f2cea06bed63990500"
     },
     "es": {
       "updates.updated": "da0fcccdc519425a9c333fda0838bbdd50d67fb0266194753bd1044abd0ecbb4",
@@ -17049,7 +17050,6 @@
       "keys.row.hide": "0614b215f176965250914592e6a61f3cb4e74ebf73521afdb48789ff8925e788",
       "keys.row.replace": "95e154398a4bc0091aa4d6b607472ac5a89e41fbc84a3a49f823314d6de9eebc",
       "keys.row.remove": "c3812fc4acb861d5182fc2b8155f327f736fbe5e5eb86a7bd7afcb6dc5497282",
-      "keys.row.removeConfirm": "fe5729766ebe80eb67984aaee98e07a4e1af0fe2b7b1c578f65d03d51ca0f0e1",
       "keys.row.useOwn": "d287bf193f7044d53d9f030f6981286b6d5517e3e8cf25a95e3488528a28e40f",
       "keys.row.getKey": "36d2f296e03d65fd53dedf77b0f1e994db6e4f58d6ceacd9a345eda4feca8665",
       "keys.row.endsIn": "5207d662ac36a15c6629cd174184ee832751e17789d59e0415b6ef0865391b91",
@@ -19772,7 +19772,9 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "keys.row.removeTitle": "224c2f1b26cfc4cfffa129528669b42909ca19739462554fdc46145abb196043",
+      "keys.row.removeBody": "0adcd185fcce42bda8c21cc209717debcefb113ef60dd0f2cea06bed63990500"
     },
     "fr": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -22920,7 +22922,6 @@
       "computer.mac.permission.helperOne": "6ed5e8a5f134324ab1f0e19ea12e21a8f5c0b54cdb4b2c373daf91d774a77f7b",
       "computer.mac.permission.helperBoth": "769365d6ace1b4068f35cd17239bbaa88f4feca487588f31c07cb1f01cfa6633",
       "computer.mac.permission.checkAgain": "fb7099ad8e818d42eceefe0d97c824fd54ddb0eeef54c263ec72c77d39198ac9",
-      "keys.row.removeConfirm": "fe5729766ebe80eb67984aaee98e07a4e1af0fe2b7b1c578f65d03d51ca0f0e1",
       "confirm.signOutStopsWork": "4458bbc741e82b1f1d927c56e253ef41a3dba3a10bcd095d813a9d119596e7e7",
       "vpsLink.transfer.moveBackRoutines": "65f1f61b675bc52055f0d87946aedad06c498ceaa2bf8a41f6a82ade597315b7",
       "ambient.ask.signIn": "47e7f20bbed4fe5f0fb08f5bdc8c397fd2fba3246d869a97a16e1953e175794e",
@@ -23270,7 +23271,9 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "keys.row.removeTitle": "224c2f1b26cfc4cfffa129528669b42909ca19739462554fdc46145abb196043",
+      "keys.row.removeBody": "0adcd185fcce42bda8c21cc209717debcefb113ef60dd0f2cea06bed63990500"
     },
     "hi": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -26416,7 +26419,6 @@
       "computer.mac.permission.helperOne": "6ed5e8a5f134324ab1f0e19ea12e21a8f5c0b54cdb4b2c373daf91d774a77f7b",
       "computer.mac.permission.helperBoth": "769365d6ace1b4068f35cd17239bbaa88f4feca487588f31c07cb1f01cfa6633",
       "computer.mac.permission.checkAgain": "fb7099ad8e818d42eceefe0d97c824fd54ddb0eeef54c263ec72c77d39198ac9",
-      "keys.row.removeConfirm": "fe5729766ebe80eb67984aaee98e07a4e1af0fe2b7b1c578f65d03d51ca0f0e1",
       "confirm.signOutStopsWork": "4458bbc741e82b1f1d927c56e253ef41a3dba3a10bcd095d813a9d119596e7e7",
       "vpsLink.transfer.moveBackRoutines": "65f1f61b675bc52055f0d87946aedad06c498ceaa2bf8a41f6a82ade597315b7",
       "ambient.ask.signIn": "47e7f20bbed4fe5f0fb08f5bdc8c397fd2fba3246d869a97a16e1953e175794e",
@@ -26766,7 +26768,9 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "keys.row.removeTitle": "224c2f1b26cfc4cfffa129528669b42909ca19739462554fdc46145abb196043",
+      "keys.row.removeBody": "0adcd185fcce42bda8c21cc209717debcefb113ef60dd0f2cea06bed63990500"
     },
     "it": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -32598,7 +32602,6 @@
       "computer.mac.permission.helperOne": "6ed5e8a5f134324ab1f0e19ea12e21a8f5c0b54cdb4b2c373daf91d774a77f7b",
       "computer.mac.permission.helperBoth": "769365d6ace1b4068f35cd17239bbaa88f4feca487588f31c07cb1f01cfa6633",
       "computer.mac.permission.checkAgain": "fb7099ad8e818d42eceefe0d97c824fd54ddb0eeef54c263ec72c77d39198ac9",
-      "keys.row.removeConfirm": "fe5729766ebe80eb67984aaee98e07a4e1af0fe2b7b1c578f65d03d51ca0f0e1",
       "confirm.signOutStopsWork": "4458bbc741e82b1f1d927c56e253ef41a3dba3a10bcd095d813a9d119596e7e7",
       "vpsLink.transfer.moveBackRoutines": "65f1f61b675bc52055f0d87946aedad06c498ceaa2bf8a41f6a82ade597315b7",
       "ambient.ask.signIn": "47e7f20bbed4fe5f0fb08f5bdc8c397fd2fba3246d869a97a16e1953e175794e",
@@ -32947,7 +32950,9 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "keys.row.removeTitle": "224c2f1b26cfc4cfffa129528669b42909ca19739462554fdc46145abb196043",
+      "keys.row.removeBody": "0adcd185fcce42bda8c21cc209717debcefb113ef60dd0f2cea06bed63990500"
     },
     "ja": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -38965,7 +38970,6 @@
       "computer.mac.permission.helperOne": "6ed5e8a5f134324ab1f0e19ea12e21a8f5c0b54cdb4b2c373daf91d774a77f7b",
       "computer.mac.permission.helperBoth": "769365d6ace1b4068f35cd17239bbaa88f4feca487588f31c07cb1f01cfa6633",
       "computer.mac.permission.checkAgain": "fb7099ad8e818d42eceefe0d97c824fd54ddb0eeef54c263ec72c77d39198ac9",
-      "keys.row.removeConfirm": "fe5729766ebe80eb67984aaee98e07a4e1af0fe2b7b1c578f65d03d51ca0f0e1",
       "confirm.signOutStopsWork": "4458bbc741e82b1f1d927c56e253ef41a3dba3a10bcd095d813a9d119596e7e7",
       "vpsLink.transfer.moveBackRoutines": "65f1f61b675bc52055f0d87946aedad06c498ceaa2bf8a41f6a82ade597315b7",
       "ambient.ask.signIn": "47e7f20bbed4fe5f0fb08f5bdc8c397fd2fba3246d869a97a16e1953e175794e",
@@ -39314,7 +39318,9 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "keys.row.removeTitle": "224c2f1b26cfc4cfffa129528669b42909ca19739462554fdc46145abb196043",
+      "keys.row.removeBody": "0adcd185fcce42bda8c21cc209717debcefb113ef60dd0f2cea06bed63990500"
     },
     "ko": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -45714,7 +45720,6 @@
       "computer.mac.permission.helperOne": "6ed5e8a5f134324ab1f0e19ea12e21a8f5c0b54cdb4b2c373daf91d774a77f7b",
       "computer.mac.permission.helperBoth": "769365d6ace1b4068f35cd17239bbaa88f4feca487588f31c07cb1f01cfa6633",
       "computer.mac.permission.checkAgain": "fb7099ad8e818d42eceefe0d97c824fd54ddb0eeef54c263ec72c77d39198ac9",
-      "keys.row.removeConfirm": "fe5729766ebe80eb67984aaee98e07a4e1af0fe2b7b1c578f65d03d51ca0f0e1",
       "confirm.signOutStopsWork": "4458bbc741e82b1f1d927c56e253ef41a3dba3a10bcd095d813a9d119596e7e7",
       "vpsLink.transfer.moveBackRoutines": "65f1f61b675bc52055f0d87946aedad06c498ceaa2bf8a41f6a82ade597315b7",
       "ambient.ask.signIn": "47e7f20bbed4fe5f0fb08f5bdc8c397fd2fba3246d869a97a16e1953e175794e",
@@ -46063,7 +46068,9 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "keys.row.removeTitle": "224c2f1b26cfc4cfffa129528669b42909ca19739462554fdc46145abb196043",
+      "keys.row.removeBody": "0adcd185fcce42bda8c21cc209717debcefb113ef60dd0f2cea06bed63990500"
     },
     "pl": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -52055,7 +52062,6 @@
       "computer.mac.permission.helperOne": "6ed5e8a5f134324ab1f0e19ea12e21a8f5c0b54cdb4b2c373daf91d774a77f7b",
       "computer.mac.permission.helperBoth": "769365d6ace1b4068f35cd17239bbaa88f4feca487588f31c07cb1f01cfa6633",
       "computer.mac.permission.checkAgain": "fb7099ad8e818d42eceefe0d97c824fd54ddb0eeef54c263ec72c77d39198ac9",
-      "keys.row.removeConfirm": "fe5729766ebe80eb67984aaee98e07a4e1af0fe2b7b1c578f65d03d51ca0f0e1",
       "confirm.signOutStopsWork": "4458bbc741e82b1f1d927c56e253ef41a3dba3a10bcd095d813a9d119596e7e7",
       "vpsLink.transfer.moveBackRoutines": "65f1f61b675bc52055f0d87946aedad06c498ceaa2bf8a41f6a82ade597315b7",
       "ambient.ask.signIn": "47e7f20bbed4fe5f0fb08f5bdc8c397fd2fba3246d869a97a16e1953e175794e",
@@ -52404,7 +52410,9 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "keys.row.removeTitle": "224c2f1b26cfc4cfffa129528669b42909ca19739462554fdc46145abb196043",
+      "keys.row.removeBody": "0adcd185fcce42bda8c21cc209717debcefb113ef60dd0f2cea06bed63990500"
     },
     "pt-br": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -58271,7 +58279,6 @@
       "computer.mac.permission.helperOne": "6ed5e8a5f134324ab1f0e19ea12e21a8f5c0b54cdb4b2c373daf91d774a77f7b",
       "computer.mac.permission.helperBoth": "769365d6ace1b4068f35cd17239bbaa88f4feca487588f31c07cb1f01cfa6633",
       "computer.mac.permission.checkAgain": "fb7099ad8e818d42eceefe0d97c824fd54ddb0eeef54c263ec72c77d39198ac9",
-      "keys.row.removeConfirm": "fe5729766ebe80eb67984aaee98e07a4e1af0fe2b7b1c578f65d03d51ca0f0e1",
       "confirm.signOutStopsWork": "4458bbc741e82b1f1d927c56e253ef41a3dba3a10bcd095d813a9d119596e7e7",
       "vpsLink.transfer.moveBackRoutines": "65f1f61b675bc52055f0d87946aedad06c498ceaa2bf8a41f6a82ade597315b7",
       "ambient.ask.signIn": "47e7f20bbed4fe5f0fb08f5bdc8c397fd2fba3246d869a97a16e1953e175794e",
@@ -58620,7 +58627,9 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "keys.row.removeTitle": "224c2f1b26cfc4cfffa129528669b42909ca19739462554fdc46145abb196043",
+      "keys.row.removeBody": "0adcd185fcce42bda8c21cc209717debcefb113ef60dd0f2cea06bed63990500"
     },
     "ru": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -64619,7 +64628,6 @@
       "computer.mac.permission.helperOne": "6ed5e8a5f134324ab1f0e19ea12e21a8f5c0b54cdb4b2c373daf91d774a77f7b",
       "computer.mac.permission.helperBoth": "769365d6ace1b4068f35cd17239bbaa88f4feca487588f31c07cb1f01cfa6633",
       "computer.mac.permission.checkAgain": "fb7099ad8e818d42eceefe0d97c824fd54ddb0eeef54c263ec72c77d39198ac9",
-      "keys.row.removeConfirm": "fe5729766ebe80eb67984aaee98e07a4e1af0fe2b7b1c578f65d03d51ca0f0e1",
       "confirm.signOutStopsWork": "4458bbc741e82b1f1d927c56e253ef41a3dba3a10bcd095d813a9d119596e7e7",
       "vpsLink.transfer.moveBackRoutines": "65f1f61b675bc52055f0d87946aedad06c498ceaa2bf8a41f6a82ade597315b7",
       "ambient.ask.signIn": "47e7f20bbed4fe5f0fb08f5bdc8c397fd2fba3246d869a97a16e1953e175794e",
@@ -64968,7 +64976,9 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "keys.row.removeTitle": "224c2f1b26cfc4cfffa129528669b42909ca19739462554fdc46145abb196043",
+      "keys.row.removeBody": "0adcd185fcce42bda8c21cc209717debcefb113ef60dd0f2cea06bed63990500"
     },
     "tr": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -69944,7 +69954,6 @@
       "computer.mac.permission.helperOne": "6ed5e8a5f134324ab1f0e19ea12e21a8f5c0b54cdb4b2c373daf91d774a77f7b",
       "computer.mac.permission.helperBoth": "769365d6ace1b4068f35cd17239bbaa88f4feca487588f31c07cb1f01cfa6633",
       "computer.mac.permission.checkAgain": "fb7099ad8e818d42eceefe0d97c824fd54ddb0eeef54c263ec72c77d39198ac9",
-      "keys.row.removeConfirm": "fe5729766ebe80eb67984aaee98e07a4e1af0fe2b7b1c578f65d03d51ca0f0e1",
       "confirm.signOutStopsWork": "4458bbc741e82b1f1d927c56e253ef41a3dba3a10bcd095d813a9d119596e7e7",
       "vpsLink.transfer.moveBackRoutines": "65f1f61b675bc52055f0d87946aedad06c498ceaa2bf8a41f6a82ade597315b7",
       "ambient.ask.signIn": "47e7f20bbed4fe5f0fb08f5bdc8c397fd2fba3246d869a97a16e1953e175794e",
@@ -70294,7 +70303,9 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "keys.row.removeTitle": "224c2f1b26cfc4cfffa129528669b42909ca19739462554fdc46145abb196043",
+      "keys.row.removeBody": "0adcd185fcce42bda8c21cc209717debcefb113ef60dd0f2cea06bed63990500"
     },
     "uk": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -73743,7 +73754,6 @@
       "computer.mac.permission.helperOne": "6ed5e8a5f134324ab1f0e19ea12e21a8f5c0b54cdb4b2c373daf91d774a77f7b",
       "computer.mac.permission.helperBoth": "769365d6ace1b4068f35cd17239bbaa88f4feca487588f31c07cb1f01cfa6633",
       "computer.mac.permission.checkAgain": "fb7099ad8e818d42eceefe0d97c824fd54ddb0eeef54c263ec72c77d39198ac9",
-      "keys.row.removeConfirm": "fe5729766ebe80eb67984aaee98e07a4e1af0fe2b7b1c578f65d03d51ca0f0e1",
       "confirm.signOutStopsWork": "4458bbc741e82b1f1d927c56e253ef41a3dba3a10bcd095d813a9d119596e7e7",
       "vpsLink.transfer.moveBackRoutines": "65f1f61b675bc52055f0d87946aedad06c498ceaa2bf8a41f6a82ade597315b7",
       "ambient.ask.signIn": "47e7f20bbed4fe5f0fb08f5bdc8c397fd2fba3246d869a97a16e1953e175794e",
@@ -74094,7 +74104,9 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "keys.row.removeTitle": "224c2f1b26cfc4cfffa129528669b42909ca19739462554fdc46145abb196043",
+      "keys.row.removeBody": "0adcd185fcce42bda8c21cc209717debcefb113ef60dd0f2cea06bed63990500"
     },
     "vi": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -79070,7 +79082,6 @@
       "computer.mac.permission.helperOne": "6ed5e8a5f134324ab1f0e19ea12e21a8f5c0b54cdb4b2c373daf91d774a77f7b",
       "computer.mac.permission.helperBoth": "769365d6ace1b4068f35cd17239bbaa88f4feca487588f31c07cb1f01cfa6633",
       "computer.mac.permission.checkAgain": "fb7099ad8e818d42eceefe0d97c824fd54ddb0eeef54c263ec72c77d39198ac9",
-      "keys.row.removeConfirm": "fe5729766ebe80eb67984aaee98e07a4e1af0fe2b7b1c578f65d03d51ca0f0e1",
       "confirm.signOutStopsWork": "4458bbc741e82b1f1d927c56e253ef41a3dba3a10bcd095d813a9d119596e7e7",
       "vpsLink.transfer.moveBackRoutines": "65f1f61b675bc52055f0d87946aedad06c498ceaa2bf8a41f6a82ade597315b7",
       "ambient.ask.signIn": "47e7f20bbed4fe5f0fb08f5bdc8c397fd2fba3246d869a97a16e1953e175794e",
@@ -79420,7 +79431,9 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "keys.row.removeTitle": "224c2f1b26cfc4cfffa129528669b42909ca19739462554fdc46145abb196043",
+      "keys.row.removeBody": "0adcd185fcce42bda8c21cc209717debcefb113ef60dd0f2cea06bed63990500"
     },
     "zh": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -85983,7 +85996,6 @@
       "computer.mac.permission.helperOne": "6ed5e8a5f134324ab1f0e19ea12e21a8f5c0b54cdb4b2c373daf91d774a77f7b",
       "computer.mac.permission.helperBoth": "769365d6ace1b4068f35cd17239bbaa88f4feca487588f31c07cb1f01cfa6633",
       "computer.mac.permission.checkAgain": "fb7099ad8e818d42eceefe0d97c824fd54ddb0eeef54c263ec72c77d39198ac9",
-      "keys.row.removeConfirm": "fe5729766ebe80eb67984aaee98e07a4e1af0fe2b7b1c578f65d03d51ca0f0e1",
       "confirm.signOutStopsWork": "4458bbc741e82b1f1d927c56e253ef41a3dba3a10bcd095d813a9d119596e7e7",
       "vpsLink.transfer.moveBackRoutines": "65f1f61b675bc52055f0d87946aedad06c498ceaa2bf8a41f6a82ade597315b7",
       "ambient.ask.signIn": "47e7f20bbed4fe5f0fb08f5bdc8c397fd2fba3246d869a97a16e1953e175794e",
@@ -86333,7 +86345,9 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "keys.row.removeTitle": "224c2f1b26cfc4cfffa129528669b42909ca19739462554fdc46145abb196043",
+      "keys.row.removeBody": "0adcd185fcce42bda8c21cc209717debcefb113ef60dd0f2cea06bed63990500"
     },
     "zh-tw": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -90888,7 +90902,6 @@
       "computer.mac.permission.helperOne": "6ed5e8a5f134324ab1f0e19ea12e21a8f5c0b54cdb4b2c373daf91d774a77f7b",
       "computer.mac.permission.helperBoth": "769365d6ace1b4068f35cd17239bbaa88f4feca487588f31c07cb1f01cfa6633",
       "computer.mac.permission.checkAgain": "fb7099ad8e818d42eceefe0d97c824fd54ddb0eeef54c263ec72c77d39198ac9",
-      "keys.row.removeConfirm": "fe5729766ebe80eb67984aaee98e07a4e1af0fe2b7b1c578f65d03d51ca0f0e1",
       "confirm.signOutStopsWork": "4458bbc741e82b1f1d927c56e253ef41a3dba3a10bcd095d813a9d119596e7e7",
       "vpsLink.transfer.moveBackRoutines": "65f1f61b675bc52055f0d87946aedad06c498ceaa2bf8a41f6a82ade597315b7",
       "ambient.ask.signIn": "47e7f20bbed4fe5f0fb08f5bdc8c397fd2fba3246d869a97a16e1953e175794e",
@@ -91237,7 +91250,9 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "keys.row.removeTitle": "224c2f1b26cfc4cfffa129528669b42909ca19739462554fdc46145abb196043",
+      "keys.row.removeBody": "0adcd185fcce42bda8c21cc209717debcefb113ef60dd0f2cea06bed63990500"
     }
   }
 }
