@@ -99,10 +99,11 @@ export function prettyModelLabel(label: string, id: string): string {
 }
 
 /**
- * The engine's list with our names, plus the curated models marked `add` that it leaves out, each placed before the
- * next curated model the engine lists. The engine's order, default and per-row details stay; custom rows are untouched.
+ * The engine's list with our names, plus the curated models marked `add` that it leaves out and its account hasn't
+ * refused, each placed before the next curated model the engine lists. The engine's order, default and per-row details
+ * stay; custom rows are untouched.
  */
-export function curateModelCatalog(catalog: ModelCatalog, curated: CuratedEngine | undefined): ModelCatalog {
+export function curateModelCatalog(catalog: ModelCatalog, curated: CuratedEngine | undefined, refused: readonly string[] = []): ModelCatalog {
   if (!curated || !catalog.options.length && !curated.models.some((model) => model.add)) return catalog;
   const byId = new Map(curated.models.map((model) => [model.id, model]));
   const options: ModelCatalog["options"] = catalog.options.map((option) => {
@@ -117,7 +118,7 @@ export function curateModelCatalog(catalog: ModelCatalog, curated: CuratedEngine
   });
   const listed = new Set(options.map((option) => option.id));
   curated.models.forEach((model, index) => {
-    if (!model.add || listed.has(model.id)) return;
+    if (!model.add || listed.has(model.id) || refused.includes(model.id)) return;
     const next = curated.models.slice(index + 1).find((later) => listed.has(later.id));
     const firstCustom = options.findIndex((option) => option.custom);
     const at = next ? options.findIndex((option) => option.id === next.id) : firstCustom === -1 ? options.length : firstCustom;
@@ -149,7 +150,7 @@ export class DuskModelCatalog {
   private readonly options: DuskModelCatalogOptions;
   private readonly cachePath: string;
   private memo: DuskModelsDocument | undefined;
-  private readonly curatedMemo = new WeakMap<ModelCatalog, { doc: DuskModelsDocument; key: string; out: ModelCatalog }>();
+  private readonly curatedMemo = new WeakMap<ModelCatalog, { doc: DuskModelsDocument; key: string; refused: string; out: ModelCatalog }>();
   private inflight: Promise<DuskModelsRefresh> | undefined;
   private timer: ReturnType<typeof setInterval> | undefined;
 
@@ -199,12 +200,13 @@ export class DuskModelCatalog {
   }
 
   /** The engine's list merged with ours; the same object back for the same list, so a getter can call it on every read. */
-  curate(key: string, catalog: ModelCatalog): ModelCatalog {
+  curate(key: string, catalog: ModelCatalog, refused: readonly string[] = []): ModelCatalog {
     const doc = this.get();
     const held = this.curatedMemo.get(catalog);
-    if (held && held.doc === doc && held.key === key) return held.out;
-    const out = curateModelCatalog(catalog, doc.engines[key]);
-    this.curatedMemo.set(catalog, { doc, key, out });
+    const refusedKey = refused.join("\n");
+    if (held && held.doc === doc && held.key === key && held.refused === refusedKey) return held.out;
+    const out = curateModelCatalog(catalog, doc.engines[key], refused);
+    this.curatedMemo.set(catalog, { doc, key, refused: refusedKey, out });
     return out;
   }
 

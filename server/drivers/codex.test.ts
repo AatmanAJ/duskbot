@@ -3561,6 +3561,30 @@ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`)
       const custom = await runTurn("t-limit-custom", "badprov::badmodel");
       expect((custom.errors[0] as { message: string }).message).toMatch(/^You've hit your usage limit\. Upgrade to Pro/);
     });
+
+    it("hides a model OpenAI refuses for Codex's ChatGPT sign-in, and runs that bot's next turn on Codex's default model", async () => {
+      await create({ environment: { ...signedIn(), FAKE_CODEX_LUNA: "1", FAKE_CODEX_REFUSE_MODELS: "gpt-6-luna" } });
+      expect(instance.models.options.map((model) => model.id)).toContain("gpt-6-luna");
+      const refused = await runTurn("t-own-refused", "gpt-6-luna");
+      expect(refused.done).toMatchObject({ ok: false });
+      expect(refused.errors).toHaveLength(1);
+      expect(instance.models.options.map((model) => model.id)).not.toContain("gpt-6-luna");
+      expect(instance.models.default).toBe("gpt-fake-default");
+      expect(instance.refusedModels?.()).toEqual(["gpt-6-luna"]);
+
+      const dump = join(scratch, "own-refused-next.json");
+      process.env.FAKE_CODEX_DUMP = dump;
+      const next = await runTurn("t-own-refused", "gpt-6-luna");
+      expect(next).toMatchObject({ done: { ok: true }, errors: [] });
+      const seen = JSON.parse(readFileSync(dump, "utf8"));
+      expect(seen.calls.find((call: { method: string }) => call.method === "thread/start").params.model).toBe("gpt-fake-default");
+    });
+
+    it("keeps a model listed when Codex fails it for any other reason", async () => {
+      await create({ mode: "usage-limit", environment: { ...signedIn(), FAKE_CODEX_LUNA: "1" } });
+      await runTurn("t-own-limit", "gpt-6-luna");
+      expect(instance.models.options.map((model) => model.id)).toContain("gpt-6-luna");
+    });
   });
 
   it("words Codex's own usage limit and missing login plainly, only for Codex's own sign-in", () => {

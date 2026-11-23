@@ -30,6 +30,7 @@ import { isReservedMcpEnvEntry } from "../mcp-registry.ts";
 import type {
   DriverCreateInput,
   McpServerSpec,
+  ModelCatalog,
   ProviderDriver,
   ProviderInstance,
   ProviderSnapshot,
@@ -56,7 +57,7 @@ import { cliExitCode, rpcFailureCode } from "../../shared/usage-signals.ts";
 import { CodexDeviceAuthController } from "./codex-device-auth.ts";
 import { codexAccountEmail, codexHome } from "./codex-identity.ts";
 import { boundedLabel, containsControlCharacter, mcpAppApprovalForm, plainRecord } from "./codex-app-approval.ts";
-import { archivedNativeCodexThread, CODEX_MISSING_CREDENTIALS, CODEX_SIGN_IN_EXPIRED, codexLimitFacts, codexNotSignedIn, CodexRpcError, codexSignInExpired, codexPlanModelRefused, codexSignInRefused, codexErrorCode, codexUserError, missingNativeCodexThread, type CodexRoute } from "./codex-errors.ts";
+import { archivedNativeCodexThread, CODEX_MISSING_CREDENTIALS, CODEX_SIGN_IN_EXPIRED, codexLimitFacts, codexNotSignedIn, CodexRpcError, codexSignInExpired, codexAccountRefusedModel, codexSignInRefused, codexErrorCode, codexUserError, missingNativeCodexThread, type CodexRoute } from "./codex-errors.ts";
 import { codexLoginCheck, codexLoginStatus, storedCodexLogin } from "./codex-login.ts";
 import { keyRejected, noteKeyAccepted, noteKeyRejected } from "../key-rejections.ts";
 import { classifyResumeFailure, mayReplay, rebuiltSessionNotice, recoveryPromptFor } from "../resume-recovery.ts";
@@ -361,6 +362,13 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     let planSigningOut = false;
     let disposed = false;
     let planWarning: string | undefined;
+    // Models OpenAI refused for Codex's own ChatGPT sign-in during this run; Codex's model/list still offers them.
+    const ownRefused = new Set<string>();
+    const withoutOwnRefused = (catalog: ModelCatalog): ModelCatalog => {
+      if (!ownRefused.size) return catalog;
+      const options = catalog.options.filter(option => !ownRefused.has(option.id));
+      return { default: ownRefused.has(catalog.default) ? options[0]?.id ?? "" : catalog.default, options };
+    };
     let models = plan ? { default: "", options: [] } : config.managed ? { default: config.managed.models[0], options: config.managed.models.map(id => ({ id, label: id })) } : STATIC_CODEX_MODELS;
     const refreshModels = async (preserveExisting = false) => {
       if (config.managed) return;
@@ -379,14 +387,19 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       } else {
         try {
           const resolved = await readCodexModelCatalog(catalogEnv, fetch, config.cli);
-          if (resolved.options.length) models = resolved; else unconfirmedModelCatalog(models);
+          if (resolved.options.length) models = withoutOwnRefused(resolved); else unconfirmedModelCatalog(models);
         } catch { unconfirmedModelCatalog(models); }
       }
       try { writeStartupModelCache(instanceId, models); } catch {}
     };
     // Only ChatGPT's refusal of a model for this account hides it from the account's list; other errors never do.
-    const hidePlanRefusedModel = (model: string | undefined, raw: string, route: CodexRoute) => {
-      if (!planAuth || !model || !codexPlanModelRefused(raw, route)) return;
+    const hideAccountRefusedModel = (model: string | undefined, raw: string, route: CodexRoute) => {
+      if (!model || config.managed || !codexAccountRefusedModel(raw, route)) return;
+      if (!planAuth) {
+        ownRefused.add(model);
+        models = withoutOwnRefused(models);
+        return;
+      }
       const options = models.options.filter(option => option.id !== model);
       models = { default: models.default === model ? options[0]?.id ?? "" : models.default, options };
       void planAuth.refuseModel(model).then(() => refreshModels(true)).catch(() => {});
@@ -517,7 +530,12 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       const chatgptTurn = ownLogin &&
         decodeCodexSelection(turn.model || models.default).modelProvider === OFFICIAL_CODEX_PROVIDER;
       const route: CodexRoute = plan ? "plan" : chatgptTurn ? "own" : "other";
-      const hideRefusedModel = (raw: string) => hidePlanRefusedModel(turn.model, raw, route);
+      if (route === "own" && turn.model && ownRefused.has(turn.model)) {
+        const official = (id: string) => decodeCodexSelection(id).modelProvider === OFFICIAL_CODEX_PROVIDER;
+        const usable = official(models.default) ? models.default : models.options.find(option => official(option.id))?.id;
+        if (usable) turn = { ...turn, model: usable };
+      }
+      const hideRefusedModel = (raw: string) => hideAccountRefusedModel(turn.model, raw, route);
       const signedOut = chatgptTurn && await loginCheck.check(childEnv()) === "missing";
       assertPlanCurrent();
       if (active.has(threadId)) throw new Error("a turn is already running on this thread");
@@ -1667,7 +1685,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         providerArgs: planAuth || config.managed ? providerArgs : codexLocalProviderArgs(env, id),
         describeError: (message) => {
           const route: CodexRoute = planAuth ? "plan" : selection.modelProvider === OFFICIAL_CODEX_PROVIDER ? "own" : "other";
-          hidePlanRefusedModel(selection.model ?? id, message, route);
+          if (route === "plan") hideAccountRefusedModel(selection.model ?? id, message, route);
           return codexUserError(message, route);
         },
       });
@@ -1682,7 +1700,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     get models() {
       return models;
     },
-    ...(plan || config.managed ? {} : { modelCatalogKey: DRIVER_KIND }),
+    ...(plan || config.managed ? {} : { modelCatalogKey: DRIVER_KIND, refusedModels: () => [...ownRefused] }),
     quickModelsUsable: smallModelsUsable,
     refreshModels,
     ...(startupModelRefresh ? { startupModelRefresh } : {}),
