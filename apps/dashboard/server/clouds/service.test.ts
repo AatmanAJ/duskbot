@@ -14,13 +14,13 @@ const cleanup: Array<() => void> = [];
 afterEach(() => { for (const fn of cleanup.splice(0).reverse()) fn(); });
 const dedicatedPlan: DesktopPlan = { kind: "dedicated", placement: "dedicated", spec: { vcpu: 2, ramGb: 4, diskGb: 40 }, botComputers: null };
 const poolPlan: DesktopPlan = { kind: "shared_s", placement: "pool", spec: { vcpu: 2, ramGb: 4, diskGb: 20 }, botComputers: 1 };
-function fixture(options: { poolRam?: number; maxAttempts?: number; managed?: ManagedCloudFactory } = {}) {
+function fixture(options: { poolRam?: number; maxAttempts?: number; managed?: ManagedCloudFactory; upkeepStepWaitMs?: number } = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), "dusk-cloud-service-")); cleanup.push(() => rmSync(dataDir, { recursive: true, force: true }));
   let at = 1_790_000_000_000;
   const dedicated = createFakeCloudProvider(), driver = createFakePoolDriver({ hosts: [{ id: "pool1", region: "eu", domain: "pool.example.test", draining: false, capacity: { vcpu: 16, ramGb: options.poolRam ?? 32, diskGb: 200, slots: 10 } }] }), pool = createPoolProvider({ driver });
   const workspaces = { register: vi.fn(() => "workspace-1"), lastReportAt: vi.fn(() => at - 1000), remove: vi.fn() };
   const home = { healthy: vi.fn(async () => true), pair: vi.fn(async () => ({ code: "ABCD-EFGH-JKLM", expiresAt: at + 300_000 })) };
-  const deps = { dataDir, providers: { dedicated, pool }, workspaces, home, sealer: createSealer(Buffer.alloc(32, 3)), config: { adminOrigin: "https://admin.example.test", dashboardUrl: "https://dash.example.test", image: "ghcr.io/example/duskbot-cloud-home:1.2.3", maxAttempts: options.maxAttempts, poolQuota: (_kind: DesktopPlan["kind"], spec: DesktopPlan["spec"], botComputers: number | null) => ({ ...spec, netMbps: 100, pids: 1000, botComputers }) }, now: () => at };
+  const deps = { dataDir, providers: { dedicated, pool }, workspaces, home, sealer: createSealer(Buffer.alloc(32, 3)), config: { adminOrigin: "https://admin.example.test", dashboardUrl: "https://dash.example.test", image: "ghcr.io/example/duskbot-cloud-home:1.2.3", maxAttempts: options.maxAttempts, upkeepStepWaitMs: options.upkeepStepWaitMs, poolQuota: (_kind: DesktopPlan["kind"], spec: DesktopPlan["spec"], botComputers: number | null) => ({ ...spec, netMbps: 100, pids: 1000, botComputers }) }, now: () => at };
   const service = createCloudsService(options.managed ? { ...deps, managed: options.managed } : deps); cleanup.push(() => service.close());
   function order(plan = dedicatedPlan, accountId = "a") { return service.order({ ...plan, accountId, name: "My desktop", color: "blue", region: "eu" }); }
   async function ready(c: StoredCloud) { for (let n = 0; n < 20 && c.status === "provisioning"; n++) await service.reconcile(); expect(c.status).toBe("running"); }
@@ -119,6 +119,28 @@ it("looks after dusk cloud machines a few at a time, so one slow step does not h
   while (seen.length < list.length || gates.length) { gates.shift()?.(); await new Promise(resolve => setTimeout(resolve, 0)); }
   await pass;
   expect(most).toBe(4); expect(new Set(seen)).toEqual(new Set(list.map(c => c.id))); expect(seen).toHaveLength(7);
+});
+it("wakes a dusk cloud while another one's step waits minutes (an archive's snapshot), during and after that pass", async () => {
+  const kinds = ["shared_s", "shared_m", "dedicated"] as const;
+  let release = () => {}; const stuck = new Promise<void>(resolve => { release = resolve; });
+  const woke: string[] = [];
+  const backend = { kinds, fresh: () => ({}), retryAt: () => null, view: () => ({}), afterPass: async () => {}, resizing: () => false, close() {},
+    reconcile: async (c: StoredCloud) => {
+      if (c.id === archiving.id) { await stuck; return; }
+      if (c.wantPower === "on" && c.status === "sleeping") { c.status = "running"; woke.push(c.id); }
+    } } as unknown as ManagedCloud;
+  const f = fixture({ managed: { kinds, create: () => backend }, upkeepStepWaitMs: 50 });
+  const archiving = f.order(poolPlan), mine = f.order(poolPlan, "b");
+  for (const c of [archiving, mine]) { f.service.activate(c.id, "sub", poolPlan); c.status = "sleeping"; c.wantPower = "off"; }
+  await f.service.reconcile();
+  expect(woke).toEqual([]);
+  await f.service.power("b", mine.id, "on");
+  expect(mine.status).toBe("running"); expect(woke).toEqual([mine.id]);
+  const second = f.order(poolPlan, "c"); f.service.activate(second.id, "sub", poolPlan); second.status = "sleeping"; second.wantPower = "off";
+  await f.service.reconcile();
+  await f.service.power("c", second.id, "on");
+  expect(second.status).toBe("running");
+  release(); await new Promise(resolve => setTimeout(resolve, 0));
 });
 it("resizes a stopped dedicated desktop without powering it back on", async () => {
   const f = fixture(), c = f.order(); f.service.activate(c.id, "sub", dedicatedPlan); await f.ready(c); await f.service.power("a", c.id, "off");

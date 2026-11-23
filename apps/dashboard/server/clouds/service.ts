@@ -35,6 +35,9 @@ export interface CloudsConfig {
   /** how many dusk cloud (managed) machines one upkeep pass looks after at once; a slow one (a backup, a wake) no longer
    *  holds up the rest. the older pool and dedicated clouds still go one by one */
   upkeepConcurrency?: number;
+  /** how long a pass waits on one dusk cloud's step; a slower one (an archive's snapshot can take 10 min) finishes on
+   *  its own while later passes go on without that cloud, so wakes and power reads never wait for it */
+  upkeepStepWaitMs?: number;
 }
 export interface CloudWorkspaces {
   register(input: { accountId: string; name: string; publicKey: string }): string;
@@ -70,6 +73,7 @@ interface State { v: 1; clouds: StoredCloud[] }
 /** dusk cloud machines looked after at once in one upkeep pass: enough that one slow backup does not stall the rest, few
  *  enough to stay gentle on the shared box (each backup streams through a small buffer) and on the provider's start limits */
 const UPKEEP_CONCURRENCY = 4;
+const UPKEEP_STEP_WAIT_MS = 20_000;
 const PAIR_RETRY_MS = [15_000, 30_000, 60_000, 120_000];
 const failureOf = (error: unknown) => error instanceof Error ? `${error.name}: ${error.message}`.replace(/\s+/g, " ").slice(0, 300) : String(error).slice(0, 300);
 const sameSpec = (a: MachineSpec, b: MachineSpec) => a.vcpu === b.vcpu && a.ramGb === b.ramGb && a.diskGb === b.diskGb;
@@ -99,6 +103,12 @@ export function createCloudsService(options: CloudsServiceOptions): CloudsServic
   const powerChanges = new Map<string, number[]>();
   const statusOf = new Map(store.state.clouds.map(c => [c.id, c.status]));
   let pending = Promise.resolve(), reconciling: Promise<void> | null = null, closed = false;
+  const detached = new Set<string>(), stepping = new Set<string>();
+  async function stepCloud(c: StoredCloud) {
+    if (closed || c.nextAttemptAt > now() || stepping.has(c.id)) return;
+    stepping.add(c.id);
+    try { await reconcileCloud(c); } catch (error) { retry(c, error); } finally { stepping.delete(c.id); }
+  }
   function exclusive<T>(fn: () => Promise<T>): Promise<T> { const result = pending.then(fn); pending = result.then(() => {}, () => {}); return result; }
   function save(c: StoredCloud) {
     c.updatedAt = now();
@@ -182,7 +192,8 @@ export function createCloudsService(options: CloudsServiceOptions): CloudsServic
       const c = get(cloudId), until = hurried.get(cloudId) ?? 0;
       if (closed || !c || (c.status === "running" && c.wantPower === "on" && !managed?.resizing(c)) || Date.now() > until) { hurried.delete(cloudId); return; }
       c.nextAttemptAt = Math.min(c.nextAttemptAt, now());
-      void service.reconcile().catch(() => {}).finally(() => { const t = setTimeout(step, 1_000); t.unref(); });
+      const own = reconciling !== null && Boolean(c.backend) && !stepping.has(c.id) && !detached.has(c.id);
+      void (own ? stepCloud(c) : service.reconcile()).catch(() => {}).finally(() => { const t = setTimeout(step, 1_000); t.unref(); });
     };
     step();
   }
@@ -485,13 +496,21 @@ export function createCloudsService(options: CloudsServiceOptions): CloudsServic
       if (closed) return Promise.resolve();
       if (reconciling) return reconciling;
       reconciling = exclusive(async () => {
-        const step = async (c: StoredCloud) => {
-          if (closed || c.nextAttemptAt > now()) return;
-          try { await reconcileCloud(c); } catch (error) { retry(c, error); }
+        const step = stepCloud;
+        const due = store.state.clouds.filter(c => c.nextAttemptAt <= now()), hosted = due.filter(c => c.backend && !detached.has(c.id)), queue = [...hosted];
+        const waitMs = config.upkeepStepWaitMs ?? UPKEEP_STEP_WAIT_MS;
+        const hostedStep = async (c: StoredCloud) => {
+          let timer: ReturnType<typeof setTimeout> | undefined, slow = false;
+          const run = step(c), waited = new Promise<void>(resolve => { timer = setTimeout(() => { slow = true; resolve(); }, waitMs); timer.unref?.(); });
+          await Promise.race([run, waited]);
+          clearTimeout(timer);
+          if (!slow) return;
+          detached.add(c.id);
+          void run.finally(() => { detached.delete(c.id); if (!closed) kick(); });
         };
-        const due = store.state.clouds.filter(c => c.nextAttemptAt <= now()), hosted = due.filter(c => c.backend), queue = [...hosted];
-        const lanes = Array.from({ length: Math.min(hosted.length, Math.max(1, config.upkeepConcurrency ?? UPKEEP_CONCURRENCY)) }, async () => {
-          for (let c = queue.shift(); c; c = queue.shift()) await step(c);
+        const width = Math.max(1, (config.upkeepConcurrency ?? UPKEEP_CONCURRENCY) - detached.size);
+        const lanes = Array.from({ length: Math.min(hosted.length, width) }, async () => {
+          for (let c = queue.shift(); c; c = queue.shift()) await hostedStep(c);
         });
         await Promise.all([(async () => { for (const c of due) if (!c.backend) await step(c); })(), ...lanes]);
         if (managed && !closed) await managed.afterPass(store.state.clouds).catch(() => console.warn("clouds: the managed backend's pass failed; it runs again later"));
