@@ -46,7 +46,7 @@
     },
     {
       "h": "can you walk away from a dusk bot routine?",
-      "md": "**for recurring work in dusk bot, pick where the routine will run.** on your computer, routines stop when the app closes or the machine sleeps. dusk cloud runs routines on time with your computer off.[^1]\n\nopen automations for the routine's run history. if you want to follow up from the venue, the phone can pair with dusk cloud. a phone paired with your own computer still depends on that computer running the app.[^1][^2]"
+      "md": "**for recurring work in dusk bot, pick where the routine will run.** on your computer, routines stop when the app closes or the machine sleeps. dusk cloud runs routines on time with your computer off.[^1]\n\nopen the routine in the bot's side panel for its recent runs. if you want to follow up from the venue, the phone can pair with dusk cloud. a phone paired with your own computer still depends on that computer running the app.[^1][^2]"
     },
     {
       "h": "when leaving it running buys you little",

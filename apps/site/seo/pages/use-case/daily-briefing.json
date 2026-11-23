@@ -78,7 +78,7 @@
     },
     {
       "q": "why did my brief arrive after i opened my laptop?",
-      "a": "**local routines pause during sleep.** open run history under automations to see what ran, and ask which time zone the routine uses."
+      "a": "**local routines pause during sleep.** open the routine in the bot's side panel to see its recent runs, and ask which time zone the routine uses."
     },
     {
       "q": "can i use this for my job?",

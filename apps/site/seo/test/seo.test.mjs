@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { SUBSCRIPTION, jaccard, ownText } from '../quality.mjs';
+import { GONE, SUBSCRIPTION, jaccard, ownText } from '../quality.mjs';
 import { evaluateGate, sliceSize, frozen, lastInLane } from '../jobs/release.mjs';
 import { changes } from '../jobs/indexnow.mjs';
 import { decide } from '../jobs/prune-report.mjs';
@@ -23,6 +23,24 @@ test('the claims rule catches false endorsement and free ai', () => {
 });
 test('the claims rule lets plain subscription wording through', () => {
   for (const ok of ['use your claude subscription for automation', 'no api key needed', 'sign in to the ai you already use', 'what anthropic\'s page says about subscriptions']) assert.deepEqual(hits(ok), [], ok);
+});
+
+const site = path.join(path.dirname(new URL(import.meta.url).pathname), '..', '..');
+const gone = (text) => GONE.filter(([re]) => re.test(text)).map(([, why]) => why);
+test('the gone rule catches the retired automations page and grok bot menu', () => {
+  for (const bad of ['**automations** in the sidebar lists every routine', 'open **automations** and look at the history', 'run history under automations', 'settings → import → **Move from Grok Bot**', 'choose import, then **Move from Grok Bot**', 'Settings, Import, **Move from Grok Bot**']) assert.ok(gone(bad).length, bad);
+  for (const ok of ['the tasks page calls its feature automations', 'open settings and choose **start import** under general', 'the routine in the bot\'s side panel lists its recent runs']) assert.deepEqual(gone(ok), [], ok);
+});
+test('no page, doc or fact sends people to an app place that is gone', () => {
+  const files = [
+    ...fs.readdirSync(path.join(site, 'seo', 'pages')).flatMap((type) => fs.readdirSync(path.join(site, 'seo', 'pages', type)).map((f) => path.join('seo', 'pages', type, f))),
+    ...fs.readdirSync(path.join(site, 'pages', 'docs')).filter((f) => f.endsWith('.md')).map((f) => path.join('pages', 'docs', f)),
+    path.join('seo', 'facts', 'dusk.md'),
+  ];
+  const strings = (value) => (typeof value === 'string' ? [value] : value && typeof value === 'object' ? Object.values(value).flatMap(strings) : []);
+  const read = (f) => { const raw = fs.readFileSync(path.join(site, f), 'utf8'); return f.endsWith('.json') ? strings(JSON.parse(raw)).join('\n') : raw; };
+  const found = files.flatMap((f) => gone(read(f)).map((why) => `${f}: ${why}`));
+  assert.deepEqual(found, []);
 });
 
 test('own text drops the parts every page shares', () => {
