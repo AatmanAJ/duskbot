@@ -19,7 +19,7 @@ import { textFieldCls } from "../ui/GrokDialog";
 
 const FIELD = cn(textFieldCls, "bg-ink/[0.04]");
 
-const SIGN_IN_TILE: Partial<Record<string, AiTileId>> = { anthropic: "claude", openai: "chatgpt", google: "gemini", xai: "grok" };
+const SIGN_IN_TILE: Partial<Record<string, AiTileId>> = { anthropic: "claude", openai: "chatgpt", google: "antigravity", xai: "grok" };
 
 /** How one of the provider's engines is connected, in the words the sheet shows. */
 function connectedVia(instance: InstanceInfo): string {

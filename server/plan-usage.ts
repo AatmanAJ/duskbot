@@ -1,149 +1,132 @@
 // Access tokens stay in the request header only, never in the JSON result.
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+
 import type { InstanceConfigMap } from "./contracts.ts";
-import { resolveClaudeConfigDir } from "./drivers/claude.ts";
-import { codexHome } from "./drivers/codex-identity.ts";
-import { harnessHome, sealedFixture } from "./env-path.ts";
+import {
+  defaultCredentialReader,
+  fileCredentialReader,
+} from "./plan-usage-credentials.ts";
+import {
+  antigravityWeeklyResets,
+  parseAntigravityModels,
+  parseAntigravityPlan,
+  parseAntigravitySummary,
+  parseClaudeUsage,
+  parseCodexUsage,
+  parseCursorDashboardUsage,
+  parseCursorUsage,
+  parseGrokUsage,
+  parseOpenCodeUsage,
+} from "./plan-usage-parsers.ts";
+import {
+  antigravityUserAgent,
+  CLAUDE_USER_AGENT,
+  clearPlanUsageRenewalState,
+  cursorRenewalDue,
+  jwtSubject,
+  renewAntigravityToken,
+  renewClaudeToken,
+  renewCodexToken,
+  renewCursorToken,
+  renewGrokToken,
+  type PlanFetchInit,
+  type PlanHttpResponse,
+} from "./plan-usage-renewal.ts";
+import {
+  asRecord,
+  closedWindow,
+  timeMs,
+  type CredentialReader,
+  type CredentialSource,
+  type PlanAccount,
+  type PlanCredential,
+  type PlanDriver,
+  type PlanExtra,
+  type PlanFetch,
+  type PlanModelUsage,
+  type PlanProviderRow,
+  type PlanResponse,
+  type PlanSpend,
+  type PlanUsageDeps,
+  type PlanUsageReport,
+  type PlanWindow,
+  type PlanWindows,
+} from "./plan-usage-types.ts";
 
-export type PlanDriver = "claude" | "codex" | "grok";
-
-export interface PlanWindow {
-  available: boolean;
-  remainingPercent: number | null;
-  usedPercent: number | null;
-  resetsAt: string | null;
-}
-
-/** Money in the provider's minor units: 4631 with exponent 2 is 46.31. */
-export interface PlanSpend {
-  usedMinor: number;
-  limitMinor: number;
-  currency: string;
-  exponent: number;
-}
-
-export interface PlanExtra {
-  label: string;
-  remainingPercent: number;
-  usedPercent: number;
-  resetsAt: string | null;
-  /** The amounts behind the percent, on a budget in money. */
-  spend?: PlanSpend;
-}
-
-export interface PlanModelUsage {
-  name: string;
-  windows: PlanExtra[];
-}
-
-export interface PlanWindows {
-  plan: string | null;
-  fiveHour: PlanWindow;
-  weekly: PlanWindow;
-  extra: PlanExtra[];
-  models: PlanModelUsage[];
-}
-
-export interface PlanProviderRow {
-  id: string;
-  name: string;
-  driver: string;
-  plan: string | null;
-  ok: boolean;
-  error: string | null;
-  fiveHour: PlanWindow;
-  weekly: PlanWindow;
-  extra: PlanExtra[];
-  models: PlanModelUsage[];
-}
-
-export interface PlanUsageReport {
-  fetchedAt: string;
-  providers: PlanProviderRow[];
-}
-
-export interface PlanAccount {
-  id: string;
-  name: string;
-  driver: PlanDriver;
-  environment: Record<string, string | undefined>;
-  configDir?: string;
-  /** Signed in through dusk bot (ChatGPT plan), not a CLI login on disk, so it has no usage reading. */
-  noUsage?: true;
-}
-
-export interface PlanCredential {
-  token: string | null;
-  accountId: string | null;
-  expired: boolean;
-}
-
-export interface CredentialReader {
-  read(account: PlanAccount): PlanCredential | Promise<PlanCredential>;
-}
-
-export interface PlanResponse {
-  ok: boolean;
-  status: number;
-  text(): Promise<string>;
-}
-
-export type PlanFetch = (
-  url: string,
-  init: { headers: Record<string, string>; signal: AbortSignal },
-) => Promise<PlanResponse>;
-
-export interface PlanUsageDeps {
-  fetch: PlanFetch;
-  credentials: CredentialReader;
-  now?: () => number;
-  timeoutMs?: number;
-}
-
-export interface CredentialSource {
-  readText: (path: string) => string | null;
-  env?: NodeJS.ProcessEnv;
-  now?: () => number;
-  readClaudeKeychain?: (service: string) => string | null | Promise<string | null>;
-}
+export {
+  defaultCredentialReader,
+  fileCredentialReader,
+  parseAntigravityModels,
+  parseAntigravityPlan,
+  parseAntigravitySummary,
+  parseClaudeUsage,
+  parseCodexUsage,
+  parseCursorDashboardUsage,
+  parseCursorUsage,
+  parseGrokUsage,
+  parseOpenCodeUsage,
+  type CredentialReader,
+  type CredentialSource,
+  type PlanAccount,
+  type PlanCredential,
+  type PlanDriver,
+  type PlanExtra,
+  type PlanFetch,
+  type PlanModelUsage,
+  type PlanProviderRow,
+  type PlanResponse,
+  type PlanSpend,
+  type PlanUsageDeps,
+  type PlanUsageReport,
+  type PlanWindow,
+  type PlanWindows,
+};
 
 const PROVIDER_TIMEOUT_MS = 8_000;
+const CURSOR_TIMEOUT_MS = 15_000;
 const PLAN_USAGE_CACHE_MS = 45_000;
-const CREDENTIAL_READ_MAX_BYTES = 1_000_000;
-const KEYCHAIN_TIMEOUT_MS = 5_000;
-const KEYCHAIN_MAX_BUFFER = 1_000_000;
-const CLAUDE_KEYCHAIN_SERVICE = "Claude Code-credentials";
-const CLAUDE_MODEL_FAMILIES = ["opus", "sonnet", "haiku"];
-const MONTHLY_SPEND = "Monthly spend";
-const EXTRA_USAGE = "Extra Usage";
 
 const CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const GROK_CREDITS_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
 const GROK_BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing";
 const GROK_SETTINGS_URL = "https://cli-chat-proxy.grok.com/v1/settings";
+const ANTIGRAVITY_HOSTS = [
+  "https://daily-cloudcode-pa.googleapis.com",
+  "https://cloudcode-pa.googleapis.com",
+] as const;
+const CURSOR_API_BASE = "https://api2.cursor.sh/aiserver.v1.DashboardService/";
+const CURSOR_DASHBOARD_SUMMARY_URL = "https://cursor.com/api/usage-summary";
+const CURSOR_DASHBOARD_USAGE_URL = "https://cursor.com/api/usage";
+const OPENCODE_GO_USAGE_URL = "https://opencode.ai/zen/go/v1/usage";
 
-const FIVE_HOUR_MIN_SECONDS = 3 * 3600;
-const FIVE_HOUR_MAX_SECONDS = 8 * 3600;
-const WEEK_MIN_SECONDS = 5 * 86400;
-const WEEK_MAX_SECONDS = 9 * 86400;
-const MONTH_MIN_SECONDS = 27 * 86400;
-const MONTH_MAX_SECONDS = 32 * 86400;
+const RATE_LIMIT_MIN_MS = 60_000;
+const RATE_LIMIT_DEFAULT_MS = 300_000;
+const RATE_LIMIT_MAX_MS = 3_600_000;
 
 const DRIVER_OF: Record<string, PlanDriver> = {
   claudeAgent: "claude",
   codex: "codex",
   grokAgent: "grok",
+  antigravityAgent: "antigravity",
+  cursorAgent: "cursor",
+  opencodeGo: "opencode",
 };
 
 const PRODUCT_NAME: Record<PlanDriver, string> = {
   claude: "Claude",
   codex: "Codex",
   grok: "Grok",
+  antigravity: "Antigravity",
+  cursor: "Cursor",
+  opencode: "OpenCode Go",
 };
+
+const rateLimitCooldowns = new Map<string, { until: number; streak: number }>();
+const lastGoodRows = new Map<string, PlanProviderRow>();
+const antigravityPlanCache = new Map<string, string>();
+const cursorPlanInfoCache = new Map<string, Record<string, unknown>>();
+const inFlightReports = new Map<string, Promise<PlanUsageReport>>();
 
 export function planAccountsFromInstances(instances: InstanceConfigMap): PlanAccount[] {
   const accounts: PlanAccount[] = [];
@@ -165,117 +148,24 @@ export function planAccountsFromInstances(instances: InstanceConfigMap): PlanAcc
   return accounts;
 }
 
-export function parseClaudeUsage(body: unknown): PlanWindows {
-  const root = claudeRoot(body);
-  const extra: PlanExtra[] = [];
-  const models: PlanModelUsage[] = [];
-  if (root) {
-    for (const [key, value] of Object.entries(root)) {
-      if (key === "five_hour" || key === "seven_day" || key === "spend" || key === "extra_usage") continue;
-      if (!/^[a-z][a-z0-9_]{0,40}$/i.test(key)) continue;
-      const window = readClaudeWindow(value);
-      if (!window) continue;
-      const model = claudeModelWindow(key);
-      if (model) addModelWindow(models, model.name, extraLine(model.window, window));
-      else extra.push(extraLine(claudeExtraLabel(key), window));
-    }
-  }
-  sortModelWindows(models);
-  const fiveHour = (root && readClaudeWindow(root.five_hour)) ?? closedWindow();
-  const weekly = (root && readClaudeWindow(root.seven_day)) ?? closedWindow();
-  const budget = root && readClaudeBudget(root, fiveHour.available || weekly.available);
-  if (budget) extra.unshift(budget);
-  return {
-    plan: planLabel(root?.subscription_type ?? root?.plan ?? root?.plan_type),
-    fiveHour,
-    weekly,
-    extra,
-    models,
-  };
-}
-
-export function parseCodexUsage(body: unknown): PlanWindows {
-  const root = asRecord(body);
-  const assigned = assignDurationWindows(durationWindows(root?.rate_limit));
-  const models: PlanModelUsage[] = [];
-  const extra = [...assigned.extra];
-  if (root) collectCodexNamedLimits(root, models, extra);
-  sortModelWindows(models);
-  return { ...assigned, extra, models, plan: planLabel(root?.plan_type ?? root?.plan) };
-}
-
-export function parseGrokUsage(credits: unknown, billing?: unknown, settings?: unknown): PlanWindows {
-  let fiveHour = closedWindow();
-  let weekly = closedWindow();
-  const extra: PlanExtra[] = [];
-  const models: PlanModelUsage[] = [];
-  let sawMonthly = false;
-  const place = (sample: GrokSample | null) => {
-    if (!sample) return;
-    const window = openWindow(sample.used, sample.resetsAt);
-    if (sample.slot === "fiveHour") {
-      if (!fiveHour.available) fiveHour = window;
-    } else if (sample.slot === "weekly") {
-      if (!weekly.available) weekly = window;
-    } else if (sample.slot === "monthly") {
-      if (!sawMonthly) {
-        sawMonthly = true;
-        extra.push(extraLine("Monthly", window));
-      }
-    } else {
-      extra.push(extraLine(sample.seconds == null ? "Credits" : durationLabel(sample.seconds), window));
-    }
-  };
-  const creditSample = readGrokSample(credits);
-  place(creditSample);
-  const productSample = creditSample ?? { used: 0, slot: "other" as const, resetsAt: null, seconds: null };
-  for (const model of readGrokProducts(credits, productSample)) addModelWindow(models, model.name, model.window);
-  if (billing !== undefined) place(readGrokSample(billing));
-  sortModelWindows(models);
-  return { plan: grokPlan(settings), fiveHour, weekly, extra, models };
-}
-
-export function fileCredentialReader(source: CredentialSource): CredentialReader {
-  const env = source.env ?? process.env;
-  const now = source.now ?? Date.now;
-  return {
-    async read(account) {
-      const merged: NodeJS.ProcessEnv = { ...env, ...account.environment };
-      const at = now();
-      if (account.driver === "claude") return readClaudeCredential(account, merged, source, at);
-      if (account.driver === "codex") return readCodexCredential(merged, source.readText, at);
-      return readGrokCredential(merged, source.readText, at);
-    },
-  };
-}
-
-export function defaultCredentialReader(env: NodeJS.ProcessEnv = process.env): CredentialReader {
-  return fileCredentialReader({
-    env,
-    readText(path) {
-      try {
-        const stat = statSync(path);
-        if (!stat.isFile() || stat.size > CREDENTIAL_READ_MAX_BYTES) return null;
-        return readFileSync(path, "utf8");
-      } catch {
-        return null;
-      }
-    },
-    ...(process.platform === "darwin" && !sealedFixture() ? { readClaudeKeychain: readDarwinClaudeKeychain } : {}),
-  });
-}
-
 export async function fetchPlanUsage(accounts: PlanAccount[], deps: PlanUsageDeps): Promise<PlanUsageReport> {
   const now = deps.now?.() ?? Date.now();
-  const sameLogin = new Map<string, Promise<PlanProviderRow>>();
-  const providers = await Promise.all(accounts.filter((account) => !account.noUsage).map((account) => fetchProvider(account, deps, sameLogin)));
-  return { fetchedAt: new Date(now).toISOString(), providers };
+  const sameLogin = new Map<string, Promise<PlanProviderRow | null>>();
+  const rows = await Promise.all(accounts.filter((account) => !account.noUsage).map((account) => fetchProvider(account, deps, sameLogin)));
+  return { fetchedAt: new Date(now).toISOString(), providers: rows.filter((row): row is PlanProviderRow => row !== null) };
 }
 
 let cachedReport: { at: number; key: string; report: PlanUsageReport } | null = null;
 
 export function clearPlanUsageCache(): void {
   cachedReport = null;
+  rateLimitCooldowns.clear();
+  lastGoodRows.clear();
+  antigravityPlanCache.clear();
+  antigravityWeeklyResets.clear();
+  cursorPlanInfoCache.clear();
+  inFlightReports.clear();
+  clearPlanUsageRenewalState();
 }
 
 export async function loadPlanUsage(input: {
@@ -285,6 +175,7 @@ export async function loadPlanUsage(input: {
   fetch?: PlanFetch;
   credentials?: CredentialReader;
   env?: NodeJS.ProcessEnv;
+  dataDir?: string;
   timeoutMs?: number;
 }): Promise<PlanUsageReport> {
   const now = input.now ?? Date.now();
@@ -292,103 +183,22 @@ export async function loadPlanUsage(input: {
   if (!input.refresh && cachedReport && cachedReport.key === key && now - cachedReport.at < PLAN_USAGE_CACHE_MS) {
     return cachedReport.report;
   }
-  const report = await fetchPlanUsage(input.accounts, {
+  const flightKey = `${key}\0${input.refresh ? "1" : "0"}`;
+  const running = inFlightReports.get(flightKey);
+  if (running) return running;
+  const request = fetchPlanUsage(input.accounts, {
     fetch: input.fetch ?? ((url, init) => globalThis.fetch(url, init)),
-    credentials: input.credentials ?? defaultCredentialReader(input.env),
+    credentials: input.credentials ?? defaultCredentialReader(input.env, input.dataDir),
     now: () => now,
     timeoutMs: input.timeoutMs,
+  }).then((report) => {
+    cachedReport = { at: now, key, report };
+    return report;
+  }).finally(() => {
+    inFlightReports.delete(flightKey);
   });
-  cachedReport = { at: now, key, report };
-  return report;
-}
-
-function closedWindow(): PlanWindow {
-  return { available: false, remainingPercent: null, usedPercent: null, resetsAt: null };
-}
-
-function openWindow(usedPercent: number, resetsAt: string | null): PlanWindow {
-  const used = clampPercent(usedPercent);
-  return {
-    available: true,
-    usedPercent: used,
-    remainingPercent: clampPercent(100 - used),
-    resetsAt,
-  };
-}
-
-function extraLine(label: string, window: PlanWindow): PlanExtra {
-  return {
-    label,
-    remainingPercent: window.remainingPercent ?? 0,
-    usedPercent: window.usedPercent ?? 0,
-    resetsAt: window.resetsAt,
-  };
-}
-
-function clampPercent(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.min(100, Math.max(0, value));
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
-
-function finiteNumber(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return value;
-}
-
-function timeMs(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return Math.abs(value) >= 1e12 ? value : value * 1000;
-  }
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed || trimmed.length > 80) return null;
-  if (/^\d+(\.\d+)?$/.test(trimmed)) return timeMs(Number(trimmed));
-  const parsed = Date.parse(trimmed);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function isoOrNull(value: unknown): string | null {
-  const ms = timeMs(value);
-  if (ms == null) return null;
-  const date = new Date(ms);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
-function planLabel(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed || trimmed.length > 80 || /[\r\n]/.test(trimmed)) return null;
-  if (/bearer\s|access_token|refresh_token|sk-ant-|eyJ[a-zA-Z0-9_-]{8,}/i.test(trimmed)) return null;
-  return trimmed;
-}
-
-function secretString(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed || trimmed.length > 16_000 || /[\r\n]/.test(trimmed)) return null;
-  return trimmed;
-}
-
-function parseJson(text: string | null): unknown {
-  if (!text) return null;
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return null;
-  }
-}
-
-function missingCredential(): PlanCredential {
-  return { token: null, accountId: null, expired: false };
-}
-
-function expiredCredential(): PlanCredential {
-  return { token: null, accountId: null, expired: true };
+  inFlightReports.set(flightKey, request);
+  return request;
 }
 
 function signInAgain(driver: PlanDriver): string {
@@ -403,270 +213,8 @@ function unexpectedUsage(driver: PlanDriver): string {
   return `${PRODUCT_NAME[driver]} returned an unexpected usage response`;
 }
 
-function claudeRoot(body: unknown): Record<string, unknown> | null {
-  const root = asRecord(body);
-  if (!root) return null;
-  if ("five_hour" in root || "seven_day" in root) return root;
-  const nested = asRecord(root.usage) ?? asRecord(root.windows);
-  if (nested && ("five_hour" in nested || "seven_day" in nested)) return nested;
-  return root;
-}
-
-function readClaudeWindow(value: unknown): PlanWindow | null {
-  const record = asRecord(value);
-  if (!record) return null;
-  const utilization = finiteNumber(record.utilization);
-  if (utilization == null) return null;
-  return openWindow(utilization, isoOrNull(record.resets_at ?? record.resetsAt));
-}
-
-const naturalNumber = (value: unknown): number | null => Number.isSafeInteger(value) && (value as number) >= 0 ? value as number : null;
-
-/** A currency code as the provider sent it, when Intl can name it: Intl.NumberFormat throws on anything else. */
-function currencyCode(value: unknown): string | null {
-  if (typeof value !== "string" || !/^[A-Za-z]{3}$/.test(value.trim())) return null;
-  return value.trim().toUpperCase();
-}
-
-function budgetLine(label: string, spend: PlanSpend): PlanExtra | null {
-  if (spend.limitMinor <= 0) return null;
-  return { ...extraLine(label, openWindow((spend.usedMinor / spend.limitMinor) * 100, null)), spend };
-}
-
-function readSpendBudget(value: unknown): PlanExtra | null {
-  const spend = asRecord(value);
-  if (spend?.enabled !== true) return null;
-  const used = asRecord(spend.used), limit = asRecord(spend.limit);
-  const currency = currencyCode(used?.currency);
-  const exponent = naturalNumber(used?.exponent), usedMinor = naturalNumber(used?.amount_minor), limitMinor = naturalNumber(limit?.amount_minor);
-  if (!currency || currency !== currencyCode(limit?.currency) || exponent === null || exponent !== limit?.exponent || usedMinor === null || limitMinor === null) return null;
-  return budgetLine(MONTHLY_SPEND, { usedMinor, limitMinor, currency, exponent });
-}
-
-/** Claude Code 2.1.312 documents `used_credits` and `monthly_limit` as minor units of `currency` ("cents for USD") and has
- * no field saying how many digits those are, so the currency says. `is_enabled` false: this budget cannot cover a send. */
-function readExtraUsage(value: unknown, label: string): PlanExtra | null {
-  const extra = asRecord(value);
-  if (extra?.is_enabled !== true) return null;
-  const currency = currencyCode(extra.currency);
-  const usedMinor = naturalNumber(extra.used_credits), limitMinor = naturalNumber(extra.monthly_limit);
-  if (currency && usedMinor !== null && limitMinor !== null) {
-    const exponent = naturalNumber(extra.decimal_places) ?? currencyDigits(currency);
-    const line = exponent === null ? null : budgetLine(label, { usedMinor, limitMinor, currency, exponent });
-    if (line) return line;
-  }
-  const used = finiteNumber(extra.utilization);
-  return used === null ? null : extraLine(label, openWindow(used, null));
-}
-
-function currencyDigits(currency: string): number | null {
-  try {
-    return new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/** A plan with no rolling windows lives on its monthly budget (Claude Enterprise); on others that budget is the extra usage
- * bought on top of them. */
-function readClaudeBudget(root: Record<string, unknown>, hasWindows: boolean): PlanExtra | null {
-  return readSpendBudget(root.spend) ?? readExtraUsage(root.extra_usage, hasWindows ? EXTRA_USAGE : MONTHLY_SPEND);
-}
-
-function claudeExtraLabel(key: string): string {
-  const suffix = key.startsWith("seven_day_")
-    ? key.slice("seven_day_".length)
-    : key.replace(/^five_hour_/, "");
-  return titleWords(suffix);
-}
-
-function titleWords(suffix: string): string {
-  const words = suffix.split("_").filter((part) => part.length > 0);
-  if (words.length === 0) return "Window";
-  return words.map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()).join(" ");
-}
-
-function claudeModelWindow(key: string): { name: string; window: string } | null {
-  const weekly = key.startsWith("seven_day_");
-  const fiveHour = key.startsWith("five_hour_");
-  if (!weekly && !fiveHour) return null;
-  const suffix = key.slice(weekly ? "seven_day_".length : "five_hour_".length);
-  const lower = suffix.toLowerCase();
-  const family = CLAUDE_MODEL_FAMILIES.find((name) => lower === name || lower.startsWith(`${name}_`));
-  if (!family) return null;
-  return { name: titleWords(suffix), window: weekly ? "Weekly" : "5-hour" };
-}
-
-function addModelWindow(models: PlanModelUsage[], name: string, line: PlanExtra): void {
-  const found = models.find((model) => model.name.toLowerCase() === name.toLowerCase());
-  if (found) found.windows.push(line);
-  else models.push({ name, windows: [line] });
-}
-
-function sortModelWindows(models: PlanModelUsage[]): void {
-  const rank = (label: string) => (label === "5-hour" ? 0 : label === "Weekly" ? 1 : 2);
-  for (const model of models) model.windows.sort((a, b) => rank(a.label) - rank(b.label));
-}
-
-interface DurationWindow {
-  used: number;
-  seconds: number;
-  resetsAt: string | null;
-}
-
-function readDurationWindow(value: unknown): DurationWindow | null {
-  const record = asRecord(value);
-  if (!record) return null;
-  const used = finiteNumber(record.used_percent);
-  let seconds = finiteNumber(record.limit_window_seconds);
-  if (seconds == null) {
-    const minutes = finiteNumber(record.window_minutes);
-    if (minutes != null) seconds = minutes * 60;
-  }
-  if (used == null || seconds == null || seconds <= 0) return null;
-  return { used, seconds, resetsAt: isoOrNull(record.reset_at ?? record.resetAt) };
-}
-
-function durationWindows(node: unknown): DurationWindow[] {
-  const record = asRecord(node);
-  if (!record) return [];
-  const source = asRecord(record.rate_limit) ?? record;
-  const windows: DurationWindow[] = [];
-  for (const key of ["primary_window", "secondary_window"]) {
-    const window = readDurationWindow(source[key]);
-    if (window) windows.push(window);
-  }
-  if (windows.length === 0) {
-    const self = readDurationWindow(source);
-    if (self) windows.push(self);
-  }
-  return windows;
-}
-
-function codexLimitName(record: Record<string, unknown>): string | null {
-  return planLabel(record.limit_name) ?? planLabel(record.metered_feature) ?? planLabel(record.name);
-}
-
-function pushAssignedLines(assigned: PlanWindows, into: PlanExtra[]): void {
-  if (assigned.fiveHour.available) into.push(extraLine("5-hour", assigned.fiveHour));
-  if (assigned.weekly.available) into.push(extraLine("Weekly", assigned.weekly));
-  into.push(...assigned.extra);
-}
-
-function collectCodexNamedLimits(root: Record<string, unknown>, models: PlanModelUsage[], extra: PlanExtra[]): void {
-  const buckets: Array<{ name: string | null; node: unknown }> = [];
-  if (root.code_review_rate_limit) buckets.push({ name: "Code review", node: root.code_review_rate_limit });
-  const additional = root.additional_rate_limits;
-  if (Array.isArray(additional)) {
-    for (const item of additional) {
-      const record = asRecord(item);
-      buckets.push({ name: record ? codexLimitName(record) : null, node: item });
-    }
-  } else {
-    const named = asRecord(additional);
-    if (named) {
-      for (const [key, value] of Object.entries(named)) buckets.push({ name: planLabel(key), node: value });
-    }
-  }
-  for (const bucket of buckets) {
-    const assigned = assignDurationWindows(durationWindows(bucket.node));
-    if (!bucket.name) {
-      pushAssignedLines(assigned, extra);
-      continue;
-    }
-    const lines: PlanExtra[] = [];
-    pushAssignedLines(assigned, lines);
-    for (const line of lines) addModelWindow(models, bucket.name, line);
-  }
-}
-
-function readGrokProducts(body: unknown, sample: GrokSample): Array<{ name: string; window: PlanExtra }> {
-  const root = asRecord(body);
-  if (!root) return [];
-  const config = asRecord(root.config) ?? root;
-  if (!Array.isArray(config.productUsage)) return [];
-  const label = sample.slot === "fiveHour" ? "5-hour" : sample.slot === "weekly" ? "Weekly" : sample.slot === "monthly" ? "Monthly" : "Used";
-  const rows: Array<{ name: string; window: PlanExtra }> = [];
-  for (const item of config.productUsage) {
-    const record = asRecord(item);
-    if (!record) continue;
-    const raw = typeof record.product === "string" ? record.product : typeof record.name === "string" ? record.name : "";
-    const name = planLabel(raw.replace(/([a-z])([A-Z])/g, "$1 $2"));
-    const used = finiteNumber(record.usagePercent ?? record.usedPercent ?? record.utilization);
-    if (!name || used == null) continue;
-    rows.push({ name, window: extraLine(label, openWindow(used, sample.resetsAt)) });
-  }
-  return rows;
-}
-
-function durationLabel(seconds: number): string {
-  if (seconds >= 86400) return `${Math.max(1, Math.round(seconds / 86400))}-day`;
-  if (seconds >= 3600) return `${Math.max(1, Math.round(seconds / 3600))}-hour`;
-  return `${Math.max(1, Math.round(seconds / 60))}-minute`;
-}
-
-function assignDurationWindows(windows: DurationWindow[]): PlanWindows {
-  let fiveHour = closedWindow();
-  let weekly = closedWindow();
-  const extra: PlanExtra[] = [];
-  for (const window of windows) {
-    const open = openWindow(window.used, window.resetsAt);
-    const fiveHourSlot = window.seconds >= FIVE_HOUR_MIN_SECONDS && window.seconds <= FIVE_HOUR_MAX_SECONDS;
-    const weeklySlot = window.seconds >= WEEK_MIN_SECONDS && window.seconds <= WEEK_MAX_SECONDS;
-    if (fiveHourSlot && !fiveHour.available) fiveHour = open;
-    else if (weeklySlot && !weekly.available) weekly = open;
-    else extra.push(extraLine(durationLabel(window.seconds), open));
-  }
-  return { plan: null, fiveHour, weekly, extra, models: [] };
-}
-
-type GrokSlot = "fiveHour" | "weekly" | "monthly" | "other";
-
-interface GrokSample {
-  used: number;
-  slot: GrokSlot;
-  resetsAt: string | null;
-  seconds: number | null;
-}
-
-function classifyGrok(typeValue: unknown, seconds: number | null): GrokSlot {
-  const type = typeof typeValue === "string" ? typeValue.toUpperCase() : "";
-  if (type.includes("WEEK")) return "weekly";
-  if (type.includes("MONTH")) return "monthly";
-  if (/(^|[^A-Z0-9])(5|FIVE)[^A-Z0-9]*HOUR/.test(type)) return "fiveHour";
-  if (seconds == null) return "other";
-  if (seconds >= FIVE_HOUR_MIN_SECONDS && seconds <= FIVE_HOUR_MAX_SECONDS) return "fiveHour";
-  if (seconds >= WEEK_MIN_SECONDS && seconds <= WEEK_MAX_SECONDS) return "weekly";
-  if (seconds >= MONTH_MIN_SECONDS && seconds <= MONTH_MAX_SECONDS) return "monthly";
-  return "other";
-}
-
-function readGrokSample(body: unknown): GrokSample | null {
-  const root = asRecord(body);
-  if (!root) return null;
-  const config = asRecord(root.config) ?? root;
-  let used = finiteNumber(config.creditUsagePercent);
-  if (used == null) {
-    const cap = finiteNumber(asRecord(config.onDemandCap)?.val ?? config.onDemandCap);
-    const spent = finiteNumber(asRecord(config.onDemandUsed)?.val ?? config.onDemandUsed);
-    if (cap != null && spent != null && cap > 0) used = (spent / cap) * 100;
-  }
-  if (used == null) return null;
-  const period = asRecord(config.currentPeriod);
-  const type = period?.type ?? period?.period ?? config.period ?? config.interval;
-  const start = period?.start ?? period?.periodStart;
-  const end = period?.end ?? period?.periodEnd ?? config.billingPeriodEnd ?? root.billingPeriodEnd;
-  const startMs = timeMs(start);
-  const endMs = timeMs(end);
-  const seconds = startMs != null && endMs != null && endMs > startMs ? (endMs - startMs) / 1000 : null;
-  return { used, slot: classifyGrok(type, seconds), resetsAt: isoOrNull(end), seconds };
-}
-
-function grokPlan(settings: unknown): string | null {
-  const root = asRecord(settings);
-  if (!root) return null;
-  const nested = asRecord(root.settings);
-  return planLabel(nested?.subscription_tier_display ?? root.subscription_tier_display);
+function rateLimitedError(driver: PlanDriver): string {
+  return `${PRODUCT_NAME[driver]} is temporarily limiting usage checks. Trying again soon.`;
 }
 
 function planUsageCacheKey(accounts: PlanAccount[]): string {
@@ -678,155 +226,6 @@ function planUsageCacheKey(accounts: PlanAccount[]): string {
       .join("\n");
     return [account.id, account.driver, account.name, account.configDir ?? "", environment].join("\u0000");
   }).join("\n");
-}
-
-function claudeCredentialFromText(text: string | null, now: number): PlanCredential {
-  const oauth = asRecord(asRecord(parseJson(text))?.claudeAiOauth);
-  const token = secretString(oauth?.accessToken);
-  if (!token) return missingCredential();
-  const expiry = timeMs(oauth?.expiresAt);
-  if (expiry != null && expiry <= now) return expiredCredential();
-  return { token, accountId: null, expired: false };
-}
-
-/** macOS 26 `security -w` may print the JSON secret as hex. */
-function decodeKeychainSecret(raw: string | null): string | null {
-  if (!raw) return null;
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  if (!trimmed.startsWith("{") && trimmed.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(trimmed)) {
-    return Buffer.from(trimmed, "hex").toString("utf8");
-  }
-  return trimmed;
-}
-
-function claudeKeychainServices(account: PlanAccount, env: NodeJS.ProcessEnv, resolvedDir: string): string[] {
-  if (!account.configDir?.trim() && !env.CLAUDE_CONFIG_DIR?.trim()) return [CLAUDE_KEYCHAIN_SERVICE];
-  let defaultDir: string | null = null;
-  try {
-    const withoutConfig = { ...env };
-    delete withoutConfig.CLAUDE_CONFIG_DIR;
-    defaultDir = resolveClaudeConfigDir(undefined, withoutConfig);
-  } catch {
-    defaultDir = null;
-  }
-  if (defaultDir != null && resolvedDir === defaultDir) return [CLAUDE_KEYCHAIN_SERVICE];
-  const suffix = createHash("sha256").update(resolvedDir).digest("hex").slice(0, 8);
-  return [`${CLAUDE_KEYCHAIN_SERVICE}-${suffix}`];
-}
-
-function readDarwinClaudeKeychain(service: string): Promise<string | null> {
-  if (process.platform !== "darwin") return Promise.resolve(null);
-  return new Promise((resolve) => {
-    try {
-      execFile(
-        "security",
-        ["find-generic-password", "-s", service, "-w"],
-        {
-          timeout: KEYCHAIN_TIMEOUT_MS,
-          maxBuffer: KEYCHAIN_MAX_BUFFER,
-          windowsHide: true,
-          shell: false,
-          encoding: "utf8",
-        },
-        (error, stdout) => {
-          resolve(error || !stdout ? null : stdout);
-        },
-      );
-    } catch {
-      resolve(null);
-    }
-  });
-}
-
-async function readClaudeCredential(
-  account: PlanAccount,
-  env: NodeJS.ProcessEnv,
-  source: CredentialSource,
-  now: number,
-): Promise<PlanCredential> {
-  let resolvedDir: string;
-  try {
-    resolvedDir = resolveClaudeConfigDir(account.configDir, env);
-  } catch {
-    return missingCredential();
-  }
-  const file = claudeCredentialFromText(source.readText(join(resolvedDir, ".credentials.json")), now);
-  if (file.token || !source.readClaudeKeychain) return file;
-  let sawExpired = file.expired;
-  for (const service of claudeKeychainServices(account, env, resolvedDir)) {
-    let raw: string | null = null;
-    try {
-      raw = (await source.readClaudeKeychain(service)) ?? null;
-    } catch {
-      raw = null;
-    }
-    const parsed = claudeCredentialFromText(decodeKeychainSecret(raw), now);
-    if (parsed.token) return parsed;
-    if (parsed.expired) sawExpired = true;
-  }
-  return sawExpired ? expiredCredential() : missingCredential();
-}
-
-function readCodexCredential(
-  env: NodeJS.ProcessEnv,
-  readText: (path: string) => string | null,
-  now: number,
-): PlanCredential {
-  const home = codexHome(env);
-  if (!home) return missingCredential();
-  const root = asRecord(parseJson(readText(join(home, "auth.json"))));
-  if (!root) return missingCredential();
-  const tokens = asRecord(root.tokens);
-  const token = secretString(tokens?.access_token) ?? secretString(root.access_token);
-  if (!token) return missingCredential();
-  const expiry = timeMs(tokens?.expires_at ?? tokens?.expiresAt ?? root.expires_at ?? root.expiresAt);
-  if (expiry != null && expiry <= now) return expiredCredential();
-  const accountId = secretString(tokens?.account_id) ?? secretString(root.account_id);
-  return { token, accountId, expired: false };
-}
-
-interface GrokCandidate {
-  token: string;
-  expiresAt: number | null;
-}
-
-function grokCandidate(record: Record<string, unknown>): GrokCandidate | null {
-  const token = secretString(record.access_token) ?? secretString(record.key);
-  if (!token) return null;
-  return { token, expiresAt: timeMs(record.expires_at ?? record.expiresAt) };
-}
-
-function readGrokCredential(
-  env: NodeJS.ProcessEnv,
-  readText: (path: string) => string | null,
-  now: number,
-): PlanCredential {
-  const rootDir = env.GROK_HOME?.trim() || harnessHome("grok", env);
-  const root = asRecord(parseJson(readText(join(rootDir, "auth.json"))));
-  if (!root) return missingCredential();
-  const direct = grokCandidate(root);
-  if (direct) {
-    if (direct.expiresAt != null && direct.expiresAt <= now) return expiredCredential();
-    return { token: direct.token, accountId: null, expired: false };
-  }
-  let sawExpired = false;
-  let best: GrokCandidate | null = null;
-  for (const value of Object.values(root)) {
-    const record = asRecord(value);
-    if (!record) continue;
-    const candidate = grokCandidate(record);
-    if (!candidate) continue;
-    if (candidate.expiresAt != null && candidate.expiresAt <= now) {
-      sawExpired = true;
-      continue;
-    }
-    const bestStamp = best?.expiresAt ?? Number.NEGATIVE_INFINITY;
-    const stamp = candidate.expiresAt ?? Number.NEGATIVE_INFINITY;
-    if (!best || stamp >= bestStamp) best = candidate;
-  }
-  if (best) return { token: best.token, accountId: null, expired: false };
-  return sawExpired ? expiredCredential() : missingCredential();
 }
 
 function errorRow(account: PlanAccount, error: string): PlanProviderRow {
@@ -859,33 +258,199 @@ function okRow(account: PlanAccount, windows: PlanWindows): PlanProviderRow {
   };
 }
 
+function rowHasAnyWindow(row: PlanProviderRow): boolean {
+  return row.fiveHour.available || row.weekly.available || row.extra.length > 0 || row.models.length > 0;
+}
+
+function pruneExpiredWindow(window: PlanWindow, now: number): PlanWindow {
+  if (!window.available || !window.resetsAt) return window;
+  const resetMs = Date.parse(window.resetsAt);
+  return Number.isFinite(resetMs) && resetMs <= now ? closedWindow() : window;
+}
+
+function pruneLastGoodRow(row: PlanProviderRow, account: PlanAccount, now: number): PlanProviderRow | null {
+  const fiveHour = pruneExpiredWindow(row.fiveHour, now);
+  const weekly = pruneExpiredWindow(row.weekly, now);
+  const extra = row.extra.filter((entry) => {
+    if (!entry.resetsAt) return true;
+    const resetMs = Date.parse(entry.resetsAt);
+    return !Number.isFinite(resetMs) || resetMs > now;
+  });
+  const models = row.models
+    .map((model) => ({
+      name: model.name,
+      windows: model.windows.filter((entry) => {
+        if (!entry.resetsAt) return true;
+        const resetMs = Date.parse(entry.resetsAt);
+        return !Number.isFinite(resetMs) || resetMs > now;
+      }),
+    }))
+    .filter((model) => model.windows.length > 0);
+  const next: PlanProviderRow = { ...row, id: account.id, name: account.name, fiveHour, weekly, extra, models };
+  return rowHasAnyWindow(next) ? next : null;
+}
+
+function parseRetryAfterMs(headers: PlanHttpResponse["headers"], now: number): number | null {
+  const raw = headers?.get("retry-after")?.trim();
+  if (!raw) return null;
+  if (/^\d+(\.\d+)?$/.test(raw)) return Math.round(Number(raw) * 1000);
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? Math.max(0, parsed - now) : null;
+}
+
+function recordRateLimit(loginKey: string, retryAfterMs: number | null, now: number): void {
+  const prev = rateLimitCooldowns.get(loginKey);
+  const streak = (prev?.streak ?? 0) + 1;
+  const backoff = Math.min(RATE_LIMIT_DEFAULT_MS * 2 ** (streak - 1), RATE_LIMIT_MAX_MS);
+  const waitMs = Math.max(retryAfterMs ?? backoff, RATE_LIMIT_MIN_MS);
+  rateLimitCooldowns.set(loginKey, { until: now + waitMs, streak });
+}
+
+interface ProviderOutcome {
+  row: PlanProviderRow;
+  kind: "ok" | "auth" | "rate_limit" | "transient" | "other";
+  retryAfterMs?: number | null;
+}
+
+async function tryRenewCredential(
+  credential: PlanCredential,
+  turnedAway: boolean,
+  deps: PlanUsageDeps,
+): Promise<{ status: "renewed"; token: string } | { status: "rejected" } | { status: "unchanged" }> {
+  const store = credential.store;
+  const timeoutMs = deps.timeoutMs ?? PROVIDER_TIMEOUT_MS;
+  if (!store || !credential.refreshToken) return { status: "unchanged" };
+  if (store.kind === "antigravity-memory") {
+    return renewAntigravityToken({
+      refreshToken: credential.refreshToken,
+      target: store,
+      force: turnedAway,
+      fetch: deps.fetch,
+      now: deps.now,
+      timeoutMs,
+    });
+  }
+  if (!credential.token) return { status: "unchanged" };
+  const common = { token: credential.token, turnedAway, fetch: deps.fetch, now: deps.now, timeoutMs };
+  if (store.kind === "claude-file" || store.kind === "claude-keychain") return renewClaudeToken({ target: store, ...common });
+  if (store.kind === "codex-file") return renewCodexToken({ target: store, ...common });
+  if (store.kind === "grok-file") return renewGrokToken({ target: store, ...common });
+  if (store.kind === "cursor-file") return renewCursorToken({ target: store, ...common });
+  return { status: "unchanged" };
+}
+
 /** Accounts on one sign-in (two Claude engines on the same login) share one read: Claude's usage endpoint answers 429 to
  * a second read made at once. */
-async function fetchProvider(account: PlanAccount, deps: PlanUsageDeps, sameLogin: Map<string, Promise<PlanProviderRow>>): Promise<PlanProviderRow> {
+async function fetchProvider(
+  account: PlanAccount,
+  deps: PlanUsageDeps,
+  sameLogin: Map<string, Promise<PlanProviderRow | null>>,
+): Promise<PlanProviderRow | null> {
+  const now = deps.now?.() ?? Date.now();
   let credential: PlanCredential;
   try {
     credential = await deps.credentials.read(account);
   } catch {
     return errorRow(account, signInAgain(account.driver));
   }
-  const token = credential.token;
-  if (credential.expired || !token) return errorRow(account, signInAgain(account.driver));
-  const login = createHash("sha256").update(`${account.driver}\0${credential.accountId ?? ""}\0${token}`).digest("hex");
-  let read = sameLogin.get(login);
+  // OpenCode's default fleet instance is the free Zen backup when no OpenCode Go subscription key is stored.
+  if (account.driver === "opencode" && !credential.token && !credential.expired) return null;
+
+  const loginSeed = credential.refreshToken || credential.token;
+  if (!loginSeed) return errorRow(account, signInAgain(account.driver));
+
+  const loginKey = createHash("sha256")
+    .update(`${account.driver}\0${credential.accountId ?? ""}\0${loginSeed}`)
+    .digest("hex");
+
+  let read = sameLogin.get(loginKey);
   if (!read) {
-    read = fetchSignedIn(account, { ...credential, token }, deps);
-    sameLogin.set(login, read);
+    read = fetchProviderForLogin(account, credential, loginKey, now, deps);
+    sameLogin.set(loginKey, read);
   }
-  return { ...(await read), id: account.id, name: account.name };
+  const result = await read;
+  return result ? { ...result, id: account.id, name: account.name } : null;
 }
 
-async function fetchSignedIn(account: PlanAccount, credential: PlanCredential & { token: string }, deps: PlanUsageDeps): Promise<PlanProviderRow> {
+async function fetchProviderForLogin(
+  account: PlanAccount,
+  credential: PlanCredential,
+  loginKey: string,
+  now: number,
+  deps: PlanUsageDeps,
+): Promise<PlanProviderRow> {
+  const cachedRowOr = (fallback: PlanProviderRow): PlanProviderRow => {
+    const cached = lastGoodRows.get(loginKey);
+    return (cached ? pruneLastGoodRow(cached, account, now) : null) ?? fallback;
+  };
+  const cooldown = rateLimitCooldowns.get(loginKey);
+  if (cooldown && cooldown.until > now) return cachedRowOr(errorRow(account, rateLimitedError(account.driver)));
+
+  let token = credential.token;
+  const needsProactiveRenewal =
+    credential.expired ||
+    !token ||
+    (account.driver === "cursor" && credential.store?.kind === "cursor-file" && cursorRenewalDue(token, now));
+
+  if (needsProactiveRenewal && credential.refreshToken && credential.store) {
+    const renewed = await tryRenewCredential(credential, false, deps);
+    if (renewed.status === "renewed") {
+      token = renewed.token;
+    } else if (renewed.status === "rejected") {
+      lastGoodRows.delete(loginKey);
+      rateLimitCooldowns.delete(loginKey);
+      return errorRow(account, signInAgain(account.driver));
+    } else if (credential.expired || !token) {
+      return cachedRowOr(errorRow(account, account.driver === "antigravity" ? couldNotReach("antigravity") : signInAgain(account.driver)));
+    }
+  } else if (credential.expired || !token) {
+    lastGoodRows.delete(loginKey);
+    rateLimitCooldowns.delete(loginKey);
+    return errorRow(account, signInAgain(account.driver));
+  }
+
+  let outcome = await fetchSignedIn(account, { ...credential, token }, loginKey, now, deps);
+  if (outcome.kind === "auth" && credential.refreshToken && credential.store) {
+    const renewed = await tryRenewCredential({ ...credential, token }, true, deps);
+    if (renewed.status === "renewed" && renewed.token !== token) {
+      outcome = await fetchSignedIn(account, { ...credential, token: renewed.token }, loginKey, now, deps);
+    }
+  }
+
+  if (outcome.kind === "ok") {
+    rateLimitCooldowns.delete(loginKey);
+    lastGoodRows.set(loginKey, outcome.row);
+    return outcome.row;
+  }
+  if (outcome.kind === "auth") {
+    rateLimitCooldowns.delete(loginKey);
+    lastGoodRows.delete(loginKey);
+    return outcome.row;
+  }
+  if (outcome.kind === "rate_limit") {
+    recordRateLimit(loginKey, outcome.retryAfterMs ?? null, now);
+    return cachedRowOr(outcome.row);
+  }
+  if (outcome.kind === "transient") return cachedRowOr(outcome.row);
+  return outcome.row;
+}
+
+async function fetchSignedIn(
+  account: PlanAccount,
+  credential: PlanCredential & { token: string },
+  loginKey: string,
+  now: number,
+  deps: PlanUsageDeps,
+): Promise<ProviderOutcome> {
   try {
-    if (account.driver === "claude") return await fetchClaude(account, credential.token, deps);
-    if (account.driver === "codex") return await fetchCodex(account, credential.token, credential.accountId, deps);
-    return await fetchGrok(account, credential.token, deps);
+    if (account.driver === "claude") return await fetchClaude(account, credential.token, credential.planHint ?? null, now, deps);
+    if (account.driver === "codex") return await fetchCodex(account, credential.token, credential.accountId, now, deps);
+    if (account.driver === "grok") return await fetchGrok(account, credential.token, now, deps);
+    if (account.driver === "antigravity") return await fetchAntigravity(account, credential.token, loginKey, now, deps);
+    if (account.driver === "cursor") return await fetchCursor(account, credential.token, credential.planHint ?? null, now, deps);
+    return await fetchOpenCode(account, credential.token, now, deps);
   } catch {
-    return errorRow(account, couldNotReach(account.driver));
+    return { kind: "transient", row: errorRow(account, couldNotReach(account.driver)) };
   }
 }
 
@@ -893,6 +458,8 @@ interface HttpResult {
   status: number;
   ok: boolean;
   body: unknown;
+  text: string;
+  retryAfterMs: number | null;
 }
 
 async function fetchJson(
@@ -900,9 +467,16 @@ async function fetchJson(
   url: string,
   headers: Record<string, string>,
   timeoutMs: number,
+  options: { method?: string; body?: string; now?: number } = {},
 ): Promise<HttpResult> {
   try {
-    const response = await fetchImpl(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
+    const init: PlanFetchInit = {
+      headers,
+      signal: AbortSignal.timeout(timeoutMs),
+      ...(options.method ? { method: options.method } : {}),
+      ...(options.body !== undefined ? { body: options.body } : {}),
+    };
+    const response = await fetchImpl(url, init);
     let text = "";
     try {
       text = await response.text();
@@ -917,9 +491,15 @@ async function fetchJson(
         body = null;
       }
     }
-    return { status: response.status, ok: response.ok, body };
+    return {
+      status: response.status,
+      ok: response.ok,
+      body,
+      text,
+      retryAfterMs: parseRetryAfterMs(response.headers, options.now ?? Date.now()),
+    };
   } catch {
-    return { status: 0, ok: false, body: null };
+    return { status: 0, ok: false, body: null, text: "", retryAfterMs: null };
   }
 }
 
@@ -927,39 +507,57 @@ function authRejected(status: number): boolean {
   return status === 401 || status === 403;
 }
 
-async function fetchClaude(account: PlanAccount, token: string, deps: PlanUsageDeps): Promise<PlanProviderRow> {
+function failedJsonOutcome(account: PlanAccount, result: HttpResult, forbiddenMessage?: string): ProviderOutcome | null {
+  if (result.status === 403 && forbiddenMessage) return { kind: "auth", row: errorRow(account, forbiddenMessage) };
+  if (authRejected(result.status)) return { kind: "auth", row: errorRow(account, signInAgain(account.driver)) };
+  if (result.status === 429) {
+    return { kind: "rate_limit", retryAfterMs: result.retryAfterMs, row: errorRow(account, rateLimitedError(account.driver)) };
+  }
+  if (!result.ok || result.body === null || typeof result.body !== "object") {
+    const transient = result.status === 0 || result.status >= 500;
+    return { kind: transient ? "transient" : "other", row: errorRow(account, transient ? couldNotReach(account.driver) : unexpectedUsage(account.driver)) };
+  }
+  return null;
+}
+
+async function fetchClaude(
+  account: PlanAccount,
+  token: string,
+  planHint: string | null,
+  now: number,
+  deps: PlanUsageDeps,
+): Promise<ProviderOutcome> {
   const result = await fetchJson(deps.fetch, CLAUDE_USAGE_URL, {
     Authorization: `Bearer ${token}`,
     Accept: "application/json",
     "anthropic-beta": "oauth-2025-04-20",
-  }, deps.timeoutMs ?? PROVIDER_TIMEOUT_MS);
-  if (authRejected(result.status)) return errorRow(account, signInAgain("claude"));
-  if (!result.ok || result.body === null || typeof result.body !== "object") {
-    return errorRow(account, result.status === 0 || result.status >= 500 ? couldNotReach("claude") : unexpectedUsage("claude"));
-  }
-  return okRow(account, parseClaudeUsage(result.body));
+    "User-Agent": CLAUDE_USER_AGENT,
+  }, deps.timeoutMs ?? PROVIDER_TIMEOUT_MS, { now });
+  return failedJsonOutcome(account, result) ?? { kind: "ok", row: okRow(account, parseClaudeUsage(result.body, planHint)) };
 }
 
 async function fetchCodex(
   account: PlanAccount,
   token: string,
   accountId: string | null,
+  now: number,
   deps: PlanUsageDeps,
-): Promise<PlanProviderRow> {
+): Promise<ProviderOutcome> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
     Accept: "application/json",
   };
   if (accountId) headers["ChatGPT-Account-Id"] = accountId;
-  const result = await fetchJson(deps.fetch, CODEX_USAGE_URL, headers, deps.timeoutMs ?? PROVIDER_TIMEOUT_MS);
-  if (authRejected(result.status)) return errorRow(account, signInAgain("codex"));
-  if (!result.ok || result.body === null || typeof result.body !== "object") {
-    return errorRow(account, result.status === 0 || result.status >= 500 ? couldNotReach("codex") : unexpectedUsage("codex"));
-  }
-  return okRow(account, parseCodexUsage(result.body));
+  const result = await fetchJson(deps.fetch, CODEX_USAGE_URL, headers, deps.timeoutMs ?? PROVIDER_TIMEOUT_MS, { now });
+  return failedJsonOutcome(account, result) ?? { kind: "ok", row: okRow(account, parseCodexUsage(result.body, now)) };
 }
 
-async function fetchGrok(account: PlanAccount, token: string, deps: PlanUsageDeps): Promise<PlanProviderRow> {
+async function fetchGrok(
+  account: PlanAccount,
+  token: string,
+  now: number,
+  deps: PlanUsageDeps,
+): Promise<ProviderOutcome> {
   const headers = {
     Authorization: `Bearer ${token}`,
     Accept: "application/json",
@@ -967,20 +565,232 @@ async function fetchGrok(account: PlanAccount, token: string, deps: PlanUsageDep
   };
   const timeout = deps.timeoutMs ?? PROVIDER_TIMEOUT_MS;
   const [credits, billing, settings] = await Promise.all([
-    fetchJson(deps.fetch, GROK_CREDITS_URL, headers, timeout),
-    fetchJson(deps.fetch, GROK_BILLING_URL, headers, timeout),
-    fetchJson(deps.fetch, GROK_SETTINGS_URL, headers, timeout),
+    fetchJson(deps.fetch, GROK_CREDITS_URL, headers, timeout, { now }),
+    fetchJson(deps.fetch, GROK_BILLING_URL, headers, timeout, { now }),
+    fetchJson(deps.fetch, GROK_SETTINGS_URL, headers, timeout, { now }),
   ]);
   if (authRejected(credits.status) || (authRejected(billing.status) && !credits.ok)) {
-    return errorRow(account, signInAgain("grok"));
+    return { kind: "auth", row: errorRow(account, signInAgain("grok")) };
+  }
+  if (credits.status === 429 && !billing.ok) {
+    return { kind: "rate_limit", retryAfterMs: credits.retryAfterMs, row: errorRow(account, rateLimitedError("grok")) };
   }
   const creditsBody = credits.ok ? credits.body : null;
   const billingBody = billing.ok && !authRejected(billing.status) ? billing.body : null;
   if (creditsBody === null && billingBody === null) {
-    return errorRow(account, credits.status === 0 || credits.status >= 500 || billing.status === 0 || billing.status >= 500
-      ? couldNotReach("grok")
-      : unexpectedUsage("grok"));
+    const transient = credits.status === 0 || credits.status >= 500 || billing.status === 0 || billing.status >= 500;
+    return { kind: transient ? "transient" : "other", row: errorRow(account, transient ? couldNotReach("grok") : unexpectedUsage("grok")) };
   }
   const windows = parseGrokUsage(creditsBody, billingBody ?? undefined, settings.ok ? settings.body : undefined);
-  return okRow(account, windows);
+  return { kind: "ok", row: okRow(account, windows) };
+}
+
+function recordAntigravityWeeklyResets(modelsNode: unknown, now: number): void {
+  for (const stamp of antigravityWeeklyResets) {
+    if (stamp <= now) antigravityWeeklyResets.delete(stamp);
+  }
+  const record = asRecord(modelsNode);
+  if (!record) return;
+  for (const [key, rawModel] of Object.entries(record)) {
+    const model = asRecord(rawModel);
+    if (!model || model.isInternal === true) continue;
+    const name = typeof model.displayName === "string" ? model.displayName : typeof model.label === "string" ? model.label : "";
+    if (!name || name.toLowerCase().includes("argon") || key.toLowerCase().includes("argon")) continue;
+    const resetMs = timeMs(asRecord(model.quotaInfo)?.resetTime);
+    if (resetMs != null && resetMs - now > 5 * 3600_000 + 600_000) antigravityWeeklyResets.add(resetMs);
+  }
+}
+
+async function fetchAntigravityPlan(
+  cacheKey: string,
+  headers: Record<string, string>,
+  timeoutMs: number,
+  deps: PlanUsageDeps,
+): Promise<string | null> {
+  const cached = antigravityPlanCache.get(cacheKey);
+  if (cached) return cached;
+  const body = JSON.stringify({
+    metadata: { ideType: "ANTIGRAVITY", platform: "PLATFORM_UNSPECIFIED", pluginType: "GEMINI" },
+  });
+  for (const host of ANTIGRAVITY_HOSTS) {
+    const result = await fetchJson(deps.fetch, `${host}/v1internal:loadCodeAssist`, headers, timeoutMs, {
+      method: "POST",
+      body,
+    });
+    if (!result.ok) continue;
+    const plan = parseAntigravityPlan(result.body);
+    if (plan) {
+      antigravityPlanCache.set(cacheKey, plan);
+      return plan;
+    }
+  }
+  return null;
+}
+
+function antigravityHasUsage(windows: PlanWindows): boolean {
+  return (windows.fiveHour.available && (windows.fiveHour.usedPercent ?? 0) > 0) ||
+    (windows.weekly.available && (windows.weekly.usedPercent ?? 0) > 0) ||
+    windows.models.some((model) => model.windows.some((entry) => entry.usedPercent > 0));
+}
+
+async function fetchAntigravity(
+  account: PlanAccount,
+  token: string,
+  loginKey: string,
+  now: number,
+  deps: PlanUsageDeps,
+): Promise<ProviderOutcome> {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    "User-Agent": antigravityUserAgent(),
+  };
+  const timeout = deps.timeoutMs ?? PROVIDER_TIMEOUT_MS;
+  const summaryResponses = await Promise.all(
+    ANTIGRAVITY_HOSTS.map((host) =>
+      fetchJson(deps.fetch, `${host}/v1internal:retrieveUserQuotaSummary`, headers, timeout, {
+        method: "POST",
+        body: "{}",
+        now,
+      })),
+  );
+  const summaryBodies: unknown[] = [];
+  let rejected = false;
+  let rateLimited: HttpResult | null = null;
+  for (const response of summaryResponses) {
+    const groups = asRecord(response.body)?.groups;
+    if (response.ok && Array.isArray(groups) && groups.length > 0) summaryBodies.push(response.body);
+    else if (response.status === 401) rejected = true;
+    else if (response.status === 429) rateLimited = response;
+  }
+  const fromSummary = parseAntigravitySummary(summaryBodies);
+  if (fromSummary) {
+    const plan = await fetchAntigravityPlan(loginKey, headers, timeout, deps);
+    return { kind: "ok", row: okRow(account, { ...fromSummary, plan }) };
+  }
+  if (rejected) return { kind: "auth", row: errorRow(account, signInAgain("antigravity")) };
+
+  let fallback: PlanWindows | null = null;
+  for (const host of ANTIGRAVITY_HOSTS) {
+    const response = await fetchJson(deps.fetch, `${host}/v1internal:fetchAvailableModels`, headers, timeout, {
+      method: "POST",
+      body: "{}",
+      now,
+    });
+    if (response.ok) {
+      const modelsNode = asRecord(response.body)?.models;
+      if (!modelsNode) continue;
+      recordAntigravityWeeklyResets(modelsNode, now);
+      const parsed = parseAntigravityModels(modelsNode, now, antigravityWeeklyResets);
+      if (!parsed) continue;
+      if (antigravityHasUsage(parsed)) {
+        const plan = await fetchAntigravityPlan(loginKey, headers, timeout, deps);
+        return { kind: "ok", row: okRow(account, { ...parsed, plan }) };
+      }
+      if (!fallback) fallback = parsed;
+    } else if (authRejected(response.status)) {
+      rejected = true;
+    } else if (response.status === 429) {
+      rateLimited = response;
+    }
+  }
+  if (fallback) {
+    const plan = await fetchAntigravityPlan(loginKey, headers, timeout, deps);
+    return { kind: "ok", row: okRow(account, { ...fallback, plan }) };
+  }
+  if (rejected) return { kind: "auth", row: errorRow(account, signInAgain("antigravity")) };
+  if (rateLimited) {
+    return { kind: "rate_limit", retryAfterMs: rateLimited.retryAfterMs, row: errorRow(account, rateLimitedError("antigravity")) };
+  }
+  return { kind: "transient", row: errorRow(account, couldNotReach("antigravity")) };
+}
+
+function cursorDashboardSession(token: string): { user: string; cookie: string } {
+  const sub = jwtSubject(token) ?? "";
+  const user = sub.includes("|") ? (sub.split("|").pop() ?? "") : sub;
+  return { user, cookie: `WorkosCursorSessionToken=${user}%3A%3A${token}` };
+}
+
+async function fetchCursor(
+  account: PlanAccount,
+  token: string,
+  planHint: string | null,
+  now: number,
+  deps: PlanUsageDeps,
+): Promise<ProviderOutcome> {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    "Connect-Protocol-Version": "1",
+  };
+  const timeout = deps.timeoutMs ?? CURSOR_TIMEOUT_MS;
+  const [planResponse, usageResponse] = await Promise.all([
+    fetchJson(deps.fetch, `${CURSOR_API_BASE}GetPlanInfo`, headers, timeout, { method: "POST", body: "{}", now }),
+    fetchJson(deps.fetch, `${CURSOR_API_BASE}GetCurrentPeriodUsage`, headers, timeout, { method: "POST", body: "{}", now }),
+  ]);
+
+  const failed = failedJsonOutcome(account, usageResponse);
+  if (failed) return failed;
+
+  const subjectKey = createHash("sha256").update(jwtSubject(token) ?? token).digest("hex").slice(0, 16);
+  const livePlanInfo = planResponse.ok ? asRecord(asRecord(planResponse.body)?.planInfo) : null;
+  if (livePlanInfo) cursorPlanInfoCache.set(subjectKey, livePlanInfo);
+  const planInfo = livePlanInfo ?? cursorPlanInfoCache.get(subjectKey) ?? null;
+
+  let windows = parseCursorUsage(usageResponse.body, planInfo, {
+    planHint,
+    rememberedNow: livePlanInfo ? null : now,
+  });
+
+  const hasIncluded = windows.weekly.available || windows.extra.some((entry) => entry.label === "Monthly");
+  if (!hasIncluded) {
+    // Team and enterprise Cursor plans report included usage on the web dashboard endpoints instead of Connect-RPC.
+    const { user, cookie } = cursorDashboardSession(token);
+    const cookieHeaders = { Cookie: cookie, Accept: "application/json" };
+    const [summary, requests] = await Promise.all([
+      fetchJson(deps.fetch, CURSOR_DASHBOARD_SUMMARY_URL, cookieHeaders, timeout, { now }),
+      user
+        ? fetchJson(deps.fetch, `${CURSOR_DASHBOARD_USAGE_URL}?user=${encodeURIComponent(user)}`, cookieHeaders, timeout, { now })
+        : Promise.resolve<HttpResult>({ status: 0, ok: false, body: null, text: "", retryAfterMs: null }),
+    ]);
+    const dashboard = parseCursorDashboardUsage(summary.ok ? summary.body : null, requests.ok ? requests.body : null);
+    if (dashboard.extra.length || dashboard.models.length) {
+      const rpcOnDemand = windows.extra.filter((entry) => entry.label === "On-demand");
+      const mergedExtra = [
+        ...dashboard.extra.filter((entry) => entry.label !== "On-demand"),
+        ...(rpcOnDemand.length ? rpcOnDemand : dashboard.extra.filter((entry) => entry.label === "On-demand")),
+      ];
+      windows = {
+        ...windows,
+        extra: mergedExtra,
+        models: dashboard.models.length ? dashboard.models : windows.models,
+      };
+    }
+  }
+
+  const row = okRow(account, windows);
+  if (!rowHasAnyWindow(row)) {
+    return { kind: "other", row: errorRow(account, "Cursor did not report included usage for this plan") };
+  }
+  return { kind: "ok", row };
+}
+
+async function fetchOpenCode(
+  account: PlanAccount,
+  token: string,
+  now: number,
+  deps: PlanUsageDeps,
+): Promise<ProviderOutcome> {
+  const result = await fetchJson(deps.fetch, OPENCODE_GO_USAGE_URL, {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/json",
+  }, deps.timeoutMs ?? PROVIDER_TIMEOUT_MS, { now });
+  const failed = failedJsonOutcome(account, result, "This OpenCode Go key has no active subscription");
+  if (failed) return failed;
+  const windows = parseOpenCodeUsage(result.body, now);
+  const row = okRow(account, windows);
+  if (!rowHasAnyWindow(row)) return { kind: "other", row: errorRow(account, unexpectedUsage("opencode")) };
+  return { kind: "ok", row };
 }

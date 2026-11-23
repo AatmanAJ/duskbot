@@ -1,10 +1,39 @@
 import { appliedTextScale } from "./text-scale";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
+import { hasStrips, readAttachments, readReply, type ThumbCache } from "./native-glass-strips";
 import type { SlidePath } from "./NavStack";
 import type { MobilePlatform } from "./platform";
 import { composerHandoff } from "./native-composer-ack";
 import type { HomeGlassState } from "./native-home-glass";
+import {
+  cssPx,
+  isGlassDark,
+  safeInsetPx,
+  useGlassPill,
+  type FloatingPillGlassState,
+  type PullRefreshGlassState,
+  type SwipeReplyGlassState,
+  type TakeoverGlassButton,
+  type TakeoverGlassButtonId,
+  type TakeoverGlassMenuItem,
+  type TakeoverGlassState,
+  type ViewerGlassState,
+} from "./native-glass-overlays";
 import { kbTrace } from "./keyboard";
+
+export {
+  isGlassDark,
+  safeInsetPx,
+  useGlassPill,
+  type FloatingPillGlassState,
+  type PullRefreshGlassState,
+  type SwipeReplyGlassState,
+  type TakeoverGlassButton,
+  type TakeoverGlassButtonId,
+  type TakeoverGlassMenuItem,
+  type TakeoverGlassState,
+  type ViewerGlassState,
+};
 
 /** A rect in css px from the top left of the screen, which on the phone is the native view's own point space. */
 export interface GlassFrame { x: number; y: number; w: number; h: number }
@@ -31,6 +60,16 @@ export interface GlassReply {
   thumbnail?: string;
 }
 
+export interface GlassAttachment {
+  id: string;
+  label: string;
+  removeLabel: string;
+  thumbnail?: string;
+  uploading?: boolean;
+  failed?: boolean;
+  retryLabel?: string;
+}
+
 export interface GlassComposer {
   frame: GlassFrame;
   /** from the composer's bottom to the line it rests on (the home indicator's edge, or the keyboard's top) */
@@ -46,6 +85,8 @@ export interface GlassComposer {
   voiceHeard?: boolean;
   /** the message being replied to, shown as a compact strip inside the capsule (apps before reply support ignore it) */
   reply?: GlassReply | null;
+  /** queued image thumbnails shown inside the capsule above the input row (apps before attachment support ignore it) */
+  attachments?: GlassAttachment[];
   buttons: GlassButton[];
   returnSends: boolean;
   /** the page's text zoom, so the native field's text matches the page's (apps before 1.3 ignore it) */
@@ -89,6 +130,11 @@ export function callHoldsComposer(chat: Element | null): boolean {
 
 export type GlassEvent =
   | { type: "tap"; target: "back" | "title" | "right" | "plus" | "jump" | "clearReply" | "search" | "newBot" }
+  | { type: "attachment"; id: string; action: "preview" | "remove" | "retry" }
+  | { type: "takeoverTap"; target: TakeoverGlassButtonId }
+  | { type: "takeoverMenu"; target: TakeoverGlassButtonId; key: string; text?: string }
+  | { type: "viewerTap"; target: "close" | "share" }
+  | { type: "pillTap"; slot: "top" | "bottom"; id: string; kind: "pill" | "action" | "dismiss" }
   | { type: "button"; index: number; kind?: GlassButtonKind }
   | { type: "text"; text: string }
   | { type: "submit" }
@@ -112,6 +158,8 @@ export interface GlassBridge {
   jump?: boolean;
   /** the native side draws the composer's reply strip inside the capsule */
   reply?: boolean;
+  /** the native side draws image attachment thumbnails inside the capsule */
+  attachments?: boolean;
   update(state: GlassState): void;
   setText(text: string, seq: number): void;
   /** Empties the native field for a send the page took, whatever it holds or the sequence it last took, and answers with
@@ -128,6 +176,16 @@ export interface GlassBridge {
   glyphs?(): Promise<GlassGlyphs>;
   /** Home's top buttons, or null to hide them at once (apps before 1.3 have no home bar). */
   home?(state: HomeGlassState | null): void;
+  /** Fullscreen takeover buttons in Liquid Glass, or null to hide them at once. */
+  takeover?(state: TakeoverGlassState | null): void;
+  /** Swipe-to-reply orb in Liquid Glass, or null to dismiss it (`instant` skips the exit animation). */
+  swipeReply?(state: SwipeReplyGlassState | null, instant?: boolean): void;
+  /** Pull-to-refresh orb in Liquid Glass, or null to dismiss it. */
+  pullRefresh?(state: PullRefreshGlassState | null, instant?: boolean): void;
+  /** Fullscreen image viewer controls in Liquid Glass, or null to hide them. */
+  viewer?(state: ViewerGlassState | null): void;
+  /** Floating status/toast Liquid Glass pill in the top or bottom slot, or null to dismiss (guarded by `clearId`). */
+  pill?(slot: "top" | "bottom", state: FloatingPillGlassState | null, clearId?: string, instant?: boolean): void;
   onEvent(listener: (event: GlassEvent) => void): () => void;
 }
 
@@ -298,64 +356,6 @@ export function restingColors(el: HTMLElement): { fill?: string; ink?: string } 
   return { fill: cssColor(fill) ?? undefined, ink: cssColor(ink) ?? undefined };
 }
 
-/** A strip inside the pill above its row (attachments, selection quote, or reply without native support): only the page draws those. */
-function hasStrips(shell: Element, allowReply = false): boolean {
-  const row = shell.querySelector("[data-composer-row]");
-  const content = row?.parentElement;
-  return Boolean(content && [...content.children].some((child) =>
-    child !== row &&
-    !(allowReply && child.matches("[data-composer-reply]")) &&
-    child.getBoundingClientRect().height > 0,
-  ));
-}
-
-type ReplyThumbCache = { src: string; data: string | null };
-
-function rasterReplyThumbnail(img: HTMLImageElement, cache: ReplyThumbCache): { data: string | null; pending: boolean } {
-  const src = img.currentSrc || img.src;
-  if (!src) return { data: null, pending: false };
-  if (cache.src === src && cache.data !== null) return { data: cache.data, pending: false };
-  if (!img.complete || !img.naturalWidth || !img.naturalHeight) return { data: null, pending: true };
-  const size = 72;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return { data: null, pending: false };
-  const side = Math.min(img.naturalWidth, img.naturalHeight);
-  const sx = (img.naturalWidth - side) / 2;
-  const sy = (img.naturalHeight - side) / 2;
-  try {
-    ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
-    const data = canvas.toDataURL("image/png");
-    cache.src = src;
-    cache.data = data;
-    return { data, pending: false };
-  } catch {
-    cache.src = src;
-    cache.data = null;
-    return { data: null, pending: false };
-  }
-}
-
-function readReply(shell: Element, thumbCache: ReplyThumbCache): { reply: GlassReply; pending: boolean } | null {
-  const strip = shell.querySelector<HTMLElement>("[data-composer-reply]");
-  if (!strip || strip.getBoundingClientRect().height === 0) return null;
-  const excerpt = strip.querySelector<HTMLElement>("[data-reply-excerpt], [dir='auto']")?.textContent?.trim() ?? "";
-  const clear = strip.querySelector("button");
-  const img = strip.querySelector<HTMLImageElement>("[data-reply-thumbnail]");
-  const thumb = img ? rasterReplyThumbnail(img, thumbCache) : { data: null, pending: false };
-  return {
-    reply: {
-      text: excerpt,
-      label: strip.getAttribute("aria-label") ?? "",
-      clearLabel: clear?.getAttribute("aria-label") ?? "",
-      ...(thumb.data ? { thumbnail: thumb.data } : {}),
-    },
-    pending: thumb.pending,
-  };
-}
-
 export function sameState(a: GlassState | null, b: GlassState | null): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -432,7 +432,9 @@ export function rasterAvatar(host: Element | null): string | null {
   try { return canvas.toDataURL("image/png"); } catch { return null; }
 }
 
-const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+const setValue = typeof HTMLTextAreaElement !== "undefined"
+  ? Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set
+  : undefined;
 
 /** Types into the page's own field as a person would, so its mentions, commands and draft all follow. */
 export function typeInto(field: HTMLTextAreaElement, text: string): void {
@@ -508,9 +510,11 @@ function readComposer(
   dx: number,
   room: number,
   allowReply: boolean,
-  thumbCache: ReplyThumbCache,
+  allowAttachments: boolean,
+  thumbCache: ThumbCache,
+  attachmentCache: Map<string, ThumbCache>,
 ): { composer: GlassComposer; elements: HTMLElement[]; field: HTMLTextAreaElement | null; pending: boolean } | null {
-  if (hasStrips(shell, allowReply)) return null;
+  if (hasStrips(shell, allowReply, allowAttachments)) return null;
   const field = shell.querySelector<HTMLTextAreaElement>("textarea");
   const actions = composerButtons(shell.querySelector("[data-composer-actions]"));
   if (!actions) return null;
@@ -520,6 +524,7 @@ function readComposer(
   const frame = restingFrame(shell, dx);
   const plus = shell.querySelector("[data-composer-plus]");
   const reply = allowReply ? readReply(shell, thumbCache) : null;
+  const attachments = allowAttachments ? readAttachments(shell, attachmentCache) : null;
   return {
     composer: {
       frame,
@@ -532,6 +537,7 @@ function readComposer(
       voice: recording ? spoken(voiceStrip) : null,
       voiceHeard: recording && Boolean(voiceStrip?.querySelector("[data-voice-heard]")),
       ...(reply ? { reply: reply.reply } : {}),
+      ...(attachments ? { attachments: attachments.attachments } : {}),
       buttons: actions.buttons,
       returnSends: field?.getAttribute("enterkeyhint") === "send",
       fontScale: appliedTextScale(),
@@ -539,24 +545,23 @@ function readComposer(
     },
     elements: actions.elements,
     field,
-    pending: Boolean(reply?.pending),
+    pending: Boolean(reply?.pending || attachments?.pending),
   };
 }
 
 /** Why the page keeps its own composer instead of the native one, for the trace. */
-function handoffReason(shell: HTMLElement | null, chat: HTMLElement, allowReply: boolean): string {
+function handoffReason(shell: HTMLElement | null, chat: HTMLElement, allowReply: boolean, allowAttachments: boolean): string {
   if (callHoldsComposer(chat)) return "call";
   if (!shell) return "no composer";
   if (covered(shell, chat)) return "covered";
-  if (hasStrips(shell, allowReply)) return "strip";
+  if (hasStrips(shell, allowReply, allowAttachments)) return "strip";
   if (!composerButtons(shell.querySelector("[data-composer-actions]"))) return "button without a twin";
   return "no field";
 }
 
-/** When a slide begun this frame shows its first moved frame, on the clock the native side reads (epoch ms): a web
- * animation started now draws from the next frame, about half a 60 Hz frame on average from here. */
+/** Epoch ms timestamp passed to native `slide` so the native side accounts for bridge delivery latency. */
 export function slideStart(now = performance.timeOrigin + performance.now()): number {
-  return Math.round(now + 1000 / 120);
+  return Math.round(now);
 }
 
 /** The native field keeps the highest sequence it has taken for as long as the app runs, across chats: a count that
@@ -621,15 +626,6 @@ function inTranscript(node: Node): boolean {
   return Boolean(el?.closest("[role=log]"));
 }
 
-function cssPx(root: HTMLElement, expression: string): number {
-  const probe = document.createElement("div");
-  probe.style.cssText = `position:absolute;visibility:hidden;height:${expression}`;
-  root.appendChild(probe);
-  const value = probe.getBoundingClientRect().height;
-  probe.remove();
-  return value;
-}
-
 /** While a chat is open, the native glass draws its header and composer: the page's own chrome is measured where it rests
  * on its page and anything that changed goes to the native side, which also takes the taps and typing and hands them
  * back here. The page's chrome stays in place, transparent, so its layout, menus and focus all keep working. A slide of
@@ -644,6 +640,11 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       if (!slideRef.current) return;
       slideRef.current = null;
       glass.slide(null);
+      return;
+    }
+    if (path.duration <= 0) {
+      slideRef.current = null;
+      glass.slide(path);
       return;
     }
     slideRef.current = { until: performance.now() + path.duration, to: path.points.at(-1) ?? 0 };
@@ -674,8 +675,10 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
     let composerShown = false;
     const handoff = composerHandoff();
     const sends = sendClearing();
-    const thumbCache: ReplyThumbCache = { src: "", data: null };
+    const thumbCache: ThumbCache = { src: "", data: null };
+    const attachmentCache = new Map<string, ThumbCache>();
     const allowReply = glass.reply === true;
+    const allowAttachments = glass.attachments === true;
     const liveField = () => (field?.isConnected ? field : shell()?.querySelector("textarea") ?? null);
     let safeBottom = cssPx(root, "var(--m-safe-bottom)");
 
@@ -741,7 +744,7 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       const kb = parseFloat(root.style.getPropertyValue("--m-kb")) || 0;
       const baseline = window.innerHeight - Math.max(safeBottom, kb);
       const calling = callHoldsComposer(chatEl);
-      const read = chatEl && shellEl && !calling && !covered(shellEl, chatEl) ? readComposer(shellEl, baseline, left, transcriptRoom(chatEl), allowReply, thumbCache) : null;
+      const read = chatEl && shellEl && !calling && !covered(shellEl, chatEl) ? readComposer(shellEl, baseline, left, transcriptRoom(chatEl), allowReply, allowAttachments, thumbCache, attachmentCache) : null;
       const jumpEl = glass.jump ? jump() : null;
       const jumpHidden = Boolean(chatEl && jumpEl && jumpCovered(jumpEl, chatEl));
       const nativeJump = chatEl && jumpEl && !jumpHidden ? readJump(jumpEl, baseline, left) : null;
@@ -780,7 +783,7 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       flag("nativeGlassJump", Boolean(nativeJump));
       if (nativeOwns !== composerShown) {
         composerShown = nativeOwns;
-        kbTrace(composerShown ? "native composer" : "page composer", { why: composerShown ? "shown" : handoff.refusal() ?? (chatEl ? handoffReason(shellEl, chatEl, allowReply) : "chat closed") });
+        kbTrace(composerShown ? "native composer" : "page composer", { why: composerShown ? "shown" : handoff.refusal() ?? (chatEl ? handoffReason(shellEl, chatEl, allowReply, allowAttachments) : "chat closed") });
         // the page's field kept the keyboard while it had the composer (a reply, a popover): the native one takes it back
         if (composerShown && field && document.activeElement === field) glass.focus();
       }
@@ -803,6 +806,11 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
           else if (event.target === "clearReply") click(shell()?.querySelector("[data-composer-reply] button"));
           else if (event.target === "jump") click(jump());
           else click(nav()?.querySelector(`[data-glass=${event.target}]`));
+          break;
+        }
+        case "attachment": {
+          const item = shell()?.querySelector(`[data-composer-attachment][data-attachment-id="${CSS.escape(event.id)}"]`);
+          click(item?.querySelector(`[data-attachment-action="${event.action}"]`));
           break;
         }
         // the control the native one stood in for, by kind: the page's set may have moved on since that frame
