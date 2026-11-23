@@ -1,0 +1,18 @@
+## the new test on untouched main (dbfefd93d)
+   × Allow on an inbox row answers once and the row leaves the list at once, as a card answer does 24ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+
+## the same test on this branch (4e5c093c9)
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9208 English strings)
+
+## related tests: src/components/inbox src/state
+ Test Files  44 passed (44)
+      Tests  441 passed (441)

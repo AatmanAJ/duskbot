@@ -1,0 +1,29 @@
+{
+  "about": "An approval waiting in the inbox, answered with the row's own Allow. Staged: the inbox list is set in the page from the inbox panel's test fixture (invented rows), and the page's fetch holds the answer and any inbox re-read open, so the picture shows what the row does at the moment of the click, before the server answers.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1280,
+  "height": 720,
+  "scale": 2,
+  "steps": [
+    {
+      "eval": "(async () => {\n  const real = window.fetch.bind(window);\n  window.fetch = (input, init) => {\n    const url = typeof input === 'string' ? input : input.url;\n    if (/\\/respond$|\\/api\\/inbox/.test(url)) return new Promise(() => {});\n    return real(input, init);\n  };\n  const [inbox, fixture] = await Promise.all([import('/src/state/inbox.ts'), import('/src/testing/inbox-fixture.ts')]);\n  const now = Date.now();\n  inbox.setInboxView(fixture.inboxView([\n    { ...fixture.approvalRow, at: now - 2 * 60_000 },\n    { ...fixture.questionRow, at: now - 20 * 60_000 },\n    { ...fixture.reportRow, at: now - 3 * 60 * 60_000 },\n  ]));\n  inbox.openInbox();\n  return true;\n})()"
+    },
+    {
+      "waitMs": 900
+    },
+    {
+      "shot": "f01-waiting",
+      "only": "after"
+    },
+    {
+      "eval": "(document.querySelector('[data-inbox-row=\"line-approval\"] [data-inbox-action=\"allow\"]').click(), true)"
+    },
+    {
+      "waitMs": 700
+    },
+    {
+      "shot": true
+    }
+  ]
+}

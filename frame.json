@@ -1,0 +1,1 @@
+{ "inbox-row-answer-settles.before-after.png": { "crop": "885,0,395,360", "arrange": "row", "labels": ["before: Allow clicked, row stays", "after: it leaves at once"] } }
