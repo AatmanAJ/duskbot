@@ -5,6 +5,7 @@ import { USAGE_RUN_KEYS, USAGE_TURN_KEYS, appAction, cleanUsageReport, cleanUsag
 import { parseWorkspaceReport } from "../shared/dashboard-protocol.ts";
 import { cleanProps } from "../apps/dashboard/server/analytics/events.ts";
 import { createUsageOutbox, hashId, turnRecord } from "./usage-signals.ts";
+import { crashProps } from "../electron/experience-relay.mjs";
 
 const NOW = Date.now();
 const SECRET = "Email jane.doe@acme.com /Users/jane/Plan.xlsx https://acme.com";
@@ -29,7 +30,7 @@ const valid: Record<string, Record<string, string | number | boolean>> = {
   created: { what: "room" },
   file_made: { kind: "sheet" },
   browser_download_failed: { reason: "checksum" },
-  crash: { kind: "gpu", reason: "launch_failed" },
+  crash: { kind: "utility", reason: "crashed", service: "network_service", exit: "xc0000005" },
   update_failed: { stage: "download" },
   app_updated: { how: "self" },
   settings_closed: { changed: false, ms: 12000 },
@@ -72,6 +73,14 @@ describe("product signal catalogue", () => {
     expect(cleanProps("app_action", { name: "env", ...valid.env, note: "x" })).toEqual({ name: "env" });
     expect(cleanProps("app_action", { name: "env", ...valid.env })).toEqual({ name: "env", ...valid.env });
     expect(cleanProps("app_action", { name: "bot_created", source: "template", template: "writer" })).toEqual({ name: "bot_created", source: "template", template: "writer" });
+  });
+
+  it("a crash the desktop reports keeps its process, reason and exit code on the service", () => {
+    for (const props of [crashProps("Utility", "crashed", { name: "Audio Service", exitCode: -36861 }), crashProps("server", "crashed", { exitCode: 3 }),
+      crashProps("GPU", "launch-failed"), { kind: "utility", reason: "companion_exit", service: "companion", exit: "1" }]) {
+      expect(cleanProps("app_action", { name: "crash", ...props })).toEqual({ name: "crash", ...props });
+    }
+    expect(cleanSignal("crash", { kind: "server", reason: "crashed", exit: "-3" })).toBeNull();
   });
 
   it("buckets and folds raw values into words", () => {

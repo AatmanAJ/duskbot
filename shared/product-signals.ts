@@ -12,6 +12,10 @@ const flag: Check = value => typeof value === "boolean";
 const count: Check = value => Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) < 1e12;
 /** a short lowercase code the program defines (a refusal's code), never text a person typed */
 const code: Check = value => typeof value === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(value);
+/** a process's own name as Electron gives it, folded to a word ("network_service") */
+const processName: Check = value => typeof value === "string" && /^[a-z0-9_]{1,40}$/.test(value);
+/** a process exit code: decimal, or a negative Windows status as its unsigned hex ("xc0000005") */
+const exitCode: Check = value => typeof value === "string" && /^(?:\d{1,10}|x[0-9a-f]{1,8})$/.test(value);
 const appSlug: Check = value => typeof value === "string" && USAGE_APPS.includes(value);
 
 /** the app's languages, with "_" for "-" so they pass as app event words */
@@ -83,7 +87,7 @@ export const SIGNALS = {
   /** the built-in browser's download failed */
   browser_download_failed: { source: "any", props: { reason: oneOf(...DOWNLOAD_FAIL_REASONS) } },
   /** a process of the desktop app went away: which, and Electron's reason word */
-  crash: { source: "app", props: { kind: oneOf(...CRASH_KINDS), reason: code } },
+  crash: { source: "app", props: { kind: oneOf(...CRASH_KINDS), reason: code, service: processName, exit: exitCode } },
   /** the app's own update failed at this stage, and why as a short code word (an http status, "stalled", "translocated") */
   update_failed: { source: "app", props: { stage: oneOf(...UPDATE_FAIL_STAGES), reason: code } },
   /** the first start of a newer version of the app: installed by its own updater, or by hand (a download, a reinstall) */
