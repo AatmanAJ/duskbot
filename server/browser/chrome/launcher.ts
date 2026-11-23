@@ -225,9 +225,9 @@ export class ChromeLauncher implements BrowserLaunch {
   }
 
   private uses(spec: LaunchSpec): boolean {
-    const path = spec.env?.AGENT_BROWSER_EXECUTABLE_PATH;
-    return (path === this.path || (path !== undefined && path === this.direct()?.AGENT_BROWSER_EXECUTABLE_PATH && spec.env?.AGENT_BROWSER_USER_AGENT !== undefined))
-      && !attachesToChrome(spec.env);
+    const env = spec.env, path = env?.AGENT_BROWSER_EXECUTABLE_PATH;
+    if (!env || path === undefined) return false;
+    return (path === this.path || (path === this.direct()?.AGENT_BROWSER_EXECUTABLE_PATH && env.AGENT_BROWSER_USER_AGENT !== undefined)) && !attachesToChrome(env);
   }
 
   private fresh(state: Ready): boolean {

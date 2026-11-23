@@ -239,7 +239,7 @@ describe("the Chrome launcher", () => {
     const host = { ...chromeHost({ dataDir: machine.dataDir, env: { DUSK_CHROME_PATH: chromeExe }, platform: "win32", arch: "x64" }), exists: (path: string) => path === chromeExe };
     const started = sidecars();
     const chrome = launcher(machine, { platform: "win32", arch: "x64", host, env: { DUSK_CHROME_PATH: chromeExe }, sidecars: started, checkLauncher: async () => { throw new Error("a batch file is never run"); } });
-    const early = { command: "/engine/agent-browser", env: { ...chrome.env(), AGENT_BROWSER_HEADLESS: "1", AGENT_BROWSER_ARGS: "--webrtc-ip-handling-policy=disable_non_proxied_udp" } };
+    const early: { command: string; env: Record<string, string> } = { command: "/engine/agent-browser", env: { ...chrome.env(), AGENT_BROWSER_HEADLESS: "1", AGENT_BROWSER_ARGS: "--webrtc-ip-handling-policy=disable_non_proxied_udp" } };
     expect(early.env.AGENT_BROWSER_EXECUTABLE_PATH).toBe(chrome.path);
     await chrome.ready(early);
     const flags = ["--disable-blink-features=AutomationControlled", "--screen-info={1440x900}"];
