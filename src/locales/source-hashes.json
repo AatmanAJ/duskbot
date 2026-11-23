@@ -9896,7 +9896,10 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "createBot.title": "38b3c55f9fede851f8c0a7c63ffdedf4f30d9ca02d7f54f56551eceb3f3433ef",
+      "createBot.namePlaceholder": "d3750c70d49978a74b1e69b877bb079fd6bc3c99743f7f58f86a55836492fbc8",
+      "createBot.create": "4759498ac2a719c619e2c8cf8ee60af2d2407425e95d308eb208425b2a6d427a"
     },
     "es": {
       "updates.updated": "da0fcccdc519425a9c333fda0838bbdd50d67fb0266194753bd1044abd0ecbb4",
@@ -19772,7 +19775,10 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "createBot.title": "38b3c55f9fede851f8c0a7c63ffdedf4f30d9ca02d7f54f56551eceb3f3433ef",
+      "createBot.namePlaceholder": "d3750c70d49978a74b1e69b877bb079fd6bc3c99743f7f58f86a55836492fbc8",
+      "createBot.create": "4759498ac2a719c619e2c8cf8ee60af2d2407425e95d308eb208425b2a6d427a"
     },
     "fr": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
