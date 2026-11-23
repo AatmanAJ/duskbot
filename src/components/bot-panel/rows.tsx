@@ -1,7 +1,8 @@
-import type { KeyboardEvent, ReactNode } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 import { Check, ChevronRight, Trash2, type GlyphIcon } from "../../icons";
 
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 import type { MausColor } from "@/lib/mascot";
 import { rowCls, RowText, SwitchRow as ListSwitchRow } from "../ListRows";
 import { Toggle } from "../ui/Toggle";
@@ -224,5 +225,17 @@ export function Disclosure({ label, children, ...rest }: { label: string; childr
       </summary>
       <div className="mt-2 flex flex-col gap-3">{children}</div>
     </details>
+  );
+}
+
+export function MemoryReadError({ readAgain }: { readAgain: () => Promise<void> }) {
+  const [trying, setTrying] = useState(false);
+  return (
+    <div role="alert" className={rowCls}>
+      <div className="min-w-0 flex-1 text-[13px] leading-[18px] tracking-[0.015em] text-warning">{t("botPanel.library.memoryError")}</div>
+      <button type="button" className={buttonCls} disabled={trying} onClick={() => { setTrying(true); void readAgain().finally(() => setTrying(false)); }}>
+        {t("common.tryAgain")}
+      </button>
+    </div>
   );
 }
