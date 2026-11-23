@@ -1,5 +1,5 @@
 import { feature } from "@/lib/product-analytics";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Search, X } from "../icons";
 
 import { landOnSearchHit } from "@/lib/focus-message";
@@ -18,9 +18,18 @@ export function ChatFindBar({ threadId, onClose }: { threadId: string; onClose: 
   const [index, setIndex] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
+  const barRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     inputRef.current?.focus();
     inputRef.current?.select();
+    const bar = barRef.current;
+    // React runs a layout cleanup before it removes the bar, so focus is still inside it here when find had it
+    return () => {
+      if (!bar?.contains(document.activeElement)) return;
+      const back = opener?.isConnected ? opener : document.querySelector<HTMLElement>('[data-tour="composer"] textarea');
+      back?.focus();
+    };
   }, []);
 
   useEffect(() => {
@@ -72,7 +81,7 @@ export function ChatFindBar({ threadId, onClose }: { threadId: string; onClose: 
   }, [hits]);
 
   return (
-    <div className="w-full px-5 pb-2">
+    <div ref={barRef} className="w-full px-5 pb-2">
       <div className="flex items-center gap-1.5 rounded-xl bg-panel px-2 py-1.5 shadow-sm">
         <Search size={15} className="shrink-0 text-ink-secondary" />
         <input
@@ -94,7 +103,7 @@ export function ChatFindBar({ threadId, onClose }: { threadId: string; onClose: 
           aria-label={t("chat.find.placeholder")}
           className="min-w-0 flex-1 bg-transparent px-1 text-[13px] text-ink outline-none placeholder:text-ink-tertiary"
         />
-        <span className="min-w-[58px] text-right text-[12px] tabular-nums text-ink-secondary">
+        <span role="status" className="min-w-[58px] text-right text-[12px] tabular-nums text-ink-secondary">
           {loading
             ? t("chat.find.searching")
             : query.trim()
