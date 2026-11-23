@@ -35,3 +35,18 @@ it("Allow on an inbox row answers once and the row leaves the list at once, as a
   expect(dispatch.mock.calls.filter(([action]) => action.type === "decideRequest")).toHaveLength(1);
   expect(document.querySelector(`[data-inbox-row="${approvalRow.id}"]`)).toBeNull();
 });
+
+it("a row with no card to answer through stays listed when Allow sends nothing", async () => {
+  const view = inboxView();
+  setInboxView({ ...view, rows: view.rows.map((row) => (row.id === approvalRow.id ? { ...row, card: undefined } : row)) });
+  openInbox();
+  await act(async () => {
+    root.render(createElement(StoreContext.Provider,
+      { value: { state: { ...initialState, bots: [] } as AppState, dispatch, flushBotPatches: vi.fn(), refreshInstances: vi.fn(), refreshModels: vi.fn() } as never },
+      createElement(InboxPanel)));
+  });
+  const allow = document.querySelector<HTMLButtonElement>(`[data-inbox-row="${approvalRow.id}"] [data-inbox-action="allow"]`);
+  if (allow) await act(async () => { allow.click(); });
+  expect(dispatch.mock.calls.filter(([action]) => action.type === "decideRequest")).toHaveLength(0);
+  expect(document.querySelector(`[data-inbox-row="${approvalRow.id}"]`)).not.toBeNull();
+});
