@@ -6,7 +6,7 @@ order: 1
 art: s-map
 ---
 
-dusk bot is an app where you keep a small team of ai bots and text them like teammates. you need the app and an ai you already use. no account, no card.
+dusk bot is an app where you keep a small team of ai bots and text them like teammates. you need the app. no account, no card, and no ai subscription: if you don't have one, it starts you on free models.
 
 ## get the app
 
@@ -22,18 +22,22 @@ the app tells you when there is a new version. your bots, chats and settings sta
 
 ## sign in to your ai
 
-dusk bot has no model of its own. your bots think with an ai you already pay for: claude, chatgpt, gemini, grok and others. the first screen lists them. pick one and sign in the usual way.
+after the hello, the app asks which ai your bots think with:
+
+- **the one already signed in on this computer**, in one tap, when it finds one.
+- **free models**: no account and no card. a good way to start; switch any time.
+- **my plan**: claude, chatgpt, grok and others you already pay for. pick one and sign in the usual way.
 
 {{include ui-signin}}
 
-- **no subscription?** add an api key under **settings**, **API keys** (anthropic, xai, openrouter, groq and anything that speaks the openai api).
+- **rather use an api key?** add one under **settings**, **API keys** (anthropic, xai, openrouter, groq and anything that speaks the openai api).
 - **want it all local?** start ollama or lm studio and choose **use a local model** in a bot's model picker.
 
 what you say to a bot goes straight from your machine to that ai, on your plan. it does not pass through us.
 
 ## make a bot
 
-choose **new bot**. give it a name, a shape, a colour, and one job in plain words.
+the app opens on your main bot's chat, with three first jobs to tap or your own words. for a bot of its own for one job, choose **new bot**. give it a name, a shape, a colour, and one job in plain words.
 
 {{include ui-newbot}}
 
