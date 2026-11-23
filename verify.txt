@@ -1,0 +1,19 @@
+## the new test on untouched main (dbfefd93d)
+   × Escape while the bot is being made keeps the dialog, so a failure still shows 56ms
+   × a click outside while the bot is being made keeps the dialog 26ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+
+## the same test on this branch (6a0d66a96)
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9208 English strings)
+
+## related tests: src/components/CreateBotDialog src/components/NewBotDialog src/state/bot-creation
+ Test Files  4 passed (4)
+      Tests  23 passed (23)

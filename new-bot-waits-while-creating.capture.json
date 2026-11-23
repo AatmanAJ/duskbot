@@ -1,0 +1,44 @@
+{
+  "about": "Create a bot named Waffle, then press Escape while it is being made. The failure is staged: fetch is wrapped so the create request waits 2.5 s and the server answers 500 'The bots folder is read-only'.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1280,
+  "height": 760,
+  "scale": 2,
+  "steps": [
+    {
+      "eval": "(() => {\n  const real = window.fetch.bind(window);\n  window.fetch = async (input, init) => {\n    const url = new URL(typeof input === 'string' ? input : input.url, location.href);\n    if ((init?.method ?? 'GET').toUpperCase() === 'POST' && url.pathname === '/api/bots') {\n      await new Promise((resolve) => setTimeout(resolve, 2500));\n      return new Response(JSON.stringify({ error: 'The bots folder is read-only' }), { status: 500, headers: { 'content-type': 'application/json' } });\n    }\n    return real(input, init);\n  };\n  return true;\n})()"
+    },
+    {
+      "click": "New bot"
+    },
+    {
+      "waitMs": 600
+    },
+    {
+      "type": {
+        "name": "Bot name",
+        "text": "Waffle"
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "waitMs": 400
+    },
+    {
+      "shot": "f01-creating",
+      "only": "after"
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "waitMs": 3500
+    },
+    {
+      "shot": true
+    }
+  ]
+}

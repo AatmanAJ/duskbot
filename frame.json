@@ -1,0 +1,1 @@
+{ "new-bot-waits-while-creating.before-after.png": { "arrange": "stack", "labels": ["before: Escape while making Waffle, then it fails", "after: the dialog waits and says why"] } }
