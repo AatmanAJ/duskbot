@@ -135,7 +135,9 @@ function GroupBody({ group, props }: { group: MenuGroup; props: SimpleModelMenuP
         </div>
       ) : (
         <>
-          <p className={cn(MENU_NOTE, "pl-8")}>{t("model.simple.noModels")}</p>
+          {body.failed
+            ? <p role="alert" className={cn(MENU_NOTE, "pl-8")}>{t("model.simple.checkFailed")}</p>
+            : <p className={cn(MENU_NOTE, "pl-8")}>{t("model.simple.noModels")}</p>}
           <button type="button" data-menu-row data-simple-refresh tabIndex={-1} disabled={props.menu.busy} onClick={() => props.onCheckAgain(instance)} className={MENU_ROW}>
             <Gutter>
               {props.menu.busy
