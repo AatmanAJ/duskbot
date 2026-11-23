@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { COMPUTER_CHECK_MARK, DESKTOP_IMAGE_STATUS, homeControlScript, homeSetupScript, HOME_CONTROL, HOME_SCREEN_DIRECT_PORTS } from "./home.ts";
-import { createReleaseFile, MISBLAMED, type HomeRelease } from "./home-update.ts";
+import { createReleaseFile, DUE_RUN_GUARD_MS, MISBLAMED, type HomeRelease } from "./home-update.ts";
 import { COMPUTER_CHECK_MS } from "./computer-health.ts";
 import { signRelease, type ReleaseKey } from "./release-signing.ts";
 import { createPolicySource, signPolicy, verifyPolicy } from "./update-policy.ts";
@@ -193,6 +193,19 @@ describe("staged home updates", () => {
     await t.pass();
     expect(t.c.managed!.installed).toBe(sha("1.1.0"));
     expect(t.actions()).toEqual(["update_applied:idle", "update_runs_excused:computer_unreachable"]);
+  });
+
+  it("installs nothing just before or just after a scheduled run is due, as the install restarts the home under it", async () => {
+    const t = await updating();
+    t.f.power.busy = [];
+    t.f.power.nextDueAt = t.f.now() + 61_000 + 60_000;
+    t.offer(release("1.1.0"));
+    await t.pass();
+    await t.pass();
+    expect(t.commands().filter(x => x.includes("omb-home install") && x.includes(sha("1.1.0")))).toHaveLength(0);
+    t.f.power.nextDueAt = t.f.now() + 61_000 + DUE_RUN_GUARD_MS + 60_000;
+    await t.pass();
+    expect(t.c.managed!.installed).toBe(sha("1.1.0"));
   });
 
   it("installs nothing on a home whose computer stays down, and installs once it answers", async () => {

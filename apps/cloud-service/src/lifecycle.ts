@@ -986,7 +986,7 @@ export function createLifecycle(deps: LifecycleDeps) {
     await entitle(c, false).catch(() => {});
     const power = deps.home.power ? await deps.home.power(homeOrigin(c), secret(c), Math.max(1, Math.round(rails.minIdleMs / MINUTE))).catch(() => null) : null;
     if (deps.computer?.due(c)) await deps.computer.check(c, "periodic", now(), power?.idle === true && power.busy.length === 0);
-    if (await deps.updates?.step(c, { origin: c.origin!, upstream: homeOrigin(c), secret: secret(c), busy: power?.busy ?? null })) { deps.save(c); return; }
+    if (await deps.updates?.step(c, { origin: c.origin!, upstream: homeOrigin(c), secret: secret(c), busy: power?.busy ?? null, nextDueAt: power ? power.nextDueAt : b.nextDueAt })) { deps.save(c); return; }
     if (!power) { deps.save(c); return; }
     const m = memory(c);
     tallyDay(c, power);
