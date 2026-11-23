@@ -9,7 +9,7 @@ import { Card, FormDialog, FormField, NavRow, NoteRow, rowCls, SheetPane, Switch
 import { RowIconButton, textAreaCls } from "../../ui/GrokDialog";
 import { DELETE_UNDO_MS } from "../../ui/Toast";
 import { UndoToast } from "../../bot-access/ShareBotButton";
-import { useMemoryEditor } from "./use-memory-editor";
+import { forgetLabel, useMemoryEditor } from "./use-memory-editor";
 import { ArtState } from "../../ui/Art";
 
 /** "Note forgotten · Undo" after a Forget, held while the pointer or focus is on it. */
@@ -54,7 +54,7 @@ function MemoryRows({ bot, derived }: { bot: Bot; derived: ReturnType<typeof use
                 : notes.map((note) => (
                   <div key={`${note.path}:${note.line}:${note.text}`} data-memory-note={note.line ?? note.path} className={cn(rowCls, "group/row py-0.5 pr-0.5")}>
                     <span className="min-w-0 flex-1 py-1 text-[13px] leading-[18px] tracking-[0.015em] text-pretty text-ink">{note.text}</span>
-                    {editable && <RowIconButton reveal icon="trash" data-modal-action="forget" label={t("botPanel.memory.forget")} disabled={saving} onClick={() => forget(note)} />}
+                    {editable && <RowIconButton reveal icon="trash" data-modal-action="forget" label={forgetLabel(note.text)} disabled={saving} onClick={() => forget(note)} />}
                   </div>
                 ))}
           {error && <NoteRow tone="warn">{error}</NoteRow>}

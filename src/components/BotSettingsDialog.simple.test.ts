@@ -1030,7 +1030,7 @@ describe("the drill-in pages", () => {
     expect(rendered.html).not.toContain("# Notes");
     expect(switches(rendered.html)).toBe(0);
     for (const text of ["Tidy now", "Upkeep", "Obsidian", "daily logs", "Journal"]) expect(rendered.html).not.toContain(text);
-    click(rendered.nodes.filter((node) => node.props.label === "Forget")[0]!);
+    click(rendered.nodes.filter((node) => node.props.label === "Forget \u201cLikes short replies\u201d")[0]!);
     await Promise.resolve();
     expect(fixture.saveMemory).toHaveBeenLastCalledWith("scout", "MEMORY.md", "# Notes\n\n- Uses Resolve Studio\n", "h1", false);
     await Promise.resolve();
@@ -1052,7 +1052,7 @@ describe("the drill-in pages", () => {
 
     fixture.memory = { ...fixture.memory, docs: [memoryDoc("- Old\n")], error: false };
     fixture.saveMemory = vi.fn(() => Promise.resolve({ ok: false, conflict: true, current: "- New\n", currentHash: "h3" }));
-    click(find(body("memory"), "label", "Forget"));
+    click(find(body("memory"), "label", "Forget \u201cOld\u201d"));
     await Promise.resolve();
     await Promise.resolve();
     expect(fixture.memory.reload).toHaveBeenCalled();

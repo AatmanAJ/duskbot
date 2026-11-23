@@ -7,6 +7,13 @@ import { panelMemoryNotes, withMemoryNote, withoutMemoryNote, type PanelMemoryNo
 import { useMemoryDoc } from "../use-memory-doc";
 import { friendlyError } from "@/lib/plain-error";
 
+const FORGET_LABEL_MAX = 60;
+
+export function forgetLabel(note: string): string {
+  const text = note.length > FORGET_LABEL_MAX ? `${note.slice(0, FORGET_LABEL_MAX - 1).trimEnd()}…` : note;
+  return t("botPanel.memory.forgetNote", { note: text });
+}
+
 function errorText(error: unknown, fallback: string): string {
   return friendlyError(error, fallback);
 }
