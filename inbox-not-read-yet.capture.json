@@ -1,0 +1,19 @@
+{
+  "about": "Opening the inbox when its first read fails. Staged: the fixture has no team, so nothing opens the inbox on its own and its list was already read once; the step clears that list with the store's preview helper setInboxView(null), makes the page's fetch answer /api/inbox with a 500, and calls the app's own openInbox() (src/state/inbox.ts), as your row under People does.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1280,
+  "height": 720,
+  "scale": 2,
+  "steps": [
+    {
+      "eval": "(async () => {\n  const real = window.fetch.bind(window);\n  window.fetch = (input, init) => {\n    const url = typeof input === 'string' ? input : input.url;\n    if (/\\/api\\/inbox(\\?|$)/.test(new URL(url, location.href).pathname + (url.includes('?') ? '?' : ''))) return Promise.resolve(new Response(JSON.stringify({ error: 'The inbox could not be read.' }), { status: 500, headers: { 'content-type': 'application/json' } }));\n    return real(input, init);\n  };\n  const inbox = await import('/src/state/inbox.ts');\n  inbox.setInboxView(null);\n  inbox.openInbox();\n  return true;\n})()"
+    },
+    {
+      "waitMs": 1200
+    },
+    {
+      "shot": true
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+## the new test on untouched main (dbfefd93d)
+   × an inbox that could not be read says so with Try again, and Try again reads it 12ms
+   × while the inbox is still being read it does not say there is nothing for you 3ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+
+## the same test on this branch (41899eb92)
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9210 English strings)
+
+## related tests: src/components/inbox src/state src/App
+ Test Files  44 passed (44)
+      Tests  442 passed (442)
