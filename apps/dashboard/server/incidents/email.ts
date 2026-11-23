@@ -36,7 +36,7 @@ function incidentBlocks(incident: Incident): Block[] {
   if (incident.version || incident.os) rows.push(["app", [incident.version, incident.os].filter(Boolean).join(" · ")]);
   rows.push(["id", incident.id]);
   return [
-    { t: "h2", text: incident.source === "log" ? plain(incident.message).slice(0, 300) : `${incident.name}: ${incident.message || "(no message)"}`.slice(0, 300) },
+    { t: "h2", text: incident.source === "log" && !incident.name.endsWith("Warning") ? plain(incident.message).slice(0, 300) : `${incident.name}: ${incident.message || "(no message)"}`.slice(0, 300) },
     { t: "facts", rows },
     ...(incident.stack.length ? [{ t: "label" as const, text: "stack" }, { t: "log" as const, text: incident.stack.slice(0, 6).join("\n") }] : []),
   ];
@@ -67,13 +67,13 @@ export function incidentEmail(cfg: EmailConfig, input: { kind: IncidentMailKind;
   const heading = input.test ? "test alert" : kind === "new" ? "something's wrong" : "problems you haven't heard about";
   const intro = input.test ? `this is a test from the ${input.env} account service. a real one looks just like this.`
     : kind === "new" ? `${incidents.length === 1 ? "a new problem showed up" : `${incidents.length} new problems showed up`} on ${input.env}. you won't get another email about ${incidents.length === 1 ? "it" : "them"}: repeats only add to the count on the health page, until ${incidents.length === 1 ? "it stays" : "they stay"} quiet for 7 days.`
-    : `these showed up on ${input.env} but were held back by the daily email limit.`;
+    : `these showed up on ${input.env} and were not emailed yet: node warnings, and problems past the daily email limit. each is in one daily email only, while it stays open.`;
   const shown = incidents.slice(0, SHOWN);
   return render(cfg, {
     subject, preheader: plain(first.message || first.name).slice(0, 120), tag: input.env === "production" ? "alert" : `alert · ${input.env}`,
     ...(input.test ? { say: "just a test", accent: "lav" as const, status: ["test", "off"] as [string, "off"] }
       : kind === "new" ? { say: "uh oh, something broke", accent: "pink" as const, status: ["open", "bad"] as [string, "bad"] }
-      : { say: "a few you missed", accent: "lemon" as const, status: [`${incidents.length} held back`, "warn"] as [string, "warn"] }),
+      : { say: "a few you missed", accent: "lemon" as const, status: [`${incidents.length} not emailed yet`, "warn"] as [string, "warn"] }),
     blocks: [
       { t: "h1", text: heading },
       { t: "p", text: intro },
