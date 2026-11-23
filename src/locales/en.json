@@ -4100,6 +4100,7 @@
   "composer.limit.reached": "Weekly limit reached",
   "composer.limit.saver": "Saver mode",
   "composer.limit.saverOn": "Saver mode on",
+  "composer.limit.saverFailed": "Saver mode didn't turn on. Try again.",
   "composer.limit.until": "New tasks wait until {when}. Saver mode keeps chat going on a cheaper model.",
   "routines.strip.skipped": "Skipped: weekly limit",
   "routines.strip.count.skipped": "{count} skipped for the weekly limit",
