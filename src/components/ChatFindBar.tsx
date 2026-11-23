@@ -24,7 +24,7 @@ export function ChatFindBar({ threadId, onClose }: { threadId: string; onClose: 
     inputRef.current?.focus();
     inputRef.current?.select();
     const bar = barRef.current;
-    // React runs a layout cleanup before it removes the bar, so focus is still inside it here when find had it
+    // React 19.2.8 runs a layout cleanup before it removes the bar's DOM, so focus is still inside it here when find had it
     return () => {
       if (!bar?.contains(document.activeElement)) return;
       const back = opener?.isConnected ? opener : document.querySelector<HTMLElement>('[data-tour="composer"] textarea');
