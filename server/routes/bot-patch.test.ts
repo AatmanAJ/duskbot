@@ -128,6 +128,7 @@ describe("PATCH /api/bots/:id vpsAlias relocation guard", () => {
 
     expect(refused.status).toBe(409);
     expect(refused.body.error).toBe(VPS_BOT_ALIAS_CHANGE_ERROR);
+    expect(refused.body.code).toBe("bot_busy");
     expect(scan).toHaveBeenCalledTimes(1);
     expect(store.bot(bot.id)?.vpsAlias).toBe("gamma-vps");
   });
@@ -248,6 +249,7 @@ describe("PATCH /api/bots/:id vpsAlias relocation guard", () => {
 
     expect(refused.status).toBe(409);
     expect(refused.body.error).toBe(VPS_BOT_ALIAS_CHANGE_ERROR);
+    expect(refused.body.code).toBe("server_busy");
     expect(scan).toHaveBeenCalledTimes(3);
   });
 });

@@ -48,6 +48,11 @@ function wear(name: string, value: string | null): void {
 }
 
 let off = false;
+/** A place that keeps no person's preferences (a Team Cloud, a phone's link), or a computer whose bots moved away. */
+export const keepsNone = (error: unknown): boolean => {
+  const { status, body } = error as { status?: number; body?: { code?: unknown } };
+  return status === 403 || status === 404 || (status === 409 && body?.code === "moved");
+};
 let busy = false;
 
 /** The server's newer preferences, worn here. */
@@ -68,8 +73,7 @@ export async function pullSyncedPrefs(): Promise<void> {
       agree(name, there.value, there.at);
     }
   } catch (error) {
-    // a place that keeps no person's preferences (a Team Cloud, a phone's link): nothing to do here
-    if ([403, 404].includes((error as { status?: number }).status ?? 0)) off = true;
+    if (keepsNone(error)) off = true;
   } finally {
     busy = false;
   }
@@ -93,7 +97,7 @@ async function pushSyncedPrefs(): Promise<void> {
       else stale = true;
     }
   } catch (error) {
-    if ([403, 404].includes((error as { status?: number }).status ?? 0)) off = true;
+    if (keepsNone(error)) off = true;
   } finally {
     busy = false;
   }
