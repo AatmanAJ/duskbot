@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { t } from "@/lib/i18n";
 import { Icon } from "../Icon";
 import { Card, roundButtonCls } from "./rows";
-import { PanelAdvancedTab, PanelDetailsTab } from "./PanelShell";
+import { PanelAdvancedTab, PanelComputerTab, PanelDetailsTab } from "./PanelShell";
 import { PANEL_TABS } from "./page-registry";
 import { sidePanelCls } from "./side-panel";
 
@@ -15,6 +15,7 @@ export function PanelPlaceholder({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     void PanelDetailsTab.preload().catch(() => {});
     void PanelAdvancedTab.preload().catch(() => {});
+    void PanelComputerTab.preload().catch(() => {});
   }, []);
   return (
     <aside data-panel-placeholder aria-busy="true" className={sidePanelCls(false)}>
