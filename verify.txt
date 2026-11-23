@@ -1,0 +1,18 @@
+## the new test on untouched main (dbfefd93d)
+   × Copied shows after copying the conversation, then clears like every other copy in the app 12ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+
+## the same test on this branch (ec6b4174b)
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9208 English strings)
+
+## related tests: src/components/ChatMoreMenu src/components/ChatView src/lib/export-transcript src/lib/copy-text
+ Test Files  28 passed (28)
+      Tests  187 passed (187)

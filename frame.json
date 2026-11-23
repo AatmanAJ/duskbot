@@ -1,0 +1,4 @@
+{
+  "chat-copy-status-clears.before-after.png": { "crop": "161,54,256,308", "arrange": "row", "labels": ["before: 2 s later, still Copied", "after: 2 s later, cleared"] },
+  "chat-copy-status-clears.sequence.png": { "shots": ["chat-copy-status-clears.f01-just-copied.raw.png", "chat-copy-status-clears.after.raw.png"], "crop": "161,54,256,308", "arrange": "row", "labels": ["after: just copied", "after: 2 s later"] }
+}

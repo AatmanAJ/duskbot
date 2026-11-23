@@ -1,0 +1,24 @@
+{
+  "about": "Pepper's chat at phone width (where the ⋯ menu sits in the header): one message and the fake engine's reply, Copy as Markdown, the menu closed, two seconds, the menu opened again. On main it still says Copied; on this branch the status has cleared.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 420,
+  "height": 760,
+  "scale": 2,
+  "script": [{ "text": "Booked: the 9:05 to Leeds, coach C, seat 42." }],
+  "steps": [
+    { "type": { "name": "Message Pepper", "text": "Book me the 9am train to Leeds" } },
+    { "press": "Enter" },
+    { "settle": 60 },
+    { "click": "More" },
+    { "waitMs": 400 },
+    { "click": "Copy as Markdown" },
+    { "waitMs": 400 },
+    { "shot": "f01-just-copied", "only": "after" },
+    { "press": "Escape" },
+    { "waitMs": 2200 },
+    { "click": "More" },
+    { "waitMs": 500 },
+    { "shot": true }
+  ]
+}
