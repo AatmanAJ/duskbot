@@ -8,7 +8,7 @@
 set -eu
 : ${REPO:?set REPO to a checkout} ${NAME:?set NAME} ${PORT:?set PORT}
 UI_PORT=$((PORT + 50))
-ROOT=${ROOT:-/private/tmp/claude-501/dusk-real/$NAME}
+ROOT=${ROOT:-${TMPDIR:-/tmp}/dusk-real/$NAME}
 mkdir -p "$ROOT/home/Downloads" "$ROOT/data" "$ROOT/tmp" "$ROOT/bin"
 for tool in node git; do ln -sf "$(command -v $tool)" "$ROOT/bin/$tool"; done
 export HOME="$ROOT/home" USERPROFILE="$ROOT/home"
