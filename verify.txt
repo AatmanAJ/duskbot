@@ -1,0 +1,18 @@
+## the new test on untouched main (dbfefd93d)
+   × a voice list that could not be fetched says so, instead of an empty picker 19ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+
+## the same test on this branch (90d8e7346)
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9209 English strings)
+
+## related tests: src/components/VoiceSettings src/components/VoiceSetupDialog src/components/bot-settings
+ Test Files  14 passed (14)
+      Tests  89 passed (89)
