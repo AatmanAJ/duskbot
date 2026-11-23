@@ -307,7 +307,7 @@ async function redeemPairingResult(payload: MobilePairingPayload, platform: Mobi
         deviceId: paired.device.id, sessionRef: `token.${id}`,
         capabilities: {
           chat: true, uploads: true, computerView: true, computerControl: route.kind !== "companion", routines: route.kind !== "companion",
-          notifications: route.kind !== "companion", settingsWrite: paired.scopes.includes("admin"), openOnDesktop: false,
+          notifications: true, settingsWrite: paired.scopes.includes("admin"), openOnDesktop: false,
         },
         addedAt: now, lastUsedAt: now,
       };

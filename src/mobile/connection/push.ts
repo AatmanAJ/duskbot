@@ -2,7 +2,7 @@ import type { MobilePushRegistration } from "../../../shared/mobile-link";
 import type { MobilePlatform } from "../platform";
 import { createConnectionStore } from "./connections";
 
-const pending = new WeakMap<MobilePlatform, Promise<void>>();
+const pending = new WeakMap<MobilePlatform, { work: Promise<void>; prompt: boolean }>();
 
 /** a workspace drops a token APNs or FCM refused, so a saved registration is checked before it is trusted */
 async function stillRegistered(service: MobilePushRegistration["service"]): Promise<boolean> {
@@ -20,11 +20,11 @@ async function stillRegistered(service: MobilePushRegistration["service"]): Prom
  * phone that was never asked registers nothing, so the app never asks at launch */
 export function registerPushForConnection(platform: MobilePlatform, { prompt = false }: { prompt?: boolean } = {}): Promise<void> {
   const existing = pending.get(platform);
-  if (existing) return existing;
+  if (existing) return existing.prompt || !prompt ? existing.work : existing.work.then(() => registerPushForConnection(platform, { prompt }));
   const work = (async () => {
     if (!platform.native || !platform.registerPush) return;
     const active = await createConnectionStore(platform).active();
-    if (!active?.record.deviceId || !active.record.capabilities.notifications) return;
+    if (!active?.record.deviceId) return;
     const registration = await platform.registerPush({ prompt });
     if (!registration) return;
     const body: MobilePushRegistration = {
@@ -39,6 +39,6 @@ export function registerPushForConnection(platform: MobilePlatform, { prompt = f
     await response.body?.cancel();
     if (response.ok) await platform.prefs.set(key, value);
   })().catch(() => {}).finally(() => pending.delete(platform));
-  pending.set(platform, work);
+  pending.set(platform, { work, prompt });
   return work;
 }

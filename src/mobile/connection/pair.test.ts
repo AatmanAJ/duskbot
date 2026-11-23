@@ -307,11 +307,11 @@ describe("v2 pairing", () => {
     await expect(redeemPairing(pairingFromPayload({ ...v2Payload(), via: [grantRoute] }), fakePlatform().platform)).rejects.toMatchObject({ code: "unsupported" });
   });
 
-  it("uses the native companion route with limited capabilities", async () => {
+  it("uses the native companion route with limited capabilities, push included", async () => {
     const source = { ...v2Payload(), via: [{ kind: "companion", url: "http://mac.test:8810", net: "lan", priority: 1 }] } as MobileLinkPayload;
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({ ...v2Answer(), scopes: ["client"], relay: undefined })));
     const { record } = await redeemPairing(pairingFromPayload(source), fakePlatform().platform);
-    expect(record).toMatchObject({ transport: "companion", origin: "http://mac.test:8810", capabilities: { chat: true, computerView: true, computerControl: false, routines: false, notifications: false, settingsWrite: false } });
+    expect(record).toMatchObject({ transport: "companion", origin: "http://mac.test:8810", capabilities: { chat: true, computerView: true, computerControl: false, routines: false, notifications: true, settingsWrite: false } });
   });
 });
 
@@ -530,6 +530,26 @@ describe("push registration", () => {
     platform.registerPush = vi.fn().mockResolvedValue({ platform: "fcm", token: "new-token" });
     await registerPushForConnection(platform);
     expect(JSON.parse(puts(fetcher)[1][1].body)).toEqual({ service: "fcm", token: "new-token" });
+  });
+
+  it("registers a phone paired over the computer's wi-fi, even one saved with push off", async () => {
+    const { platform, fetcher, record } = await fixture();
+    await createConnectionStore(platform).save({ ...record, transport: "companion", capabilities: { ...record.capabilities, notifications: false } }, "token");
+    await registerPushForConnection(platform, { prompt: true });
+    expect(platform.registerPush).toHaveBeenCalledWith({ prompt: true });
+    expect(puts(fetcher)).toHaveLength(1);
+  });
+
+  it("asks when a turn-on tap lands while a quiet check is still running", async () => {
+    const { platform } = await fixture();
+    let release!: (value: null) => void;
+    platform.registerPush = vi.fn().mockReturnValueOnce(new Promise((resolve) => { release = resolve; })).mockResolvedValue(null);
+    const quiet = registerPushForConnection(platform);
+    await vi.waitFor(() => expect(platform.registerPush).toHaveBeenCalledTimes(1));
+    const asked = registerPushForConnection(platform, { prompt: true });
+    release(null);
+    await Promise.all([quiet, asked]);
+    expect(platform.registerPush).toHaveBeenLastCalledWith({ prompt: true });
   });
 
   it("registers again when the workspace dropped the token", async () => {
