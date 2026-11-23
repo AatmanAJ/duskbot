@@ -553,9 +553,9 @@ describe("the avatar editor", () => {
 
 
 describe("the Details tab", () => {
-  it("holds routines (or what they are), then Conversations, then the Model card, and no Voice chat", () => {
+  it("holds routines (or what they are), then the Model card, and no Voice chat", () => {
     const rendered = botTab(makeBot());
-    const order = ['data-panel-empty="routines"', 'data-panel-page="threads"', 'data-panel-card="model"', 'data-panel-row="model"'].map((marker) => rendered.html.indexOf(marker));
+    const order = ['data-panel-empty="routines"', 'data-panel-card="model"', 'data-panel-row="model"'].map((marker) => rendered.html.indexOf(marker));
     expect(order.every((index) => index > -1)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(rendered.html).toContain('data-panel-sections=""');
@@ -564,19 +564,6 @@ describe("the Details tab", () => {
     }
     expect(rendered.html).not.toContain(">routines<");
     expect(switches(rendered.html)).toBe(0);
-  });
-
-  it("opens the bot's conversations, counting them without routine runs, so another can be listed, opened or started", () => {
-    onOpen.mockClear();
-    const one = botTab(makeBot({ tasks: undefined }));
-    expect(find(one, "data-panel-page", "threads").props.hint).toBe("1 conversation");
-    const tasks = [{ threadId: "a", title: "Main" }, { threadId: "b", title: "Launch" }, { threadId: "c", title: "Daily run", routineRunId: "r1" }] as Bot["tasks"];
-    const rendered = botTab(makeBot({ tasks }));
-    const row = find(rendered, "data-panel-page", "threads");
-    expect(row.props.title).toBe("Conversations");
-    expect(row.props.hint).toBe("2 conversations");
-    click(row);
-    expect(onOpen).toHaveBeenCalledWith("threads");
   });
 
   it("says what routines are while the bot has none, in Grok's words, and lists them once it has some", () => {
@@ -601,7 +588,8 @@ describe("the Details tab", () => {
     expect(rendered.html).toContain(">Paused<");
     expect(rendered.html).toContain(">Every weekday at 9 AM<");
     expect(rendered.html).toContain('aria-haspopup="dialog"');
-    expect(rendered.html).not.toContain("aria-expanded=\"false\"");
+    const routines = rendered.html.slice(0, rendered.html.indexOf('data-panel-card="model"'));
+    expect(routines).not.toContain("aria-expanded=\"false\"");
     expect(rendered.html).not.toContain('data-panel-action="new-routine"');
   });
 
@@ -623,7 +611,7 @@ describe("the Bot settings page", () => {
     expect(order.every((index) => index > -1)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     const pages = [...rendered.html.matchAll(/data-panel-page="(\w+)"/g)].map((match) => match[1]);
-    expect(pages).toEqual(["identity", "instructions", "memory", "skills", "tools", "permissions", "folder"]);
+    expect(pages).toEqual(["identity", "instructions", "memory", "skills", "tools", "permissions", "folder", "backups"]);
     expect(rendered.html).not.toContain('data-panel-advanced="settings"');
     for (const page of pages) {
       click(find(rendered, "data-panel-page", page));
@@ -637,19 +625,24 @@ describe("the Bot settings page", () => {
     const row = (page: string) => find(rendered, "data-panel-page", page).props;
     expect(row("memory").value).toBe("Off");
     expect(row("skills").value).toBe("None");
-    for (const page of ["instructions", "memory", "skills", "folder"]) expect(row(page).hint, page).toBeUndefined();
+    expect(row("backups").value).toBe("None");
+    for (const page of ["instructions", "memory", "skills", "folder", "backups"]) expect(row(page).hint, page).toBeUndefined();
     // instructions already written need no value; an empty one says None
     expect(row("instructions").value).toBeUndefined();
     expect(find(settingsPage(makeBot({ soul: "" })), "data-panel-page", "instructions").props.value).toBe("None");
   });
 
-  it("has one Backup AI switch, on (automatic) unless the bot was set to none, and no backup model list", () => {
-    const backup = (fallback?: Array<{ instanceId: string; model: string }>) => find(settingsPage(makeBot(fallback ? { fallback } : {})), "data-panel-row", "backup-ai").props;
-    expect(backup().checked).toBe(true);
-    expect(backup([]).checked).toBe(false);
-    expect(backup([{ instanceId: "codex", model: "gpt-6" }]).checked).toBe(true);
-    expect(backup().hint).toBeUndefined();
-    expect(settingsPage(makeBot()).html).not.toContain('data-panel-page="backups"');
+  it("shows a backup saved as Automatic, Off or a list on Backup AIs and the Details tab's Backup model", () => {
+    const backups = (fallback?: Array<{ instanceId: string; model: string }>) => find(settingsPage(makeBot(fallback ? { fallback } : {})), "data-panel-page", "backups").props.value;
+    const pill = (fallback?: Array<{ instanceId: string; model: string }>) => {
+      const html = botTab(makeBot(fallback ? { fallback } : {})).html;
+      return html.slice(html.indexOf('data-panel-row="backup-model"'));
+    };
+    expect(backups()).toBe("None");
+    expect(backups([])).toBe("None");
+    expect(backups([{ instanceId: "codex", model: "gpt-6" }])).toBe("1 set up");
+    expect(pill()).toContain(">Automatic<");
+    expect(pill([])).toContain(">No backup<");
   });
 
   it("has no rows for apps, signed-in sites, the API, conversations, Work until done, Hide, Call mode or the label", () => {

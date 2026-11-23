@@ -9764,9 +9764,6 @@
       "server.routine.probeStuck": "27f677abc0d871bdb112162a5c727f7791b45bd5f30a93067221fa542e6ca94b",
       "server.routine.scriptCheck": "34155d25931a1ca69e5634b73df5170d45552aa6983f14e0426946583b200337",
       "server.stop.pausedForPerson": "b1734b11d8a1e9b0ed1c686dc62ec9979b0db536765e67a7255d5f5e25bd993f",
-      "botPanel.backupAi": "bc4e5e3d0124241b6567ef5ceb8f68ae70ada5c38db9d9ad455acf35c18ddf11",
-      "botPanel.backupAi.off": "b02fcb3899a512df97c751fac6240e71078935feceedce2e14ef3e3cb6c1d6cc",
-      "botPanel.backupAi.on": "764c25bb55cee2b46015c3e391cf7c91c72c817bc281d47d6aab5953eef995b0",
       "messageReview.title": "cd1ada79ccc8fc9ad48e6abe7643c6dbcc74c2e3bbd38432b49e503049cb3102",
       "messageReview.postTitle": "fa82053cedf1154d2872e2b4da2f9c86da5ab71f60bc47ebeb5c95db9ac1225d",
       "messageReview.recordTitle": "b634c9cad52cb2d72f4e29ade5f54d09d60da00eeb00064a2e994201c00e61bc",
@@ -9895,7 +9892,11 @@
       "palette.also.people": "45e2731b07241753bf8eba3577b3d6167631795987d09b3c71bd32bcb67a8e33",
       "palette.also.backups": "078084dc89b373748fb43853839ae4da4b45e8fb20d691c5ee20c29784ed5c82",
       "palette.also.skills": "dbcc33ee7df6aa8259ce2ca4d16b4256ec2bd78a41fb0b72b2335fc9cd475cc4",
-      "palette.also.archived": "34992b066993a8c23e943f4363b81435cc1d313348a7397355e335b66d1e17b1"
+      "palette.also.archived": "34992b066993a8c23e943f4363b81435cc1d313348a7397355e335b66d1e17b1",
+      "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
+      "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
     },
     "es": {
       "updates.updated": "da0fcccdc519425a9c333fda0838bbdd50d67fb0266194753bd1044abd0ecbb4",
@@ -19652,9 +19653,6 @@
       "chat.error.replyGone": "db61000e335eda4b97ee5a00bdad1c53ffce303afec255d317c63e134000ee17",
       "call.voice.micBlockedShort": "69aebf6951e886fc9269a40e33e4e1c3b02483b77051927471dff5c85c4c815b",
       "server.stop.pausedForPerson": "b1734b11d8a1e9b0ed1c686dc62ec9979b0db536765e67a7255d5f5e25bd993f",
-      "botPanel.backupAi": "bc4e5e3d0124241b6567ef5ceb8f68ae70ada5c38db9d9ad455acf35c18ddf11",
-      "botPanel.backupAi.off": "b02fcb3899a512df97c751fac6240e71078935feceedce2e14ef3e3cb6c1d6cc",
-      "botPanel.backupAi.on": "764c25bb55cee2b46015c3e391cf7c91c72c817bc281d47d6aab5953eef995b0",
       "cloudCancel.beforeTitle": "c682ac1a8b55d5bd318b26a42d38e7508185926373e646b39aaf29c5b7e164c6",
       "cloudCancel.beforePlan": "33b08ed6c90e343ed70c67ff52074cc4f0c84f2e9d08aa59c189a0d3fb31f518",
       "cloudCancel.beforeTrial": "921cf430cc45b438f6d25762a4ccb020435aaeabaf01c5c321227ea7e9aaab8b",
@@ -19770,7 +19768,11 @@
       "palette.also.people": "45e2731b07241753bf8eba3577b3d6167631795987d09b3c71bd32bcb67a8e33",
       "palette.also.backups": "078084dc89b373748fb43853839ae4da4b45e8fb20d691c5ee20c29784ed5c82",
       "palette.also.skills": "dbcc33ee7df6aa8259ce2ca4d16b4256ec2bd78a41fb0b72b2335fc9cd475cc4",
-      "palette.also.archived": "34992b066993a8c23e943f4363b81435cc1d313348a7397355e335b66d1e17b1"
+      "palette.also.archived": "34992b066993a8c23e943f4363b81435cc1d313348a7397355e335b66d1e17b1",
+      "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
+      "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
     },
     "fr": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -23238,9 +23240,6 @@
       "failedReply.noAi.title": "81fd549173eb24f87161953277a03d06f9d4a5d57ef3e597d57115d24240143e",
       "failedReply.noAi": "cfb6d0f71365000847f90489498637cfad5f49d0ac50594333804fc330e5e7f9",
       "server.stop.pausedForPerson": "b1734b11d8a1e9b0ed1c686dc62ec9979b0db536765e67a7255d5f5e25bd993f",
-      "botPanel.backupAi": "bc4e5e3d0124241b6567ef5ceb8f68ae70ada5c38db9d9ad455acf35c18ddf11",
-      "botPanel.backupAi.off": "b02fcb3899a512df97c751fac6240e71078935feceedce2e14ef3e3cb6c1d6cc",
-      "botPanel.backupAi.on": "764c25bb55cee2b46015c3e391cf7c91c72c817bc281d47d6aab5953eef995b0",
       "cloudCancel.beforeTitle": "c682ac1a8b55d5bd318b26a42d38e7508185926373e646b39aaf29c5b7e164c6",
       "cloudCancel.beforePlan": "33b08ed6c90e343ed70c67ff52074cc4f0c84f2e9d08aa59c189a0d3fb31f518",
       "cloudCancel.beforeTrial": "921cf430cc45b438f6d25762a4ccb020435aaeabaf01c5c321227ea7e9aaab8b",
@@ -23267,7 +23266,11 @@
       "composer.attach.imageAsFile.many": "62ff34f65fc589aaf5947cbba908d4730302fe154cd389111b219846fe55f1a9",
       "composer.attach.tooLarge": "051dbc5461ffa183abf079666b9df8be5b8adf91df9d909628c321d463b4e79a",
       "composer.attach.unsupported": "48f1bdb1b5119726d027a6550af11d9a6954db8328b58db61a5ce0ab44f82233",
-      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c"
+      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c",
+      "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
+      "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
     },
     "hi": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -26733,9 +26736,6 @@
       "failedReply.noAi.title": "81fd549173eb24f87161953277a03d06f9d4a5d57ef3e597d57115d24240143e",
       "failedReply.noAi": "cfb6d0f71365000847f90489498637cfad5f49d0ac50594333804fc330e5e7f9",
       "server.stop.pausedForPerson": "b1734b11d8a1e9b0ed1c686dc62ec9979b0db536765e67a7255d5f5e25bd993f",
-      "botPanel.backupAi": "bc4e5e3d0124241b6567ef5ceb8f68ae70ada5c38db9d9ad455acf35c18ddf11",
-      "botPanel.backupAi.off": "b02fcb3899a512df97c751fac6240e71078935feceedce2e14ef3e3cb6c1d6cc",
-      "botPanel.backupAi.on": "764c25bb55cee2b46015c3e391cf7c91c72c817bc281d47d6aab5953eef995b0",
       "cloudCancel.beforeTitle": "c682ac1a8b55d5bd318b26a42d38e7508185926373e646b39aaf29c5b7e164c6",
       "cloudCancel.beforePlan": "33b08ed6c90e343ed70c67ff52074cc4f0c84f2e9d08aa59c189a0d3fb31f518",
       "cloudCancel.beforeTrial": "921cf430cc45b438f6d25762a4ccb020435aaeabaf01c5c321227ea7e9aaab8b",
@@ -26762,7 +26762,11 @@
       "composer.attach.imageAsFile.many": "62ff34f65fc589aaf5947cbba908d4730302fe154cd389111b219846fe55f1a9",
       "composer.attach.tooLarge": "051dbc5461ffa183abf079666b9df8be5b8adf91df9d909628c321d463b4e79a",
       "composer.attach.unsupported": "48f1bdb1b5119726d027a6550af11d9a6954db8328b58db61a5ce0ab44f82233",
-      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c"
+      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c",
+      "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
+      "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
     },
     "it": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -32913,9 +32917,6 @@
       "failedReply.noAi.title": "81fd549173eb24f87161953277a03d06f9d4a5d57ef3e597d57115d24240143e",
       "failedReply.noAi": "cfb6d0f71365000847f90489498637cfad5f49d0ac50594333804fc330e5e7f9",
       "server.stop.pausedForPerson": "b1734b11d8a1e9b0ed1c686dc62ec9979b0db536765e67a7255d5f5e25bd993f",
-      "botPanel.backupAi": "bc4e5e3d0124241b6567ef5ceb8f68ae70ada5c38db9d9ad455acf35c18ddf11",
-      "botPanel.backupAi.off": "b02fcb3899a512df97c751fac6240e71078935feceedce2e14ef3e3cb6c1d6cc",
-      "botPanel.backupAi.on": "764c25bb55cee2b46015c3e391cf7c91c72c817bc281d47d6aab5953eef995b0",
       "cloudCancel.beforeTitle": "c682ac1a8b55d5bd318b26a42d38e7508185926373e646b39aaf29c5b7e164c6",
       "cloudCancel.beforePlan": "33b08ed6c90e343ed70c67ff52074cc4f0c84f2e9d08aa59c189a0d3fb31f518",
       "cloudCancel.beforeTrial": "921cf430cc45b438f6d25762a4ccb020435aaeabaf01c5c321227ea7e9aaab8b",
@@ -32942,7 +32943,11 @@
       "composer.attach.imageAsFile.many": "62ff34f65fc589aaf5947cbba908d4730302fe154cd389111b219846fe55f1a9",
       "composer.attach.tooLarge": "051dbc5461ffa183abf079666b9df8be5b8adf91df9d909628c321d463b4e79a",
       "composer.attach.unsupported": "48f1bdb1b5119726d027a6550af11d9a6954db8328b58db61a5ce0ab44f82233",
-      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c"
+      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c",
+      "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
+      "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
     },
     "ja": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -39279,9 +39284,6 @@
       "failedReply.noAi.title": "81fd549173eb24f87161953277a03d06f9d4a5d57ef3e597d57115d24240143e",
       "failedReply.noAi": "cfb6d0f71365000847f90489498637cfad5f49d0ac50594333804fc330e5e7f9",
       "server.stop.pausedForPerson": "b1734b11d8a1e9b0ed1c686dc62ec9979b0db536765e67a7255d5f5e25bd993f",
-      "botPanel.backupAi": "bc4e5e3d0124241b6567ef5ceb8f68ae70ada5c38db9d9ad455acf35c18ddf11",
-      "botPanel.backupAi.off": "b02fcb3899a512df97c751fac6240e71078935feceedce2e14ef3e3cb6c1d6cc",
-      "botPanel.backupAi.on": "764c25bb55cee2b46015c3e391cf7c91c72c817bc281d47d6aab5953eef995b0",
       "cloudCancel.beforeTitle": "c682ac1a8b55d5bd318b26a42d38e7508185926373e646b39aaf29c5b7e164c6",
       "cloudCancel.beforePlan": "33b08ed6c90e343ed70c67ff52074cc4f0c84f2e9d08aa59c189a0d3fb31f518",
       "cloudCancel.beforeTrial": "921cf430cc45b438f6d25762a4ccb020435aaeabaf01c5c321227ea7e9aaab8b",
@@ -39308,7 +39310,11 @@
       "composer.attach.imageAsFile.many": "62ff34f65fc589aaf5947cbba908d4730302fe154cd389111b219846fe55f1a9",
       "composer.attach.tooLarge": "051dbc5461ffa183abf079666b9df8be5b8adf91df9d909628c321d463b4e79a",
       "composer.attach.unsupported": "48f1bdb1b5119726d027a6550af11d9a6954db8328b58db61a5ce0ab44f82233",
-      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c"
+      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c",
+      "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
+      "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
     },
     "ko": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -46027,9 +46033,6 @@
       "failedReply.noAi.title": "81fd549173eb24f87161953277a03d06f9d4a5d57ef3e597d57115d24240143e",
       "failedReply.noAi": "cfb6d0f71365000847f90489498637cfad5f49d0ac50594333804fc330e5e7f9",
       "server.stop.pausedForPerson": "b1734b11d8a1e9b0ed1c686dc62ec9979b0db536765e67a7255d5f5e25bd993f",
-      "botPanel.backupAi": "bc4e5e3d0124241b6567ef5ceb8f68ae70ada5c38db9d9ad455acf35c18ddf11",
-      "botPanel.backupAi.off": "b02fcb3899a512df97c751fac6240e71078935feceedce2e14ef3e3cb6c1d6cc",
-      "botPanel.backupAi.on": "764c25bb55cee2b46015c3e391cf7c91c72c817bc281d47d6aab5953eef995b0",
       "cloudCancel.beforeTitle": "c682ac1a8b55d5bd318b26a42d38e7508185926373e646b39aaf29c5b7e164c6",
       "cloudCancel.beforePlan": "33b08ed6c90e343ed70c67ff52074cc4f0c84f2e9d08aa59c189a0d3fb31f518",
       "cloudCancel.beforeTrial": "921cf430cc45b438f6d25762a4ccb020435aaeabaf01c5c321227ea7e9aaab8b",
@@ -46056,7 +46059,11 @@
       "composer.attach.imageAsFile.many": "62ff34f65fc589aaf5947cbba908d4730302fe154cd389111b219846fe55f1a9",
       "composer.attach.tooLarge": "051dbc5461ffa183abf079666b9df8be5b8adf91df9d909628c321d463b4e79a",
       "composer.attach.unsupported": "48f1bdb1b5119726d027a6550af11d9a6954db8328b58db61a5ce0ab44f82233",
-      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c"
+      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c",
+      "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
+      "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
     },
     "pl": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -52367,9 +52374,6 @@
       "failedReply.noAi.title": "81fd549173eb24f87161953277a03d06f9d4a5d57ef3e597d57115d24240143e",
       "failedReply.noAi": "cfb6d0f71365000847f90489498637cfad5f49d0ac50594333804fc330e5e7f9",
       "server.stop.pausedForPerson": "b1734b11d8a1e9b0ed1c686dc62ec9979b0db536765e67a7255d5f5e25bd993f",
-      "botPanel.backupAi": "bc4e5e3d0124241b6567ef5ceb8f68ae70ada5c38db9d9ad455acf35c18ddf11",
-      "botPanel.backupAi.off": "b02fcb3899a512df97c751fac6240e71078935feceedce2e14ef3e3cb6c1d6cc",
-      "botPanel.backupAi.on": "764c25bb55cee2b46015c3e391cf7c91c72c817bc281d47d6aab5953eef995b0",
       "cloudCancel.beforeTitle": "c682ac1a8b55d5bd318b26a42d38e7508185926373e646b39aaf29c5b7e164c6",
       "cloudCancel.beforePlan": "33b08ed6c90e343ed70c67ff52074cc4f0c84f2e9d08aa59c189a0d3fb31f518",
       "cloudCancel.beforeTrial": "921cf430cc45b438f6d25762a4ccb020435aaeabaf01c5c321227ea7e9aaab8b",
@@ -52396,7 +52400,11 @@
       "composer.attach.imageAsFile.many": "62ff34f65fc589aaf5947cbba908d4730302fe154cd389111b219846fe55f1a9",
       "composer.attach.tooLarge": "051dbc5461ffa183abf079666b9df8be5b8adf91df9d909628c321d463b4e79a",
       "composer.attach.unsupported": "48f1bdb1b5119726d027a6550af11d9a6954db8328b58db61a5ce0ab44f82233",
-      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c"
+      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c",
+      "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
+      "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
     },
     "pt-br": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -58582,9 +58590,6 @@
       "failedReply.noAi.title": "81fd549173eb24f87161953277a03d06f9d4a5d57ef3e597d57115d24240143e",
       "failedReply.noAi": "cfb6d0f71365000847f90489498637cfad5f49d0ac50594333804fc330e5e7f9",
       "server.stop.pausedForPerson": "b1734b11d8a1e9b0ed1c686dc62ec9979b0db536765e67a7255d5f5e25bd993f",
-      "botPanel.backupAi": "bc4e5e3d0124241b6567ef5ceb8f68ae70ada5c38db9d9ad455acf35c18ddf11",
-      "botPanel.backupAi.off": "b02fcb3899a512df97c751fac6240e71078935feceedce2e14ef3e3cb6c1d6cc",
-      "botPanel.backupAi.on": "764c25bb55cee2b46015c3e391cf7c91c72c817bc281d47d6aab5953eef995b0",
       "cloudCancel.beforeTitle": "c682ac1a8b55d5bd318b26a42d38e7508185926373e646b39aaf29c5b7e164c6",
       "cloudCancel.beforePlan": "33b08ed6c90e343ed70c67ff52074cc4f0c84f2e9d08aa59c189a0d3fb31f518",
       "cloudCancel.beforeTrial": "921cf430cc45b438f6d25762a4ccb020435aaeabaf01c5c321227ea7e9aaab8b",
@@ -58611,7 +58616,11 @@
       "composer.attach.imageAsFile.many": "62ff34f65fc589aaf5947cbba908d4730302fe154cd389111b219846fe55f1a9",
       "composer.attach.tooLarge": "051dbc5461ffa183abf079666b9df8be5b8adf91df9d909628c321d463b4e79a",
       "composer.attach.unsupported": "48f1bdb1b5119726d027a6550af11d9a6954db8328b58db61a5ce0ab44f82233",
-      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c"
+      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c",
+      "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
+      "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
     },
     "ru": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -64929,9 +64938,6 @@
       "failedReply.noAi.title": "81fd549173eb24f87161953277a03d06f9d4a5d57ef3e597d57115d24240143e",
       "failedReply.noAi": "cfb6d0f71365000847f90489498637cfad5f49d0ac50594333804fc330e5e7f9",
       "server.stop.pausedForPerson": "b1734b11d8a1e9b0ed1c686dc62ec9979b0db536765e67a7255d5f5e25bd993f",
-      "botPanel.backupAi": "bc4e5e3d0124241b6567ef5ceb8f68ae70ada5c38db9d9ad455acf35c18ddf11",
-      "botPanel.backupAi.off": "b02fcb3899a512df97c751fac6240e71078935feceedce2e14ef3e3cb6c1d6cc",
-      "botPanel.backupAi.on": "764c25bb55cee2b46015c3e391cf7c91c72c817bc281d47d6aab5953eef995b0",
       "cloudCancel.beforeTitle": "c682ac1a8b55d5bd318b26a42d38e7508185926373e646b39aaf29c5b7e164c6",
       "cloudCancel.beforePlan": "33b08ed6c90e343ed70c67ff52074cc4f0c84f2e9d08aa59c189a0d3fb31f518",
       "cloudCancel.beforeTrial": "921cf430cc45b438f6d25762a4ccb020435aaeabaf01c5c321227ea7e9aaab8b",
@@ -64958,7 +64964,11 @@
       "composer.attach.imageAsFile.many": "62ff34f65fc589aaf5947cbba908d4730302fe154cd389111b219846fe55f1a9",
       "composer.attach.tooLarge": "051dbc5461ffa183abf079666b9df8be5b8adf91df9d909628c321d463b4e79a",
       "composer.attach.unsupported": "48f1bdb1b5119726d027a6550af11d9a6954db8328b58db61a5ce0ab44f82233",
-      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c"
+      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c",
+      "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
+      "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
     },
     "tr": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -70254,9 +70264,6 @@
       "failedReply.noAi.title": "81fd549173eb24f87161953277a03d06f9d4a5d57ef3e597d57115d24240143e",
       "failedReply.noAi": "cfb6d0f71365000847f90489498637cfad5f49d0ac50594333804fc330e5e7f9",
       "server.stop.pausedForPerson": "b1734b11d8a1e9b0ed1c686dc62ec9979b0db536765e67a7255d5f5e25bd993f",
-      "botPanel.backupAi": "bc4e5e3d0124241b6567ef5ceb8f68ae70ada5c38db9d9ad455acf35c18ddf11",
-      "botPanel.backupAi.off": "b02fcb3899a512df97c751fac6240e71078935feceedce2e14ef3e3cb6c1d6cc",
-      "botPanel.backupAi.on": "764c25bb55cee2b46015c3e391cf7c91c72c817bc281d47d6aab5953eef995b0",
       "cloudCancel.beforeTitle": "c682ac1a8b55d5bd318b26a42d38e7508185926373e646b39aaf29c5b7e164c6",
       "cloudCancel.beforePlan": "33b08ed6c90e343ed70c67ff52074cc4f0c84f2e9d08aa59c189a0d3fb31f518",
       "cloudCancel.beforeTrial": "921cf430cc45b438f6d25762a4ccb020435aaeabaf01c5c321227ea7e9aaab8b",
@@ -70283,7 +70290,11 @@
       "composer.attach.imageAsFile.many": "62ff34f65fc589aaf5947cbba908d4730302fe154cd389111b219846fe55f1a9",
       "composer.attach.tooLarge": "051dbc5461ffa183abf079666b9df8be5b8adf91df9d909628c321d463b4e79a",
       "composer.attach.unsupported": "48f1bdb1b5119726d027a6550af11d9a6954db8328b58db61a5ce0ab44f82233",
-      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c"
+      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c",
+      "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
+      "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
     },
     "uk": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -74053,9 +74064,6 @@
       "failedReply.noAi.title": "81fd549173eb24f87161953277a03d06f9d4a5d57ef3e597d57115d24240143e",
       "failedReply.noAi": "cfb6d0f71365000847f90489498637cfad5f49d0ac50594333804fc330e5e7f9",
       "server.stop.pausedForPerson": "b1734b11d8a1e9b0ed1c686dc62ec9979b0db536765e67a7255d5f5e25bd993f",
-      "botPanel.backupAi": "bc4e5e3d0124241b6567ef5ceb8f68ae70ada5c38db9d9ad455acf35c18ddf11",
-      "botPanel.backupAi.off": "b02fcb3899a512df97c751fac6240e71078935feceedce2e14ef3e3cb6c1d6cc",
-      "botPanel.backupAi.on": "764c25bb55cee2b46015c3e391cf7c91c72c817bc281d47d6aab5953eef995b0",
       "cloudCancel.beforeTitle": "c682ac1a8b55d5bd318b26a42d38e7508185926373e646b39aaf29c5b7e164c6",
       "cloudCancel.beforePlan": "33b08ed6c90e343ed70c67ff52074cc4f0c84f2e9d08aa59c189a0d3fb31f518",
       "cloudCancel.beforeTrial": "921cf430cc45b438f6d25762a4ccb020435aaeabaf01c5c321227ea7e9aaab8b",
@@ -74082,7 +74090,11 @@
       "composer.attach.imageAsFile.many": "62ff34f65fc589aaf5947cbba908d4730302fe154cd389111b219846fe55f1a9",
       "composer.attach.tooLarge": "051dbc5461ffa183abf079666b9df8be5b8adf91df9d909628c321d463b4e79a",
       "composer.attach.unsupported": "48f1bdb1b5119726d027a6550af11d9a6954db8328b58db61a5ce0ab44f82233",
-      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c"
+      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c",
+      "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
+      "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
     },
     "vi": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -79378,9 +79390,6 @@
       "failedReply.noAi.title": "81fd549173eb24f87161953277a03d06f9d4a5d57ef3e597d57115d24240143e",
       "failedReply.noAi": "cfb6d0f71365000847f90489498637cfad5f49d0ac50594333804fc330e5e7f9",
       "server.stop.pausedForPerson": "b1734b11d8a1e9b0ed1c686dc62ec9979b0db536765e67a7255d5f5e25bd993f",
-      "botPanel.backupAi": "bc4e5e3d0124241b6567ef5ceb8f68ae70ada5c38db9d9ad455acf35c18ddf11",
-      "botPanel.backupAi.off": "b02fcb3899a512df97c751fac6240e71078935feceedce2e14ef3e3cb6c1d6cc",
-      "botPanel.backupAi.on": "764c25bb55cee2b46015c3e391cf7c91c72c817bc281d47d6aab5953eef995b0",
       "cloudCancel.beforeTitle": "c682ac1a8b55d5bd318b26a42d38e7508185926373e646b39aaf29c5b7e164c6",
       "cloudCancel.beforePlan": "33b08ed6c90e343ed70c67ff52074cc4f0c84f2e9d08aa59c189a0d3fb31f518",
       "cloudCancel.beforeTrial": "921cf430cc45b438f6d25762a4ccb020435aaeabaf01c5c321227ea7e9aaab8b",
@@ -79407,7 +79416,11 @@
       "composer.attach.imageAsFile.many": "62ff34f65fc589aaf5947cbba908d4730302fe154cd389111b219846fe55f1a9",
       "composer.attach.tooLarge": "051dbc5461ffa183abf079666b9df8be5b8adf91df9d909628c321d463b4e79a",
       "composer.attach.unsupported": "48f1bdb1b5119726d027a6550af11d9a6954db8328b58db61a5ce0ab44f82233",
-      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c"
+      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c",
+      "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
+      "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
     },
     "zh": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -86290,9 +86303,6 @@
       "failedReply.noAi.title": "81fd549173eb24f87161953277a03d06f9d4a5d57ef3e597d57115d24240143e",
       "failedReply.noAi": "cfb6d0f71365000847f90489498637cfad5f49d0ac50594333804fc330e5e7f9",
       "server.stop.pausedForPerson": "b1734b11d8a1e9b0ed1c686dc62ec9979b0db536765e67a7255d5f5e25bd993f",
-      "botPanel.backupAi": "bc4e5e3d0124241b6567ef5ceb8f68ae70ada5c38db9d9ad455acf35c18ddf11",
-      "botPanel.backupAi.off": "b02fcb3899a512df97c751fac6240e71078935feceedce2e14ef3e3cb6c1d6cc",
-      "botPanel.backupAi.on": "764c25bb55cee2b46015c3e391cf7c91c72c817bc281d47d6aab5953eef995b0",
       "cloudCancel.beforeTitle": "c682ac1a8b55d5bd318b26a42d38e7508185926373e646b39aaf29c5b7e164c6",
       "cloudCancel.beforePlan": "33b08ed6c90e343ed70c67ff52074cc4f0c84f2e9d08aa59c189a0d3fb31f518",
       "cloudCancel.beforeTrial": "921cf430cc45b438f6d25762a4ccb020435aaeabaf01c5c321227ea7e9aaab8b",
@@ -86319,7 +86329,11 @@
       "composer.attach.imageAsFile.many": "62ff34f65fc589aaf5947cbba908d4730302fe154cd389111b219846fe55f1a9",
       "composer.attach.tooLarge": "051dbc5461ffa183abf079666b9df8be5b8adf91df9d909628c321d463b4e79a",
       "composer.attach.unsupported": "48f1bdb1b5119726d027a6550af11d9a6954db8328b58db61a5ce0ab44f82233",
-      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c"
+      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c",
+      "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
+      "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
     },
     "zh-tw": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -91193,9 +91207,6 @@
       "failedReply.noAi.title": "81fd549173eb24f87161953277a03d06f9d4a5d57ef3e597d57115d24240143e",
       "failedReply.noAi": "cfb6d0f71365000847f90489498637cfad5f49d0ac50594333804fc330e5e7f9",
       "server.stop.pausedForPerson": "b1734b11d8a1e9b0ed1c686dc62ec9979b0db536765e67a7255d5f5e25bd993f",
-      "botPanel.backupAi": "bc4e5e3d0124241b6567ef5ceb8f68ae70ada5c38db9d9ad455acf35c18ddf11",
-      "botPanel.backupAi.off": "b02fcb3899a512df97c751fac6240e71078935feceedce2e14ef3e3cb6c1d6cc",
-      "botPanel.backupAi.on": "764c25bb55cee2b46015c3e391cf7c91c72c817bc281d47d6aab5953eef995b0",
       "cloudCancel.beforeTitle": "c682ac1a8b55d5bd318b26a42d38e7508185926373e646b39aaf29c5b7e164c6",
       "cloudCancel.beforePlan": "33b08ed6c90e343ed70c67ff52074cc4f0c84f2e9d08aa59c189a0d3fb31f518",
       "cloudCancel.beforeTrial": "921cf430cc45b438f6d25762a4ccb020435aaeabaf01c5c321227ea7e9aaab8b",
@@ -91222,7 +91233,11 @@
       "composer.attach.imageAsFile.many": "62ff34f65fc589aaf5947cbba908d4730302fe154cd389111b219846fe55f1a9",
       "composer.attach.tooLarge": "051dbc5461ffa183abf079666b9df8be5b8adf91df9d909628c321d463b4e79a",
       "composer.attach.unsupported": "48f1bdb1b5119726d027a6550af11d9a6954db8328b58db61a5ce0ab44f82233",
-      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c"
+      "composer.attach.archives": "b12cc0cb95d16bba1e3ebc915466c1bf00632807ee80572d8ed16b39cc27c71c",
+      "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
+      "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
     }
   }
 }
