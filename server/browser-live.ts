@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import type { PageSize } from "./browser-page-size.ts";
 import { attachesToChrome, browserRuntimeEnv, type BrowserRuntime } from "./browser-runtime.ts";
 import { requestedSize } from "./browser/viewers/viewport.ts";
+import { SELECTED_TEXT } from "./browser/viewers/popups.ts";
 import { threadOfTabLabel } from "./browser-thread-tabs.ts";
 import { readFileSync } from "node:fs";
 import { browserDaemonFile, closeBrowserSession } from "./browser-engine.ts";
@@ -172,7 +173,7 @@ export function browserStreamPort(value: unknown): number {
   return data.port;
 }
 
-type Action = { type: "take" | "release" | "restart" } | { type: "ack"; seq: number }
+type Action = { type: "take" | "release" | "restart" | "copy" } | { type: "ack"; seq: number }
   | { type: "command"; args: string[] } | { type: "input"; message: ObjectValue } | { type: "inputs"; messages: ObjectValue[] }
   | { type: "dialog"; accept: boolean; promptText?: string }
   /** The panel's size in CSS pixels, which the page fills; null for a collapsed panel, which leaves the page as it is. */
@@ -191,7 +192,7 @@ export function parseBrowserLiveAction(value: unknown): Action {
   const body = object(value);
   const invalid = () => new BrowserLiveError("Invalid browser action.");
   if (!body) throw invalid();
-  if (body.type === "take" || body.type === "release" || body.type === "restart") return { type: body.type };
+  if (body.type === "take" || body.type === "release" || body.type === "restart" || body.type === "copy") return { type: body.type };
   if (body.type === "ack" && integer(body.seq, 1, Number.MAX_SAFE_INTEGER)) return { type: "ack", seq: body.seq };
   if (body.type === "resize") {
     if (!number(body.width, 0, 100_000) || !number(body.height, 0, 100_000)) throw invalid();
@@ -946,6 +947,10 @@ export class BrowserLive {
       return { ok: true };
     }
     if (action.type === "take") return this.takeControl(viewer);
+    if (action.type === "copy") {
+      this.send(viewer, { type: "clipboard", text: await this.selection(viewer) });
+      return { ok: true };
+    }
     if (this.shared(viewer)) return this.together(viewer, action);
     // A person's press, key or command takes the browser from the bot: its running step ends first and its next call waits.
     if (!this.controlling(viewer)) {
@@ -1026,6 +1031,14 @@ export class BrowserLive {
       viewer.pendingActions -= 1;
       if (viewer.closed && viewer.pendingActions === 0) viewer.idle?.();
     }
+  }
+
+  /** The page's selected text, for a view that is shown the page: never while another person holds it. */
+  private async selection(viewer: Viewer): Promise<string> {
+    const holder = this.runtime.heldBy(viewer.session);
+    if (holder && holder !== viewer.person) return "";
+    const data = await this.command(viewer, ["eval", SELECTED_TEXT], 5_000).catch(() => null);
+    return typeof data?.result === "string" ? data.result : "";
   }
 
   private async takeControl(viewer: Viewer): Promise<{ ok: true; waited: boolean }> {

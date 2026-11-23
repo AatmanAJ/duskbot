@@ -235,6 +235,8 @@ const dumpEnv = Object.fromEntries(
     "FACTORY_API_KEY",
     "UNSLOTH_STUDIO_AUTH_TOKEN",
     "CURSOR_API_KEY",
+    "CURSOR_AGENT_CLI_ASSUME_SSH",
+    "NO_OPEN_BROWSER",
     "CLINE_API_KEY",
     "CLINE_PROVIDER",
     "CLINE_MODEL",
@@ -799,6 +801,11 @@ function handle(msg: any) {
       const mdls = sessionModels();
       sessionsOpened += 1;
       liveSession = sessionsOpened === 1 ? "fake-acp-session" : `fake-acp-session-${sessionsOpened}`;
+      if (process.env.FAKE_ACP_AVAILABLE_COMMANDS) {
+        const availableCommands = process.env.FAKE_ACP_AVAILABLE_COMMANDS.split(",").map((name) => name.trim()).filter(Boolean)
+          .map((name) => ({ name, description: `Fake ${name}` }));
+        out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: liveSession, update: { sessionUpdate: "available_commands_update", availableCommands } } });
+      }
       resultAndConfigUpdates(msg.id, {
         sessionId: liveSession,
         ...(opts ? { configOptions: opts } : {}),
@@ -860,6 +867,11 @@ function handle(msg: any) {
       const opts = configOptions();
       const mdls = sessionModels();
       liveSession = typeof msg.params?.sessionId === "string" ? msg.params.sessionId : liveSession;
+      if (process.env.FAKE_ACP_AVAILABLE_COMMANDS && process.env.FAKE_ACP_AVAILABLE_COMMANDS_ONCE !== "1") {
+        const availableCommands = process.env.FAKE_ACP_AVAILABLE_COMMANDS.split(",").map((name) => name.trim()).filter(Boolean)
+          .map((name) => ({ name, description: `Fake ${name}` }));
+        out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: liveSession, update: { sessionUpdate: "available_commands_update", availableCommands } } });
+      }
       result(msg.id, { ...(opts ? { configOptions: opts } : {}), ...(mdls ? { models: mdls } : {}) });
       break;
     }

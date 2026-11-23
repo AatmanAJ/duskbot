@@ -47,7 +47,6 @@ applyFont(readFont());
 applyChatWidth(readChatWidth());
 applyMotionSpeed(document.documentElement);
 applyDesktopMotion(document.documentElement);
-startSyncedPrefs();
 watchFocusNav();
 watchComposerFocus();
 
@@ -86,6 +85,7 @@ async function chooseRoot(): Promise<React.ReactNode> {
     const { DesktopViewer } = await import("./components/DesktopViewer");
     return <DesktopViewer />;
   }
+  startSyncedPrefs();
   const { default: App } = await (appPage ?? loadApp());
   return <App />;
 }

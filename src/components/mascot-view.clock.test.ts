@@ -80,11 +80,20 @@ describe("marks on the shared loop", () => {
     expect(frames).toBeLessThanOrEqual(70);
   });
 
+  it("keeps a working mascot moving while the window is out of focus", () => {
+    render([{ state: "working", size: 28 }]);
+    run(100);
+    act(() => { window.dispatchEvent(new Event("blur")); });
+    expect(framesOver(1000)).toBeGreaterThanOrEqual(55);
+    act(() => { window.dispatchEvent(new Event("focus")); });
+  });
+
   it("paints a static mascot once, in its state's face, and then asks for nothing", () => {
     render([{ state: "sleeping", animated: false, size: 24 }]);
     run(100);
     expect(markOf().getAttribute("data-state")).toBe("sleeping");
-    expect(host.querySelector("[data-dusk-mark] canvas")).not.toBeNull();
+    expect(host.querySelector("[data-dusk-mark] svg")).not.toBeNull();
+    expect(host.querySelector("[data-dusk-mark] canvas")).toBeNull();
     expect(framesOver(2000)).toBe(0);
   });
 

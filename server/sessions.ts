@@ -33,8 +33,10 @@ export function cookieMaxAgeSeconds(session: { expiresAt: number }, now = Date.n
 export const STREAM_TICKET_TTL_MS = 5 * 60_000;
 /** Slow-down only: a 60-bit code cannot be guessed online in five minutes, and sources are shared (NAT), so the lock stays short. */
 export const LOCKOUT = { failures: 10, windowMs: 60_000, lockMs: 60_000 } as const;
-/** A consumed code re-presented with the same client-made attempt id gets the same answer; sharing an address is not enough. */
-export const EXCHANGE_REPLAY_MS = 60_000;
+/** A consumed code re-presented with the same client-made attempt id gets the same answer while its session lasts;
+ * sharing an address is not enough. As long as a phone pairing grant lives, so Try again after a link the phone gave up
+ * on (the computer already took it) gets that phone back instead of an expired code. */
+export const EXCHANGE_REPLAY_MS = 10 * 60_000;
 export const MAX_STREAM_TICKETS_PER_SESSION = 5;
 const LAST_SEEN_WRITE_INTERVAL_MS = 60_000;
 
@@ -388,8 +390,8 @@ export class SessionRegistry {
       : sha256(normalizePairingCode(input.code));
     const browser = input.browser === true;
     const attemptId = typeof input.attemptId === "string" && /^[\w-]{8,64}$/.test(input.attemptId) ? input.attemptId : null;
-    const replay = attemptId ? this.replays.find((r) => r.attemptId === attemptId && r.browser === browser && sameDigest(r.codeHash, presented)) : undefined;
-    if (replay) return replay.result;
+    const replayed = attemptId ? this.replays.find((r) => r.attemptId === attemptId && r.browser === browser && sameDigest(r.codeHash, presented))?.result : undefined;
+    if (replayed && (!replayed.ok || this.sessions.some((one) => one.id === replayed.session.id))) return replayed;
     const lock = this.lockState(input.source);
     if (lock.locked) {
       const seconds = Math.ceil(lock.retryAfterMs / 1000);

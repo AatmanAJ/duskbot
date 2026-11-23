@@ -4,7 +4,7 @@ import { cueMascot } from "./mascot-events";
 import { NoRecognizerNote, useComposerDictation } from "@/lib/use-composer-dictation";
 import { CARD_ACTION, ChatErrorCard } from "./ChatErrorBanner";
 import { OpenVoiceSettings } from "./OpenVoiceSettings";
-import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type SetStateAction } from "react";
+import { isValidElement, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { Mic } from "../icons";
 import { useStore, visibleMessages, currentTaskBot, type Bot, type Group, type InstanceInfo, type Message } from "@/state/store";
 import { cn } from "@/lib/cn";
@@ -38,7 +38,7 @@ import {
 import { DEVS_CHOICE, MentionMenu, teammateChoices, type MentionChoice } from "./MentionMenu"; import { useTeammates } from "@/state/team-people"; import { hiddenFromSidebar, useViewerEmail } from "@/lib/default-bot";
 import { SlashCommandMenu } from "./SlashCommandMenu";
 import { MentionTextarea } from "./MentionTextarea";
-import { ComposerAttachments, ComposerAttachmentStrip, pathForFile } from "./ComposerAttachments"; import { ComposerFailedSends } from "./ComposerFailedSends"; import { useComposerFilePickers } from "./ComposerFilePickers";
+import { ComposerAttachments, ComposerAttachmentStrip, pathForFile } from "./ComposerAttachments"; import { ComposerFailedSends } from "./ComposerFailedSends"; import { PickProblemCard, useComposerFilePickers } from "./ComposerFilePickers";
 import { PointedChips } from "./app/PointedChips"; import { SetupRequestChip, setupRequestPlaceholder } from "./SetupOffer";
 import { takePointedChips } from "@/lib/pointed-chips";
 import { withoutCitationMarkers } from "@/lib/citations";
@@ -47,6 +47,7 @@ import { useOnCall } from "@/lib/call";
 import { isLiveCallRunning, useLiveMedia } from "@/lib/live-call-media";
 import {
   appendPastedText,
+  AttachmentTooLargeError,
   attachmentUnsent,
   clipboardHasImages,
   clipboardImageFiles,
@@ -54,9 +55,8 @@ import {
   discardUnsentUpload,
   composerShouldRefocus,
   composerTakesFocusOnOpen,
-  imageBytesLeft, imageSlotsLeft, imagesThatFit,
+  imageBytesLeft, imageSentAsFile, imageSlotsLeft,
   replyTargetTakesFocus,
-  intakeFiles,
   isLongPaste,
   optimisticImageAttachment,
   pasteAttachment,
@@ -67,6 +67,7 @@ import {
   type FileAttachment,
   type PasteAttachment,
 } from "@/lib/composer-attachments";
+import { imagesAsFilesNotice, imagesThatFit, intakeFiles, uploadFailure } from "@/lib/intake-files";
 import { retryPlacedUpload, sendPlacedUpload } from "@/lib/placed-upload";
 import { cancelUpload } from "@/lib/upload-progress";
 import { goalCoordinatorForComposer, openTaskWorking, roomRouteForComposer } from "@/lib/group-routing";
@@ -89,6 +90,7 @@ import { voiceShortcut, voiceShortcutLabel } from "@/lib/voice-input/shortcut";
 import { openSettings } from "@/lib/open-settings";
 import { NotesWaitingLine, useNotesIntake } from "./NotesWaiting"; import { looksLikeNotes, notesInFiles } from "@/lib/assistant-notes";
 import { escapeCancelsReply } from "@/lib/replies";
+import { useKeyGate } from "./ComposerKeyWarning";
 import { useStopPress } from "@/lib/stop-turn";
 import { useThreadRefs } from "./ThreadRefs";
 import {
@@ -132,7 +134,7 @@ function SlotGlyphGhost({ glyph, ink }: { glyph: SlotGlyph; ink: string }) {
   );
 }
 
-export function Composer({
+export const Composer = memo(function Composer({
   bot: profile,
   group,
   members,
@@ -679,6 +681,8 @@ export function Composer({
     const next = editFailedComposerSend(draftId, failed); restoreMentionPicks(draftId, failed.mentions); setCaret(next.length);
     requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(next.length, next.length); });
   };
+  const keyGate = useKeyGate({ text, reset: `${threadId}\n${effectiveText}`, messages: group ? undefined : bot?.messages, botName: bot?.name ?? group?.name ?? "",
+    keep: (rest) => { editText(rest); setCaret(rest.length); }, focus: () => requestAnimationFrame(() => inputRef.current?.focus()) });
   const send = (followUp: FollowUp | undefined = followUpFor(false)) => {
     if (locked || attachmentPending || unsentUpload) return;
     if (
@@ -696,6 +700,7 @@ export function Composer({
     if (!composed) return;
     stopDictation();
     const body = restoredRequestText(draftId) ?? withSelectionQuote(quote, composed);
+    if (keyGate.holds(body, followUp)) return;
     const sentDraft: ComposerDraftSnapshot = {
       draftId,
       revision: draftRevision(draftId),
@@ -816,16 +821,20 @@ export function Composer({
         dispatch({ type: "error", message: t("composer.error.clipboardImage") });
         return;
       }
-      const kept = imagesThatFit(imageFiles, imageSlotsLeft(attachments), setAttachmentNotice, imageBytesLeft(attachments));
+      const notices: string[] = [];
+      const kept = imagesThatFit(imageFiles, imageSlotsLeft(attachments), (notice) => notices.push(notice), imageBytesLeft(attachments));
+      const asFiles = kept.filter(imageSentAsFile);
+      if (asFiles.length) notices.push(imagesAsFilesNotice(asFiles.map((file) => file.name)));
+      if (notices.length) setAttachmentNotice(notices.join(" "));
       changeDraftAttachmentPending(draftId, true);
       void (async () => {
         try {
-          const results = await Promise.allSettled(kept.map(uploadImage));
-          for (const result of results) {
+          const results = await Promise.allSettled(kept.map((file) => imageSentAsFile(file) ? uploadFile(file) : uploadImage(file)));
+          for (const [index, result] of results.entries()) {
             if (result.status === "rejected") {
               dispatch({
                 type: "error",
-                message: friendlyError(result.reason, "image upload failed"),
+                message: result.reason instanceof AttachmentTooLargeError ? uploadFailure(kept[index]!.name, result.reason) : friendlyError(result.reason, "image upload failed"),
               });
             }
           }
@@ -910,6 +919,7 @@ export function Composer({
           )}
         </div>
       )}
+      {pickers.problem && <PickProblemCard pickers={pickers} />}
       {dictation.tidying && !speechError && (
         <div role="status" data-voice-tidying="" className="pointer-events-auto mb-2 w-full px-0.5 text-[12px] leading-4 text-ink/56">
           {t("composer.voice.tidying")}
@@ -931,6 +941,7 @@ export function Composer({
         )}
       </AnimatePresence>
       <div className="pointer-events-auto relative w-full">
+        {keyGate.warning(send)}
         <ComposerFailedSends sends={failedSends} onRetry={retryFailedSend} onEdit={editFailedSend} onDismiss={(failed) => forgetFailedComposerSend(draftId, failed.id)} />
         <SlashCommandMenu listRef={commandListRef} motion={commandMotion} commands={commandCandidates} highlight={highlight}
           onPick={pickCommand} onHighlight={setHighlight} />
@@ -1213,4 +1224,4 @@ export function Composer({
       </div>
     </div>
   );
-}
+});

@@ -93,7 +93,7 @@ describe("background jobs host", () => {
 
 describe("telegram_watch", () => {
   const updates = [
-    { update_id: 1, message: { date: 1_700_000_000, text: "Acme signed the LOI", chat: { id: -10, title: "Brand deals", type: "supergroup" }, from: { first_name: "Ana" } } },
+    { update_id: 1, message: { message_id: 42, date: 1_700_000_000, text: "Acme signed the LOI", chat: { id: -10, title: "Brand deals", type: "supergroup" }, from: { first_name: "Ana" } } },
     { update_id: 2, message: { date: 1_700_000_060, text: "lunch?", chat: { id: -11, title: "Friends", type: "group" }, from: { username: "bo" } } },
     { update_id: 3, channel_post: { date: 1_700_000_120, caption: "new rate card", chat: { id: -12, title: "Deals channel", type: "channel" }, sender_chat: { title: "Deals channel" } } },
     { update_id: 4, message: { date: 1_700_000_180, chat: { id: -10, title: "Brand deals", type: "supergroup" } } },
@@ -104,7 +104,7 @@ describe("telegram_watch", () => {
     expect(messages.filter((m) => wanted(m, ["deals"], []))).toHaveLength(2);
     expect(messages.filter((m) => wanted(m, [], ["loi"]))).toHaveLength(1);
     expect(messages.filter((m) => wanted(m, ["-11"], []))).toHaveLength(1);
-    expect(noteFor(messages)).toMatch(/^New Telegram messages \(3\):\n\[Brand deals\] Ana \(2023-11-14 22:13 UTC\): Acme signed the LOI/);
+    expect(noteFor(messages)).toMatch(/^New Telegram messages \(3\), each with all this watch knows of it: chat, sender, time, message id and text:\n\[Brand deals\] Ana \(2023-11-14 22:13 UTC, message 42\): Acme signed the LOI\n\[Friends\] bo \(2023-11-14 22:14 UTC\): lunch\?/);
     expect(noteFor(messages, 120)).toContain("[more messages were left out]");
   });
   it("talks to a test Bot API only on loopback, Telegram otherwise", () => {

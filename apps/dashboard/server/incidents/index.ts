@@ -80,9 +80,12 @@ export function createIncidents(options: IncidentsOptions) {
 
   const dayOf = (at: number) => Math.floor(at / DAY);
   const muted = (incident: Incident) => incident.mutedUntil !== null && incident.mutedUntil > now();
-  // only what needs the owner now emails: the server itself failing. client and desktop errors and new problem groups
-  // stay in the admin panel (the owner asked for urgent mail only, 2026-11-17)
-  const urgent = (incident: Pick<Incident, "source" | "name">) => !isClientSource(incident.source) && incident.name !== "NewProblemGroup";
+  /** node's own process warnings: never an email of their own, each kind once in the daily email */
+  const nodeWarning = (incident: Pick<Incident, "source" | "name">) => incident.source === "log" && /^[A-Z]\w*Warning$/.test(incident.name);
+  // only what needs the owner now emails: the server itself failing, or an ALERT line. client and desktop errors, new
+  // problem groups and warnings about what is retried by itself stay in the admin panel
+  const urgent = (incident: Pick<Incident, "source" | "name">) => !isClientSource(incident.source) && incident.name !== "NewProblemGroup"
+    && !(incident.source === "log" && incident.name.endsWith(" warn")) && !nodeWarning(incident);
   function count() { const day = dayOf(now()); if (today.day !== day) Object.assign(today, { day, mails: 0, clientMails: 0 }); return today; }
   function within(list: number[], ms: number) { const time = now(); while (list.length && list[0]! <= time - ms) list.shift(); return list.length; }
 
@@ -188,11 +191,11 @@ export function createIncidents(options: IncidentsOptions) {
     if (await send("new", fresh.map(entry => ({ ...entry.incident })))) markMailed(fresh.map(entry => entry.incident.id));
   }
 
-  /** at 08:00 utc, once: the problems of the last day that were never mailed; nothing when there are none */
+  /** at 08:00 utc, once: the problems of the last day that were never mailed and node's warnings; nothing when there are none */
   async function daily(): Promise<void> {
     const time = now(), midnight = dayOf(time) * DAY;
     if (time < midnight + RULES.dailyHourUtc * HOUR || !options.mail || !options.to().length) return;
-    const unmailed = (await store.list({ limit: 200, since: midnight - DAY })).filter(incident => incident.notifiedAt === null && urgent(incident) && !(incident.mutedUntil !== null && incident.mutedUntil > time));
+    const unmailed = (await store.list({ limit: 200, since: midnight - DAY })).filter(incident => incident.notifiedAt === null && (urgent(incident) || nodeWarning(incident)) && !(incident.mutedUntil !== null && incident.mutedUntil > time));
     if (!unmailed.length || !await store.once(`daily|${options.env}|${midnight}`, time + 7 * DAY)) return;
     const capped = today.heldBack > 0;
     today.heldBack = 0;
@@ -240,6 +243,8 @@ export function createIncidents(options: IncidentsOptions) {
 
   return {
     report,
+    /** the id `report` gives this input, without counting a sighting */
+    idOf: (input: IncidentInput) => sample(input, now()).id,
     tick,
     flushNew,
     load,

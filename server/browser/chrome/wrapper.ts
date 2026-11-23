@@ -1,6 +1,6 @@
 // agent-browser runs AGENT_BROWSER_EXECUTABLE_PATH with its own arguments. It splits AGENT_BROWSER_ARGS at commas (0.37),
 // which cut the user agent at "(KHTML,", so the identity flags ride a generated launcher instead: a shell script that execs
-// Chrome (same process, same pid), or on Windows a batch file, which Rust's Command runs through cmd.exe.
+// Chrome (same process, same pid). On Windows a batch file is written too, but Chrome is started itself (launcher.ts `direct`).
 import { execFile } from "node:child_process";
 import { chmodSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";

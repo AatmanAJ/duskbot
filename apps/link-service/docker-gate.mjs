@@ -1004,6 +1004,10 @@ async function forward(client, clientReader, req, body, verdict, gate) {
   const reader = new Reader(upstream);
   const drop = () => upstream.destroy();
   client.once("close", drop);
+  // a client that hangs up never closes this socket by itself (allowHalfOpen), and a silent stream (/events) never
+  // writes to find out; docker's own server reads the end of a request's connection as the client gone too
+  const hungUp = verdict.hijack ? null : () => upstream.destroy();
+  if (hungUp) client.once("end", hungUp);
   let hijacked = false, started = false;
   const relay = (data) => { started = true; return send(client, data); };
   try {
@@ -1051,6 +1055,7 @@ async function forward(client, clientReader, req, body, verdict, gate) {
     if (!started && !client.destroyed) throw new Unanswered(error instanceof Error ? error.message : String(error));
     throw error;
   } finally {
+    if (hungUp) client.off("end", hungUp);
     if (!hijacked) {
       client.off("close", drop);
       upstream.destroy();

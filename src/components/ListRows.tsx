@@ -4,10 +4,10 @@ import { Check, ChevronRight, Copy, type GlyphIcon } from "../icons";
 import { cn } from "@/lib/cn";
 import { useCopyFeedback } from "@/lib/copy-text";
 import { t } from "@/lib/i18n";
-import { flushSystemControls, wakeSystemControls } from "@/lib/system-control";
-import { BAR_RANK, frames, sheetStep, sheetsUp, useChrome, useNativeBar, useSheetPushDepth } from "@/mobile/chrome";
+import { plainDialogText, systemDialogs, type SystemFormOptions } from "@/lib/system-dialog";
+import { BAR_RANK, useChrome, useNativeBar, useSheetPushDepth } from "@/mobile/chrome";
+import { useNativeTrail } from "@/mobile/native-push";
 import type { MobileChrome } from "@/mobile/platform";
-import { createPushToken, registerNativePop } from "@/mobile/SheetPush";
 import { Icon } from "./Icon";
 import { DialogPane, GrokDialog, mdPrimaryCls, mdSecondaryCls, rowButtonCls } from "./ui/GrokDialog";
 import { SelectPill, type SelectPillOption } from "./ui/SelectPill";
@@ -492,93 +492,20 @@ function NativeOwnSheetPane({ chrome, title, footer, children, ...rest }: {
 }) {
   const pushDepth = useSheetPushDepth();
   const [committed, setCommitted] = useState<SubPage[]>([]);
-  const entriesRef = useRef<Array<{ page: SubPage; token: string; unreg: () => void }>>([]);
-  const mountedRef = useRef(true);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  const trail = useNativeTrail<SubPage>(chrome, (_removed, remaining) => setCommitted(remaining));
 
   const open = useCallback((id: string, pageTitle: string) => {
-    sheetStep(async () => {
-      if (!mountedRef.current) return;
-      const ok = await chrome.beginPush!();
-      if (!mountedRef.current) {
-        if (ok) await chrome.cancelPush?.();
-        return;
-      }
-      const nextPage: SubPage = { id, title: pageTitle };
-      if (!ok) {
-        setCommitted((current) => [...current, nextPage]);
-        scrollerRef.current?.scrollTo({ top: 0 });
-        await frames(1);
-        await flushSystemControls();
-        return;
-      }
-      const token = createPushToken();
-      const entry = { page: nextPage, token, unreg: () => {} };
-      entry.unreg = registerNativePop(chrome, token, () => {
-        const at = entriesRef.current.findIndex((item) => item.token === token);
-        if (at < 0) return;
-        for (const removed of entriesRef.current.splice(at)) removed.unreg();
-        setCommitted(entriesRef.current.map((item) => item.page));
-      });
-      entriesRef.current.push(entry);
-      setCommitted(entriesRef.current.map((item) => item.page));
+    trail.push(() => ({ id, title: pageTitle }), (page, pushedTrail) => {
+      setCommitted(pushedTrail ?? ((current) => [...current, page]));
       scrollerRef.current?.scrollTo({ top: 0 });
-      await frames(1);
-      await flushSystemControls();
-      await frames(2);
-      if (!mountedRef.current) {
-        const at = entriesRef.current.findIndex((item) => item.token === token);
-        if (at >= 0) {
-          for (const removed of entriesRef.current.splice(at)) removed.unreg();
-        }
-        await chrome.cancelPush?.();
-        return;
-      }
-      const okCommit = await chrome.commitPush!(token);
-      if (!okCommit) {
-        const at = entriesRef.current.findIndex((item) => item.token === token);
-        if (at >= 0) {
-          for (const removed of entriesRef.current.splice(at)) removed.unreg();
-          if (mountedRef.current) setCommitted(entriesRef.current.map((item) => item.page));
-        }
-      }
     });
-  }, [chrome]);
+  }, [trail]);
 
   const back = useCallback(() => {
-    const top = entriesRef.current.at(-1);
-    if (!top) {
-      setCommitted((current) => current.slice(0, -1));
-      return;
-    }
-    entriesRef.current.pop();
-    top.unreg();
-    sheetStep(async () => {
-      const popped = await chrome.popPage!(top.token);
-      if (mountedRef.current) setCommitted(entriesRef.current.map((item) => item.page));
-      await frames(1);
-      await flushSystemControls();
-      await frames(1);
-      if (popped) await chrome.finishPop?.();
-    });
-  }, [chrome]);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      const remaining = entriesRef.current.splice(0);
-      for (const entry of remaining) entry.unreg();
-      const oldest = remaining[0];
-      if (oldest && sheetsUp.system) {
-        sheetStep(async () => {
-          await chrome.popPage?.(oldest.token, { animated: false });
-          wakeSystemControls();
-        });
-      }
-    };
-  }, [chrome]);
+    if (!trail.back()) setCommitted((current) => current.slice(0, -1));
+  }, [trail]);
 
   const top = committed.at(-1);
   const rank = BAR_RANK.sheetPushed + (pushDepth + committed.length) * 0.01;
@@ -645,7 +572,7 @@ function WebOwnSheetPane({ title, footer, children, ...rest }: { title: string; 
 
 /** Grok's compact form dialog for typing something in (a name, a key, a login): fields, then a quiet Cancel and an ink
  * Save on the right. Always its own sheet, even when opened from inside a railed sheet's pane. */
-export function FormDialog({ title, description, saveLabel, cancelLabel, canSave = true, busy = false, error, width = 400, onSave, onClose, children, ...rest }: {
+export function FormDialog({ title, description, saveLabel, cancelLabel, canSave = true, busy = false, error, width = 400, onSave, onClose, nativeForm, children, ...rest }: {
   title: ReactNode;
   description?: ReactNode;
   saveLabel?: string;
@@ -657,15 +584,37 @@ export function FormDialog({ title, description, saveLabel, cancelLabel, canSave
   /** without it the dialog has only a Done that closes it, for fields that save as they change */
   onSave?: () => void | Promise<unknown>;
   onClose: () => void;
+  /** When supplied on iOS, presents a native SwiftUI modal Form sheet instead of a web dialog. */
+  nativeForm?: Omit<SystemFormOptions, "title" | "description" | "saveLabel" | "cancelLabel"> & {
+    onSaved?: (values: Record<string, string>) => void;
+  };
   children: ReactNode;
   "data-panel-modal"?: string;
 }) {
   const formId = useId();
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
+  const dialogs = systemDialogs();
+  const nativeTitle = dialogs && nativeForm ? plainDialogText(title)?.trim() : null;
+  if (dialogs && nativeForm && nativeTitle) {
+    const nativeDesc = description ? plainDialogText(description)?.trim() || undefined : undefined;
+    return (
+      <NativeFormDialog
+        title={nativeTitle}
+        description={nativeDesc}
+        saveLabel={saveLabel}
+        cancelLabel={cancelLabel}
+        nativeForm={nativeForm}
+        onClose={onClose}
+      />
+    );
+  }
+  const runSave = () => {
     if (!onSave) { onClose(); return; }
     if (!canSave || busy) return;
     void onSave();
+  };
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    runSave();
   };
   return (
     <DialogPane.Provider value={false}>
@@ -675,6 +624,12 @@ export function FormDialog({ title, description, saveLabel, cancelLabel, canSave
         description={description}
         width={width}
         onClose={onClose}
+        nativeAction={{
+          label: onSave ? saveLabel ?? t("common.save") : t("common.done"),
+          role: onSave ? "confirm" : "done",
+          disabled: Boolean(onSave) && (!canSave || busy),
+          onPress: runSave,
+        }}
         footer={(
           <>
             {onSave && <button type="button" className={mdSecondaryCls} onClick={onClose}>{cancelLabel ?? t("common.cancel")}</button>}
@@ -689,6 +644,46 @@ export function FormDialog({ title, description, saveLabel, cancelLabel, canSave
       </GrokDialog>
     </DialogPane.Provider>
   );
+}
+
+function NativeFormDialog({ title, description, saveLabel, cancelLabel, nativeForm, onClose }: {
+  title: string;
+  description?: string;
+  saveLabel?: string;
+  cancelLabel?: string;
+  nativeForm: Omit<SystemFormOptions, "title" | "description" | "saveLabel" | "cancelLabel"> & {
+    onSaved?: (values: Record<string, string>) => void;
+  };
+  onClose: () => void;
+}) {
+  const latest = useRef({ nativeForm, onClose });
+  latest.current = { nativeForm, onClose };
+
+  useEffect(() => {
+    const dialogs = systemDialogs();
+    if (!dialogs) return;
+    let alive = true;
+    const { onSaved: _, onSubmit, fields, requireChange } = latest.current.nativeForm;
+    void dialogs.form({
+      title,
+      description,
+      saveLabel,
+      cancelLabel,
+      fields,
+      requireChange,
+      ...(onSubmit ? { onSubmit: (values) => latest.current.nativeForm.onSubmit?.(values) } : {}),
+    }).then((result) => {
+      if (!alive) return;
+      if (result.saved) latest.current.nativeForm.onSaved?.(result.values);
+      latest.current.onClose();
+    });
+    return () => {
+      alive = false;
+      dialogs.dismissForm?.();
+    };
+  }, [title, description, saveLabel, cancelLabel]);
+
+  return null;
 }
 
 /** A labelled field inside a FormDialog. */

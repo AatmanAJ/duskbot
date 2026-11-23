@@ -22,10 +22,21 @@ vi.mock("@/state/store", async (original) => ({
   api: fixture.api,
   useStore: () => ({ dispatch }),
 }));
+vi.mock("@/state/api", async (original) => ({
+  ...await original<typeof import("@/state/api")>(),
+  api: fixture.api,
+}));
 vi.mock("@/lib/analytics", () => ({ track: fixture.track }));
-vi.mock("@/lib/card-seal", () => ({ SealTrustError: class SealTrustError extends Error {}, sealCardSecret: vi.fn(async (_value: string, key: { keyId: string }, context: { remember: boolean }) => ({ keyId: key.keyId, encapsulatedKey: "E", ciphertext: `sealed-${context.remember ? "save" : "once"}` })) }));
+vi.mock("@/lib/card-seal", () => ({ SealTrustError: class SealTrustError extends Error {},
+  sealValues: vi.fn(async (_values: Record<string, string>, key: { keyId: string }, purpose: string, target: readonly string[]) => ({ keyId: key.keyId, encapsulatedKey: "E", ciphertext: `sealed-${purpose}-${target.join("+")}` })),
+  sealCardSecret: vi.fn(async (_value: string, key: { keyId: string }, context: { remember: boolean }) => ({ keyId: key.keyId, encapsulatedKey: "E", ciphertext: `sealed-${context.remember ? "save" : "once"}` })) }));
 
 import { SecretRequestCard, SecretRequestCardBody } from "./SecretRequestCard";
+
+/** A self-hosted server refuses an API key or token sent in the clear from the app: the card seals it, as Settings does. */
+const answerByPath = (answers: Record<string, unknown>) => fixture.api.mockImplementation(async (path: string) =>
+  path === "/api/seal-key" ? { sealKey: { version: 1, keyId: "k1", x: "x", y: "y" } } : answers[path] ?? { ok: true });
+const callTo = (path: string) => fixture.api.mock.calls.find((call) => call[0] === path);
 
 const secretCard = (secret: Record<string, unknown>): Message => ({
   id: "secret-card",
@@ -226,30 +237,39 @@ describe("SecretRequestCard key analytics", () => {
   it("saves a 1Password token through Logins, never the settings bridge, then resumes the bot", async () => {
     const setCredential = vi.fn();
     vi.stubGlobal("window", { duskDesktop: { setCredential } });
-    fixture.api.mockResolvedValueOnce({ onePassword: { connected: true } }).mockResolvedValueOnce({ ok: true });
+    answerByPath({ "/api/logins/1password": { onePassword: { connected: true } } });
     await submit("onePasswordToken", "ops_ZZtestSECRET0123456789");
     expect(setCredential).not.toHaveBeenCalled();
-    expect(fixture.api.mock.calls[0]).toEqual(["/api/logins/1password", { method: "POST", body: JSON.stringify({ token: "ops_ZZtestSECRET0123456789" }) }]);
-    expect(fixture.api.mock.calls[1]![0]).toBe("/api/bots/bot-1/secret-cards/secret-card/provided");
+    expect(callTo("/api/logins/1password")).toEqual(["/api/logins/1password", { method: "POST", body: JSON.stringify({ sealed: { keyId: "k1", encapsulatedKey: "E", ciphertext: "sealed-onepassword.connect-" } }) }]);
+    expect(fixture.api.mock.calls.at(-1)![0]).toBe("/api/bots/bot-1/secret-cards/secret-card/provided");
+    expect(JSON.stringify(fixture.api.mock.calls)).not.toContain("ZZtestSECRET");
     expect(dispatch).not.toHaveBeenCalled();
     expect(JSON.stringify(fixture.track.mock.calls)).not.toContain("ZZtestSECRET");
   });
 
   it("reports an xAI key saved from chat as unverified: nothing checks it before it is used", async () => {
-    fixture.api.mockResolvedValueOnce({ xai: { configured: true } }).mockResolvedValueOnce({ ok: true });
+    answerByPath({ "/api/config": { xai: { configured: true } } });
     await submit("xaiApiKey", "xai-ZZtestSECRET0123456789");
-    expect(fixture.api.mock.calls[0]).toEqual(["/api/config", { method: "PUT", body: JSON.stringify({ xai: { key: "xai-ZZtestSECRET0123456789" } }) }]);
+    expect(callTo("/api/config")).toEqual(["/api/config", { method: "PUT", body: JSON.stringify({ xai: {}, sealed: { keyId: "k1", encapsulatedKey: "E", ciphertext: "sealed-config-xai.key" }, sealedPaths: ["xai.key"] }) }]);
+    expect(JSON.stringify(fixture.api.mock.calls)).not.toContain("ZZtestSECRET");
     expect(fixture.track.mock.calls).toEqual([["api_key_saved", { provider: "xai", via: "chat_request", result: "unverified" }]]);
+  });
+
+  it("sends an OpenCode key sealed, so a self-hosted server viewed from the app takes it", async () => {
+    answerByPath({ "/api/config": { opencodeGo: { configured: true } } });
+    await submit("opencodeGoApiKey", "oc-ZZtestSECRET0123456789");
+    expect(callTo("/api/config")![1]).toEqual({ method: "PUT", body: JSON.stringify({ opencodeGo: {}, sealed: { keyId: "k1", encapsulatedKey: "E", ciphertext: "sealed-config-opencodeGo.apiKey" }, sealedPaths: ["opencodeGo.apiKey"] }) });
+    expect(fixture.api.mock.calls.at(-1)![0]).toBe("/api/bots/bot-1/secret-cards/secret-card/provided");
   });
 
   // Settings keeps an AI provider key in the server's settings, not the desktop's store: the card does the same.
   it("saves an Anthropic key where Settings does, never through the desktop store, keeping Claude sign-ins", async () => {
     const setCredential = vi.fn();
     vi.stubGlobal("window", { duskDesktop: { setCredential } });
-    fixture.api.mockResolvedValueOnce({ anthropic: { configured: true } }).mockResolvedValueOnce({ ok: true });
+    answerByPath({ "/api/config": { anthropic: { configured: true } } });
     await submit("anthropicApiKey", "sk-ant-ZZtestSECRET0123456789");
     expect(setCredential).not.toHaveBeenCalled();
-    expect(fixture.api.mock.calls[0]).toEqual(["/api/config", { method: "PUT", body: JSON.stringify({ anthropic: { key: "sk-ant-ZZtestSECRET0123456789", everyClaudeBot: false } }) }]);
+    expect(callTo("/api/config")).toEqual(["/api/config", { method: "PUT", body: JSON.stringify({ anthropic: { everyClaudeBot: false }, sealed: { keyId: "k1", encapsulatedKey: "E", ciphertext: "sealed-config-anthropic.key" }, sealedPaths: ["anthropic.key"] }) }]);
     expect(fixture.track.mock.calls).toEqual([["api_key_saved", { provider: "anthropic", via: "chat_request", result: "unverified" }]]);
   });
 

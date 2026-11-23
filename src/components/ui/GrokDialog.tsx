@@ -1,13 +1,16 @@
-import { createContext, useContext, useEffect, useId, useRef, type ReactNode, type RefObject } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { phoneApp } from "@/lib/store-app";
 import { flushSystemControls, wakeSystemControls } from "@/lib/system-control";
-import { closesOnBack } from "@/mobile/Sheet";
+import { plainDialogText } from "@/lib/system-dialog";
+import { sheetsUp, useChrome } from "@/mobile/chrome";
+import { closesOnBack, Sheet } from "@/mobile/Sheet";
+import { SheetPush } from "@/mobile/SheetPush";
 import { Icon, type IconName } from "../Icon";
-import { useIsPresent } from "motion/react";
+import { useIsPresent, usePresence } from "motion/react";
 import { dialogMotion, phoneDialogMotion } from "@/lib/motion-presets";
 import { ScrimMotion, SheetMotion, useMotionReduced } from "./SheetMotion";
 
@@ -59,16 +62,16 @@ const FOCUSABLE = "button:not([disabled]), input:not([disabled]), textarea:not([
 /** Set by a sheet with a rail (the bot's settings): a dialog inside it draws as that sheet's pane instead of its own sheet. */
 export const DialogPane = createContext(false);
 
-/** Focus into the dialog on open and back to the opener on close, Escape to close, Tab kept inside. A nested dialog
- * handles its own keys. */
+/** Focus into the dialog on open, unless a field inside already took it with `autoFocus`, and back to the opener on
+ * close; Escape to close, Tab kept inside. A nested dialog handles its own keys. */
 export function useDialogKeys(sheet: RefObject<HTMLElement | null>, onClose: () => void) {
   const close = useRef(onClose);
   close.current = onClose;
+  const [opener] = useState(focusedElement);
 
   useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const root = sheet.current;
-    (root?.querySelector<HTMLElement>("[data-autofocus]") ?? root)?.focus({ preventScroll: true });
+    if (!root?.contains(document.activeElement)) (root?.querySelector<HTMLElement>("[data-autofocus]") ?? root)?.focus({ preventScroll: true });
     const onKey = (event: KeyboardEvent) => {
       const box = sheet.current;
       if (!box || (event.key !== "Escape" && event.key !== "Tab")) return;
@@ -95,14 +98,22 @@ export function useDialogKeys(sheet: RefObject<HTMLElement | null>, onClose: () 
       window.removeEventListener("keydown", onKey);
       if (opener?.isConnected) opener.focus({ preventScroll: true });
     };
-  }, [sheet]);
+  }, [sheet, opener]);
 
   return close;
 }
 
+function focusedElement(): HTMLElement | null {
+  return typeof document !== "undefined" && typeof HTMLElement !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null;
+}
+
 /** On its own, Grok's form dialog (New login), easing in as bencho's modal does; inside a railed sheet, that sheet's pane. */
 export function GrokDialog(props: DialogProps) {
-  return useContext(DialogPane) ? <PaneView {...props} /> : <SheetView {...props} />;
+  const inPane = useContext(DialogPane);
+  const chrome = useChrome();
+  if (inPane) return <PaneView {...props} />;
+  if (phoneApp() && chrome) return <NativeSheetView {...props} />;
+  return <SheetView {...props} />;
 }
 
 interface DialogProps {
@@ -113,6 +124,8 @@ interface DialogProps {
   width?: number;
   onClose: () => void;
   footer?: ReactNode;
+  /** Native iOS navigation bar primary action (Save / Done) when presented as a pushed iOS sheet page. */
+  nativeAction?: { label: string; role?: "done" | "confirm"; disabled?: boolean; onPress: () => void };
   children: ReactNode;
   "data-panel-modal"?: string;
   /** Eases in, and out when the parent keeps it in an AnimatePresence; false opens and closes it raw. Sheet only. */
@@ -139,6 +152,63 @@ function PaneView({ title, description: _description, art: _art, footer, childre
         {footer && <div className="mt-3 flex shrink-0 items-center justify-end gap-2">{footer}</div>}
       </div>
     </section>
+  );
+}
+
+function NativeSheetView({ title, description, art, onClose, footer, nativeAction, children, ...rest }: DialogProps) {
+  const [isPresent, safeToRemove] = usePresence();
+  const inSystemSheet = useRef(sheetsUp.system);
+  const plainTitle = plainDialogText(title)?.trim() || undefined;
+  const pageId = rest["data-panel-modal"] ?? "dialog";
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
+  useEffect(() => {
+    if (isPresent) return;
+    const timer = window.setTimeout(() => safeToRemove?.(), 420);
+    return () => window.clearTimeout(timer);
+  }, [isPresent, safeToRemove]);
+
+  const body = (
+    <div {...rest} className="flex flex-col gap-3 px-4 pb-8 pt-2">
+      {art && <div className="flex justify-center pt-2">{art}</div>}
+      {!plainTitle && <h2 className="m-0 text-[18px] font-semibold leading-6 text-ink">{title}</h2>}
+      {description && <p className="m-0 text-[15px] leading-5 text-ink-secondary text-pretty">{description}</p>}
+      <div className="flex flex-col gap-3">{children}</div>
+      {footer && !nativeAction && <div className="mt-2 flex flex-wrap items-center justify-end gap-2">{footer}</div>}
+    </div>
+  );
+
+  if (inSystemSheet.current) {
+    return (
+      <SheetPush
+        open={isPresent}
+        onClose={() => closeRef.current()}
+        title={plainTitle}
+        pageId={pageId}
+        primaryAction={nativeAction}
+      >
+        {body}
+      </SheetPush>
+    );
+  }
+  return (
+    <Sheet
+      open={isPresent}
+      onClose={() => closeRef.current()}
+      title={plainTitle ?? title}
+      actions={nativeAction ? [{
+        key: "primary",
+        label: nativeAction.label,
+        title: nativeAction.label,
+        role: nativeAction.role ?? "confirm",
+        disabled: nativeAction.disabled,
+        onPress: nativeAction.onPress,
+      }] : undefined}
+      full
+    >
+      {body}
+    </Sheet>
   );
 }
 

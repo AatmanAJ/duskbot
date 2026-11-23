@@ -1,4 +1,4 @@
-// The bot's Model card, its Advanced settings with the Backup AI switch, and the Connect an AI note, photographed light and dark with a headless Chrome in
+// The Backup model row (closed and open) and the Connect an AI note, photographed light and dark with a headless Chrome in
 // a throwaway profile against a disposable fake-engine server. Run: node --experimental-strip-types scripts/verify-backup-row.ts <dir>
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -10,11 +10,12 @@ import { fixtureApi, mountPreview, type MountedPreview } from "./testing/preview
 
 const shots = resolve(process.argv[2] ?? "backup-row-shots");
 const CHROME = process.env.DUSK_CDP_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const [WIDTH, HEIGHT, CLIP] = [1280, 900, 720];
+const [WIDTH, HEIGHT, CLIP] = [1280, 800, 720];
 const VIEWS: Array<{ name: string; view: string; act?: string; ready?: string }> = [
-  { name: "details-model", view: "details", ready: "[data-panel-row='model']" },
-  { name: "advanced-backup-ai", view: "advanced", ready: "[data-panel-row='backup-ai']" },
+  { name: "backup-row", view: "row", ready: "[data-panel-row='backup-model']" },
+  { name: "backup-row-menu", view: "row", act: "document.querySelector('[data-panel-action=\"backup-model\"]').click()", ready: "[data-backup-modes]" },
   { name: "connect-ai-note", view: "note", ready: "[data-connect-ai-note]" },
+  { name: "backup-row-picked", view: "row", ready: "[data-panel-row='backup-model']" },
 ];
 
 async function openChrome(profile: string) {
@@ -87,6 +88,14 @@ try {
   const chrome = await openChrome(profile);
   try {
     for (const view of VIEWS) for (const skin of ["daylight", "midnight"]) {
+      if (view.name === "backup-row-picked" && skin === "daylight") {
+        const api = fixtureApi(fixture.info.url, { headers: { origin: fixture.info.url } });
+        const { bots } = await api("GET", "/api/bots?messages=0") as { bots: Array<{ id: string; modelSelection: { instanceId: string; model: string } }> };
+        const { instances } = await api("GET", "/api/instances") as { instances: Array<{ instanceId: string; models: { options: Array<{ id: string }> } }> };
+        const bot = bots[0]!;
+        const model = instances.find((entry) => entry.instanceId === bot.modelSelection.instanceId)!.models.options.find((option) => option.id !== bot.modelSelection.model)!.id;
+        await api("PATCH", `/api/bots/${bot.id}`, { fallback: [{ instanceId: bot.modelSelection.instanceId, model }] });
+      }
       const file = join(shots, `${view.name}-${skin === "daylight" ? "light" : "dark"}.png`);
       await chrome.shoot(`${ui.previewUrl}?view=${view.view}&skin=${skin}`, file, view.act, view.ready, {});
       console.log(file);

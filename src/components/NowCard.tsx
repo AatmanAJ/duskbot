@@ -43,8 +43,7 @@ export function useTurnNow(bot: Pick<Bot, "id" | "name" | "threadId">, messages:
   const shown = friendlyNowPhrases(status, lastMessage);
   const steps = useMemo(() => nowSteps(messages, status), [messages, status]);
   const quiet = status && "quiet" in status ? status.quiet : undefined;
-  // the panel shows a longer tail; the chat's card keeps its last two lines
-  const tail = status?.activity === "command" && "tail" in status ? status.tail?.slice(-2) : undefined;
+  const tail = status?.activity === "command" && "tail" in status ? status.tail : undefined;
   return {
     phrases: shown?.phrases,
     fun: shown?.fun,

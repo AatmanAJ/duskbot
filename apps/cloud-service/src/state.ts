@@ -4,6 +4,7 @@ import type { PowerMemory } from "./power/rails.ts";
 import type { PlannedRun } from "./power/schedule.ts";
 import type { HomeUpdateState } from "./home-update.ts";
 import type { EgressState } from "./egress.ts";
+import type { ComputerState } from "./computer-health.ts";
 
 /** one managed home's lifecycle record (lifecycle.ts) */
 export interface HomeLifecycleState {
@@ -45,6 +46,9 @@ export interface HomeLifecycleState {
   wakeBy?: "webhook" | "client" | null;
   /** the current wake's failure was counted already */
   wakeFailureNoted?: boolean;
+  /** the entitlement refresh failing: its cause as one token (home-client `homeFailure`), since when, how many tries,
+   *  when it goes again and whether the operator was alerted (one alert per incident) */
+  entitleProblem?: { cause: string; since: number; tries: number; retryAt: number; alerted: boolean } | null;
   /** why the power policy or the rails last kept a home up (or a sleeping one asleep), for the operator */
   stayReason?: string | null;
   wakeStartedAt: number | null;
@@ -102,6 +106,8 @@ export interface HomeLifecycleState {
   resizeBlocked?: string | null;
   /** the home's updates: the version it runs, the one before, the trial of a new one, the signed policy held (home-update.ts) */
   update?: HomeUpdateState;
+  /** the bot computers' docker and docker gate as the reconciler last checked them (computer-health.ts) */
+  computer?: ComputerState;
 }
 
 declare module "../../dashboard/server/clouds/types.ts" {

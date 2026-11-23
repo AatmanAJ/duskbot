@@ -1,80 +1,122 @@
-// A person's Stop keeps the words already streamed and nothing after: each thread's reply text since its last finished
-// item, and that text frozen at the first frame after the Stop (landed as the turn's last bubble, then cleared). A direct
-// "(pass)" is held back while it streams and never lands, and a turn that only passed ends quietly.
-import type { Message } from "../store.ts";
+// What of a streaming reply reaches the chat: the words a person's Stop keeps, and a reply that is only "(pass)".
 import { assistantTranscript } from "../../shared/client-cancel.ts";
+import type { RuntimeEvent } from "../contracts.ts";
 import { isPassText } from "../room-reply.ts";
-import { isDirectPassText, PassStreamGate } from "../silent-reply.ts";
+import { isDirectPassText, PassStreamGate, stripTrailingPass } from "../silent-reply.ts";
+import type { Message, Store } from "../store.ts";
 
-interface StreamedReplyDeps {
-  messagesFor(threadId: string): Message[];
-  patchMessage(threadId: string, messageId: string, patch: Partial<Message>): unknown;
-  /** True for a room's thread, where a member's "(pass)" is its choice to stay quiet. */
-  inRoom(threadId: string): boolean;
+export interface StreamedReplyDeps {
+  store: Pick<Store, "activePath" | "botByThread" | "groupByThread" | "messagesFor" | "patchMessage">;
+  /** A one-on-one turn the person is in: a "(pass)" there sends nothing. Never a routine's run, an internal turn, a
+   * bot API thread or assigned work. */
   directPassAllowed(threadId: string): boolean;
 }
 
-type ReplyEvent = { type: "content.delta"; threadId: string; delta: string } | { type: "item.completed"; threadId: string; text: string };
-
-const flatWords = (text: string) => text.replace(/\s+/g, " ").trim();
-const OUTPUT_KINDS = new Set<Message["kind"]>(["text", "widget", "app", "options", "screen"]);
-
-/** A turn showed the person something: a reply, or a bot row of its own since it started. */
-export function turnHadOutput(path: readonly Message[], reply: string, turnId: string | undefined, startedAt: number | undefined): boolean {
-  return Boolean(reply) || path.some((message) => message.role === "bot" && OUTPUT_KINDS.has(message.kind)
-    && ((turnId && message.turnId === turnId) || (startedAt !== undefined && message.at >= startedAt)));
-}
+const TURN_OUTPUT: ReadonlySet<Message["kind"]> = new Set(["text", "widget", "app", "options", "screen"]);
 
 export function createStreamedReply(deps: StreamedReplyDeps) {
-  const streamed = new Map<string, string>(), atStop = new Map<string, string>();
+  const { store } = deps;
+  // A person's Stop keeps the words already streamed and nothing after: each thread's reply text since its last finished
+  // item, and that text frozen at the first frame after the Stop (landed as the turn's last bubble, then cleared).
+  const streamedReply = new Map<string, string>(), replyAtStop = new Map<string, string>();
+  const passStreamGate = new PassStreamGate(), silentPassTurns = new Set<string>();
   /** The streaming reply's words the person's app showed when they pressed Stop: what is kept ends there. */
-  const saidAtStop = new Map<string, string>();
-  const passGate = new PassStreamGate(), silentPass = new Set<string>();
-
-  const keptAtStop = (threadId: string, turnId: string | undefined) => {
-    const text = streamed.get(threadId) ?? "";
-    const said = saidAtStop.get(threadId);
-    if (said === undefined) return text;
+  const replySaidAtStop = new Map<string, string>();
+  const flatWords = (text: string) => text.replace(/\s+/g, " ").trim();
+  const keptAtStop = (threadId: string, turnId: string | undefined, streamed: string) => {
+    const said = replySaidAtStop.get(threadId);
+    if (said === undefined) return streamed;
     // the item they watched is still streaming: keep exactly what they saw
-    if (flatWords(text).startsWith(flatWords(said))) return said;
+    if (flatWords(streamed).startsWith(flatWords(said))) return said;
     // it finished on its way to the Stop: its bubble ends where they stopped seeing it, and nothing after is kept
-    const bubble = deps.messagesFor(threadId).findLast((message) => message.role === "bot" && message.kind === "text" && message.turnId === turnId);
+    const bubble = store.messagesFor(threadId).findLast((message) => message.role === "bot" && message.kind === "text" && message.turnId === turnId);
     const landed = flatWords(bubble?.text ?? "");
-    if (bubble && landed !== flatWords(said) && landed.startsWith(flatWords(said))) deps.patchMessage(threadId, bubble.id, { text: said });
+    if (bubble && landed !== flatWords(said) && landed.startsWith(flatWords(said))) store.patchMessage(threadId, bubble.id, { text: said });
     return "";
   };
-  const clear = (threadId: string) => { streamed.delete(threadId); atStop.delete(threadId); saidAtStop.delete(threadId); passGate.reset(threadId); };
+  const freezeAtStop = (threadId: string, turnId: string | undefined) => {
+    if (replyAtStop.has(threadId)) return;
+    passStreamGate.reset(threadId);
+    replyAtStop.set(threadId, keptAtStop(threadId, turnId, streamedReply.get(threadId) ?? ""));
+  };
 
+  const allowsPass = (threadId: string) => Boolean(store.botByThread(threadId) ? deps.directPassAllowed(threadId) : store.groupByThread(threadId));
   return {
-    saidAtStop: (threadId: string, said: string) => saidAtStop.set(threadId, said),
-    turnStarted: (threadId: string) => { clear(threadId); silentPass.delete(threadId); },
-    /** Reply words as they arrive: the delta the apps may see (null while it could still spell "(pass)"), and whether a
-     * finished item is a pass that never shows. */
-    onReply(event: ReplyEvent, turnId: string | undefined, afterPersonStop: boolean): { delta?: string | null; passItem: boolean } {
-      const { threadId } = event;
-      if (afterPersonStop) {
-        if (!atStop.has(threadId)) { passGate.reset(threadId); atStop.set(threadId, keptAtStop(threadId, turnId)); }
-        return { passItem: false };
-      }
-      if (event.type === "content.delta") {
-        const delta = passGate.delta(threadId, event.delta);
-        if (delta !== null) streamed.set(threadId, (streamed.get(threadId) ?? "") + delta);
-        return { delta, passItem: false };
-      }
-      passGate.reset(threadId);
-      streamed.delete(threadId);
-      const spoken = assistantTranscript(event.text);
-      if (spoken.kind === "stopped") return { passItem: false };
-      return { passItem: deps.inRoom(threadId) ? Boolean(spoken.text.trim()) && isPassText(spoken.text) : deps.directPassAllowed(threadId) && isDirectPassText(spoken.text) };
+    saidAtStop(threadId: string, said: string): void {
+      replySaidAtStop.set(threadId, said);
     },
-    /** The half answer that streamed before the Stop, handed out once. */
-    takeKept(threadId: string) { const kept = atStop.get(threadId) ?? ""; atStop.set(threadId, ""); return kept; },
-    /** At the end of a stopped turn: what it still has to settle as a bubble. */
-    keptAtEnd: (threadId: string, turnId: string | undefined) => atStop.get(threadId) ?? keptAtStop(threadId, turnId),
-    turnEnded: clear,
-    passed: (threadId: string) => silentPass.add(threadId),
-    spoke: (threadId: string) => silentPass.delete(threadId),
-    /** Whether the turn only passed; asked once, at its end. */
-    takePassed: (threadId: string) => silentPass.delete(threadId),
+    turnStarted(threadId: string): void {
+      streamedReply.delete(threadId);
+      replyAtStop.delete(threadId);
+      replySaidAtStop.delete(threadId);
+      passStreamGate.reset(threadId);
+      silentPassTurns.delete(threadId);
+    },
+    /** The event as the apps get it, or null when none of it reaches them: reply text after the person's Stop, words
+     * that could still spell "(pass)", and a finished reply that is one. */
+    shown(event: RuntimeEvent, afterPersonStop: boolean): RuntimeEvent | null {
+      const { threadId } = event;
+      if (event.type === "content.delta" && event.streamKind === "assistant_text") {
+        if (afterPersonStop) { freezeAtStop(threadId, event.turnId); return null; }
+        const delta = passStreamGate.delta(threadId, event.delta);
+        if (delta === null) return null;
+        streamedReply.set(threadId, (streamedReply.get(threadId) ?? "") + delta);
+        return delta === event.delta ? event : { ...event, delta };
+      }
+      if (event.type === "item.completed" && event.itemType === "assistant_text") {
+        if (afterPersonStop) { freezeAtStop(threadId, event.turnId); return null; }
+        passStreamGate.reset(threadId);
+        streamedReply.delete(threadId);
+        const spoken = assistantTranscript(event.text);
+        if (spoken.kind === "stopped") return event;
+        const room = store.botByThread(threadId) ? undefined : store.groupByThread(threadId);
+        const canPass = allowsPass(threadId);
+        const stripped = canPass ? stripTrailingPass(spoken.text) : spoken.text;
+        const pass = room ? Boolean(stripped.trim()) && isPassText(stripped) : canPass && isDirectPassText(stripped);
+        if (pass) return null;
+        if (canPass) {
+          const cleaned = stripTrailingPass(event.text);
+          if (cleaned !== event.text) return { ...event, text: cleaned };
+        }
+        return event;
+      }
+      return event;
+    },
+    /** The half answer that streamed before the Stop, handed over once. */
+    takeKept(threadId: string): string {
+      const kept = replyAtStop.get(threadId) ?? "";
+      replyAtStop.set(threadId, "");
+      return kept;
+    },
+    keptAtTurnEnd(threadId: string, turnId: string | undefined): string {
+      return replyAtStop.get(threadId) ?? keptAtStop(threadId, turnId, streamedReply.get(threadId) ?? "");
+    },
+    replyEnded(threadId: string): void {
+      streamedReply.delete(threadId);
+      replyAtStop.delete(threadId);
+      replySaidAtStop.delete(threadId);
+      passStreamGate.reset(threadId);
+    },
+    /** Strips a trailing standalone "(pass)" line when this thread allows silent passes. */
+    stripTrailingPass(threadId: string, text: string): string {
+      return allowsPass(threadId) ? stripTrailingPass(text) : text;
+    },
+    /** True when this one-on-one reply is only "(pass)": it is not sent, and the turn counts as quiet until it speaks. */
+    passes(threadId: string, text: string): boolean {
+      if (!deps.directPassAllowed(threadId) || !isDirectPassText(stripTrailingPass(text))) return false;
+      silentPassTurns.add(threadId);
+      return true;
+    },
+    spoke(threadId: string): void {
+      silentPassTurns.delete(threadId);
+    },
+    /** The turn that just ended answered "(pass)" and put nothing else in the chat. */
+    passedQuietly(threadId: string, turn: { turnId: string | undefined; startedAt: number | undefined; reply: string }): boolean {
+      const hasTurnOutput = Boolean(turn.reply) || store.activePath(threadId).some((message) =>
+        message.role === "bot" &&
+        ((turn.turnId && message.turnId === turn.turnId) || (turn.startedAt !== undefined && message.at >= turn.startedAt)) &&
+        TURN_OUTPUT.has(message.kind));
+      return silentPassTurns.delete(threadId) && !hasTurnOutput;
+    },
   };
 }

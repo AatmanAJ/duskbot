@@ -64,6 +64,16 @@ describe.skipIf(process.platform === "win32")("a provider found on this computer
     expect(await replied(bot.threadId)).toBe(true);
   }, 120_000);
 
+  it("counts a sign-in started in the app as the person's choice: the next send runs on it", async () => {
+    server = await launchRestartableServer({ instances: FOUND_CLAUDE, pathFirst: claudeOnPath() });
+    const bot = (await call("POST", "/api/bots", { name: "Fern" })).body.bot as { id: string; threadId: string };
+    await call("POST", "/api/instances/claude/auth/start", {});
+    const listed = (await call("GET", "/api/instances?fresh=1")).body.instances as Array<{ instanceId: string; found?: true }>;
+    expect(listed.find((instance) => instance.instanceId === "claude")?.found).toBeUndefined();
+    expect((await send(bot, "hello")).status).toBeLessThan(300);
+    expect(await replied(bot.threadId)).toBe(true);
+  }, 120_000);
+
   it("keeps a bot an earlier version ran on it answering after the update, with no Use it", async () => {
     server = await launchRestartableServer({ instances: { claude: { ...FOUND_CLAUDE.claude, chosen: true } }, pathFirst: claudeOnPath() });
     const bot = (await call("POST", "/api/bots", { name: "Moss" })).body.bot as { id: string; threadId: string; modelSelection: { instanceId: string } };

@@ -91,7 +91,7 @@ export interface HomeClient {
   /** the home's own report after an update (server/update-state.ts): the version it runs, its self-test, its finished runs */
   update?(origin: string, secret: string): Promise<HomeUpdateReport>;
 }
-export interface HomeUpdateReport { version: string | null; selfTest: "running" | "passed" | "failed" | null; runs: Array<{ id: string; ok: boolean; at: number }> }
+export interface HomeUpdateReport { version: string | null; selfTest: "running" | "passed" | "failed" | null; runs: Array<{ id: string; ok: boolean; at: number; infra?: boolean }> }
 export interface HomePower {
   idle: boolean; busy: string[]; lastActivityAt: number | null; nextDueAt: number | null; wokeAt: number | null;
   /** the last time work ran on the home (absent from an older home) */

@@ -103,6 +103,15 @@ describe("engine sign-in routes", () => {
   });
 });
 
+describe("starting a sign-in", () => {
+  it("records the provider as the person's choice, so one only found on this computer is used once signed in", async () => {
+    const chosen: string[] = [];
+    const { call } = await serve({ chooseProvider: (instanceId) => chosen.push(instanceId) });
+    await call("POST", "/api/instances/a/auth/start", {});
+    expect(chosen).toEqual(["a"]);
+  });
+});
+
 describe("the engine list", () => {
   it("answers again from the last status read, and reads every engine again when asked for fresh", async () => {
     const { call, probesAfterList, fake } = await serve();

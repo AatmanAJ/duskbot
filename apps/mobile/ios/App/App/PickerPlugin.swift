@@ -3,10 +3,38 @@ import PhotosUI
 import UIKit
 import UniformTypeIdentifiers
 
+/// One picked item: the file handed to the page, or why it was left out.
+enum PickedItem {
+    case file([String: Any])
+    case tooLarge(String)
+    case failed
+}
+
+/// What a pick handed the page, and what it left out: items it could not load and the names of those over the limit.
+struct PickOutcome {
+    var files: [[String: Any]] = []
+    var failed = 0
+    var tooLarge: [String] = []
+
+    init(files: [[String: Any]] = []) {
+        self.files = files
+    }
+
+    init(items: [PickedItem]) {
+        for item in items {
+            switch item {
+            case .file(let file): files.append(file)
+            case .tooLarge(let name): tooLarge.append(name)
+            case .failed: failed += 1
+            }
+        }
+    }
+}
+
 /// Files the app hands the page: each written to its own folder in tmp and described by its file URL, name and type,
 /// which the page reads back through the web view's file scheme.
 enum PickedFiles {
-    private static func folder() -> URL? {
+    static func makeTempFolder() -> URL? {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dusk-picks", isDirectory: true)
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         do { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) } catch { return nil }
@@ -19,17 +47,31 @@ enum PickedFiles {
     }
 
     static func write(_ data: Data, name: String, type: String) -> [String: Any]? {
-        guard let dir = folder() else { return nil }
+        guard let dir = makeTempFolder() else { return nil }
         let url = dir.appendingPathComponent(name)
         do { try data.write(to: url) } catch { return nil }
         return describe(url, type: type)
     }
 
     static func copy(_ source: URL) -> [String: Any]? {
-        guard let dir = folder() else { return nil }
+        guard let dir = makeTempFolder() else { return nil }
         let url = dir.appendingPathComponent(source.lastPathComponent)
         do { try FileManager.default.copyItem(at: source, to: url) } catch { return nil }
         return describe(url)
+    }
+
+    /// A file the page may take: over `maxBytes` (when set) it is named, never copied.
+    static func pick(_ source: URL?, name: String? = nil, maxBytes: Int) -> PickedItem {
+        guard let source else { return .failed }
+        let size = (try? source.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        if maxBytes > 0, size > maxBytes { return .tooLarge(name ?? source.lastPathComponent) }
+        return copy(source).map { .file($0) } ?? .failed
+    }
+
+    /// Bytes the page may take, written under `name`; over `maxBytes` (when set) they are named, never written.
+    static func pick(_ data: Data, name: String, type: String, maxBytes: Int) -> PickedItem {
+        if maxBytes > 0, data.count > maxBytes { return .tooLarge(name) }
+        return write(data, name: name, type: type).map { .file($0) } ?? .failed
     }
 
     /// A picture as the page can show it anywhere: PNG, GIF and JPEG stay as they are; HEIC and the rest become JPEG,
@@ -37,6 +79,40 @@ enum PickedFiles {
     static func image(_ image: UIImage, index: Int) -> [String: Any]? {
         guard let data = image.jpegData(compressionQuality: 0.9) else { return nil }
         return write(data, name: "image-\(index + 1).jpg", type: "image/jpeg")
+    }
+
+    static func load(results: [PHPickerResult], maxBytes: Int, completion: @escaping (PickOutcome) -> Void) {
+        guard !results.isEmpty else { completion(PickOutcome()); return }
+        var items = [PickedItem](repeating: .failed, count: results.count)
+        let lock = NSLock()
+        let put = { (index: Int, item: PickedItem) in lock.lock(); items[index] = item; lock.unlock() }
+        let group = DispatchGroup()
+        for (index, result) in results.enumerated() {
+            let provider = result.itemProvider
+            group.enter()
+            let kept = [UTType.png, UTType.gif, UTType.jpeg, UTType.movie, UTType.mpeg4Movie, UTType.quickTimeMovie]
+                .first { type in provider.registeredTypeIdentifiers.contains(type.identifier) }
+            // the file a provider lends is gone once its handler returns
+            if let kept {
+                provider.loadFileRepresentation(forTypeIdentifier: kept.identifier) { url, _ in
+                    put(index, pick(url, name: provider.suggestedName, maxBytes: maxBytes))
+                    group.leave()
+                }
+            } else if provider.canLoadObject(ofClass: UIImage.self) {
+                provider.loadObject(ofClass: UIImage.self) { object, _ in
+                    if let uiImage = object as? UIImage, let file = Self.image(uiImage, index: index) { put(index, .file(file)) }
+                    group.leave()
+                }
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
+                provider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, _ in
+                    put(index, pick(url, name: provider.suggestedName, maxBytes: maxBytes))
+                    group.leave()
+                }
+            } else {
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) { completion(PickOutcome(items: items)) }
     }
 
     /// The images on the pasteboard, PNG kept as PNG.
@@ -96,10 +172,10 @@ final class PastingTextView: UITextView {
     }
 }
 
-/// The composer's + choices opened straight on their own system picker: the photo library on PHPicker, Files on the
-/// document picker. A web file input on iOS always asks first (take a photo, the library or Files), even with `accept`.
+/// The composer's + choices: floating media picker sheet for Photo library and Camera, and the system document picker
+/// for Files. A web file input on iOS always asks first (take a photo, the library or Files), even with `accept`.
 @objc(PickerPlugin)
-public class PickerPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControllerDelegate, UIDocumentPickerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+public class PickerPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDelegate {
     public let identifier = "PickerPlugin"
     public let jsName = "DuskPicker"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -116,30 +192,98 @@ public class PickerPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControllerDe
     }
 
     private func finish(_ files: [[String: Any]]) {
-        pending?.resolve(["files": files])
+        finish(PickOutcome(files: files))
+    }
+
+    private func finish(_ outcome: PickOutcome) {
+        pending?.resolve(["files": outcome.files, "failed": outcome.failed, "tooLarge": outcome.tooLarge])
         pending = nil
+    }
+
+    private func topPresenter() -> UIViewController? {
+        guard var top = bridge?.viewController else { return nil }
+        while let next = top.presentedViewController { top = next }
+        return top
+    }
+
+    private func glassPlugin() -> GlassChromePlugin? {
+        (bridge?.plugin(withName: "DuskGlass") ?? bridge?.plugin(withName: "GlassChromePlugin")) as? GlassChromePlugin
+    }
+
+    private func makeMorphContext(for presenter: UIViewController, sourceObject: JSObject?) -> MediaPickerMorphContext? {
+        if let glass = glassPlugin(), let origin = glass.composerMorphOrigin(in: presenter.view) {
+            glass.setComposerSuppressed(true)
+            return MediaPickerMorphContext(
+                origin: origin,
+                resolveDismissRect: { [weak glass, weak presenter] in
+                    guard let glass, let presenter else { return origin.restingRect }
+                    return glass.currentComposerRect(in: presenter.view) ?? origin.restingRect
+                },
+                onRelease: { [weak glass] done in
+                    glass?.setComposerSuppressed(false)
+                    done()
+                }
+            )
+        }
+        guard let sourceObject,
+              let webView = bridge?.webView,
+              let x = (sourceObject["x"] as? NSNumber)?.doubleValue,
+              let y = (sourceObject["y"] as? NSNumber)?.doubleValue,
+              let w = (sourceObject["w"] as? NSNumber)?.doubleValue,
+              let h = (sourceObject["h"] as? NSNumber)?.doubleValue,
+              w >= 40, h >= 24 else {
+            return nil
+        }
+        let rectInWeb = CGRect(x: x, y: y, width: w, height: h)
+        let rectInPresenter = webView.convert(rectInWeb, to: presenter.view)
+        let radius = CGFloat((sourceObject["radius"] as? NSNumber)?.doubleValue ?? min(24, h / 2))
+        let snapshot = webView.resizableSnapshotView(from: rectInWeb, afterScreenUpdates: false, withCapInsets: .zero)
+        let style = presenter.view.traitCollection.userInterfaceStyle
+        let origin = ComposerMorphOrigin(
+            rect: rectInPresenter,
+            restingRect: rectInPresenter,
+            cornerRadius: radius,
+            userInterfaceStyle: style,
+            snapshot: snapshot
+        )
+        let selector = "[data-mobile-chat] [data-tour=\"composer\"], [data-tour=\"composer\"]"
+        webView.evaluateJavaScript("document.querySelector('\(selector)')?.style.setProperty('opacity','0')", completionHandler: nil)
+        return MediaPickerMorphContext(
+            origin: origin,
+            resolveDismissRect: { origin.restingRect },
+            onRelease: { [weak webView] done in
+                guard let webView else { done(); return }
+                webView.evaluateJavaScript("document.querySelector('\(selector)')?.style.removeProperty('opacity')") { _, _ in
+                    done()
+                }
+            }
+        )
+    }
+
+    private func presentMediaSheet(mode: MediaPickerSheetViewController.Mode, multiple: Bool, maxBytes: Int, labels: MediaPickerLabels, source: JSObject?) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let presenter = self.topPresenter() else { self?.finish([]); return }
+            let morph = self.makeMorphContext(for: presenter, sourceObject: source)
+            presenter.view.window?.endEditing(true)
+            let sheet = MediaPickerSheetViewController(mode: mode, multiple: multiple, maxBytes: maxBytes, labels: labels, morph: morph) { [weak self] outcome in
+                self?.finish(outcome)
+            }
+            presenter.present(sheet, animated: false)
+        }
     }
 
     @objc func photos(_ call: CAPPluginCall) {
         begin(call)
         let multiple = call.getBool("multiple") ?? true
-        DispatchQueue.main.async { [weak self] in
-            guard let self, let presenter = self.bridge?.viewController else { self?.finish([]); return }
-            var config = PHPickerConfiguration()
-            config.selectionLimit = multiple ? 10 : 1
-            config.filter = .any(of: [.images, .videos])
-            config.preferredAssetRepresentationMode = .compatible
-            let picker = PHPickerViewController(configuration: config)
-            picker.delegate = self
-            presenter.present(picker, animated: true)
-        }
+        let labels = MediaPickerLabels(call.getObject("labels"))
+        presentMediaSheet(mode: .photos, multiple: multiple, maxBytes: call.getInt("maxBytes") ?? 0, labels: labels, source: call.getObject("source"))
     }
 
     @objc func files(_ call: CAPPluginCall) {
         begin(call)
         let multiple = call.getBool("multiple") ?? true
         DispatchQueue.main.async { [weak self] in
-            guard let self, let presenter = self.bridge?.viewController else { self?.finish([]); return }
+            guard let self, let presenter = self.topPresenter() else { self?.finish([]); return }
             let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
             picker.allowsMultipleSelection = multiple
             picker.delegate = self
@@ -149,51 +293,8 @@ public class PickerPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControllerDe
 
     @objc func camera(_ call: CAPPluginCall) {
         begin(call)
-        DispatchQueue.main.async { [weak self] in
-            guard let self, let presenter = self.bridge?.viewController, UIImagePickerController.isSourceTypeAvailable(.camera) else {
-                self?.finish([])
-                return
-            }
-            let picker = UIImagePickerController()
-            picker.sourceType = .camera
-            picker.mediaTypes = [UTType.image.identifier]
-            picker.delegate = self
-            presenter.present(picker, animated: true)
-        }
-    }
-
-    public func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-        picker.dismiss(animated: true)
-        guard !results.isEmpty else { finish([]); return }
-        var files = [[String: Any]?](repeating: nil, count: results.count)
-        let lock = NSLock()
-        let put = { (index: Int, file: [String: Any]?) in lock.lock(); files[index] = file; lock.unlock() }
-        let group = DispatchGroup()
-        for (index, result) in results.enumerated() {
-            let provider = result.itemProvider
-            group.enter()
-            let kept = [UTType.png, UTType.gif, UTType.jpeg, UTType.movie, UTType.mpeg4Movie, UTType.quickTimeMovie]
-                .first { type in provider.registeredTypeIdentifiers.contains(type.identifier) }
-            if let kept {
-                provider.loadFileRepresentation(forTypeIdentifier: kept.identifier) { url, _ in
-                    if let url { put(index, PickedFiles.copy(url)) }
-                    group.leave()
-                }
-            } else if provider.canLoadObject(ofClass: UIImage.self) {
-                provider.loadObject(ofClass: UIImage.self) { object, _ in
-                    if let image = object as? UIImage { put(index, PickedFiles.image(image, index: index)) }
-                    group.leave()
-                }
-            } else if provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
-                provider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, _ in
-                    if let url { put(index, PickedFiles.copy(url)) }
-                    group.leave()
-                }
-            } else {
-                group.leave()
-            }
-        }
-        group.notify(queue: .main) { [weak self] in self?.finish(files.compactMap { $0 }) }
+        let labels = MediaPickerLabels(call.getObject("labels"))
+        presentMediaSheet(mode: .camera, multiple: true, maxBytes: call.getInt("maxBytes") ?? 0, labels: labels, source: call.getObject("source"))
     }
 
     public func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
@@ -201,20 +302,6 @@ public class PickerPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControllerDe
     }
 
     public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-        finish([])
-    }
-
-    public func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-        picker.dismiss(animated: true)
-        guard let image = info[.originalImage] as? UIImage, let file = PickedFiles.image(image, index: 0) else {
-            finish([])
-            return
-        }
-        finish([file])
-    }
-
-    public func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-        picker.dismiss(animated: true)
         finish([])
     }
 }

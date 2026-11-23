@@ -145,7 +145,7 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
         existingBot?.approvalGrant &&
         (rawSelection !== undefined || body.approvalMode !== undefined || body.autoApprove !== undefined)
       ) {
-        return json(res, 409, { error: "wait for the approval-level change to finish before changing this setting" });
+        return json(res, 409, { error: "wait for the approval-level change to finish before changing this setting", code: "approval_pending" });
       }
       if (body.requireAvailableModel === true && rawSelection === undefined) {
         return json(res, 400, { error: "requireAvailableModel requires modelSelection" });
@@ -293,7 +293,7 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
         if (typeof body.memoryEnabled !== "boolean") return json(res, 400, { error: "memoryEnabled must be true or false" });
         if (existingBot && (existingBot.busy || activeGroupTurnForBot(existingBot.id)) &&
             body.memoryEnabled !== (existingBot.memoryEnabled !== false)) {
-          return json(res, 409, { error: "stop this bot's turn before changing its memory setting" });
+          return json(res, 409, { error: "stop this bot's turn before changing its memory setting", code: "bot_busy" });
         }
         patch.memoryEnabled = body.memoryEnabled;
       }
@@ -353,7 +353,7 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
       if (body.browser !== undefined) {
         if (typeof body.browser !== "boolean") return json(res, 400, { error: "browser must be true or false" });
         if (existingBot?.busy && body.browser !== (existingBot.browser !== false)) {
-          return json(res, 409, { error: "stop this bot's turn before changing its browser access" });
+          return json(res, 409, { error: "stop this bot's turn before changing its browser access", code: "bot_busy" });
         }
         patch.browser = body.browser;
       }
@@ -367,11 +367,11 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
           ? undefined
           : body.browserProfile;
         if (existingBot?.busy && requestedProfile !== existingBot.browserProfile) {
-          return json(res, 409, { error: "stop this bot's turn before changing its browser profile" });
+          return json(res, 409, { error: "stop this bot's turn before changing its browser profile", code: "bot_busy" });
         }
         if (existingBot && requestedProfile !== existingBot.browserProfile &&
             browserRuntime.heldBy(currentBrowserSession(existingBot.id, existingBot.browserProfile))) {
-          return json(res, 409, { error: "Release browser control before changing its profile." });
+          return json(res, 409, { error: "Release browser control before changing its profile.", code: "browser_held" });
         }
         if (requestedProfile === undefined) patch.browserProfile = undefined;
         else if (
@@ -404,7 +404,7 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
       }
       if (body.cloudBackend !== undefined) {
         const backendError = cloudBackendChangeError(Boolean(existingBot?.busy), activeVpsThreads.has(m[1]));
-        if (backendError) return json(res, 409, { error: backendError });
+        if (backendError) return json(res, 409, { error: backendError, code: "bot_busy" });
       }
       // Moving a bot to another server is refused while its own computer still lives on the old one.
       // Resolved hosts, not raw text: pinning a bot to the server it already uses moves nothing.
@@ -420,9 +420,9 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
           // A concurrent PATCH may have already made this move; persisting the same host moves nothing.
           if (vpsSshAliasForBot(cfg, { ...current, vpsAlias: patch.vpsAlias as string | undefined }) === vpsSshAliasForBot(cfg, current)) break;
           const aliasError = vpsBotAliasChangeError(Boolean(current.busy), activeVpsThreads.has(m[1]));
-          if (aliasError) return json(res, 409, { error: aliasError });
+          if (aliasError) return json(res, 409, { error: aliasError, code: "bot_busy" });
           // A Start or Remove still running on the old host would land after the scan, like the default alias's guard.
-          if (vps.vpsLifecycleBusy()) return json(res, 409, { error: VPS_BOT_ALIAS_LIFECYCLE_ERROR });
+          if (vps.vpsLifecycleBusy()) return json(res, 409, { error: VPS_BOT_ALIAS_LIFECYCLE_ERROR, code: "server_busy" });
           // Primitives, not the record: the store hands out its live object and patchBot mutates it in place.
           const scannedVpsAlias = current.vpsAlias;
           const scannedBusy = current.busy;
@@ -437,14 +437,14 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
           const settled = store.bot(m[1]);
           if (!settled) return json(res, 404, { error: "no such bot" });
           if (settled.vpsAlias !== scannedVpsAlias || settled.busy !== scannedBusy || activeVpsThreads.has(m[1]) || vps.vpsLifecycleBusy()) {
-            if (attempt === VPS_ALIAS_MOVE_ATTEMPTS) return json(res, 409, { error: VPS_BOT_ALIAS_CHANGE_ERROR });
+            if (attempt === VPS_ALIAS_MOVE_ATTEMPTS) return json(res, 409, { error: VPS_BOT_ALIAS_CHANGE_ERROR, code: "server_busy" });
             continue;
           }
           if (!inventory) break;
           // A server that cannot answer never keeps the bot: it moves, and the answer says what may be left there.
           if (!inventory.available) vpsLeftOn = currentAlias;
           else if (inventory.instances.some((instance) => instance.name === vps.vpsContainerName(current.id))) {
-            return json(res, 409, { error: VPS_BOT_ALIAS_RESOURCES_ERROR });
+            return json(res, 409, { error: VPS_BOT_ALIAS_RESOURCES_ERROR, code: "server_resources" });
           }
           break;
         }
@@ -617,7 +617,7 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
       if (loosened.length && auth.kind === "loopback" && !DESKTOP_MANAGED && !browserOrigin) {
         if (store.bots.some((candidate) => candidate.busy)) {
           return json(res, 409, {
-            error: "A bot is working right now, so this change has to come from the desktop app or a paired device. Try again once every bot is idle.",
+            error: "A bot is working right now, so this change has to come from the desktop app or a paired device. Try again once every bot is idle.", code: "desktop_only",
           });
         }
         console.warn(`bot ${m[1]}: ${loosened.join(", ")} loosened by ${requestSource(req)} through the local API with no paired session`);
@@ -645,18 +645,18 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
       if (freshBrowserBot && body.memoryEnabled !== undefined &&
           body.memoryEnabled !== (freshBrowserBot.memoryEnabled !== false) &&
           (freshBrowserBot.busy || activeGroupTurnForBot(freshBrowserBot.id))) {
-        return json(res, 409, { error: "stop this bot's turn before changing its memory setting" });
+        return json(res, 409, { error: "stop this bot's turn before changing its memory setting", code: "bot_busy" });
       }
       if (Object.hasOwn(body, "toolScope")) {
         if (auth.kind === "session" && !sessions.isLive(auth.session.id)) {
           return json(res, 401, { error: "unauthorized: this session has expired or was revoked" });
         }
         if (toolScopeWidens(freshBrowserBot?.toolScope, patch.toolScope) && auth.kind === "loopback" && !DESKTOP_MANAGED && !browserOrigin && store.bots.some((candidate) => candidate.busy)) {
-          return json(res, 409, { error: "A bot is working right now, so this change has to come from the desktop app or a paired device. Try again once every bot is idle." });
+          return json(res, 409, { error: "A bot is working right now, so this change has to come from the desktop app or a paired device. Try again once every bot is idle.", code: "desktop_only" });
         }
         if (freshBrowserBot && JSON.stringify(freshBrowserBot.toolScope) !== JSON.stringify(patch.toolScope)
           && (freshBrowserBot.busy || activeGroupTurnForBot(freshBrowserBot.id))) {
-          return json(res, 409, { error: "Stop this bot's turns before changing its tool selection." });
+          return json(res, 409, { error: "Stop this bot's turns before changing its tool selection.", code: "bot_busy" });
         }
       }
       // A running turn cannot unmount custom servers; rechecked after the awaits above.
@@ -667,12 +667,12 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
         if (Array.isArray(freshBrowserBot?.mcpServers) &&
             (requestedMcpServers === undefined || requestedMcpServers.some((name) => !freshBrowserBot.mcpServers!.includes(name))) &&
             auth.kind === "loopback" && !DESKTOP_MANAGED && !browserOrigin && store.bots.some((candidate) => candidate.busy)) {
-          return json(res, 409, { error: "A bot is working right now, so this change has to come from the desktop app or a paired device. Try again once every bot is idle." });
+          return json(res, 409, { error: "A bot is working right now, so this change has to come from the desktop app or a paired device. Try again once every bot is idle.", code: "desktop_only" });
         }
         if (freshBrowserBot &&
             JSON.stringify(requestedMcpServers?.toSorted()) !== JSON.stringify(freshBrowserBot.mcpServers?.toSorted()) &&
             (freshBrowserBot.busy || activeGroupTurnForBot(freshBrowserBot.id))) {
-          return json(res, 409, { error: "Stop this bot's turns before changing its MCP servers." });
+          return json(res, 409, { error: "Stop this bot's turns before changing its MCP servers.", code: "bot_busy" });
         }
       }
       if (normalizedSelection && movedTask) {
@@ -688,7 +688,7 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
       if (freshBrowserBot && body.browserProfile !== undefined &&
           patch.browserProfile !== freshBrowserBot.browserProfile &&
           (freshBrowserBot.busy || browserRuntime.heldBy(currentBrowserSession(freshBrowserBot.id, freshBrowserBot.browserProfile)))) {
-        return json(res, 409, { error: "Stop the bot and release browser control before changing its profile." });
+        return json(res, 409, { error: "Stop the bot and release browser control before changing its profile.", code: "browser_held" });
       }
       if (profile.patch.soul !== undefined) {
         if (freshBrowserBot) await assertTeamComputerChangeIdle(freshBrowserBot, { ...freshBrowserBot, ...patch } as BotRecord);

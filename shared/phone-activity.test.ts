@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { nextTurnActivity, pushCategory, replyFirstLine, turnActivityStart, type TurnActivityEvent, type TurnActivityState } from "./phone-activity.ts";
+import { endedTurnActivity, nextTurnActivity, pushCategory, replyFirstLine, turnActivityStart, type TurnActivityEvent, type TurnActivityState } from "./phone-activity.ts";
 
 const run = (events: TurnActivityEvent[], from: TurnActivityState = turnActivityStart(1000)) => events.reduce(nextTurnActivity, from);
 
 describe("turn activity state", () => {
+  it("ends a turn that ran to its end as done, a bot's quiet pass included, and only a stopped or failed one as stopped", () => {
+    expect(endedTurnActivity({ ok: true, stopped: false })).toEqual({ type: "done" });
+    expect(run([{ type: "thinking" }, endedTurnActivity({ ok: true, stopped: false })]).phase).toBe("done");
+    expect(endedTurnActivity({ ok: true, stopped: true })).toEqual({ type: "stopped" });
+    expect(endedTurnActivity({ ok: false, stopped: false })).toEqual({ type: "stopped" });
+  });
+
   it("counts steps and shows the running one", () => {
     expect(run([{ type: "step", activity: "web" }, { type: "step", activity: "read" }])).toEqual({ phase: "working", step: "read", steps: 2, startedAt: 1000 });
     expect(run([{ type: "step", activity: "web" }, { type: "thinking" }])).toEqual({ phase: "working", steps: 1, startedAt: 1000 });

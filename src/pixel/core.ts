@@ -557,7 +557,14 @@ export class PixelCore {
     const mk = qsx + "," + qsy + "," + ql + "," + qa.join(",");
     const cache = (def.cache[G] ||= new Map());
     let m = cache.get(mk);
-    if (!m) { if (cache.size > 600) cache.clear(); m = this.raster(qsx, qsy, ql, qa); cache.set(mk, m); }
+    if (!m) {
+      if (cache.size >= 120) {
+        const oldest = cache.keys().next().value;
+        if (oldest !== undefined) cache.delete(oldest);
+      }
+      m = this.raster(qsx, qsy, ql, qa);
+      cache.set(mk, m);
+    }
     const ox = R(this.xo.x / k), oy = R((this.y + hov) / k);
     // eye geometry in output pixels, kept symmetric
     const F = (x: number, y: number) => [this.ax + ((x - N / 2) * qsx - ql * (y - N)) / k + ox, this.ay + ((y - N) * qsy) / k + oy] as const;

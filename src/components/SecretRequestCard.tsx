@@ -1,9 +1,11 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { ExternalLink, Loader2, LockKeyhole, RefreshCw } from "../icons";
 
-import { CUSTOM_SECRET_TARGET, credentialResumeOutcome, credentialSaveRequest, desktopCredentialSlot, isConfigCredentialTarget, isCredentialTargetId } from "../../shared/credential-request";
+import { CUSTOM_SECRET_TARGET, credentialConfigPatch, credentialResumeOutcome, desktopCredentialSlot, isConfigCredentialTarget, isCredentialTargetId } from "../../shared/credential-request";
 import { credentialProvider } from "@/lib/analytics-allowlist";
 import { cn } from "@/lib/cn";
+import { connectOnePassword } from "@/lib/logins";
+import { putConfig } from "@/lib/sealed-send";
 import { t } from "@/lib/i18n";
 import { keySaved, keySaveFailure, savedKeyResult } from "@/lib/product-events";
 import { api, ApiError, useStore, type Bot, type ConfigStatus, type Message } from "@/state/store";
@@ -17,6 +19,7 @@ import type { CardSealKey } from "../../shared/saved-secrets";
 import { Icon } from "./Icon";
 import { Toggle } from "./ui/Toggle";
 import { useSettleFold } from "./settle-fold";
+import { takeOfferedSecret, watchOfferedSecrets } from "@/lib/composer-secret";
 
 // Security: the value goes straight to the host's settings, never into the chat. A custom secret leaves this app only
 // sealed for the server that keeps it, so a relay between them (the VPS tunnel, a Cloud's proxy) never reads it.
@@ -41,6 +44,21 @@ export function SecretSettledRow({ label, status, tone = "done", title, action, 
     <CardSettledRow ariaLabel={label} icon={<Icon name="key" size={12} />} label={t("secretCard.title")} summary={status}
       tone={tone === "off" ? "closed" : tone} title={title || detail ? label : undefined} detail={title || detail ? <>{title}{detail}</> : undefined} action={action} />
   );
+}
+
+/** Takes a value the composer moved here instead of sending it, and puts the caret in the card's field. */
+function TakesOfferedSecret({ cardId, onTake }: { cardId: string; onTake: (value: string) => void }) {
+  useEffect(() => {
+    const take = () => {
+      const offered = takeOfferedSecret(cardId);
+      if (offered === undefined) return;
+      onTake(offered);
+      requestAnimationFrame(() => document.querySelector<HTMLInputElement>(`input[data-secret-card-field="${CSS.escape(cardId)}"]`)?.focus());
+    };
+    take();
+    return watchOfferedSecrets(take);
+  }, [cardId, onTake]);
+  return null;
 }
 
 type SecretRequestCardProps = {
@@ -173,14 +191,13 @@ export function SecretRequestCardBody({
         const next = value.trim();
         const target = secret.target;
         // The 1Password token goes to this server's Logins, which checks it with 1Password first, never the settings file.
-        const request = credentialSaveRequest(target, next);
         const slot = desktopCredentialSlot(target);
         if (isConfigCredentialTarget(target)) {
           const status: ConfigStatus = slot && window.duskDesktop?.setCredential
             ? await window.duskDesktop.setCredential(slot, next)
-            : await api(request.path, { method: request.method, body: JSON.stringify(request.body) });
+            : await putConfig(credentialConfigPatch(target, next) as Record<string, unknown>);
           dispatch({ type: "configStatus", config: status });
-        } else await api(request.path, { method: request.method, body: JSON.stringify(request.body) });
+        } else await connectOnePassword(next);
         saved = true;
         keySaved(provider, "chat_request", savedKeyResult(provider));
         setValue("");
@@ -251,6 +268,7 @@ export function SecretRequestCardBody({
         </div>
       ) : (
         <form onSubmit={(event) => void save(event)}>
+          <TakesOfferedSecret cardId={message.id} onTake={setValue} />
           {email && (
             <div className="mb-2 flex flex-col gap-2">
               <input type="email" autoComplete="off" spellCheck={false} dir="ltr" value={address} onChange={(event) => setAddress(event.target.value)} placeholder={t("secretCard.emailAddress")} disabled={saving} aria-label={t("secretCard.emailAddress")} className={cn(CARD_FIELD, "w-full")} />
@@ -262,6 +280,7 @@ export function SecretRequestCardBody({
               placeholder={t("secretCard.username")} disabled={saving} aria-label={t("secretCard.username")} maxLength={512} className={cn(CARD_FIELD, "mb-2 w-full")} />
           )}
           <input
+            data-secret-card-field={message.id}
             type="password"
             autoComplete="new-password"
             spellCheck={false}

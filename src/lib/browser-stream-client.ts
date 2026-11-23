@@ -121,6 +121,7 @@ export type PreviewStreamInput =
       readonly modifiers: number;
     }
   | { readonly type: "text"; readonly text: string }
+  | { readonly type: "copy" }
   | { readonly type: "resize"; readonly width: number; readonly height: number }
   /** The viewer can show larger frames now: the screencast restarts at the new cap without reconnecting. */
   | { readonly type: "frameCap"; readonly maxWidth: number; readonly maxHeight: number }
@@ -246,8 +247,8 @@ export interface PreviewStreamEvents {
   readonly onConnectedChange: (connected: boolean) => void;
   /** The upgrade was refused; refresh access and start a new client. */
   readonly onUnauthorized: () => void;
-  /** The browser this view showed is gone. The client has stopped. */
-  readonly onGone?: () => void;
+  /** The browser this view showed is gone. The client has stopped. `reason`: the server's last word on why, when it gave one. */
+  readonly onGone?: (reason?: string) => void;
   /** The server's browser cannot start until its host is set up. The client has stopped. */
   readonly onHostSetup?: (setup: PreviewStreamHostSetup) => void;
   /** Every close, before the client decides whether to retry. */

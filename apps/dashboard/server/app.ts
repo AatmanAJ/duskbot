@@ -125,11 +125,14 @@ const sections = ["machine", "computers", "bots", "activity", "devices", "plans"
 const COMMAND_REDELIVER_MS = 10_000;
 const MUTATIONS = ["POST", "PUT", "PATCH", "DELETE"];
 
-/** the page's content security policy: its own scripts plus the hashes of its inline ones (the theme bootstrap) */
+/** cloudflare's edge injects its web analytics beacon into every page it serves; only that script and where it reports */
+const BEACON_SCRIPT = "https://static.cloudflareinsights.com", BEACON_REPORT = "https://cloudflareinsights.com";
+
+/** the page's content security policy: its own scripts, the hashes of its inline ones (the theme bootstrap) and the analytics beacon */
 export function pagePolicy(html: string): string {
   const inline = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map(match => `'sha256-${createHash("sha256").update(match[1]!).digest("base64")}'`);
-  return ["default-src 'self'", `script-src 'self'${inline.length ? ` ${inline.join(" ")}` : ""}`, "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob: https:",
-    "font-src 'self' data:", "connect-src 'self'", "frame-src 'none'", "object-src 'none'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'"].join("; ");
+  return ["default-src 'self'", `script-src 'self'${inline.length ? ` ${inline.join(" ")}` : ""} ${BEACON_SCRIPT}`, "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob: https:",
+    "font-src 'self' data:", `connect-src 'self' ${BEACON_REPORT}`, "frame-src 'none'", "object-src 'none'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'"].join("; ");
 }
 
 /** the page's own top-level routes (apps/dashboard/src/main.tsx): on a shared origin a link to one without the page base,
@@ -137,6 +140,8 @@ export function pagePolicy(html: string): string {
 const PAGE_ROUTES = ["/sign-in", "/signin", "/signup", "/welcome", "/claim", "/cloud", "/clouds", "/billing", "/usage", "/account", "/workspaces", "/bots", "/connectors", "/settings", "/devices", "/connect"];
 
 /** what the service answers itself on a shared origin; everything else outside the page base is the site's */
+/** a pairing's 503 is the person's own cloud home not answering: the cloud backend's outages cover that, not this service */
+export const HOME_DID_NOT_ANSWER = /^\/api\/cloud\/desktop\/(?:teams\/[^/?]+\/)?pairing(?:\?|$)/;
 const ACCOUNT_PREFIXES = ["/v1/", "/api/cloud/", "/api/public", "/api/bots", BUG_REPORT_PATH, DASHBOARD_DISCOVERY_PATH];
 /** the owner's panel: the same page bundle at its own top-level path, served only to an admin's session */
 export const ADMIN_PATH = "/admin";
@@ -241,7 +246,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
   const testMail = options.testMail ?? createTestMailbox({ readable: dev });
   const outbound = sinkTestMail(options.mailer, testMail);
   const mailer: Mailer = { send: message => { try { if (!isTestAddress(message.to)) noteMail(message); } catch { /* counting never stops an email */ } return outbound.send(message); } };
-  const auth = createAuth({ dataDir: options.dataDir, publicUrl, pageBase, mailPerHour: options.mailPerHour, mailPerDay: options.mailPerDay, mailer: mailer,
+  const auth = createAuth({ dataDir: options.dataDir, publicUrl, pageBase, mailPerHour: options.mailPerHour, mailPerDay: options.mailPerDay, mailer: mailer, isAdmin: account => admin.roleOf(account) !== null,
     // one incident a day, whichever limit it was: someone (or a bot) is asking for sign-in codes faster than we will send them
     onMailLimit: kind => incidents.report({ source: "server", name: "SignInMailLimit", key: `auth-mail-${new Date(now()).toISOString().slice(0, 10)}`,
       message: `sign-in emails reached ${mailLimitSay[kind]} limit, so more codes are refused until it resets. a spike of signups or someone spraying addresses; check admin > health for rate-limited ips` }), now, fetch: options.fetch, oauth: options.oauth,
@@ -363,9 +368,17 @@ export function createDashboardApp(options: DashboardAppOptions) {
     // once per cloud, ever: clouds/service.ts keeps cloud.mailed.ready, so a restart, a wake or a rebuild never sends it again
     cloudEvent: (kind, cloud) => !courtesy(emailOf(cloud.accountId)) ? undefined : kind === "ready" ? sendTo(cloud.accountId, "cloudStatus", cloudReadyEmail(emailCfg, cloudFacts(cloud)))
       : sendTo(cloud.accountId, "required", cloudDeletedEmail(emailCfg, { name: cloud.name, at: now() })),
-    // cloud lifecycle (deletions, reconciler steps, backups) never emails the operator: it is in the managed audit, admin and
-    // the daily digest. a real cloud problem prints a "managed: ALERT" line, which the console tap makes an incident
-    alert: entry => { if (entry.action === "starts_alert") incidents.report({ source: "log", name: "managed alert", message: `${entry.action} ${entry.cloudId}: ${entry.reason}` }); }, dataDir: options.dataDir, publicUrl, dashboard: store, now, fetch: options.fetch, wakeStats: () => slackEdge?.edge.wakeStats() ?? {}, accounts: {
+    // cloud lifecycle (deletions, reconciler steps, backups, repairs that worked) never emails the operator: it is in the
+    // managed audit, admin and the daily digest. a problem the backend could not fix opens an outage (one email, and one
+    // more when it is over) or prints a "managed: ALERT" line, which the console tap makes an incident
+    alert: entry => {
+      if (entry.action === "starts_alert") incidents.report({ source: "log", name: "managed alert", message: `${entry.action} ${entry.cloudId}: ${entry.reason}` });
+      const key = entry.detail?.key, title = entry.detail?.title;
+      if (typeof key !== "string" || typeof title !== "string") return;
+      const outage = { source: "ops" as const, name: title, key };
+      if (entry.action === "outage_open") incidents.report({ ...outage, message: entry.reason });
+      if (entry.action === "outage_close") void incidents.recovered(incidents.idOf(outage), entry.reason).catch(() => false);
+    }, dataDir: options.dataDir, publicUrl, dashboard: store, now, fetch: options.fetch, wakeStats: () => slackEdge?.edge.wakeStats() ?? {}, accounts: {
     fromCookie: req => { try { return account(req); } catch (error) { if (error instanceof AuthError && error.code === "signed_out") return null; throw error; } },
     fromBearer: req => auth.appSession(req)?.account ?? null } });
   const pagesRoutes = pagesRoutesFromEnv({ dataDir: options.dataDir, publicUrl, clouds: billing.clouds, now, fetch: options.fetch });
@@ -1135,7 +1148,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
       res.setHeader("x-request-id", requestId);
       res.once("finish", () => {
         if (res.statusCode === 429) ops.noteLimited(clientIp(req, options.trustProxy ?? false));
-        if (res.statusCode >= 500 && !reported.has(res) && !(res.statusCode === 503 && closed))
+        if (res.statusCode >= 500 && !reported.has(res) && !(res.statusCode === 503 && (closed || HOME_DID_NOT_ANSWER.test(req.url ?? ""))))
           incidents.report({ source: "server", name: `Http${res.statusCode}`, message: `${req.method ?? "GET"} answered ${res.statusCode}`, key: `http-${res.statusCode}`, route: req.url, status: res.statusCode, requestId });
       });
       return requestIp.run(clientIp(req, options.trustProxy ?? false), () => route(req, res)).catch(error => {

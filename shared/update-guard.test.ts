@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acceptPolicy, compareVersions, freshUpdateRecord, idleForUpdate, inRollout, parsePolicy, refusal, review, rolledBack, sawRun, selfTested, settle, startTrial, TRIAL_MS } from "./update-guard.ts";
+import { acceptPolicy, compareVersions, forgive, freshUpdateRecord, idleForUpdate, inRollout, parsePolicy, refusal, review, rolledBack, sawRun, selfTested, settle, startTrial, TRIAL_MS } from "./update-guard.ts";
 
 const v = (version: string) => ({ version, sha256: version.replace(/\./g, "").padEnd(64, "a").slice(0, 64) });
 
@@ -52,6 +52,30 @@ describe("update guard", () => {
     const verdict = sawRun(r, { id: "y", ok: false }, 3);
     expect(verdict).toMatchObject({ action: "rollback", reason: "runs_failed" });
     expect(rolledBack(r, v("2.0.0"), "runs_failed", 4).failedRuns).toEqual(["x", "y"]);
+  });
+
+  it("never counts a run that failed for want of its computer, for or against the version on trial", () => {
+    const r = freshUpdateRecord(v("1.4.1"));
+    startTrial(r, v("1.4.2"), 0);
+    selfTested(r, true, 1);
+    expect(sawRun(r, { id: "a", ok: false, infra: true }, 2)).toEqual({ action: "wait" });
+    expect(sawRun(r, { id: "b", ok: false, infra: true }, 3)).toEqual({ action: "wait" });
+    // the same run reported again without the flag still does not count
+    expect(sawRun(r, { id: "a", ok: false }, 4)).toEqual({ action: "wait" });
+    expect(r.trial?.runs).toEqual([]);
+    expect(r.trial?.excused).toEqual(["a", "b"]);
+    expect(sawRun(r, { id: "c", ok: false }, 5)).toEqual({ action: "wait" });
+    expect(sawRun(r, { id: "d", ok: false }, 6)).toMatchObject({ action: "rollback", reason: "runs_failed" });
+  });
+
+  it("forgives a version marked failed here, so it is offered again", () => {
+    const r = freshUpdateRecord(v("1.4.1"));
+    startTrial(r, v("1.4.2"), 0);
+    rolledBack(r, v("1.4.1"), "runs_failed", 1);
+    expect(refusal(r, v("1.4.2"))).toBe("failed_here");
+    expect(forgive(r, "1.4.2")).toBe(true);
+    expect(forgive(r, "1.4.2")).toBe(false);
+    expect(refusal(r, v("1.4.2"))).toBeNull();
   });
 
   it("refuses a blocked version and rolls a running blocked one back", () => {

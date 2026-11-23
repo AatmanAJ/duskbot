@@ -106,8 +106,55 @@ test("starting asks the server once more, and keeps this computer's bots here wh
   assert.deepEqual({ ...own.chosen(), at: 0 }, { v: 1, id: "g", origin: garage.origin, environmentId: ID, name: "Garage server", at: 0 });
   assert.ok(asked.every((ask) => ask.origin === garage.origin && ask.headers.origin === garage.origin), "only that server, same-origin, with the window's sign-in");
   assert.equal(own.active(), true, "no move to My Cloud starts now");
-  await assert.rejects(own.start("g"), /already moving/u);
+  assert.deepEqual(await own.start("g"), { started: true, continued: true }, "asked again, the same move goes on");
   own.close();
+});
+
+test("Try again goes on with a move to the same server, starts clean for a new install there or a move that ended, and never lets go of one past copying", async () => {
+  const NEW = "0d9e8f7a-6b5c-4d3e-9f8a-7b6c5d4e3f2a";
+  const choice = { v: 1, id: "g", origin: garage.origin, environmentId: ID, name: "Garage server", at: 1 };
+  const cloud = { origin: garage.origin, account: `own:${ID}`, machine: garage.origin, name: "Garage server" };
+  const sent = { v: 1, clouds: { [garage.origin]: { sent: { "bot:a": { files: ["x", "y"] } } } } };
+  const make = (answer, journal, sendState = null) => {
+    const journalStore = memory(journal), choiceStore = memory(choice), sendStore = memory(sendState);
+    const own = installOwnHome({ localRequest: async () => new Response("", { status: 503 }), fetch: servers({ [garage.origin]: answer, [family.origin]: { own: true } }).fetch,
+      environments: () => [garage, family], handoff: async () => null, journal: journalStore, choice: choiceStore, sendState: sendStore, cloudJournal: () => null, now: () => 1_000 });
+    return { own, journal: journalStore, choice: choiceStore, send: sendStore };
+  };
+
+  const same = make({ own: true }, { v: 1, phase: "copy", cloud, startedAt: 1, error: "fetch failed", retryAt: 99_999_999 });
+  assert.deepEqual(await same.own.start("g"), { started: true, continued: true });
+  assert.equal(same.choice.read().environmentId, ID, "the choice stays");
+  assert.equal(same.journal.read()?.cloud.origin, garage.origin, "the move's record stays");
+  same.own.close();
+
+  const fresh = make({ own: true, environmentId: NEW }, { v: 1, phase: "wait", cloud, startedAt: 1 }, sent);
+  assert.deepEqual(await fresh.own.start("g"), { started: true });
+  assert.equal(fresh.choice.read().environmentId, NEW, "chosen again, as the server it is now");
+  assert.notEqual(fresh.journal.read()?.phase, "wait", "the old move's record is gone");
+  assert.deepEqual(fresh.send.read()?.clouds?.[garage.origin]?.sent ?? {}, {}, "nothing counts as sent to the new install");
+  fresh.own.close();
+
+  const ended = make({ own: true }, { v: 1, phase: "back", cloud, startedAt: 1, endedAt: 2 });
+  assert.deepEqual(await ended.own.start("g"), { started: true });
+  assert.notEqual(ended.journal.read()?.phase, "back");
+  ended.own.close();
+
+  const other = make({ own: true }, { v: 1, phase: "copy", cloud, startedAt: 1 });
+  await assert.rejects(other.own.start("f"), /already moving to Garage server/u, "a move under way to another server is not dropped");
+  assert.equal(other.choice.read().id, "g");
+  other.own.close();
+
+  for (const phase of ["freeze", "final", "check", "switch", "done", "keeping", "home-again"]) {
+    const past = make({ own: true, environmentId: NEW }, { v: 1, phase, cloud, startedAt: 1 });
+    await assert.rejects(past.own.start("g"), /already moving/u, phase);
+    assert.equal(past.journal.read().phase, phase);
+    assert.equal(past.choice.read().environmentId, ID);
+    past.own.close();
+  }
+  const thawing = make({ own: true, environmentId: NEW }, { v: 1, phase: "copy", cloud, startedAt: 1, thaw: true });
+  await assert.rejects(thawing.own.start("g"), /already moving/u, "this computer still waits to go on again");
+  thawing.own.close();
 });
 
 test("each pass goes over the window's sign-in only to the server chosen, while it is still that person's alone, and never signs it out", async () => {

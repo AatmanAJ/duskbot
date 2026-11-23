@@ -231,4 +231,25 @@ describe("the Chrome launcher", () => {
     chrome.stopped("bot-1");
     expect(attached.forget).toHaveBeenCalledWith("bot-1");
   });
+
+  it("on Windows starts Chrome itself, its flags in agent-browser's own settings, so no console window opens", async () => {
+    const machine = mac();
+    const chromeExe = join(machine.root, "chrome.exe");
+    writeFileSync(chromeExe, "");
+    const host = { ...chromeHost({ dataDir: machine.dataDir, env: { DUSK_CHROME_PATH: chromeExe }, platform: "win32", arch: "x64" }), exists: (path: string) => path === chromeExe };
+    const started = sidecars();
+    const chrome = launcher(machine, { platform: "win32", arch: "x64", host, env: { DUSK_CHROME_PATH: chromeExe }, sidecars: started, checkLauncher: async () => { throw new Error("a batch file is never run"); } });
+    const early: { command: string; env: Record<string, string> } = { command: "/engine/agent-browser", env: { ...chrome.env(), AGENT_BROWSER_HEADLESS: "1", AGENT_BROWSER_ARGS: "--webrtc-ip-handling-policy=disable_non_proxied_udp" } };
+    expect(early.env.AGENT_BROWSER_EXECUTABLE_PATH).toBe(chrome.path);
+    await chrome.ready(early);
+    const flags = ["--disable-blink-features=AutomationControlled", "--screen-info={1440x900}"];
+    expect(early.env).toEqual({ AGENT_BROWSER_EXECUTABLE_PATH: chromeExe, AGENT_BROWSER_USER_AGENT: identity("155").userAgent, AGENT_BROWSER_HIDE_SCROLLBARS: "0", AGENT_BROWSER_HEADLESS: "1",
+      AGENT_BROWSER_ARGS: [...flags, "--webrtc-ip-handling-policy=disable_non_proxied_udp"].join("\n") });
+    expect(chrome.env()).toEqual({ AGENT_BROWSER_EXECUTABLE_PATH: chromeExe, AGENT_BROWSER_USER_AGENT: identity("155").userAgent, AGENT_BROWSER_ARGS: flags.join("\n"), AGENT_BROWSER_HIDE_SCROLLBARS: "0" });
+    expect(chrome.env().AGENT_BROWSER_ARGS).not.toContain(",");
+    await chrome.started("bot-1", early);
+    expect(started.ensure).toHaveBeenCalledOnce();
+    await chrome.started("bot-2", { command: "/engine/agent-browser", env: { AGENT_BROWSER_EXECUTABLE_PATH: chromeExe, AGENT_BROWSER_HEADLESS: "1" } });
+    expect(started.ensure, "a Chrome someone else named, without this launcher's identity, is not ours").toHaveBeenCalledOnce();
+  });
 });

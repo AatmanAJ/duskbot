@@ -752,6 +752,14 @@ export function createOneHome(deps) {
     view,
     /** Home is My Cloud: the switch happened, My Cloud has not ended, and this computer's bots are not home yet. */
     away: () => awayIn(read()),
+    /** Settles once no run of the move is going, or after `withinMs`; true when none is. */
+    async idle(withinMs) {
+      let timeout = null;
+      const waited = new Promise((resolve) => { timeout = timers.set(() => resolve(false), withinMs); });
+      const ran = running ? await Promise.race([running.then(() => true, () => true), waited]) : true;
+      timers.clear(timeout);
+      return ran && !running && !deps.send.snapshot?.()?.running;
+    },
     /** A move or a send under way that restarting this app would cut into. */
     busy: () => Boolean(running) || Boolean(deps.send.snapshot?.()?.running) || CUT_SHORT.has(read()?.phase ?? ""),
     /** The move belonging to the account signed in is under way, past where it can stop by itself: that account can't be

@@ -142,6 +142,35 @@ const DRIVER_CODE = /^(?:[a-z][a-zA-Z0-9_]{1,39}|[A-Z][A-Za-z0-9]{1,40}Error)$/;
 export const failureCode = (value: unknown): string | undefined => typeof value === "string" && value.length <= 40 && DRIVER_CODE.test(value) ? value : undefined;
 /** a JSON-RPC error's numeric code as a driver code ("rpc_32603"), for an engine whose error named no code of its own */
 export const rpcCode = (value: unknown): string | undefined => Number.isInteger(value) && Math.abs(value as number) < 100_000 ? `rpc_${Math.abs(value as number)}` : undefined;
+// what a JSON-RPC "invalid request" was about, by the engine's own wording: a fixed word, never the message
+const RPC_WORDS: ReadonlyArray<[RegExp, string]> = [
+  [/already has a writer/i, "writer_held"],
+  [/expected (?:active )?turn|turn id|no active turn/i, "turn_mismatch"],
+  [/(?:thread|conversation|rollout|session)[^.]{0,40}not found|no (?:thread|rollout|conversation)\b/i, "thread_not_found"],
+  [/unknown variant|invalid type|invalid value|missing field|unknown field|failed to deserialize|invalid params/i, "invalid_params"],
+  [/not loaded|not subscribed/i, "thread_not_loaded"],
+];
+/** a JSON-RPC error as a driver code with what it was about when the engine's words say ("rpc_32600:writer_held") */
+export function rpcFailureCode(code: unknown, message: unknown): string | undefined {
+  const base = rpcCode(code);
+  if (!base) return undefined;
+  const text = typeof message === "string" ? message.slice(0, 500) : "";
+  const word = RPC_WORDS.find(([pattern]) => pattern.test(text))?.[1];
+  return word ? `${base}:${word}` : base;
+}
+
+/** a thrown value's own class, HTTP status and errno as a driver code ("TypeError:err_invalid_url"), for a failure whose
+ * words may name no cause; never its message */
+export function thrownCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const value = error as { name?: unknown; status?: unknown; code?: unknown; cause?: { code?: unknown } };
+  const name = typeof value.name === "string" && /^[A-Z][A-Za-z0-9]{1,40}Error$/.test(value.name) ? value.name : undefined;
+  const status = Number.isInteger(value.status) && (value.status as number) >= 400 && (value.status as number) < 600 ? `http_${value.status}` : undefined;
+  const errno = [value.code, value.cause?.code].find((code): code is string => typeof code === "string" && /^[A-Z][A-Z0-9_]{2,38}$/.test(code))?.toLowerCase();
+  const parts = [name, status, errno].filter((part): part is string => Boolean(part));
+  return parts.length ? parts.join(":") : undefined;
+}
+
 /** a driver's code hint ("httpConnectionFailed:http_502") as its checked parts */
 const hintParts = (value: unknown): string[] => typeof value === "string" && value.length <= DETAIL_MAX
   ? value.split(":").filter((part, index) => index === 0 ? !!failureCode(part) : /^http_\d{3}$/.test(part) || !!failureCode(part)) : [];
@@ -170,6 +199,10 @@ const CODE_REASONS: ReadonlyArray<[RegExp, UsageReason]> = [
   [/^(?:internalServerError|serverOverloaded|responseTooManyFailedAttempts|overloaded_error|api_error|server_error|upstream_outage|free_busy)$/, "provider_down"],
   [/^(?:httpConnectionFailed|responseStreamConnectionFailed|responseStreamDisconnected)$/, "network"],
   [/^(?:free_timeout)$/, "timeout"],
+  [/^finish_content_filter$/, "refused"],
+  [/^finish_error$/, "provider_down"],
+  [/^reasoning_leak$/, "no_reply"],
+  [/^(?:tool_call_malformed|tools_unavailable)$/, "tool"],
   [/^(?:free_no_reply|free_empty|free_error)$/, "no_reply"],
   [/^crashed$/, "crashed"],
   [/^cli_missing$/, "cli_missing"],
@@ -177,8 +210,19 @@ const CODE_REASONS: ReadonlyArray<[RegExp, UsageReason]> = [
 // a turn's stop reason, when it is a bare token and the words said nothing
 const STOP_REASONS: Readonly<Record<string, UsageReason>> = {
   exit_before_result: "cli_exit_early", spawn_error: "cli_missing", auth_required: "auth", quota: "quota", no_reply: "no_reply", provider_safety: "refused",
-  max_tokens: "context", refusal: "refused", tool_error: "tool",
+  max_tokens: "context", refusal: "refused", tool_error: "tool", empty_turn: "no_reply", incomplete_action: "no_reply", api_error: "provider_down",
 };
+// an SDK's or provider's error class named in the failure, when nothing else in it says why
+const CLASS_REASONS: ReadonlyArray<[RegExp, UsageReason]> = [
+  [/^(?:ServiceUnavailable|InternalServer|BadGateway|GatewayTimeout|Overloaded|Upstream|KVTransfer)Error$/, "provider_down"],
+  [/^(?:RateLimit|TooManyRequests)Error$/, "rate_limit"],
+  [/^(?:Authentication|PermissionDenied|Unauthorized)Error$/, "auth"],
+  [/^(?:APIConnection|Connection)Error$/, "network"],
+  [/^(?:APITimeout|Timeout|RequestTimeout)Error$/, "timeout"],
+  [/^(?:ContextWindowExceeded|ContextLength)Error$/, "context"],
+  [/^(?:BadRequest|UnprocessableEntity)Error$/, "bad_request"],
+  [/^ModelNotFoundError$/, "model_not_found"],
+];
 
 const STATUS = /\bHTTP (\d{3})\b|\(status (\d{3})\b|\bstatus(?: code)?[:= ]+(\d{3})\b|^API Error:? (\d{3})\b|"status(?:Code)?"\s*:\s*(\d{3})\b|\b(\d{3}) (?:Bad Request|Unauthorized|Payment Required|Forbidden|Not Found|Request Timeout|Payload Too Large|Unprocessable Entity|Too Many Requests|Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout)\b/i;
 const EXIT = /\bexited (?:with code )?(-?\d{1,3}|null)\b/;
@@ -267,6 +311,8 @@ function reasonOf(line: string, hint: string | undefined): UsageReason {
   if (EXIT.test(line) || /exited (?:unexpectedly|SIG)/.test(line)) return "cli_exit_early";
   if (CRASH_WORDS.test(line) || /\bspawn\b/i.test(line)) return "crashed";
   if (/\btool\b/i.test(line)) return "tool";
+  const errorClass = ERROR_CLASS.exec(line)?.[1] ?? (hint?.endsWith("Error") ? hint : undefined);
+  if (errorClass) for (const [pattern, reason] of CLASS_REASONS) if (pattern.test(errorClass)) return reason;
   return "unknown";
 }
 

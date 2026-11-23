@@ -16,7 +16,7 @@ describe("readRunReply", () => {
     expect(readRunReply("Checked the inbox.\n- Priya asked to move Friday's call to 4pm.\nNOTHING NEW")).toEqual({ quiet: false, text: "Checked the inbox.\n- Priya asked to move Friday's call to 4pm." });
   });
 
-  it.each(["NOTHING NEW", "Nothing new.", "**NOTHING NEW**", "Checked 14 emails.\n\nNOTHING NEW", "  nothing new  ", "No new invoices since yesterday.\nI looked at Stripe and Gmail.\nNOTHING NEW"])("keeps %j quiet", (text) => {
+  it.each(["NOTHING NEW", "Nothing new.", "**NOTHING NEW**", "Checked 14 emails.\n\nNOTHING NEW", "  nothing new  ", "No new invoices since yesterday.\nI looked at Stripe and Gmail.\nNOTHING NEW", "(pass)", "Checked the support inbox.\n(pass)"])("keeps %j quiet", (text) => {
     expect(readRunReply(text)).toEqual({ quiet: true });
   });
 

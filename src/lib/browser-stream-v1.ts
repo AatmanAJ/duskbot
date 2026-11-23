@@ -66,6 +66,7 @@ export function liveAction(input: PreviewStreamInput): Body | Body[] | null {
       for (let at = 0; at < input.text.length; at += CHAR_LIMIT) chunks.push({ type: "input_keyboard", eventType: "char", text: input.text.slice(at, at + CHAR_LIMIT) });
       return chunks;
     }
+    case "copy": return { type: "copy" };
     case "navigate": return { type: "navigate", url: input.url };
     case "history": return { type: input.delta < 0 ? "back" : "forward" };
     case "reload": return { type: "reload" };
@@ -190,6 +191,7 @@ export function createLiveStreamClient(botId: string, events: PreviewStreamEvent
   let size = initialSize;
   /** The size on its way to the open view; a newer one waits for its answer. */
   let sizing: { width: number; height: number } | null = null;
+  let dropReason = "";
 
   const dropped = (live: EventSource, retryable: boolean) => {
     live.close();
@@ -205,7 +207,7 @@ export function createLiveStreamClient(botId: string, events: PreviewStreamEvent
     if (delay === undefined) {
       stopped = true;
       revivable = retryable;
-      events.onGone?.();
+      events.onGone?.(dropReason || undefined);
       return;
     }
     retry = setTimeout(connect, delay);
@@ -261,6 +263,7 @@ export function createLiveStreamClient(botId: string, events: PreviewStreamEvent
     listen("ready", (data) => {
       if (typeof data.viewerId !== "string" || !data.viewerId) return;
       viewerId = data.viewerId;
+      dropReason = "";
       inputBatch = Number.isSafeInteger(data.inputBatch) ? Math.max(1, Math.min(Number(data.inputBatch), 64)) : 1;
       resume.viewer = "";
       events.onConnectedChange(true);
@@ -286,6 +289,7 @@ export function createLiveStreamClient(botId: string, events: PreviewStreamEvent
     });
     listen("tabs", (data) => { if (Array.isArray(data.tabs)) events.onMessage?.({ type: "tabs", tabs: data.tabs }); });
     listen("url", (data) => { if (typeof data.url === "string") events.onMessage?.({ type: "url", url: data.url }); });
+    listen("clipboard", (data) => { if (typeof data.text === "string") events.onClipboard?.(data.text); });
     listen("status", (data) => {
       if (viewport || !(Number(data.viewportWidth) > 0 && Number(data.viewportHeight) > 0)) return;
       viewport = { width: Number(data.viewportWidth), height: Number(data.viewportHeight) };
@@ -305,7 +309,10 @@ export function createLiveStreamClient(botId: string, events: PreviewStreamEvent
           const data = JSON.parse(event.data) as { retryable?: unknown; message?: unknown; asleep?: unknown };
           retryable = data.retryable === true;
           if (data.asleep === true) events.onMessage?.({ type: "asleep" });
-          else if (typeof data.message === "string") events.onMessage?.({ type: "notice", message: data.message });
+          else if (typeof data.message === "string") {
+            dropReason = data.message;
+            events.onMessage?.({ type: "notice", message: data.message });
+          }
         } catch {}
       }
       dropped(live, retryable);

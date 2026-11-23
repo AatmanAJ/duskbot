@@ -74,17 +74,20 @@ interface AiTileInstance {
   instanceId: string;
   driverKind: string;
   access?: string;
+  unknownDriver?: true;
+  /** found on this computer and never chosen: the server passes it over until the person picks it */
+  found?: true;
   snapshot: { state: string; authenticated?: boolean; freeFallback?: boolean; authenticationUnavailableReason?: string };
 }
 
-export type AiTileId = "chatgpt" | "claude" | "grok" | "gemini" | "cursor" | "copilot" | "openrouter" | "local";
+export type AiTileId = "chatgpt" | "claude" | "grok" | "antigravity" | "cursor" | "copilot" | "openrouter" | "local";
 
 /** The grid's AIs, by what people call them, and the instances that are each one (the first listed wins). */
 const TILES: ReadonlyArray<{ id: AiTileId; label: string; ids: readonly string[]; drivers: readonly string[] }> = [
   { id: "chatgpt", label: "ChatGPT", ids: ["chatgpt", "codex"], drivers: ["codex"] },
   { id: "claude", label: "Claude", ids: ["claude"], drivers: [] },
   { id: "grok", label: "Grok", ids: ["grok", "xaiApi"], drivers: ["grokAgent"] },
-  { id: "gemini", label: "Gemini", ids: ["gemini", "antigravity"], drivers: ["geminiAgent", "antigravityAgent"] },
+  { id: "antigravity", label: "Antigravity", ids: ["antigravity", "gemini"], drivers: ["antigravityAgent", "geminiAgent"] },
   { id: "cursor", label: "Cursor", ids: ["cursor"], drivers: ["cursorAgent"] },
   { id: "copilot", label: "GitHub Copilot", ids: ["githubCopilot"], drivers: ["copilotAgent"] },
   { id: "openrouter", label: "OpenRouter", ids: ["openrouter"], drivers: [] },
@@ -99,14 +102,15 @@ export interface AiTile<Instance> {
   candidates: Instance[];
 }
 
-/** The grid, in its fixed order, with only the AIs this app can connect here. `usable`: whether one can be connected
+/** The grid, in its fixed order, with only the AIs this app can connect here (never one whose driver this build lacks). `usable`: whether one can be connected
  * here (a ChatGPT plan sign-in a hosted cloud can't take is passed over for the Codex one). */
 export function aiTiles<Instance extends AiTileInstance>(instances: readonly Instance[], ready: (instance: Instance) => boolean,
   usable: (instance: Instance) => boolean = (instance) => !instance.snapshot.authenticationUnavailableReason): AiTile<Instance>[] {
   const tiles: AiTile<Instance>[] = [];
+  const known = instances.filter((instance) => !instance.unknownDriver);
   for (const tile of TILES) {
-    const byId = tile.ids.map((id) => instances.find((instance) => instance.instanceId === id)).filter(Boolean) as Instance[];
-    const byDriver = instances.filter((instance) => tile.drivers.includes(instance.driverKind) && !byId.includes(instance));
+    const byId = tile.ids.map((id) => known.find((instance) => instance.instanceId === id)).filter(Boolean) as Instance[];
+    const byDriver = known.filter((instance) => tile.drivers.includes(instance.driverKind) && !byId.includes(instance));
     const candidates = [...byId, ...byDriver];
     // a signed-in one stands for the tile, else the first that can connect here, else the first of its kind
     const instance = candidates.find(ready) ?? candidates.find(usable) ?? candidates[0];
@@ -124,6 +128,15 @@ export function aiTileOf(instance: { instanceId: string; driverKind: string }): 
 export function aiName(instance: { instanceId: string; driverKind: string; displayName: string }): string {
   const tile = TILES.find((one) => one.ids.includes(instance.instanceId) || one.drivers.includes(instance.driverKind));
   return tile && tile.id !== "local" ? tile.label : instance.displayName;
+}
+
+/** The AIs the person just picked on the AI step that the server only found on this computer: Use (own) picks the one it
+ * named, Continue (connected) every ready card it showed. Each is recorded as chosen, or the first send finds no AI. */
+export function foundPicks<Instance extends AiTileInstance>(how: string, named: Instance | undefined, instances: readonly Instance[],
+  ready: (instance: Instance) => boolean): Instance[] {
+  if (how === "own") return named?.found ? [named] : [];
+  if (how !== "connected") return [];
+  return aiTiles(instances, ready).map((tile) => tile.instance).filter((instance) => instance.found === true && ready(instance));
 }
 
 /** The ready free model, if there is one: a way to start now and connect a better AI later. */

@@ -48,6 +48,11 @@ export interface InstanceRouteDeps {
   cloudHome?: boolean;
   /** Moves every bot, backup, conversation and default off a provider being disconnected; without it one in use stays. */
   releaseProvider?(instanceId: string): Promise<void>;
+  /** Called when an engine finishes signing in or out so cached plan limits refresh promptly. */
+  onAuthChanged?(): void;
+  /** Records the person's choice of a provider without reloading it: starting its sign-in here is that choice, so a
+   * provider the app only found on this computer is no longer passed over for new bots and sends with no AI. */
+  chooseProvider?(instanceId: string): void;
 }
 
 export function createInstanceRoutes(deps: InstanceRouteDeps): RouteHandler {
@@ -186,7 +191,10 @@ export function createInstanceRoutes(deps: InstanceRouteDeps): RouteHandler {
       res.setHeader("cache-control", "no-store");
       const state = await providerAuthSessions.status(authStatus[1], auth.kind === "session" ? auth.session.id : "loopback", url.searchParams.get("flowId") ?? "");
       // A finished device sign-in changed what the engine reports; the page reads the engines next.
-      if (state.phase !== "waiting") registry.forgetSnapshots();
+      if (state.phase !== "waiting") {
+        registry.forgetSnapshots();
+        if (state.phase === "succeeded") deps.onAuthChanged?.();
+      }
       return json(res, 200, { auth: state });
     }
     const instanceAction = /^\/api\/instances\/([\w.-]+)\/(refresh-models|install|check|auth\/start|auth\/complete|auth\/cancel|auth\/sign-out)$/.exec(path);
@@ -228,8 +236,12 @@ export function createInstanceRoutes(deps: InstanceRouteDeps): RouteHandler {
             return json(res, 403, { error: "Continue with ChatGPT on the computer running dusk bot. Hosted Pro sign-in requires OpenAI's hosted-app approval." });
           }
           const startBody = await readBody(req, 4096).catch(() => null);
+          deps.chooseProvider?.(instanceId);
           const started = await providerAuthSessions.start(instance, owner, { browser: startBody?.browser === true });
-          if (started.phase === "succeeded") registry.forgetSnapshots();
+          if (started.phase === "succeeded") {
+            registry.forgetSnapshots();
+            deps.onAuthChanged?.();
+          }
           // Revocation can arrive while the CLI is obtaining a device code.
           if (auth.kind === "session" && !sessions.isLive(auth.session.id)) {
             providerAuthSessions.revokeOwner(owner);
@@ -243,6 +255,7 @@ export function createInstanceRoutes(deps: InstanceRouteDeps): RouteHandler {
           if (!instance) return json(res, 404, { error: "unknown instance" });
           await providerAuthSessions.signOut(instance, owner);
           registry.forgetSnapshots();
+          deps.onAuthChanged?.();
           return json(res, 200, { instances: await describeInstances() });
         }
         if (action === "auth/complete") {
@@ -253,6 +266,7 @@ export function createInstanceRoutes(deps: InstanceRouteDeps): RouteHandler {
           if (!flowId || !callbackUrl) return json(res, 400, { error: "flowId and a code or callbackUrl are required" });
           const done = await providerAuthSessions.complete(instanceId, owner, flowId, callbackUrl);
           registry.forgetSnapshots();
+          deps.onAuthChanged?.();
           return json(res, 200, { ok: true, ...done });
         }
         const body = await readBody(req, 4096);

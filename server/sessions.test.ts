@@ -195,7 +195,7 @@ describe("pairing codes", () => {
     expect(registry.exchange({ code: fresh, label: "", source: "attacker" }).ok).toBe(true);
   });
 
-  it("answers a lost-response retry with the same session for a minute, keyed on the client's attempt id", () => {
+  it("answers a lost-response retry with the same session while the pairing could still be used, keyed on the client's attempt id", () => {
     const { code } = registry.openPairing();
     const first = registry.exchange({ code, label: "phone", source: "a", attemptId: "attempt-0001-abcd" });
     expect(first.ok).toBe(true);
@@ -206,8 +206,18 @@ describe("pairing codes", () => {
     const { code: c2 } = registry.openPairing();
     expect(registry.exchange({ code: c2, label: "p", source: "a", attemptId: "no" }).ok).toBe(true);
     expect(registry.exchange({ code: c2, label: "p", source: "a", attemptId: "no" }).ok).toBe(false);
+    clock += 5 * 60_000;
+    expect(registry.exchange({ code, label: "phone", source: "a", attemptId: "attempt-0001-abcd" })).toEqual(first);
     clock += EXCHANGE_REPLAY_MS + 1;
     expect(registry.exchange({ code, label: "phone", source: "a", attemptId: "attempt-0001-abcd" }).ok).toBe(false);
+  });
+
+  it("never answers a retry with a session that was removed since", () => {
+    const { code } = registry.openPairing();
+    const first = registry.exchange({ code, label: "phone", source: "a", attemptId: "attempt-0003-ijkl" });
+    if (!first.ok) throw new Error("pairing failed");
+    registry.revoke(first.session.id);
+    expect(registry.exchange({ code, label: "phone", source: "a", attemptId: "attempt-0003-ijkl" }).ok).toBe(false);
   });
 
   it("forgets a source's failures once its window and lock have passed", () => {

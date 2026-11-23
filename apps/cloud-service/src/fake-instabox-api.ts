@@ -5,7 +5,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { makeTar, tarEntries } from "./backups.ts";
-import { INSTABOX_RESTORE_FILE, INSTABOX_SETUP_STATUS, INSTABOX_SNAPSHOT_FILE } from "./home.ts";
+import { COMPUTER_CHECK_MARK, INSTABOX_RESTORE_FILE, INSTABOX_SETUP_STATUS, INSTABOX_SNAPSHOT_FILE } from "./home.ts";
 
 export interface FakeMachine {
   id: string; name: string; state: string; ready: boolean; metadata: Record<string, string>; vcpus: number; memMiB: number; template: string | null; snapshotId: string | null;
@@ -38,11 +38,13 @@ export async function startFakeInstaboxApi(options: { now?: () => number; key?: 
   const run = (m: FakeMachine) => { m.state = "running"; m.ready = true; m.runningSince = now(); m.updatedAt = now(); };
 
   let handler: (input: FakeExec) => { exitCode: number; stdout: string } | null = () => null;
+  const computerAnswers: string[] = [];
   function machineExec({ machine, cmd }: FakeExec): { exitCode: number; stdout: string } {
     const custom = handler({ machine, cmd });
     if (custom) return custom;
     if (cmd.includes("setsid nohup bash -c")) { machine.setupPolls = 0; return { exitCode: 0, stdout: "launched\n" }; }
     if (cmd === "sync") return { exitCode: 0, stdout: "" };
+    if (cmd.includes(COMPUTER_CHECK_MARK)) return { exitCode: 0, stdout: `${computerAnswers.shift() ?? "ok"}\n` };
     if (cmd.includes("omb-home install")) return { exitCode: 0, stdout: "installed\n" };
     if (cmd.includes("omb-home start")) { machine.memory.add("home"); return { exitCode: 0, stdout: "started\n" }; }
     if (cmd.includes("omb-home snapshot-done")) { machine.files.delete(INSTABOX_SNAPSHOT_FILE); return { exitCode: 0, stdout: "removed\n" }; }
@@ -243,6 +245,8 @@ export async function startFakeInstaboxApi(options: { now?: () => number; key?: 
     /** GiB of data on every machine's /data, for shrinks */
     diskUsed(gib: number) { usedGiB = gib; },
     onExec(fn: typeof handler) { handler = fn; },
+    /** what the next computer checks print (home.ts COMPUTER_CHECK_SCRIPT), then "ok" */
+    computerAnswers(...lines: string[]) { computerAnswers.push(...lines); },
     /** what the machine has uploaded this month, as the meter reads it */
     egress(machineId: string, bytes: number) { egress.set(machineId, bytes); },
     /** the machine is lost without anyone deleting it through the API */

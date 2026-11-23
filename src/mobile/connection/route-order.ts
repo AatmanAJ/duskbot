@@ -2,8 +2,6 @@ import type { MobileTransport } from "../../../shared/mobile-link";
 
 /** a computer's companion on the phone's own network answers well within this */
 export const DIRECT_TRY_MS = 2_500;
-/** past this, the companion routes left are skipped and the relay is tried */
-export const DIRECT_BUDGET_MS = 6_000;
 /** a server's https address ahead of its relay gets this long, so the relay still fits in a link attempt's deadline */
 export const HTTPS_BEFORE_RELAY_MS = 5_000;
 
@@ -26,11 +24,6 @@ export function routeOrder(routes: readonly MobileTransport[], os?: string): Mob
 export function routeTimeout(route: MobileTransport, routes: readonly MobileTransport[], fullMs: number, os?: string): number {
   if (route.kind === "https" && relayed(routes)) return Math.min(HTTPS_BEFORE_RELAY_MS, fullMs);
   return route.kind === "companion" && relayed(routes) && !relayFirst(os, routes) ? DIRECT_TRY_MS : fullMs;
-}
-
-/** a companion route is still worth trying: the walk has not spent its direct budget yet, or no relay waits behind it */
-export function directStillWorthIt(route: MobileTransport, routes: readonly MobileTransport[], startedAt: number, now = Date.now(), os?: string): boolean {
-  return route.kind !== "companion" || !relayed(routes) || relayFirst(os, routes) || now - startedAt < DIRECT_BUDGET_MS;
 }
 
 export const COMPANION_HEAD_START_MS = 300;

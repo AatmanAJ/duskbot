@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DATA_DIR } from "../config.ts";
 import { killCliTree, spawnCli } from "../procs.ts";
-import { AntigravityAcpClient, AntigravityAuthController, logoutAntigravity, validateAntigravityRuntime } from "./antigravity-acp.ts";
+import { AntigravityAcpClient, logoutAntigravity, validateAntigravityRuntime } from "./antigravity-acp.ts";
+import { AntigravityAuthController } from "./antigravity-auth.ts";
 import type { AntigravityRuntime } from "./antigravity-runtime.ts";
 import { VERIFICATION_TEMP_KEY, antigravityTempDir, folderBytes } from "./antigravity-temp.ts";
 
@@ -382,7 +383,7 @@ describe("Antigravity sign-in and logout network", () => {
       directory: "/fixture",
       tokenPath: "/fixture/antigravity-acp/antigravity-oauth-token",
       legacyTokenPath: "/fixture/antigravity-acp/acp_token.json",
-      environment: { DISPLAY: ":0", WAYLAND_DISPLAY: "wayland-0", GEMINI_HOME: "/fixture" },
+      environment: { DISPLAY: ":0", WAYLAND_DISPLAY: "wayland-0", HOME: "/real-home", GEMINI_HOME: "/fixture" },
     };
     const controller = new AntigravityAuthController();
     const starting = controller.start(runtime, profile);
@@ -390,11 +391,12 @@ describe("Antigravity sign-in and logout network", () => {
     const started = await starting;
     expect(started).toMatchObject({ phase: "waiting", authorizationUrl: loginUrl });
     expect(vi.mocked(spawnCli).mock.calls[0]![1]).toEqual([
-      "acp", "--gemini-dir", "/fixture", "--app-data-dir", "antigravity-acp", "--login",
+      "acp", "--gemini-dir", "/fixture", "--app-data-dir", "antigravity-acp", "--include-default-customizations=false", "--login",
     ]);
     expect(vi.mocked(spawnCli).mock.calls[0]![2]).toMatchObject({ box: { net: "shared" } });
     expect(vi.mocked(spawnCli).mock.calls[0]![2].env).not.toHaveProperty("DISPLAY");
     expect(vi.mocked(spawnCli).mock.calls[0]![2].env).not.toHaveProperty("WAYLAND_DISPLAY");
+    expect(vi.mocked(spawnCli).mock.calls[0]![2].env?.HOME).toBe("/fixture");
     expect(vi.mocked(spawnCli).mock.calls[0]![3]).toBe("bot");
     await controller.cancelAndWait();
 
@@ -402,7 +404,7 @@ describe("Antigravity sign-in and logout network", () => {
     fakeChild();
     await logoutAntigravity(runtime, profile);
     expect(vi.mocked(spawnCli).mock.calls[0]![1]).toEqual([
-      "acp", "--gemini-dir", "/fixture", "--app-data-dir", "antigravity-acp",
+      "acp", "--gemini-dir", "/fixture", "--app-data-dir", "antigravity-acp", "--include-default-customizations=false",
     ]);
     expect(vi.mocked(spawnCli).mock.calls[0]![2]).toMatchObject({ box: { net: "shared" } });
 

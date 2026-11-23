@@ -187,7 +187,9 @@ export interface AppleNativeSignIn { identityToken: string; authorizationCode: s
 export interface ProvidersAnswer { v: 1; providers: ProviderView[]; signupOpen: boolean; recovery?: boolean }
 export interface EmailStartAnswer { attempt: string; expiresIn: number; resendAfter: number; signupOpen: boolean }
 export interface WebSignInAnswer { account: AccountView; csrfToken: string; created: boolean; redirect?: string }
-export interface MeAnswer { account: AccountView; csrfToken: string }
+export interface MeAnswer { account: AccountView; csrfToken: string;
+  /** whether this account may open the admin panel; the panel's own routes still check every request */
+  admin?: boolean }
 /** the optional emails an account gets. receipts, payment problems, sign-in codes and deletion warnings always send. */
 export interface NotificationPrefs {
   /** a cloud is ready, or was set up again from a backup */
@@ -257,7 +259,7 @@ export interface AppSessionIdentity {
   cloudContractVersion: 1;
   expiresAt: number;
   device: { id: string };
-  account: { id: string; email: string };
+  account: { id: string; email: string; name?: string; avatarUrl?: string; avatar?: string };
   /** the website's handoff page, `${publicUrl}${pageBase}/handoff`, so the app can open it at once (WebHandoffRequest.token) */
   handoffUrl?: string;
   /** "open": this account was just made through the app's browser sign-in and the website is taking it through its first
@@ -276,4 +278,5 @@ export type AccountErrorCode =
   | "billing_active" | "delete_on_account_page"
   | "invalid_request" | "invalid_email" | "wrong_code" | "invalid_code" | "expired" | "rate_limited" | "signup_closed"
   | "used" | "signed_out" | "confirm" | "other_account" | "invalid_token" | "forbidden" | "csrf" | "not_found" | "last_identity" | "identity_taken"
-  | "authorization_pending" | "slow_down" | "access_denied" | "expired_token" | "invalid_grant" | "provider_unavailable" | "failed";
+  | "authorization_pending" | "slow_down" | "access_denied" | "expired_token" | "invalid_grant" | "provider_unavailable" | "failed"
+  | "mail_unavailable" | "email_undeliverable";

@@ -2,12 +2,61 @@ import Capacitor
 import UIKit
 import WebKit
 
+enum MainSheetFreeze {
+    case none
+    case active
+    case thawing
+}
+
+struct ChromeSearchSpec: Equatable {
+    let key: String
+    let placeholder: String
+    let value: String?
+    let autoFocus: Bool
+}
+
 struct ChromeBarSpec {
     let hidden: Bool
     let title: String?
     let status: String?
     let leading: [[String: Any]]
     let trailing: [[String: Any]]
+    let search: ChromeSearchSpec?
+}
+
+/// Permanent root of `mainNavigation` so its `UINavigationBar` and main-screen Liquid Glass layers stay live behind a
+/// presented sheet instead of being frozen mid-animation into a bitmap snapshot.
+final class MainHostViewController: UIViewController {
+    let glassHost = PassthroughView()
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        glassHost.frame = view.bounds
+        glassHost.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(glassHost)
+    }
+
+    func attach(_ app: AppViewController) {
+        loadViewIfNeeded()
+        if app.parent !== self {
+            addChild(app)
+            app.view.frame = view.bounds
+            app.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            view.insertSubview(app.view, at: 0)
+            app.didMove(toParent: self)
+        } else if app.view.superview !== view {
+            app.view.frame = view.bounds
+            view.insertSubview(app.view, at: 0)
+        }
+    }
+
+    func detach(_ app: AppViewController) {
+        guard app.parent === self else { return }
+        app.willMove(toParent: nil)
+        app.view.removeFromSuperview()
+        app.removeFromParent()
+    }
 }
 
 private final class SnapshotViewController: UIViewController {
@@ -40,33 +89,66 @@ private final class SnapshotViewController: UIViewController {
 /// it left: one web view, the system's own bar, sheet, detents and gestures.
 final class RootViewController: UIViewController, UINavigationControllerDelegate {
     let app = AppViewController()
-    private(set) lazy var mainNavigation = UINavigationController(rootViewController: app)
+    let mainHost = MainHostViewController()
+    private(set) lazy var mainNavigation = UINavigationController(rootViewController: mainHost)
     private var cover: UIView?
     private(set) var sheetNavigation: UINavigationController?
     private var sheetIsLarge = false
+    private var preparingSheet = false
+    private var heldSheetBarSpec: ChromeBarSpec?
+    private var hasMainBarContent = false
+    private static let mainBarSlideKeys = ["main-bar-slide", "main-bar-alpha"]
+    private static let mainBarParallax: CGFloat = 24
 
     var currentBarSpec: ChromeBarSpec?
     var applyBarItem: ((ChromeBarSpec, UINavigationItem, Bool, Bool) -> Void)?
     var onPagePopped: (([String]) -> Void)?
+    var onSheetCleanup: (() -> Void)?
+    var onMainBarApply: ((ChromeBarSpec) -> Void)?
 
     private(set) var pushedTokens: [String] = []
-    private(set) var isPreparingPush = false
-    private(set) var isFinishingPop = false
-    var pendingPushBar: ChromeBarSpec?
+    var isCovered: Bool { cover != nil }
 
-    private var pendingPushSnapshot: UIView?
-    private var pendingPushPrevBar: ChromeBarSpec?
-    private var sheetPushCover: UIView?
-    private var sheetPopCover: UIView?
-    private var popFinishTimer: Timer?
-    private var programmaticPopCompletion: ((Bool) -> Void)?
-    private var programmaticPopToken: String?
+    private var glassPlugin: GlassChromePlugin? {
+        (app.bridge?.plugin(withName: "DuskGlass") ?? app.bridge?.plugin(withName: "GlassChromePlugin")) as? GlassChromePlugin
+    }
+
+    /// A push the page asked for and has not committed: a picture of the page it leaves and that page's bar, the bar
+    /// the next page asks for meanwhile, and the picture over the sheet that the next page draws itself under.
+    private struct PreparingPush {
+        let snapshot: UIView
+        let previousBar: ChromeBarSpec?
+        var nextBar: ChromeBarSpec?
+        let cover: UIView?
+    }
+
+    /// A pop the page asked for, until the system has shown the page under it.
+    private struct ProgrammaticPop {
+        let token: String
+        let done: (Bool) -> Void
+    }
+
+    /// A pop that has landed: a picture of the sheet stays over it until the page says it has drawn itself there, or
+    /// the timer stops waiting for it.
+    private struct FinishingPop {
+        let cover: UIView?
+        let timer: Timer
+    }
+
+    private static let finishingPopWait: TimeInterval = 0.45
+
+    private var preparingPush: PreparingPush?
+    private var programmaticPop: ProgrammaticPop?
+    private var finishingPop: FinishingPop?
     private var isSwappingPushStack = false
+
+    var isFinishingPop: Bool { finishingPop != nil }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
         app.onSafeAreaChange = { [weak self] in self?.reconcileSheetChrome(settled: false) }
+        mainHost.attach(app)
         mainNavigation.setNavigationBarHidden(true, animated: false)
         addChild(mainNavigation)
         mainNavigation.view.frame = view.bounds
@@ -80,15 +162,154 @@ final class RootViewController: UIViewController, UINavigationControllerDelegate
     override var prefersStatusBarHidden: Bool { app.prefersStatusBarHidden }
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { app.supportedInterfaceOrientations }
 
-    /// A picture of the screen over everything, so the page can change what it draws underneath unseen.
-    func freeze() {
-        guard cover == nil, let picture = view.snapshotView(afterScreenUpdates: false) else { return }
-        picture.frame = view.bounds
-        view.addSubview(picture)
+    func markMainBarContent(_ hasContent: Bool) {
+        hasMainBarContent = hasContent
+        if !hasContent { resetMainBarMotion() }
+    }
+
+    private func mainBarShift(_ page: CGFloat, width: CGFloat) -> CGFloat {
+        let progress = min(1, max(0, page / max(1, width)))
+        return -Self.mainBarParallax * (1 - progress)
+    }
+
+    private func mainBarAlpha(_ page: CGFloat, width: CGFloat) -> CGFloat {
+        let progress = min(1, max(0, page / max(1, width)))
+        return max(0, min(1, (progress - 0.42) / 0.58))
+    }
+
+    private var mainBarSlideGen = 0
+
+    func resetMainBarMotion() {
+        mainBarSlideGen += 1
+        let bar = mainNavigation.navigationBar
+        for key in Self.mainBarSlideKeys {
+            bar.layer.removeAnimation(forKey: key)
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        bar.transform = .identity
+        bar.alpha = 1
+        CATransaction.commit()
+    }
+
+    var isMainBarSliding: Bool {
+        let keys = mainNavigation.navigationBar.layer.animationKeys() ?? []
+        return Self.mainBarSlideKeys.contains(where: keys.contains)
+    }
+
+    /// Cross-fades and glides `mainNavigation.navigationBar` in lockstep with a chat page dragging across the screen.
+    /// Avoids `CALayer.mask` (which hides iOS 26 Liquid Glass navigation bars) and starts revealing only after the chat
+    /// header has faded out past ~42% drag so the two glass bars never collide.
+    func followMainBar(page: CGFloat?) {
+        guard hasMainBarContent, sheetNavigation == nil, !preparingSheet else { return }
+        let bar = mainNavigation.navigationBar
+        let width = max(1, mainNavigation.view.bounds.width)
+        guard let page else {
+            resetMainBarMotion()
+            return
+        }
+        let x = min(max(0, page), width)
+        if x <= 0.5 {
+            resetMainBarMotion()
+            if !mainNavigation.isNavigationBarHidden {
+                mainNavigation.setNavigationBarHidden(true, animated: false)
+            }
+            return
+        }
+        if x >= width - 0.5 {
+            if mainNavigation.isNavigationBarHidden {
+                mainNavigation.setNavigationBarHidden(false, animated: false)
+            }
+            resetMainBarMotion()
+            return
+        }
+        mainBarSlideGen += 1
+        if mainNavigation.isNavigationBarHidden {
+            mainNavigation.setNavigationBarHidden(false, animated: false)
+            mainNavigation.view.layoutIfNeeded()
+        }
+        for key in Self.mainBarSlideKeys {
+            bar.layer.removeAnimation(forKey: key)
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        bar.transform = CGAffineTransform(translationX: mainBarShift(x, width: width), y: 0)
+        bar.alpha = mainBarAlpha(x, width: width)
+        CATransaction.commit()
+    }
+
+    /// Plays `mainNavigation.navigationBar`'s parallax and cross-fade in the same CoreAnimation transaction as a chat
+    /// push or pop slide.
+    func slideMainBar(_ points: [CGFloat], duration: TimeInterval, beginTime: CFTimeInterval) {
+        guard hasMainBarContent, sheetNavigation == nil, !preparingSheet, let last = points.last else { return }
+        let bar = mainNavigation.navigationBar
+        let width = max(1, mainNavigation.view.bounds.width)
+        let pages = points.map { min(max(0, $0), width) }
+        if pages.allSatisfy({ $0 <= 0.5 }) {
+            followMainBar(page: 0)
+            return
+        }
+        if mainNavigation.isNavigationBarHidden {
+            mainNavigation.setNavigationBarHidden(false, animated: false)
+            mainNavigation.view.layoutIfNeeded()
+        }
+        mainBarSlideGen += 1
+        let gen = mainBarSlideGen
+        let finalX = min(max(0, last), width)
+        let move = CAKeyframeAnimation.pageSlide(keyPath: "transform.translation.x", values: pages.map { mainBarShift($0, width: width) }, duration: duration, beginTime: beginTime)
+        let fade = CAKeyframeAnimation.pageSlide(keyPath: "opacity", values: pages.map { mainBarAlpha($0, width: width) }, duration: duration, beginTime: beginTime)
+        CATransaction.begin()
+        if finalX <= 0.5 {
+            CATransaction.setCompletionBlock { [weak self] in
+                guard let self, self.mainBarSlideGen == gen, self.sheetNavigation == nil, !self.preparingSheet else { return }
+                self.resetMainBarMotion()
+                if !self.mainNavigation.isNavigationBarHidden {
+                    self.mainNavigation.setNavigationBarHidden(true, animated: false)
+                }
+            }
+        }
+        for (animation, key) in [(move, Self.mainBarSlideKeys[0]), (fade, Self.mainBarSlideKeys[1])] {
+            bar.layer.removeAnimation(forKey: key)
+            bar.layer.add(animation, forKey: key)
+        }
+        bar.transform = CGAffineTransform(translationX: mainBarShift(finalX, width: width), y: 0)
+        bar.alpha = mainBarAlpha(finalX, width: width)
+        CATransaction.commit()
+    }
+
+    /// Holds the sheet's incoming bar spec between `freeze()` and `presentSheet()` so `mainNavigation.navigationBar`
+    /// keeps the presenting screen's live Liquid Glass bar items untouched while their release animation completes.
+    func holdBarForSheet(_ spec: ChromeBarSpec) -> Bool {
+        guard preparingSheet else { return false }
+        heldSheetBarSpec = spec
+        return true
+    }
+
+    private func installFreezeCover() -> Bool {
+        guard cover == nil, let picture = app.view.snapshotView(afterScreenUpdates: false) else { return cover != nil }
+        mainHost.view.backgroundColor = app.view.backgroundColor
+        picture.frame = mainHost.view.bounds
+        picture.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        mainHost.view.insertSubview(picture, belowSubview: mainHost.glassHost)
         cover = picture
+        return true
+    }
+
+    /// Snapshots `app.view` underneath `mainHost.glassHost` and `mainNavigation.navigationBar` so native Liquid Glass
+    /// buttons stay live and complete their press-release spring animations while the sheet prepares and rises.
+    func freeze() {
+        guard cover == nil, sheetNavigation == nil, installFreezeCover() else { return }
+        preparingSheet = true
+        glassPlugin?.setMainSheetFreeze(.active)
     }
 
     func thaw() {
+        let abortedPrepare = preparingSheet && sheetNavigation == nil
+        preparingSheet = false
+        let pendingMainBar = abortedPrepare ? heldSheetBarSpec : nil
+        if abortedPrepare { heldSheetBarSpec = nil }
+        if let pendingMainBar { onMainBarApply?(pendingMainBar) }
+        glassPlugin?.setMainSheetFreeze(.none)
         guard let picture = cover else { return }
         cover = nil
         UIView.animate(withDuration: 0.14, animations: { picture.alpha = 0 }, completion: { _ in picture.removeFromSuperview() })
@@ -96,20 +317,20 @@ final class RootViewController: UIViewController, UINavigationControllerDelegate
 
     func presentSheet(height: CGFloat?, delegate: UIAdaptivePresentationControllerDelegate, shown: @escaping () -> Void) {
         guard sheetNavigation == nil else { shown(); return }
-        let backdrop = UIViewController()
-        backdrop.view.backgroundColor = app.view.backgroundColor
-        if let picture = cover {
-            cover = nil
-            picture.frame = backdrop.view.bounds
-            picture.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            backdrop.view.addSubview(picture)
-        }
-        let barHidden = mainNavigation.isNavigationBarHidden
-        mainNavigation.setNavigationBarHidden(true, animated: false)
-        mainNavigation.setViewControllers([backdrop], animated: false)
+        preparingSheet = false
+        _ = installFreezeCover()
+        glassPlugin?.setMainSheetFreeze(.active)
+        mainHost.detach(app)
 
+        let sheetBar = heldSheetBarSpec
+        heldSheetBarSpec = nil
+        let barHidden = sheetBar?.hidden ?? true
         let navigation = UINavigationController(rootViewController: app)
         navigation.delegate = self
+        if let sheetBar {
+            currentBarSpec = sheetBar
+            applyBarItem?(sheetBar, app.navigationItem, false, false)
+        }
         navigation.setNavigationBarHidden(barHidden, animated: false)
         navigation.modalPresentationStyle = .pageSheet
         navigation.presentationController?.delegate = delegate
@@ -211,37 +432,37 @@ final class RootViewController: UIViewController, UINavigationControllerDelegate
         finishSheetPop(animated: false)
         cancelSheetPush()
         guard let pageSnap = app.view.snapshotView(afterScreenUpdates: false) else { done(false); return }
-        if let coverSnap = navigation.view.snapshotView(afterScreenUpdates: false) {
-            coverSnap.frame = navigation.view.bounds
-            coverSnap.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            navigation.view.addSubview(coverSnap)
-            sheetPushCover = coverSnap
+        let cover = navigation.view.snapshotView(afterScreenUpdates: false)
+        if let cover = cover {
+            cover.frame = navigation.view.bounds
+            cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            navigation.view.addSubview(cover)
         }
-        pendingPushSnapshot = pageSnap
-        pendingPushPrevBar = currentBarSpec
-        pendingPushBar = nil
-        isPreparingPush = true
+        preparingPush = PreparingPush(snapshot: pageSnap, previousBar: currentBarSpec, nextBar: nil, cover: cover)
         done(true)
     }
 
+    /// While a push is being prepared, the bar the page sets is the next page's: kept for the commit. False otherwise.
+    func holdBarForPush(_ spec: ChromeBarSpec) -> Bool {
+        guard preparingPush != nil else { return false }
+        preparingPush?.nextBar = spec
+        return true
+    }
+
     func commitSheetPush(token: String) -> Bool {
-        guard isPreparingPush,
+        guard let push = preparingPush,
               let navigation = sheetNavigation,
-              !navigation.isBeingDismissed,
-              let pageSnap = pendingPushSnapshot else {
+              !navigation.isBeingDismissed else {
             cancelSheetPush()
             return false
         }
-        let prevBar = pendingPushPrevBar
-        let nextBar = pendingPushBar ?? currentBarSpec
-        isPreparingPush = false
-        pendingPushSnapshot = nil
-        pendingPushPrevBar = nil
-        pendingPushBar = nil
+        preparingPush = nil
+        let prevBar = push.previousBar
+        let nextBar = push.nextBar ?? currentBarSpec
 
         let prior = navigation.viewControllers.filter { $0 !== app }
         let snapVC = SnapshotViewController(
-            snapshot: pageSnap,
+            snapshot: push.snapshot,
             barSpec: prevBar,
             childToken: token,
             ground: app.view.backgroundColor
@@ -266,19 +487,16 @@ final class RootViewController: UIViewController, UINavigationControllerDelegate
         CATransaction.flush()
         isSwappingPushStack = false
 
-        removePushCover()
+        push.cover?.removeFromSuperview()
         navigation.pushViewController(app, animated: true)
         return true
     }
 
     func cancelSheetPush() {
-        let pendingBar = pendingPushBar
-        isPreparingPush = false
-        pendingPushSnapshot = nil
-        pendingPushPrevBar = nil
-        pendingPushBar = nil
-        removePushCover()
-        if let bar = pendingBar, let navigation = sheetNavigation {
+        guard let push = preparingPush else { return }
+        preparingPush = nil
+        push.cover?.removeFromSuperview()
+        if let bar = push.nextBar, let navigation = sheetNavigation {
             currentBarSpec = bar
             applyBarItem?(bar, app.navigationItem, !pushedTokens.isEmpty, false)
             navigation.setNavigationBarHidden(bar.hidden, animated: false)
@@ -316,18 +534,16 @@ final class RootViewController: UIViewController, UINavigationControllerDelegate
             return
         }
         finishSheetPop(animated: false)
-        programmaticPopCompletion?(false)
-        programmaticPopToken = token
-        programmaticPopCompletion = done
+        programmaticPop?.done(false)
+        programmaticPop = ProgrammaticPop(token: token, done: done)
         navigation.popToViewController(target, animated: true)
     }
 
     func finishSheetPop(animated: Bool) {
-        popFinishTimer?.invalidate()
-        popFinishTimer = nil
-        isFinishingPop = false
-        guard let picture = sheetPopCover else { return }
-        sheetPopCover = nil
+        guard let finishing = finishingPop else { return }
+        finishingPop = nil
+        finishing.timer.invalidate()
+        guard let picture = finishing.cover else { return }
         picture.isUserInteractionEnabled = false
         if animated {
             UIView.animate(withDuration: 0.06, delay: 0, options: [.curveEaseOut, .allowUserInteraction], animations: {
@@ -343,11 +559,7 @@ final class RootViewController: UIViewController, UINavigationControllerDelegate
     func resetPushStack() {
         cancelSheetPush()
         finishSheetPop(animated: false)
-        if let completion = programmaticPopCompletion {
-            programmaticPopCompletion = nil
-            programmaticPopToken = nil
-            completion(false)
-        }
+        failProgrammaticPop()
         guard !pushedTokens.isEmpty else { return }
         pushedTokens.removeAll()
         guard let navigation = sheetNavigation else { return }
@@ -356,14 +568,10 @@ final class RootViewController: UIViewController, UINavigationControllerDelegate
         isSwappingPushStack = false
     }
 
-    private func removePushCover() {
-        sheetPushCover?.removeFromSuperview()
-        sheetPushCover = nil
-    }
-
-    private func removePopCover() {
-        sheetPopCover?.removeFromSuperview()
-        sheetPopCover = nil
+    private func failProgrammaticPop() {
+        guard let pop = programmaticPop else { return }
+        programmaticPop = nil
+        pop.done(false)
     }
 
     func navigationController(_ navigationController: UINavigationController, didShow viewController: UIViewController, animated: Bool) {
@@ -380,14 +588,17 @@ final class RootViewController: UIViewController, UINavigationControllerDelegate
             : [landed.childToken]
         pushedTokens = Array(pushedTokens.prefix(remainingCount))
 
-        removePopCover()
-        if let coverSnap = navigationController.view.snapshotView(afterScreenUpdates: false) {
-            coverSnap.frame = navigationController.view.bounds
-            coverSnap.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            navigationController.view.addSubview(coverSnap)
-            sheetPopCover = coverSnap
+        finishingPop?.timer.invalidate()
+        finishingPop?.cover?.removeFromSuperview()
+        let cover = navigationController.view.snapshotView(afterScreenUpdates: false)
+        if let cover = cover {
+            cover.frame = navigationController.view.bounds
+            cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            navigationController.view.addSubview(cover)
         }
-        isFinishingPop = true
+        finishingPop = FinishingPop(cover: cover, timer: Timer.scheduledTimer(withTimeInterval: Self.finishingPopWait, repeats: false) { [weak self] _ in
+            self?.finishSheetPop(animated: true)
+        })
 
         if let bar = landed.barSpec {
             currentBarSpec = bar
@@ -399,60 +610,46 @@ final class RootViewController: UIViewController, UINavigationControllerDelegate
         navigationController.setViewControllers(priorSnaps + [app], animated: false)
         isSwappingPushStack = false
 
-        popFinishTimer?.invalidate()
-        popFinishTimer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: false) { [weak self] _ in
-            self?.finishSheetPop(animated: true)
-        }
-
-        if let completion = programmaticPopCompletion {
-            let targetToken = programmaticPopToken
-            programmaticPopCompletion = nil
-            programmaticPopToken = nil
-            let extra = poppedTokens.filter { $0 != targetToken }
+        if let pop = programmaticPop {
+            programmaticPop = nil
+            let extra = poppedTokens.filter { $0 != pop.token }
             if !extra.isEmpty { onPagePopped?(extra) }
-            completion(true)
+            pop.done(true)
         } else {
             onPagePopped?(poppedTokens)
         }
     }
 
-    /// The sheet is off screen: the web view goes back under the picture of the page, which stays until the page says it
-    /// has drawn itself again.
+    /// The sheet is off screen: the web view returns underneath `cover` and the live main-screen glass chrome until the
+    /// page finishes unmounting the sheet and calls `thaw()`.
     func sheetEnded() {
         guard let navigation = sheetNavigation else { return }
         cancelSheetPush()
         finishSheetPop(animated: false)
-        if let completion = programmaticPopCompletion {
-            programmaticPopCompletion = nil
-            programmaticPopToken = nil
-            completion(false)
-        }
+        failProgrammaticPop()
         pushedTokens.removeAll()
         sheetNavigation = nil
+        currentBarSpec = nil
+        heldSheetBarSpec = nil
         sheetHeight = 0
         sheetChromeAllowance = 0
         sheetResolvedDetent = 0
         sheetMaxDetent = 0
         sheetUpdatingDetent = false
-        let barHidden = navigation.isNavigationBarHidden
-        if let picture = mainNavigation.viewControllers.first?.view.subviews.first {
-            picture.frame = view.bounds
-            view.addSubview(picture)
-            cover = picture
-        }
         navigation.delegate = nil
         isSwappingPushStack = true
         navigation.setViewControllers([], animated: false)
         isSwappingPushStack = false
-        mainNavigation.setViewControllers([app], animated: false)
-        mainNavigation.setNavigationBarHidden(barHidden, animated: false)
+        onSheetCleanup?()
+        mainHost.attach(app)
+        glassPlugin?.setMainSheetFreeze(.thawing)
         setNeedsStatusBarAppearanceUpdate()
     }
 }
 
 /// The bar and the sheet, as the page asks for them.
 @objc(ChromePlugin)
-public class ChromePlugin: CAPPlugin, CAPBridgedPlugin, UIAdaptivePresentationControllerDelegate {
+public class ChromePlugin: CAPPlugin, CAPBridgedPlugin, UIAdaptivePresentationControllerDelegate, UISearchResultsUpdating, UISearchBarDelegate {
     public let identifier = "ChromePlugin"
     public let jsName = "DuskChrome"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -472,7 +669,34 @@ public class ChromePlugin: CAPPlugin, CAPBridgedPlugin, UIAdaptivePresentationCo
         CAPPluginMethod(name: "resetPushStack", returnType: CAPPluginReturnPromise)
     ]
 
+    private struct BarItemSignature: Equatable {
+        let id: String
+        let symbol: String?
+        let title: String?
+        let role: String?
+        let label: String?
+        let disabled: Bool
+        let badge: Int
+        let pictureKey: String?
+        let pictureLoaded: Bool
+    }
+
+    private struct BarSignature: Equatable {
+        let hidden: Bool
+        let title: String?
+        let status: String?
+        let leading: [BarItemSignature]
+        let trailing: [BarItemSignature]
+        let search: ChromeSearchSpec?
+    }
+
     private var pictures: [String: UIImage] = [:]
+    private var pendingPictures: Set<String> = []
+    private var mainBarSignature: BarSignature?
+    private var searchController: UISearchController?
+    private var activeSearchKey: String?
+    private var lastSearchText: String?
+    private var pendingSearchFocus = false
     /// Found from the scene, not from the web view: between a sheet's dismissal and its return under the bar the web view is in no window.
     private var root: RootViewController? {
         for scene in UIApplication.shared.connectedScenes {
@@ -488,11 +712,96 @@ public class ChromePlugin: CAPPlugin, CAPBridgedPlugin, UIAdaptivePresentationCo
                             self?.notifyListeners("pagePopped", data: ["tokens": tokens])
                         }
                     }
+                    if root.onSheetCleanup == nil {
+                        root.onSheetCleanup = { [weak self, weak root] in
+                            guard let self, let root else { return }
+                            self.clearNavigationItem(root.app.navigationItem)
+                        }
+                    }
+                    if root.onMainBarApply == nil {
+                        root.onMainBarApply = { [weak self, weak root] spec in
+                            guard let self, let root else { return }
+                            self.applyMainBar(spec, on: root)
+                        }
+                    }
                     return root
                 }
             }
         }
         return nil
+    }
+
+    private func signature(for spec: ChromeBarSpec) -> BarSignature {
+        func itemSig(_ raw: [String: Any]) -> BarItemSignature {
+            let picture = raw["picture"] as? [String: Any]
+            let key = picture?["key"] as? String
+            return BarItemSignature(
+                id: raw["id"] as? String ?? "",
+                symbol: raw["symbol"] as? String,
+                title: raw["title"] as? String,
+                role: raw["role"] as? String,
+                label: raw["label"] as? String,
+                disabled: raw["disabled"] as? Bool == true,
+                badge: raw["badge"] as? Int ?? 0,
+                pictureKey: key,
+                pictureLoaded: key.map { pictures[$0] != nil } ?? false
+            )
+        }
+        return BarSignature(
+            hidden: spec.hidden,
+            title: spec.title,
+            status: spec.status,
+            leading: spec.leading.map(itemSig),
+            trailing: spec.trailing.map(itemSig),
+            search: spec.search
+        )
+    }
+
+    private func clearNavigationItem(_ item: UINavigationItem) {
+        item.hidesBackButton = true
+        item.setLeftBarButtonItems(nil, animated: false)
+        item.setRightBarButtonItems(nil, animated: false)
+        item.titleView = nil
+        item.title = nil
+        detachSearch(from: item)
+    }
+
+    private func applyMainBar(_ spec: ChromeBarSpec, on root: RootViewController) {
+        let nav = root.mainNavigation
+        let nextSignature = signature(for: spec)
+        if spec.hidden {
+            if !nav.isNavigationBarHidden {
+                root.resetMainBarMotion()
+                nav.setNavigationBarHidden(true, animated: false)
+            }
+            return
+        }
+        let itemsUnchanged = mainBarSignature == nextSignature
+        if itemsUnchanged && !nav.isNavigationBarHidden {
+            return
+        }
+        let wasHidden = nav.isNavigationBarHidden
+        let suppressAnimation = root.isCovered
+        if !itemsUnchanged {
+            let animateItems = !suppressAnimation && !wasHidden
+            applyBar(spec, to: root.mainHost.navigationItem, isPushed: false, animated: animateItems)
+            mainBarSignature = signature(for: spec)
+        }
+        root.markMainBarContent(!spec.leading.isEmpty || !spec.trailing.isEmpty || spec.title != nil || spec.status != nil)
+        let bar = nav.navigationBar
+        if wasHidden && !suppressAnimation {
+            root.resetMainBarMotion()
+            nav.setNavigationBarHidden(false, animated: false)
+            bar.alpha = 0
+            UIView.animate(withDuration: 0.18, delay: 0, options: [.curveEaseOut, .beginFromCurrentState, .allowUserInteraction]) {
+                bar.alpha = 1
+            }
+        } else {
+            if !root.isMainBarSliding {
+                root.resetMainBarMotion()
+            }
+            nav.setNavigationBarHidden(false, animated: false)
+        }
     }
 
     @objc func info(_ call: CAPPluginCall) {
@@ -507,12 +816,11 @@ public class ChromePlugin: CAPPlugin, CAPBridgedPlugin, UIAdaptivePresentationCo
             let clear = {
                 root.resetPushStack()
                 root.currentBarSpec = nil
+                self.mainBarSignature = nil
+                root.markMainBarContent(false)
                 root.thaw()
-                root.app.navigationItem.hidesBackButton = true
-                root.app.navigationItem.setLeftBarButtonItems(nil, animated: false)
-                root.app.navigationItem.setRightBarButtonItems(nil, animated: false)
-                root.app.navigationItem.titleView = nil
-                root.app.navigationItem.title = nil
+                self.clearNavigationItem(root.app.navigationItem)
+                self.clearNavigationItem(root.mainHost.navigationItem)
                 root.mainNavigation.setNavigationBarHidden(true, animated: false)
                 call.resolve()
             }
@@ -528,25 +836,43 @@ public class ChromePlugin: CAPPlugin, CAPBridgedPlugin, UIAdaptivePresentationCo
     }
 
     @objc func setBar(_ call: CAPPluginCall) {
+        let searchObj = call.getObject("search")
+        let search: ChromeSearchSpec? = searchObj.flatMap { raw in
+            guard let key = raw["key"] as? String else { return nil }
+            return ChromeSearchSpec(
+                key: key,
+                placeholder: raw["placeholder"] as? String ?? "",
+                value: raw["value"] as? String,
+                autoFocus: raw["autoFocus"] as? Bool ?? false
+            )
+        }
         let spec = ChromeBarSpec(
             hidden: call.getBool("hidden") ?? false,
             title: call.getString("title"),
             status: call.getString("status"),
             leading: (call.getArray("leading") ?? []).compactMap { $0 as? [String: Any] },
-            trailing: (call.getArray("trailing") ?? []).compactMap { $0 as? [String: Any] }
+            trailing: (call.getArray("trailing") ?? []).compactMap { $0 as? [String: Any] },
+            search: search
         )
         DispatchQueue.main.async {
             guard let app = self.bridge?.viewController else { call.resolve(); return }
             let root = self.root
-            if let root = root, root.isPreparingPush {
-                root.pendingPushBar = spec
+            if let root = root, root.holdBarForPush(spec) {
+                call.resolve()
+                return
+            }
+            if let root = root, root.holdBarForSheet(spec) {
+                call.resolve()
+                return
+            }
+            if let root = root, root.sheetNavigation == nil {
+                self.applyMainBar(spec, on: root)
                 call.resolve()
                 return
             }
             root?.currentBarSpec = spec
-            let nav = app.navigationController
-            let inSheet = root?.sheetNavigation != nil && nav === root?.sheetNavigation
-            let isPushed = inSheet && !(root?.pushedTokens.isEmpty ?? true)
+            let nav = root?.sheetNavigation ?? app.navigationController
+            let isPushed = root?.sheetNavigation != nil && !(root?.pushedTokens.isEmpty ?? true)
             let wasHidden = nav?.isNavigationBarHidden ?? true
             let suppressAnimation = root?.isFinishingPop == true
             let animateItems = !suppressAnimation && !spec.hidden && !wasHidden
@@ -590,6 +916,83 @@ public class ChromePlugin: CAPPlugin, CAPBridgedPlugin, UIAdaptivePresentationCo
             item.setLeftBarButtonItems(spec.leading.map { self.barItem($0) }, animated: animated)
         }
         item.setRightBarButtonItems(spec.trailing.reversed().map { self.barItem($0) }, animated: animated)
+        if let app = bridge?.viewController, item === app.navigationItem {
+            applySearch(spec.search, to: app)
+        }
+    }
+
+    private func applySearch(_ search: ChromeSearchSpec?, to controller: UIViewController) {
+        guard let search else {
+            detachSearch(from: controller.navigationItem)
+            return
+        }
+        controller.definesPresentationContext = true
+        let sc: UISearchController
+        if let existing = searchController {
+            sc = existing
+        } else {
+            sc = UISearchController(searchResultsController: nil)
+            sc.obscuresBackgroundDuringPresentation = false
+            sc.hidesNavigationBarDuringPresentation = false
+            sc.automaticallyShowsCancelButton = true
+            sc.searchResultsUpdater = self
+            sc.searchBar.delegate = self
+            searchController = sc
+        }
+        if sc.searchBar.placeholder != search.placeholder {
+            sc.searchBar.placeholder = search.placeholder
+        }
+        if controller.navigationItem.searchController !== sc {
+            controller.navigationItem.searchController = sc
+            controller.navigationItem.hidesSearchBarWhenScrolling = false
+        }
+        if activeSearchKey != search.key {
+            activeSearchKey = search.key
+            let initial = search.value ?? ""
+            lastSearchText = initial
+            sc.searchBar.text = initial
+            pendingSearchFocus = search.autoFocus
+            if search.autoFocus, controller.view.window != nil, root?.sheetNavigation?.isBeingPresented != true {
+                focusSearchBar()
+            }
+        } else if let value = search.value, value != sc.searchBar.text {
+            lastSearchText = value
+            sc.searchBar.text = value
+        }
+    }
+
+    private func detachSearch(from item: UINavigationItem) {
+        activeSearchKey = nil
+        lastSearchText = nil
+        pendingSearchFocus = false
+        if let sc = searchController {
+            if sc.isActive { sc.isActive = false }
+            sc.searchBar.resignFirstResponder()
+        }
+        if item.searchController != nil {
+            item.searchController = nil
+        }
+    }
+
+    private func focusSearchBar() {
+        guard pendingSearchFocus, let sc = searchController else { return }
+        pendingSearchFocus = false
+        DispatchQueue.main.async {
+            sc.searchBar.becomeFirstResponder()
+        }
+    }
+
+    public func updateSearchResults(for searchController: UISearchController) {
+        guard activeSearchKey != nil else { return }
+        let text = searchController.searchBar.text ?? ""
+        guard text != lastSearchText else { return }
+        lastSearchText = text
+        notifyListeners("searchChange", data: ["text": text])
+    }
+
+    public func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
+        guard activeSearchKey != nil else { return }
+        notifyListeners("searchCancel", data: [:])
     }
 
     private func barItem(_ spec: [String: Any]) -> UIBarButtonItem {
@@ -597,10 +1000,24 @@ public class ChromePlugin: CAPPlugin, CAPBridgedPlugin, UIAdaptivePresentationCo
         let press = UIAction { [weak self] _ in self?.notifyListeners("barPress", data: ["id": id]) }
         let symbol = (spec["symbol"] as? String).flatMap { UIImage(systemName: $0) }
         let title = spec["title"] as? String
+        let role = spec["role"] as? String
         let picture = spec["picture"] as? [String: Any]
         let item: UIBarButtonItem
-        if spec["role"] as? String == "close" {
+        if role == "close" {
             item = UIBarButtonItem(systemItem: .close, primaryAction: press)
+        } else if role == "cancel" {
+            if let title = title {
+                item = UIBarButtonItem(title: title, primaryAction: press)
+            } else {
+                item = UIBarButtonItem(systemItem: .cancel, primaryAction: press)
+            }
+        } else if role == "done" || role == "confirm" {
+            if let title = title {
+                item = UIBarButtonItem(title: title, primaryAction: press)
+            } else {
+                item = UIBarButtonItem(systemItem: .done, primaryAction: press)
+            }
+            if #available(iOS 26.0, *) { item.style = .prominent } else { item.style = .done }
         } else if let title = title, picture != nil || symbol != nil {
             var look = UIButton.Configuration.plain()
             look.title = title
@@ -618,6 +1035,15 @@ public class ChromePlugin: CAPPlugin, CAPBridgedPlugin, UIAdaptivePresentationCo
             button.widthAnchor.constraint(lessThanOrEqualToConstant: 220).isActive = true
             if let picture = picture { self.fill(button, with: picture) }
             item = UIBarButtonItem(customView: button)
+        } else if let picture = picture {
+            var look = UIButton.Configuration.plain()
+            look.image = symbol
+            look.contentInsets = .zero
+            let button = UIButton(configuration: look, primaryAction: press)
+            button.widthAnchor.constraint(equalToConstant: 32).isActive = true
+            button.heightAnchor.constraint(equalToConstant: 32).isActive = true
+            self.fill(button, with: picture, side: 32)
+            item = UIBarButtonItem(customView: button)
         } else if let title = title {
             item = UIBarButtonItem(title: title, primaryAction: press)
         } else {
@@ -629,19 +1055,50 @@ public class ChromePlugin: CAPPlugin, CAPBridgedPlugin, UIAdaptivePresentationCo
         return item
     }
 
-    /// A button's picture is a part of the page (a bot's face is drawn there, by the page's own rules): the page shows it
-    /// once at the given frame, and its snapshot is kept under the picture's key.
-    private func fill(_ button: UIButton, with picture: [String: Any]) {
+    private static func image(fromDataURL raw: String) -> UIImage? {
+        UIImage.fromDataURL(raw)
+    }
+
+    private func fill(_ button: UIButton, with picture: [String: Any], side: CGFloat = 30) {
         guard let key = picture["key"] as? String else { return }
-        let side: CGFloat = 30
         let place = { (image: UIImage) in
             let round = UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
                 UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: side, height: side)).addClip()
-                image.draw(in: CGRect(x: 0, y: 0, width: side, height: side))
+                let src = image.size
+                if src.width > 0 && src.height > 0 {
+                    let scale = max(side / src.width, side / src.height)
+                    let drawSize = CGSize(width: src.width * scale, height: src.height * scale)
+                    let origin = CGPoint(x: (side - drawSize.width) / 2, y: (side - drawSize.height) / 2)
+                    image.draw(in: CGRect(origin: origin, size: drawSize))
+                } else {
+                    image.draw(in: CGRect(x: 0, y: 0, width: side, height: side))
+                }
             }
             button.configuration?.image = round.withRenderingMode(.alwaysOriginal)
         }
         if let known = pictures[key] { place(known); return }
+        if let dataURL = picture["data"] as? String, let image = Self.image(fromDataURL: dataURL) {
+            pictures[key] = image
+            place(image)
+            notifyListeners("pictureTaken", data: ["key": key])
+            return
+        }
+        if let rawURL = picture["url"] as? String, let url = URL(string: rawURL), url.scheme?.lowercased() == "https" {
+            guard !pendingPictures.contains(key) else { return }
+            pendingPictures.insert(key)
+            URLSession.shared.dataTask(with: url) { [weak self, weak button] data, _, _ in
+                let image = data.flatMap(UIImage.init(data:))
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    self.pendingPictures.remove(key)
+                    guard let image = image else { return }
+                    self.pictures[key] = image
+                    if button != nil { place(image) }
+                    self.notifyListeners("pictureTaken", data: ["key": key])
+                }
+            }.resume()
+            return
+        }
         guard let x = picture["x"] as? Double, let y = picture["y"] as? Double, let width = picture["width"] as? Double, let height = picture["height"] as? Double,
               width > 0, height > 0, let webView = webView else { return }
         let shot = WKSnapshotConfiguration()
@@ -672,7 +1129,10 @@ public class ChromePlugin: CAPPlugin, CAPBridgedPlugin, UIAdaptivePresentationCo
         let height = call.getDouble("height").map { CGFloat($0) }
         DispatchQueue.main.async {
             guard let root = self.root else { call.reject("No root.", "unavailable"); return }
-            root.presentSheet(height: height, delegate: self) { call.resolve() }
+            root.presentSheet(height: height, delegate: self) {
+                self.focusSearchBar()
+                call.resolve()
+            }
         }
     }
 

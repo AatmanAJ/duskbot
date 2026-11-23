@@ -221,6 +221,16 @@ describe("connecting an AI", () => {
     expect(document.body.querySelector("[role=alert]")?.textContent).toContain("Claude");
   });
 
+  it("Use on an AI the app only found on this computer records it as chosen before the chat opens, so the first send has an AI", async () => {
+    f.state = { ...f.state, instances: [freeOpenCode, { ...claude(true, "passed"), found: true }] };
+    await show();
+    await press("Get started");
+    await choose("[data-funnel-own]");
+    const chose = f.api.mock.calls.filter(([path, init]) => path === "/api/instances/claude" && init?.method === "PATCH");
+    expect(chose.map(([, init]) => JSON.parse(init.body))).toEqual([{ chosen: true }]);
+    expect(f.onDone).toHaveBeenCalledOnce();
+  });
+
   it("free models stick when picked over a working AI: Dusk and new bots stay on them", async () => {
     f.state = { ...f.state, instances: [freeOpenCode, claude(true, "passed")] };
     await show();

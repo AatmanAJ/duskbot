@@ -4,9 +4,7 @@ import { api, useStore, type Action } from "@/state/store";
 import type { LocaleKey } from "@/locales";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { flushSystemControls, wakeSystemControls } from "@/lib/system-control";
-import { frames, sheetStep, sheetsUp, useChrome } from "@/mobile/chrome";
-import { createPushToken, registerNativePop } from "@/mobile/SheetPush";
+import { useConnectAppsNav } from "./use-nav";
 import { useConnectAppsPhoneBar } from "./use-phone-bar";
 import { connectorDescription } from "@/lib/app-catalog";
 import { closeExternalPage } from "@/lib/app-links";
@@ -119,14 +117,7 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
     needsPanel: () => window.duskDesktop?.remoteClient?.active === true,
     openPanel: () => go({ kind: "detail", id: MCP_PAGE }),
   });
-  const chrome = useChrome();
-  const nativePush = Boolean(chrome?.beginPush && chrome.commitPush && chrome.popPage);
-  const [page, setPage] = useState<ConnectAppsPage>(requested);
-  const [trail, setTrail] = useState<ConnectAppsPage[]>([]);
-  const pageRef = useRef(page);
-  pageRef.current = page;
-  const nativeTrailRef = useRef<Array<{ prev: ConnectAppsPage; token: string; unreg: () => void }>>([]);
-  const mountedRef = useRef(true);
+  const { page, trail, view, nav, browsing, go: goTo, back } = useConnectAppsNav(requested, nonce);
   const mcpServers = useMcpServers().servers;
   const [query, setQuery] = useState("");
   const [resultsOpen, setResultsOpen] = useState(false);
@@ -143,50 +134,14 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
   const [hosted, setHosted] = useState<HostedConnections | null>(() => memory.hosted);
   const [onePassword, setOnePassword] = useState<OnePasswordStatus | null>(() => memory.onePassword);
   const [skills, setSkills] = useState<SkillsLibrarySkillWire[] | null>(() => memory.skills);
-  const [view, setView] = useState(0);
-  // how the last page change went, so the new page slides in from the side it came from, as settings' panes do
-  const [nav, setNav] = useState<"push" | "pop" | "swap" | null>(null);
   const [waited, setWaited] = useState(false);
   const layout = useRef<Layout | null>(null);
   const [scrolled, setScrolled] = useState(false);
   const dialog = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
-  // home and the categories share one pane, so the title, search and chips stay mounted while the list under them changes
-  const browsing = page.kind === "home" || page.kind === "category";
   const pageKey = browsing ? "browse" : `${page.kind}:${"id" in page ? page.id : ""}`;
 
-  const clearNativeTrail = useCallback(() => {
-    const remaining = nativeTrailRef.current.splice(0);
-    for (const entry of remaining) entry.unreg();
-    const oldest = remaining[0];
-    if (oldest && chrome?.popPage && sheetsUp.system) {
-      sheetStep(async () => {
-        await chrome.popPage?.(oldest.token, { animated: false });
-        wakeSystemControls();
-      });
-    }
-  }, [chrome]);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      clearNativeTrail();
-    };
-  }, [clearNativeTrail]);
-
-  const opened = useRef({ requested, nonce });
-  useEffect(() => {
-    clearNativeTrail();
-    setPage(requested);
-    setTrail([]);
-    setNav(null);
-    // a new open of a mounted window is a new view; the mount itself keeps the layout its first frame drew
-    if (opened.current.requested === requested && opened.current.nonce === nonce) return;
-    opened.current = { requested, nonce };
-    setView((count) => count + 1);
-  }, [requested, nonce, clearNativeTrail]);
   useEffect(() => {
     const timer = setTimeout(() => setWaited(true), READY_WAIT_MS);
     return () => clearTimeout(timer);
@@ -229,7 +184,7 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
     ? t("policy.managedBy", { organization: policy.organizationName }) : null, [policy]);
 
   const cards = useMemo(() => new Map((connectors.cards ?? []).map((card) => [card.slug, card])), [connectors.cards]);
-  const ready = (connectors.ready && remote.settled) || waited;
+  const ready = (connectors.ready && remote.settled && mcpServers !== null) || waited;
   const entries = useMemo<AppEntry[]>(() => {
     const own = nativeEntries();
     const catalog = (connectors.cards ?? [])
@@ -325,100 +280,7 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
   const go = (next: ConnectAppsPage) => {
     setResultsOpen(false);
     setActive(-1);
-    const isPush = next.kind === "detail" || next.kind === "yours";
-    if (isPush && nativePush && chrome) {
-      sheetStep(async () => {
-        if (!mountedRef.current) return;
-        const ok = await chrome.beginPush!();
-        if (!mountedRef.current) {
-          if (ok) await chrome.cancelPush?.();
-          return;
-        }
-        const prev = pageRef.current;
-        if (!ok) {
-          setTrail((past) => [...past, prev]);
-          setNav(null);
-          setPage(next);
-          setView((count) => count + 1);
-          await frames(1);
-          await flushSystemControls();
-          return;
-        }
-        const token = createPushToken();
-        const entry = { prev, token, unreg: () => {} };
-        entry.unreg = registerNativePop(chrome, token, () => {
-          const at = nativeTrailRef.current.findIndex((item) => item.token === token);
-          if (at < 0) return;
-          const removed = nativeTrailRef.current.splice(at);
-          for (const item of removed) item.unreg();
-          if (!mountedRef.current) return;
-          setPage(removed[0]!.prev);
-          setTrail(nativeTrailRef.current.map((item) => item.prev));
-          setNav(null);
-          setView((count) => count + 1);
-        });
-        nativeTrailRef.current.push(entry);
-        setTrail(nativeTrailRef.current.map((item) => item.prev));
-        setNav(null);
-        setPage(next);
-        setView((count) => count + 1);
-        await frames(1);
-        await flushSystemControls();
-        await frames(2);
-        if (!mountedRef.current) {
-          const at = nativeTrailRef.current.findIndex((item) => item.token === token);
-          if (at >= 0) {
-            for (const item of nativeTrailRef.current.splice(at)) item.unreg();
-          }
-          await chrome.cancelPush?.();
-          return;
-        }
-        const committed = await chrome.commitPush!(token);
-        if (!committed) {
-          const at = nativeTrailRef.current.findIndex((item) => item.token === token);
-          if (at >= 0) {
-            const removed = nativeTrailRef.current.splice(at);
-            for (const item of removed) item.unreg();
-            if (mountedRef.current) {
-              setPage(removed[0]!.prev);
-              setTrail(nativeTrailRef.current.map((item) => item.prev));
-              setView((count) => count + 1);
-            }
-          }
-        }
-      });
-      return;
-    }
-    if (!isPush && nativeTrailRef.current.length > 0) clearNativeTrail();
-    setTrail((past) => isPush ? [...past, page] : []);
-    const staysBrowsing = browsing && (next.kind === "home" || next.kind === "category");
-    setNav(isPush ? "push" : staysBrowsing ? null : "swap");
-    setPage(next);
-    setView((count) => count + 1);
-  };
-  const back = () => {
-    if (nativePush && chrome && nativeTrailRef.current.length > 0) {
-      const top = nativeTrailRef.current.pop()!;
-      top.unreg();
-      sheetStep(async () => {
-        const popped = await chrome.popPage!(top.token);
-        if (mountedRef.current) {
-          setPage(top.prev);
-          setTrail(nativeTrailRef.current.map((item) => item.prev));
-          setNav(null);
-          setView((count) => count + 1);
-        }
-        await frames(1);
-        await flushSystemControls();
-        await frames(1);
-        if (popped) await chrome.finishPop?.();
-      });
-      return;
-    }
-    setPage(trail.at(-1) ?? { kind: "home" });
-    setTrail((past) => past.slice(0, -1));
-    setNav("pop");
-    setView((count) => count + 1);
+    goTo(next);
   };
   const leaveFor = (action: Action) => { onClose(); dispatch(action); };
   // a row's Connect that opened Composio lands on the app's page, which says what to do there
@@ -524,9 +386,9 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
     ];
     return names.length ? names.join(", ") : entry.description;
   };
+  const openEntry = (entry: AppEntry) => go({ kind: "detail", id: entry.kind === "custom" ? CUSTOM_MCP : entry.id });
   const row = (entry: AppEntry) => (
-    <AppRow key={entry.id} entry={entry} subtitle={subtitleOf(entry)} action={rowAction(entry)}
-      onOpen={() => go({ kind: "detail", id: entry.kind === "custom" ? CUSTOM_MCP : entry.id })} />
+    <AppRow key={entry.id} entry={entry} subtitle={subtitleOf(entry)} action={rowAction(entry)} onOpen={() => openEntry(entry)} />
   );
 
   const label = (category: Category) => t(CATEGORY_LABEL[category]);
@@ -751,21 +613,18 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
       return <AppPage model={model} />;
     }
     if (page.kind === "yours") {
-      const servers = (mcpServers ?? []).filter((server) => !byId.has(`mcp:${server.name}`) && !remote.ownsServer(server.name) && !HOSTED_MCP_APPS.some((app) => server.name === app.id || server.name.startsWith(`${app.id}-`)));
-      const serverEntry = (name: string): AppEntry => ({ id: `mcp:${name}`, kind: "native", label: name, description: t("connectApps.mcpServer"), categories: [], icon: { glyph: "server" } });
+      const offServers = entries.filter((entry) => entry.kind === "custom" && !isConnected.has(entry.id));
       return (
         <div className="ca-yours @container">
           <h1 className="ca-title ps-2" data-detail-hero-title="">{t("connectApps.manage")}</h1>
             <Group title={t("connectApps.installed")}>
-              {connected.length || servers.length
+              {connected.length || offServers.length
                 ? <div className="grid grid-cols-1 gap-x-2 gap-y-0.5 @xl:grid-cols-2">
                   {connected.map((entry) => (
-                    <AppRow key={entry.id} entry={entry} subtitle={entry.description} action={{ kind: "status", label: t("apps.connected"), tone: "connected" }} onOpen={() => go({ kind: "detail", id: entry.id })} />
+                    <AppRow key={entry.id} entry={entry} subtitle={entry.description} action={{ kind: "status", label: t("apps.connected"), tone: "connected" }} onOpen={() => openEntry(entry)} />
                   ))}
-                  {servers.map((server) => (
-                    <AppRow key={server.name} entry={serverEntry(server.name)} subtitle={t("connectApps.mcpServer")}
-                      action={server.enabled ? { kind: "status", label: t("apps.connected"), tone: "connected" } : { kind: "status", label: t("connectApps.off"), tone: "quiet" }}
-                      onOpen={() => go({ kind: "detail", id: MCP_PAGE })} />
+                  {offServers.map((entry) => (
+                    <AppRow key={entry.id} entry={entry} subtitle={entry.description} action={{ kind: "status", label: t("connectApps.off"), tone: "quiet" }} onOpen={() => openEntry(entry)} />
                   ))}
                 </div>
                 : <p className="ca-note">{t("connectApps.nothingInstalled")}</p>}
@@ -846,15 +705,22 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
                   <div className="ca-home">
                     <div className="ca-head">
                       <h2 className="ca-title" id="ca-title">{t("connectApps.title")}</h2>
-                      <button type="button" className="ca-installed" aria-label={t("connectApps.yours")} onClick={() => go({ kind: "yours" })}>
-                        {connected.length > 0 && (
-                          <span className="ca-stack" aria-hidden="true">
-                            {connected.slice(0, 4).map((entry) => <span key={entry.id}><AppTile entry={entry} size={18} /></span>)}
-                          </span>
-                        )}
-                        <span>{t("apps.connectedCount", { count: connected.length })}</span>
-                        <span data-chevron="" aria-hidden="true" className="inline-flex"><Icon name="chevron-right" size={12} /></span>
-                      </button>
+                      {connectors.stale && connected.length === 0 ? (
+                        <div className="ca-unchecked" role="alert">
+                          <span>{t("connectApps.unchecked")}</span>
+                          <button type="button" className="ca-pill" onClick={connectors.reload}>{t("connectApps.retry")}</button>
+                        </div>
+                      ) : (
+                        <button type="button" className="ca-installed" aria-label={t("connectApps.yours")} onClick={() => go({ kind: "yours" })}>
+                          {connected.length > 0 && (
+                            <span className="ca-stack" aria-hidden="true">
+                              {connected.slice(0, 4).map((entry) => <span key={entry.id}><AppTile entry={entry} size={18} /></span>)}
+                            </span>
+                          )}
+                          <span>{t("apps.connectedCount", { count: connected.length })}</span>
+                          <span data-chevron="" aria-hidden="true" className="inline-flex"><Icon name="chevron-right" size={12} /></span>
+                        </button>
+                      )}
                     </div>
                     <div className="ca-controls">
                       <div className="ca-search-row">

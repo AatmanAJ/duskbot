@@ -1,9 +1,14 @@
 import { fileSpool } from "../../../../electron/error-report-spool.mjs";
 import type { Incidents } from "./index.ts";
 
-/** the lines worth an alert among the service's warnings; every console.error line is one */
-export const WARN_ALERT = /\bALERT\b|\bfail(s|ed|ing|ure)?\b|\bprovider starts:/i;
+/** the warnings kept on the health page; only an ALERT line among them, or a console.error line, emails the owner */
+export const WARN_ALERT = /\bALERT\b|\bfail(s|ed|ing|ure)?\b/i;
+/** a problem that went away by itself is its own record, never a new incident */
+const RECOVERED = /\bworks again\b|\bhas room again\b/i;
 const OWN = /^incidents:/;
+/** node's own warning line, "(node:4028072) MaxListenersExceededWarning: ...", and the hint it prints after it */
+const NODE_WARNING = /^\(node:\d+\) (?:\[[\w-]+\] )?([A-Z]\w{0,60}Warning): /;
+const NODE_WARNING_HINT = /^\(Use `node --trace-warnings/;
 
 function lineOf(args: unknown[]): { text: string; error: Error | null } {
   const error = args.find((arg): arg is Error => arg instanceof Error) ?? null;
@@ -22,7 +27,11 @@ export function tapConsole(incidents: Pick<Incidents, "report">, target: Pick<Co
       inside = true;
       try {
         const { text, error } = lineOf(args);
-        if (OWN.test(text) || (level === "warn" && !WARN_ALERT.test(text))) return;
+        if (NODE_WARNING_HINT.test(text)) return;
+        const warning = NODE_WARNING.exec(text)?.[1];
+        // one incident per kind of warning, for the daily email: a warning is not an outage
+        if (warning) { incidents.report({ source: "log", name: warning, message: text.replace(NODE_WARNING, ""), key: `node-${warning}` }); return; }
+        if (OWN.test(text) || (level === "warn" && (!WARN_ALERT.test(text) || RECOVERED.test(text)))) return;
         const prefix = /^([a-z][\w-]{1,20}):/.exec(text)?.[1] ?? "service";
         incidents.report({ source: "log", name: `${prefix} ${/\bALERT\b/.test(text) ? "alert" : level}`, message: text.replace(/^[a-z][\w-]{1,20}:\s*/, ""), stack: error?.stack?.split("\n").slice(1).join("\n") ?? null });
       } finally { inside = false; }

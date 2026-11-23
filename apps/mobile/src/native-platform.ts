@@ -23,18 +23,21 @@ const SECRET_PREFIX = "dusk.";
 const LEGACY_SECRET_PREFIX = "omb.";
 import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState } from "@capacitor-mlkit/barcode-scanning";
 import { keychainSecrets } from "@/mobile/keychain";
+import { friendlyError } from "@/lib/plain-error";
 import { handleBack, type AppleCredential, type BackGestureEvent, type BarConfig, type CameraPermission, type CameraScanner, type DeliveredNotification, type MobileChrome, type MobilePlatform, type OrientationBridge, type ScanOverlay, type SystemMenuAction, type TurnActivityBridge } from "@/mobile/platform";
 import type { ControlPlace, SystemControl } from "@/lib/system-control";
+import type { SystemAlertOptions, SystemAlertOutcome, SystemDialogs, SystemFormOptions, SystemFormResult } from "@/lib/system-dialog";
 import type { NativeAction } from "@/mobile/phone-actions";
 import { shortcutAction, type ShortcutBot, type ShortcutsBridge } from "@/mobile/shortcuts";
 import type { TurnActivityAttributes, TurnActivityState } from "../../../shared/phone-activity";
-import type { GlassBridge, GlassEvent, GlassGlyphs, GlassState } from "@/mobile/native-glass";
+import type { FloatingPillGlassState, GlassBridge, GlassEvent, GlassGlyphs, GlassState, PullRefreshGlassState, SwipeReplyGlassState, TakeoverGlassState, ViewerGlassState } from "@/mobile/native-glass";
 import type { HomeGlassState } from "@/mobile/native-home-glass";
 import type { SlidePath } from "@/mobile/NavStack";
 import type { MenuBridge, NativeMenuArm, NativeMenuContent, NativeMenuEvent } from "@/mobile/native-menu";
 import { createVoiceEvents, type VoiceBridge, type VoiceEnd } from "@/lib/voice-input/bridge";
 import { registerPhoneVoice } from "@/lib/voice-input/device";
-import { attachToComposer, setNativeAttach } from "@/lib/native-attach";
+import { attachToComposer, PickProblem, setNativeAttach } from "@/lib/native-attach";
+import { FILE_MAX_BYTES } from "../../../shared/upload-limits";
 import { appLinkFromUniversal, type MobileOpenTarget } from "../../../shared/mobile-link";
 import { t } from "@/lib/i18n";
 
@@ -104,6 +107,8 @@ interface ChromePlugin {
   addListener(event: "pictureTaken", listener: (event: { key?: string }) => void): Promise<PluginListenerHandle>;
   addListener(event: "sheetDismissed", listener: () => void): Promise<PluginListenerHandle>;
   addListener(event: "pagePopped", listener: (event: { tokens?: string[] }) => void): Promise<PluginListenerHandle>;
+  addListener(event: "searchChange", listener: (event: { text?: string }) => void): Promise<PluginListenerHandle>;
+  addListener(event: "searchCancel", listener: () => void): Promise<PluginListenerHandle>;
 }
 const DuskChrome = registerPlugin<ChromePlugin>("DuskChrome");
 
@@ -113,6 +118,8 @@ function nativeChrome(plugin: ChromePlugin, push = false): MobileChrome {
     setBar: (config) => { void quiet(plugin.setBar(config ? { ...config, hidden: false } : { hidden: true, leading: [], trailing: [] })); },
     onBarPress: (listener) => unsubscribe([plugin.addListener("barPress", ({ id }) => { if (typeof id === "string") listener(id); })]),
     onPictureTaken: (listener) => unsubscribe([plugin.addListener("pictureTaken", ({ key }) => { if (typeof key === "string") listener(key); })]),
+    onSearchChange: (listener) => unsubscribe([plugin.addListener("searchChange", ({ text }) => { if (typeof text === "string") listener(text); })]),
+    onSearchCancel: (listener) => unsubscribe([plugin.addListener("searchCancel", listener)]),
     freeze: () => quiet(plugin.freeze()),
     thaw: () => quiet(plugin.thaw()),
     presentSheet: (height) => quiet(plugin.presentSheet(height === null ? {} : { height })),
@@ -140,8 +147,67 @@ const DuskControls = registerPlugin<{
   addListener(event: "change", listener: (event: { id?: string; selected?: number; on?: boolean; value?: string }) => void): Promise<PluginListenerHandle>;
 }>("DuskControls");
 
+/** Native UIKit alerts and SwiftUI modal forms (ios/App/App/NativeDialogPlugin.swift). */
+interface DialogPlugin {
+  alert(options: SystemAlertOptions): Promise<{ outcome?: SystemAlertOutcome }>;
+  form(options: Omit<SystemFormOptions, "onSubmit"> & { id: string; asyncSubmit: boolean }): Promise<{ saved?: boolean; values?: Record<string, string> }>;
+  finishForm(options: { id: string; ok: boolean; error?: string }): Promise<void>;
+  dismissForm(): Promise<void>;
+  addListener(event: "formSubmit", listener: (event: { id?: string; values?: Record<string, string> }) => void): Promise<PluginListenerHandle>;
+}
+const DuskDialog = registerPlugin<DialogPlugin>("DuskDialog");
+
+let nextNativeFormId = 0;
+
+function nativeDialogs(plugin: DialogPlugin): SystemDialogs {
+  return {
+    async alert(options) {
+      try {
+        const result = await plugin.alert({
+          ...options,
+          cancelLabel: options.cancelLabel ?? t("common.cancel"),
+        });
+        return result.outcome === "confirm" || result.outcome === "alternative" ? result.outcome : "cancel";
+      } catch {
+        return "cancel";
+      }
+    },
+    async form(options): Promise<SystemFormResult> {
+      const id = `form-${++nextNativeFormId}`;
+      const { onSubmit, ...rest } = options;
+      const stop = onSubmit
+        ? unsubscribe([plugin.addListener("formSubmit", (event) => {
+          if (event.id !== id) return;
+          void Promise.resolve().then(() => onSubmit(event.values ?? {})).then(
+            (error) => plugin.finishForm({ id, ok: !error, ...(error ? { error } : {}) }),
+            (cause) => plugin.finishForm({ id, ok: false, error: friendlyError(cause) }),
+          ).catch(() => {});
+        })])
+        : null;
+      try {
+        const result = await plugin.form({
+          ...rest,
+          id,
+          asyncSubmit: Boolean(onSubmit),
+          saveLabel: options.saveLabel ?? t("common.save"),
+          cancelLabel: options.cancelLabel ?? t("common.cancel"),
+        });
+        return result.saved === true ? { saved: true, values: result.values ?? {} } : { saved: false };
+      } catch {
+        return { saved: false };
+      } finally {
+        stop?.();
+      }
+    },
+    dismissForm() {
+      void plugin.dismissForm().catch(() => {});
+    },
+  };
+}
+
 /** The app's own look on the system's surfaces (ios/App/App/AppearancePlugin.swift). */
 const DuskAppearance = registerPlugin<{ set(options: { scheme: "system" | "light" | "dark" }): Promise<void> }>("DuskAppearance");
+const DuskClipboard = registerPlugin<{ read(): Promise<{ text?: string }>; write(options: { text: string }): Promise<void> }>("DuskClipboard");
 
 /** The app's own dictation(ios/App/App/SpeechRecognizerPlugin.swift, android .../SpeechRecognizerPlugin.java): the
  * phone's recognizer, offline where it can be. Events carry the session number `start` was given. */
@@ -159,9 +225,21 @@ export interface SpeechPlugin {
 }
 const DuskSpeech = registerPlugin<SpeechPlugin>("DuskSpeech");
 
+interface GlassCapabilities {
+  acks?: boolean;
+  jump?: boolean;
+  reply?: boolean;
+  attachments?: boolean;
+  takeover?: boolean;
+  swipeReply?: boolean;
+  pullRefresh?: boolean;
+  viewer?: boolean;
+  pill?: boolean;
+}
+
 /** The app's own Liquid Glass chat chrome (ios/App/App/GlassChromePlugin.swift), iOS 26 and later. */
 interface GlassPlugin {
-  supported(): Promise<{ supported: boolean; acks?: boolean; jump?: boolean; reply?: boolean }>;
+  supported(): Promise<{ supported: boolean } & GlassCapabilities>;
   update(state: GlassState): Promise<void>;
   setText(options: { text: string; seq: number }): Promise<void>;
   clearText(options: { id: number }): Promise<void>;
@@ -172,18 +250,100 @@ interface GlassPlugin {
   slide(options: { path: SlidePath | null; at?: number }): Promise<void>;
   glyphs(): Promise<GlassGlyphs>;
   home(options: { state: HomeGlassState | null }): Promise<void>;
+  takeover(options: { state: TakeoverGlassState | null }): Promise<void>;
+  swipeReply(options: { state: SwipeReplyGlassState | null; instant?: boolean }): Promise<void>;
+  pullRefresh(options: { state: PullRefreshGlassState | null; instant?: boolean }): Promise<void>;
+  viewer(options: { state: ViewerGlassState | null }): Promise<void>;
+  pill(options: { slot: "top" | "bottom"; state: FloatingPillGlassState | null; clearId?: string; instant?: boolean }): Promise<void>;
   addListener(event: "glass", listener: (event: GlassEvent | { type: "paste"; files: NativeFile[] }) => void): Promise<PluginListenerHandle>;
 }
 const DuskGlass = registerPlugin<GlassPlugin>("DuskGlass");
 
 /** A file the app wrote to its tmp folder for the page (ios/App/App/PickerPlugin.swift). */
 interface NativeFile { path: string; name: string; type: string }
-/** The composer's photo library and Files pickers, each opened straight (ios/App/App/PickerPlugin.swift). */
+interface PickerLabels {
+  allPhotos: string;
+  addPhotoOne: string;
+  addPhotosCount: string;
+  addItemOne: string;
+  addItemsCount: string;
+  back: string;
+  takePhoto: string;
+  moreOptions: string;
+  switchCamera: string;
+  flash: string;
+  flashAuto: string;
+  flashOn: string;
+  flashOff: string;
+  photoLibrary: string;
+  cameraOffTitle: string;
+  cameraOffBody: string;
+  cameraUnavailable: string;
+  photosOffTitle: string;
+  photosOffBody: string;
+  openSettings: string;
+}
+interface PickerSourceFrame {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  radius?: number;
+}
+/** The composer's photo library, camera and Files pickers (ios/App/App/PickerPlugin.swift). */
 const DuskPicker = registerPlugin<{
-  photos(options: { multiple: boolean }): Promise<{ files: NativeFile[] }>;
+  photos(options: { multiple: boolean; maxBytes?: number; labels?: PickerLabels; source?: PickerSourceFrame }): Promise<PickedAnswer>;
   files(options: { multiple: boolean }): Promise<{ files: NativeFile[] }>;
-  camera(): Promise<{ files: NativeFile[] }>;
+  camera(options?: { maxBytes?: number; labels?: PickerLabels; source?: PickerSourceFrame }): Promise<PickedAnswer>;
 }>("DuskPicker");
+
+function composerSourceFrame(): PickerSourceFrame | undefined {
+  if (typeof document === "undefined") return undefined;
+  const el = document.querySelector<HTMLElement>('[data-mobile-chat] [data-tour="composer"]')
+    ?? document.querySelector<HTMLElement>('[data-tour="composer"]');
+  if (!el) return undefined;
+  const rect = el.getBoundingClientRect();
+  if (rect.width < 40 || rect.height < 24) return undefined;
+  const radius = parseFloat(getComputedStyle(el).borderTopLeftRadius) || Math.min(24, rect.height / 2);
+  return { x: rect.left, y: rect.top, w: rect.width, h: rect.height, radius };
+}
+
+function pickerLabels(): PickerLabels {
+  return {
+    allPhotos: t("composer.attach.allPhotos"),
+    addPhotoOne: t("composer.attach.addPhotoOne"),
+    addPhotosCount: t("composer.attach.addPhotosCount"),
+    addItemOne: t("composer.attach.addItemOne"),
+    addItemsCount: t("composer.attach.addItemsCount"),
+    back: t("mobile.chat.back"),
+    takePhoto: t("composer.attach.camera"),
+    moreOptions: t("composer.attach.moreOptions"),
+    switchCamera: t("composer.attach.switchCamera"),
+    flash: t("composer.attach.flash"),
+    flashAuto: t("composer.attach.flashAuto"),
+    flashOn: t("composer.attach.flashOn"),
+    flashOff: t("composer.attach.flashOff"),
+    photoLibrary: t("composer.attach.photos"),
+    cameraOffTitle: t("mobile.onboarding.deniedTitle"),
+    cameraOffBody: t("composer.attach.cameraOffBody"),
+    cameraUnavailable: t("composer.attach.cameraUnavailable"),
+    photosOffTitle: t("composer.attach.photosOffTitle"),
+    photosOffBody: t("composer.attach.photosOffBody"),
+    openSettings: t("mobile.onboarding.openSettings"),
+  };
+}
+
+/** The photo library leaves out what it could not load (`failed`) and anything over `maxBytes` (named in `tooLarge`). */
+interface PickedAnswer { files: NativeFile[]; failed?: number; tooLarge?: string[] }
+
+/** Photos picked on the phone; a pick that left something out says so, carrying what it did get. */
+export async function pickedPhotos(answer: PickedAnswer, read?: typeof fetch): Promise<File[]> {
+  const files = await nativeFiles(answer.files, read);
+  const failed = (answer.failed ?? 0) + (answer.files.length - files.length);
+  const tooLarge = answer.tooLarge ?? [];
+  if (failed > 0 || tooLarge.length) throw new PickProblem(files, failed, tooLarge);
+  return files;
+}
 
 export async function nativeFiles(list: readonly NativeFile[], read: typeof fetch = fetch): Promise<File[]> {
   const files = await Promise.all(list.map(async (one) => {
@@ -197,12 +357,13 @@ export async function nativeFiles(list: readonly NativeFile[], read: typeof fetc
   return files.filter((file): file is File => file !== null);
 }
 
-export function glassBridge(plugin: GlassPlugin, acks = false, jump = false, reply = false): GlassBridge {
+export function glassBridge(plugin: GlassPlugin, caps: GlassCapabilities = {}): GlassBridge {
   const quiet = (work: Promise<unknown>) => { void work.catch(() => {}); };
   return {
-    acks,
-    jump,
-    reply,
+    acks: caps.acks === true,
+    jump: caps.jump === true,
+    reply: caps.reply === true,
+    attachments: caps.attachments === true,
     update: (state) => quiet(plugin.update(state)),
     setText: (text, seq) => quiet(plugin.setText({ text, seq })),
     clearText: (id) => quiet(plugin.clearText({ id })),
@@ -213,6 +374,14 @@ export function glassBridge(plugin: GlassPlugin, acks = false, jump = false, rep
     slide: (path, at) => quiet(plugin.slide({ path, at })),
     glyphs: () => plugin.glyphs().catch(() => ({})),
     home: (state) => quiet(plugin.home({ state })),
+    ...(caps.takeover ? { takeover: (state: TakeoverGlassState | null) => quiet(plugin.takeover({ state })) } : {}),
+    ...(caps.swipeReply ? { swipeReply: (state: SwipeReplyGlassState | null, instant?: boolean) => quiet(plugin.swipeReply({ state, instant })) } : {}),
+    ...(caps.pullRefresh ? { pullRefresh: (state: PullRefreshGlassState | null, instant?: boolean) => quiet(plugin.pullRefresh({ state, instant })) } : {}),
+    ...(caps.viewer ? { viewer: (state: ViewerGlassState | null) => quiet(plugin.viewer({ state })) } : {}),
+    ...(caps.pill ? {
+      pill: (slot: "top" | "bottom", state: FloatingPillGlassState | null, clearId?: string, instant?: boolean) =>
+        quiet(plugin.pill({ slot, state, clearId, instant })),
+    } : {}),
     onEvent: (listener) => unsubscribe([plugin.addListener("glass", (event) => {
       if (event.type === "paste") void nativeFiles(event.files).then(attachToComposer);
       else listener(event);
@@ -313,6 +482,8 @@ export interface StreamPlugin {
     headers?: Record<string, string>;
     body?: string;
     connectTimeout?: number;
+    /** ios: fail a stream whose response head has not come in this many ms */
+    headTimeout?: number;
     readTimeout?: number;
     stream?: boolean;
     followRedirects?: boolean;
@@ -339,6 +510,12 @@ function fromBase64(b64: string): Uint8Array<ArrayBuffer> {
   return out;
 }
 
+/** The event stream and a relay read write their head as soon as they open (the server's hello, the relay's first line):
+ * a dial that has not heard it in this long is a dead connection. Other streams, a browser view's, may wait for a browser
+ * to start before their head. */
+const STREAM_CONNECT_MS = 10_000;
+const STREAM_HEAD_GRACE_MS = 2_000;
+
 export function createNativeStreamFetch(plugin: StreamPlugin, webFetch?: typeof fetch): typeof fetch {
   let nextId = 0;
   let listening: Promise<void> | null = null;
@@ -355,8 +532,15 @@ export function createNativeStreamFetch(plugin: StreamPlugin, webFetch?: typeof 
   };
   return async (input, init) => {
     const request = new Request(input, init);
-    const parsed = new URL(request.url);
-    const sameOrigin = typeof window !== "undefined" && Boolean(window.location?.origin) && parsed.origin === window.location.origin;
+    let parsed = new URL(request.url);
+    const pageOrigin = typeof window !== "undefined" ? window.location?.origin : "";
+    // Capacitor 8's iOS scheme handler forwards the WebView's Origin header on /_capacitor_http_interceptor_;
+    // when running against a dev server (http://...), unwrap and send via native DuskStream without Origin.
+    if (pageOrigin.startsWith("http://") && parsed.pathname === "/_capacitor_http_interceptor_") {
+      const target = parsed.searchParams.get("u");
+      if (target && /^https?:\/\//i.test(target)) parsed = new URL(target);
+    }
+    const sameOrigin = Boolean(pageOrigin) && parsed.origin === pageOrigin;
     if (webFetch && ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || sameOrigin)) {
       return webFetch(input, init);
     }
@@ -414,24 +598,29 @@ export function createNativeStreamFetch(plugin: StreamPlugin, webFetch?: typeof 
       parsed.pathname.endsWith("/api/events") ||
       parsed.pathname.endsWith("/stream") ||
       parsed.searchParams.get("stream") === "1";
+    const promptHead = parsed.pathname.endsWith("/api/events") || parsed.searchParams.get("stream") === "1";
     try {
       const openPromise = plugin.open({
         id,
-        url: request.url,
+        url: parsed.toString(),
         method: request.method,
         headers,
-        connectTimeout: isStream ? 10_000 : 8_000,
+        connectTimeout: isStream ? STREAM_CONNECT_MS : 8_000,
+        ...(promptHead ? { headTimeout: STREAM_CONNECT_MS } : {}),
         stream: isStream,
         followRedirects: request.redirect !== "error" && request.redirect !== "manual",
         ...(rawBody && rawBody.length ? { body: toBase64(rawBody) } : {}),
       });
+      let headTimer: ReturnType<typeof setTimeout> | undefined;
       const abortPromise = new Promise<never>((_, reject) => {
         rejectOpen = reject;
         if (request.signal.aborted) {
           reject(request.signal.reason ?? new DOMException("Aborted", "AbortError"));
         }
+        if (promptHead) headTimer = setTimeout(() => reject(new TypeError("The stream did not open in time")), STREAM_CONNECT_MS + STREAM_HEAD_GRACE_MS);
       });
-      const { status, headers: resHeaders, body: inlineBody } = await Promise.race([openPromise, abortPromise]);
+      const opened = await Promise.race([openPromise, abortPromise]).finally(() => clearTimeout(headTimer));
+      const { status, headers: resHeaders, body: inlineBody } = opened;
       if (request.signal.aborted) {
         cleanup(true);
         throw request.signal.reason ?? new DOMException("Aborted", "AbortError");
@@ -774,15 +963,15 @@ export async function nativePlatform(): Promise<MobilePlatform> {
   const kind = Capacitor.getPlatform() as "ios" | "android";
   if (kind === "android") {
     overlayReady ??= StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
-    if (!streamInstalled && Capacitor.isPluginAvailable("DuskStream")) {
-      streamInstalled = true;
-      const win = window as Window & { CapacitorWebFetch?: typeof fetch };
-      const origWebFetch = (win.CapacitorWebFetch ?? window.fetch).bind(window);
-      win.CapacitorWebFetch = createNativeStreamFetch(DuskStream, origWebFetch);
-    }
   } else {
     // WKWebView draws a form bar (previous, next, Done) over the keyboard; a chat has one field and its own send
     void Keyboard.setAccessoryBarVisible({ isVisible: false }).catch(() => {});
+  }
+  if (!streamInstalled && Capacitor.isPluginAvailable("DuskStream")) {
+    streamInstalled = true;
+    const win = window as Window & { CapacitorWebFetch?: typeof fetch };
+    const origWebFetch = (win.CapacitorWebFetch ?? window.fetch).bind(window);
+    win.CapacitorWebFetch = createNativeStreamFetch(DuskStream, origWebFetch);
   }
   // a plugin that never answers must not hold the first paint: each startup read gets two seconds
   const bounded = <T,>(work: Promise<T>, label: string): Promise<T | undefined> => new Promise((resolve) => {
@@ -855,9 +1044,9 @@ export async function nativePlatform(): Promise<MobilePlatform> {
   }
   if (kind === "ios" && Capacitor.isPluginAvailable("DuskPicker")) {
     setNativeAttach({
-      photos: async () => nativeFiles((await DuskPicker.photos({ multiple: true })).files),
+      photos: async () => pickedPhotos(await DuskPicker.photos({ multiple: true, maxBytes: FILE_MAX_BYTES, labels: pickerLabels(), source: composerSourceFrame() })),
       files: async () => nativeFiles((await DuskPicker.files({ multiple: true })).files),
-      camera: async () => nativeFiles((await DuskPicker.camera()).files),
+      camera: async () => pickedPhotos(await DuskPicker.camera({ maxBytes: FILE_MAX_BYTES, labels: pickerLabels(), source: composerSourceFrame() })),
     });
   }
   registerPhoneVoice({
@@ -872,7 +1061,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     native: true,
     appVersion: info?.version || __APP_VERSION__,
     deviceName: () => kind === "ios" ? "iPhone" : "Android phone",
-    glass: glass?.supported ? glassBridge(DuskGlass, glass.acks === true, glass.jump === true, glass.reply === true) : undefined,
+    glass: glass?.supported ? glassBridge(DuskGlass, glass) : undefined,
     menu: menu?.supported ? menuBridge(DuskMenu) : undefined,
     orientation: Capacitor.isPluginAvailable("DuskOrientation") ? orientationBridge(DuskOrientation) : undefined,
     haptic(type) {
@@ -987,6 +1176,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
         if (typeof id === "string" && next !== undefined) listener(id, next);
       })]),
     } : undefined,
+    dialogs: kind === "ios" && Capacitor.isPluginAvailable("DuskDialog") ? nativeDialogs(DuskDialog) : undefined,
     showMenu: kind === "ios" && Capacitor.isPluginAvailable("DuskPulldown") ? async (anchor, items) => {
       try { return (await DuskPulldown.show({ ...anchor, items, cancel: t("mobile.settings.cancel") }))?.key ?? null; } catch { return null; }
     } : undefined,
@@ -1005,7 +1195,30 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     } : undefined,
     camera: kind === "ios" ? (Capacitor.isPluginAvailable("QrScanner") ? scannerCamera(iosScanner) : undefined) : scannerCamera(androidScanner),
     async readClipboard() {
+      if (kind === "ios" && Capacitor.isPluginAvailable("DuskClipboard")) {
+        try {
+          const { text } = await DuskClipboard.read();
+          return typeof text === "string" ? text : null;
+        } catch {
+          return null;
+        }
+      }
       try { return await navigator.clipboard?.readText() ?? null; } catch { return null; }
+    },
+    async writeClipboard(text) {
+      if (kind === "ios" && Capacitor.isPluginAvailable("DuskClipboard")) {
+        try {
+          await DuskClipboard.write({ text });
+          return true;
+        } catch {}
+      }
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch {}
+      return false;
     },
     // Capacitor 8 hands a top-level navigation off the app's own origin to the system (Mail for mailto:); the in-app
     // browser view takes web pages only

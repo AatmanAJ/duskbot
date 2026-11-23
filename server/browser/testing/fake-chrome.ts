@@ -35,6 +35,9 @@ export interface FakePage {
   index: number;
   openerId?: string;
   focused: number | null;
+  /** What the person selected on the page; a copy command puts it on the page's clipboard. */
+  selection?: string;
+  copied?: string;
   /** Emulation.setDeviceMetricsOverride's size, which the page then reports instead of its window's. */
   emulated?: { width: number; height: number } | null;
   /** A bar of this height over the page, as Chrome's first tab has. */
@@ -247,7 +250,12 @@ export class FakeChrome implements CdpTransport {
     if (expression === "document.title") return page.title;
     if (expression.startsWith("({ url: location.href")) return { url: page.url, title: page.title, text: page.text };
     if (expression.includes("document.body.innerText") && expression.includes(".slice(")) return page.text;
-    if (expression.includes("__duskTakeCopy")) return "";
+    if (expression.includes("__duskTakeCopy")) {
+      const copied = page.copied ?? "";
+      page.copied = undefined;
+      return copied;
+    }
+    if (expression.includes("getSelection")) return page.selection ?? "";
     if (expression.includes("requestAnimationFrame")) return 1;
     if (expression.startsWith("({ x: innerWidth / 2")) return { x: viewport.width / 2, y: viewport.height / 2 };
     if (expression.startsWith("[Math.round(scrollX)")) return [0, 600, 3000];
@@ -369,6 +377,7 @@ export class FakeChrome implements CdpTransport {
         return {};
       }
       case "Input.dispatchKeyEvent": {
+        if (Array.isArray(params.commands) && params.commands.includes("copy") && page.selection) page.copied = page.selection;
         const element = page.focused === null ? undefined : page.elements[page.focused];
         if (element?.editable && params.type === "keyDown" && params.key === "Backspace") element.value = "";
         if (element?.editable && params.type === "keyDown" && typeof params.text === "string" && params.text.length === 1 && params.text !== "\r") element.value = `${element.value ?? ""}${params.text}`;

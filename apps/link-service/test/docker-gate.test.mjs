@@ -478,6 +478,13 @@ async function fakeDocker(path) {
           if (buffer.length) raw(buffer);
           return;
         }
+        if (method === "GET" && target.startsWith("/v1.47/events")) {
+          const watch = { hungUp: false };
+          streams.push(watch);
+          socket.on("end", () => { watch.hungUp = true; });
+          socket.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n");
+          return;
+        }
         const answer = route(method, target);
         if (answer === null) return socket.destroy();
         socket.write(answer);
@@ -673,6 +680,15 @@ describe("docker gate over unix sockets", () => {
     http.socket.end();
     expect(await http.ended()).toBe("HELLObye after stdin closed");
     expect(docker.streams).toEqual([{ in: "hello", ended: true }]);
+  });
+
+  // docker 29's CLI `stats --no-stream` subscribes to /events, which stays silent while no container starts
+  it("closes docker's side of a streamed answer that sends nothing once its client hangs up", async () => {
+    const http = await client(join(dir, "gate.sock"));
+    http.send("GET /v1.47/events?filters=%7B%7D HTTP/1.1\r\nHost: docker\r\n\r\n");
+    await http.received("200 OK");
+    http.socket.destroy();
+    await expect.poll(() => docker.streams.at(-1)?.hungUp, { timeout: 2_000 }).toBe(true);
   });
 
   it("never starts an exec it did not see created", async () => {

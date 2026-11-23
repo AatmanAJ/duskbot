@@ -113,6 +113,25 @@ describe("createNativeStreamFetch", () => {
     expect(fake.open).not.toHaveBeenCalled();
   });
 
+  it("unwraps CapacitorHttp interceptor URLs through DuskStream when running on an http dev server", async () => {
+    vi.stubGlobal("window", { location: { origin: "http://127.0.0.1:5320" } });
+    const fake = fakeStreamPlugin();
+    fake.open.mockResolvedValueOnce({ status: 200, headers: { "content-type": "application/json" }, body: btoa("{\"ok\":true}") });
+    const webFetch = vi.fn(async () => new Response("local-ok", { status: 200 }));
+    const nativeFetch = createNativeStreamFetch(fake.plugin, webFetch);
+
+    const response = await nativeFetch("capacitor://localhost/_capacitor_http_interceptor_?u=http%3A%2F%2Fmac.tailnet%3A8813%2Fapi%2Fstate", {
+      headers: { Authorization: "Bearer tok" },
+    });
+
+    expect(fake.open).toHaveBeenCalledWith(expect.objectContaining({
+      url: "http://mac.tailnet:8813/api/state",
+      headers: expect.objectContaining({ authorization: "Bearer tok" }),
+    }));
+    expect(webFetch).not.toHaveBeenCalled();
+    expect(await response.json()).toEqual({ ok: true });
+  });
+
   it("preserves AbortError when aborted while opening and closes the native call", async () => {
     const fake = fakeStreamPlugin();
     fake.open.mockReturnValue(new Promise(() => {}));
@@ -126,6 +145,33 @@ describe("createNativeStreamFetch", () => {
 
     await expect(pending).rejects.toBe(reason);
     expect(fake.close).toHaveBeenCalledWith({ id: "s1" });
+  });
+
+  it("gives up on an event stream whose head never comes and closes the native call, but lets a browser view wait for its browser", async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = fakeStreamPlugin();
+      fake.open.mockReturnValue(new Promise(() => {}));
+      const nativeFetch = createNativeStreamFetch(fake.plugin);
+      const pending = nativeFetch("http://192.168.1.50:8810/api/events", { headers: { Accept: "text/event-stream" } });
+      const failed = expect(pending).rejects.toThrow(TypeError);
+      await vi.waitFor(() => expect(fake.open).toHaveBeenCalledTimes(1));
+      expect(fake.open).toHaveBeenCalledWith(expect.objectContaining({ connectTimeout: 10_000, headTimeout: 10_000, stream: true }));
+      await vi.advanceTimersByTimeAsync(12_000);
+      await failed;
+      expect(fake.close).toHaveBeenCalledWith({ id: "s1" });
+
+      fake.open.mockClear();
+      const browserView = nativeFetch("http://192.168.1.50:8810/api/bots/b1/browser/live", { headers: { Accept: "text/event-stream" } });
+      let settled = false;
+      void browserView.then(() => { settled = true; }, () => { settled = true; });
+      await vi.waitFor(() => expect(fake.open).toHaveBeenCalledTimes(1));
+      expect(fake.open.mock.calls[0]?.[0]).not.toHaveProperty("headTimeout");
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(settled).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("rejects 3xx responses when redirect is error and closes the native call", async () => {

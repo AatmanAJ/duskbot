@@ -159,7 +159,8 @@ What sends an email, to `DUSK_ALERT_EMAILS` (empty: `DUSK_ADMIN_EMAILS`), all lo
 | the site behind dusk.bot stops answering the proxy (502) | same, as `SiteUpstreamDown` |
 | an uncaught exception or unhandled rejection that kills the service | spooled to `<data>/incident-spool`, mailed by the next start |
 | MongoDB state writes failing (checked every 30 s) | `incidents/process.ts` |
-| any `console.error` line, and `console.warn` lines with `ALERT` or a failure in them: failed emails, lease renewal failures, cloud setup, restore, backup, cost-ceiling and machine `ALERT` lines, the billing duplicate-subscription `ALERT` | console tap in `incidents/process.ts` |
+| any `console.error` line, and `console.warn` lines with `ALERT`: cloud setup, restore, final backup, cost-ceiling, lifecycle-step and machine `ALERT` lines, the billing duplicate-subscription `ALERT`. A warning that names a failure but no `ALERT` (something retried by itself) is kept on the health page and never emailed | console tap in `incidents/process.ts` |
+| a cloud outage the backend could not fix: bot computers still down after two restarts 10 minutes apart, an entitlement refresh failing with under 6 hours of the last one left. One email when it opens, one "back to normal" when it ends; a repair that worked is only in the managed audit | `outage_open` / `outage_close` from `apps/cloud-service`, wired in `app.ts` |
 | a page error on the dashboard or /admin, or an error in the desktop app's page or main process | `POST /v1/errors` |
 | a new @devs report from an app (one email per report, never repeated, at most 50 a day; all of them at /admin/bug-reports) | `POST /api/bug-reports`, `apps/dashboard/server/bug-reports` |
 

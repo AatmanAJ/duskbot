@@ -38,6 +38,7 @@ export interface PixelBot {
 interface Host { core: PixelCore; el: HTMLElement; vis: boolean; paused: boolean; animated: boolean; follow: boolean; paint(): void; centre(): { x: number; y: number }; timers: Set<ReturnType<typeof setTimeout>> }
 
 const hosts = new Set<Host>();
+let followCount = 0;
 let slept = false, raf = 0, timer: ReturnType<typeof setTimeout> | undefined, last = 0, epoch = 1, io: IntersectionObserver | null = null, listening = false;
 const ptr = { x: -1e5, y: -1e5, t: -1e9 };
 
@@ -69,7 +70,7 @@ function wake() {
 function listen() {
   if (listening || typeof window == "undefined") return;
   listening = true;
-  const mv = (e: PointerEvent) => { ptr.x = e.clientX; ptr.y = e.clientY; ptr.t = performance.now(); if ([...hosts].some((h) => h.follow)) wake(); };
+  const mv = (e: PointerEvent) => { ptr.x = e.clientX; ptr.y = e.clientY; ptr.t = performance.now(); if (followCount > 0) wake(); };
   addEventListener("pointermove", mv, { passive: true });
   addEventListener("pointerdown", mv, { passive: true });
   addEventListener("scroll", () => epoch++, { passive: true, capture: true });
@@ -156,6 +157,7 @@ export function createPixel(el: HTMLElement, o: PixelOptions): PixelBot {
   };
   core.on("social", () => notify(host));
   hosts.add(host);
+  if (host.follow) followCount++;
   io?.observe(el);
   host.paint();
   const redraw = () => { if (!animated) { core.tick(0); host.paint(); } else wake(); };
@@ -176,7 +178,8 @@ export function createPixel(el: HTMLElement, o: PixelOptions): PixelBot {
     pause() { host.paused = true; },
     resume() { host.paused = false; wake(); },
     destroy() {
-      hosts.delete(host); io?.unobserve(el);
+      if (hosts.delete(host) && host.follow) followCount--;
+      io?.unobserve(el);
       host.timers.forEach(clearTimeout);
       cv.remove();
     },

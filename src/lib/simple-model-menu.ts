@@ -375,13 +375,14 @@ export interface NotConnectedRow {
 const inApp = (instance: InstanceInfo) => connectsInApp(instance as unknown as ConnectInstance);
 
 /** The picker's Not connected rows: the providers listed here that wait for a sign-in or a setup, then the Connect an AI
- * cards that aren't connected yet. A local model lives in the directory, not here. */
+ * cards that aren't connected yet; a card connected through another of its accounts has none. A local model lives in
+ * the directory, not here. */
 export function notConnectedRows(instances: readonly InstanceInfo[], waiting: readonly MenuGroup[]): NotConnectedRow[] {
   const tiles = aiTiles(instances, engineReady, inApp).filter((tile) => tile.id !== "local");
   const rows: NotConnectedRow[] = [];
   for (const group of waiting) {
     const tile = tiles.find((one) => one.candidates.includes(group.instance));
-    if (tile && rows.some((row) => row.tile === tile.id)) continue;
+    if (tile && (engineReady(tile.instance) || rows.some((row) => row.tile === tile.id))) continue;
     rows.push({ key: tile?.id ?? group.instance.instanceId, name: tile?.label ?? group.label, instance: group.instance,
       ...(tile ? { tile: tile.id } : {}), state: group.body.kind === "setUp" ? "setUp" : "signIn" });
   }

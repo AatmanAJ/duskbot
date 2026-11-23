@@ -57,7 +57,7 @@ export interface BillingOptions {
   accountName?: (accountId: string) => string | null;
   accountEmail?: (accountId: string) => string | null;
   /** every deletion action of a managed cloud and fleet alerts, for the record; never an email */
-  alert?: (entry: { at: number; cloudId: string; action: string; actor: string; reason: string }) => void;
+  alert?: (entry: { at: number; cloudId: string; action: string; actor: string; reason: string; detail?: Record<string, string | number | boolean | null> }) => void;
 }
 export const ACCOUNT_CLOSE_UNAVAILABLE = "Your plan couldn't be cancelled with the payment provider just now, so nothing was deleted and your dusk cloud is still there; try again in a few minutes.";
 /** the hosted app's Bearer resolver remains null until shared/account-api.ts supplies the accounts service */
@@ -150,7 +150,9 @@ export function createBilling(options: BillingOptions) {
   const store = createBillingStore(options.dataDir);
   billingStore = store;
   const mode = billingProvider === "dodo" && dodoMode === "live" ? "live" as const : "test" as const;
-  const service = createBillingService({ store, provider, clouds, config, publicUrl: url.origin, now, notify: options.notify, onLedger: options.onLedger, onRetention: options.onRetention, mode });
+  const retry = env.DUSK_BILLING_RETRY ?? "off";
+  if (retry !== "off" && retry !== "paid" && retry !== "all") throw new Error("Invalid DUSK_BILLING_RETRY.");
+  const service = createBillingService({ store, provider, clouds, config, publicUrl: url.origin, now, notify: options.notify, onLedger: options.onLedger, onRetention: options.onRetention, mode, retry });
   if (options.accountExists) service.scrubDeleted(options.accountExists);
   // a deleted account's clouds left over from before (or by a failed step) are destroyed at start, then every 10 minutes
   service.destroyDeleted();

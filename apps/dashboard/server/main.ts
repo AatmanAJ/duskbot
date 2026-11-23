@@ -26,6 +26,7 @@ import { mongoBugReportStore } from "./bug-reports/store.ts";
 import { tapConsole, watchDatabase, watchProcess } from "./incidents/process.ts";
 import { stateBackend } from "./persistence/backend.ts";
 import { gracefulStop, listenWhenFree, readyGate } from "./serve.ts";
+import { traceWorthy } from "./request-trail.ts";
 
 const port = Number(process.env.DUSK_DASHBOARD_PORT ?? 7480);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid dashboard port.");
@@ -119,7 +120,10 @@ function traced(req: IncomingMessage, res: ServerResponse) {
   const cid = req.headers[TRAIL_HEADER];
   if (validTrailId(cid)) {
     const startedAt = Date.now();
-    res.once("close", () => trail("cloud.req", { cid, method: req.method, path: req.url, status: res.statusCode, ms: Date.now() - startedAt }));
+    res.once("close", () => {
+      const ms = Date.now() - startedAt;
+      if (traceWorthy(req.url, res.statusCode, ms)) trail("cloud.req", { cid, method: req.method, path: req.url, status: res.statusCode, ms });
+    });
   }
   return durable(req, res);
 }

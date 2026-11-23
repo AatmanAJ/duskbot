@@ -1,8 +1,10 @@
 // real-shaped failures per engine, as each driver emits them in runtime.error, read into a usage reason and a detail
 import { describe, expect, it } from "vitest";
-import { FAILURE_DETAIL, cleanUsageTurn, cliExitCode, failureOf, modelFamily, opencodeProvider, rpcCode } from "../shared/usage-signals.ts";
+import { FAILURE_DETAIL, cleanUsageTurn, cliExitCode, failureOf, modelFamily, opencodeProvider, rpcCode, rpcFailureCode, thrownCode } from "../shared/usage-signals.ts";
 import { codexErrorCode } from "./drivers/codex-errors.ts";
 import { engineFailureMessage } from "./drivers/engine-errors.ts";
+import { completionError } from "./drivers/openai-chat-refusals.ts";
+import { failureCodeOf, unfinishedReply } from "./drivers/openai-chat-final.ts";
 import { exitDetail } from "./drivers/acp/exit-report.ts";
 import { describeSpawnFailure } from "./procs.ts";
 import { serverLine } from "./server-lines.ts";
@@ -145,6 +147,30 @@ describe("a JSON-RPC failure with no words to go on (ACP agents, codex app-serve
     expect(rpcCode("x")).toBeUndefined();
     expect(rpcCode(1.5)).toBeUndefined();
   });
+
+  it("names what codex's invalid request was about with a fixed word, never its message", () => {
+    const said = (message: string) => failureOf(message, { code: rpcFailureCode(-32600, message), stopReason: "rpc_error" });
+    expect(said("Conversation already has a writer")).toEqual({ reason: "bad_request", detail: "rpc_32600:writer_held" });
+    expect(said("thread not found: 0199a1b2")).toEqual({ reason: "bad_request", detail: "rpc_32600:thread_not_found" });
+    expect(said("Invalid request: unknown variant `max`, expected one of `low`, `medium`")).toEqual({ reason: "bad_request", detail: "rpc_32600:invalid_params" });
+    expect(said(`Invalid request ${SECRET}`)).toEqual({ reason: "bad_request", detail: "rpc_32600" });
+    expect(rpcFailureCode("x", "already has a writer")).toBeUndefined();
+  });
+});
+
+describe("an api-key turn that threw before the provider answered", () => {
+  it("keeps the error's class, status and errno as its detail instead of the bare stop reason", () => {
+    const badUrl = Object.assign(new TypeError(`Failed to parse URL from ${SECRET}`), { code: "ERR_INVALID_URL" });
+    expect(thrownCode(badUrl)).toBe("TypeError:err_invalid_url");
+    expect(failureOf(badUrl.message, { code: thrownCode(badUrl), stopReason: "error" })).toEqual({ reason: "unknown", detail: "TypeError:err_invalid_url" });
+    const html = new SyntaxError(`Unexpected token '<', "<!DOCTYPE "... is not valid JSON ${SECRET}`);
+    expect(failureOf(html.message, { code: thrownCode(html), stopReason: "error" }).detail).toBe("SyntaxError");
+    const reset = new TypeError("fetch failed", { cause: Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" }) });
+    expect(failureOf(reset.message, { code: thrownCode(reset), stopReason: "error" })).toEqual({ reason: "network", detail: "TypeError:und_err_socket" });
+    expect(thrownCode(new Error(SECRET))).toBeUndefined();
+    expect(thrownCode(Object.assign(new Error("x"), { code: "a secret code with spaces" }))).toBeUndefined();
+    expect(JSON.stringify([thrownCode(badUrl), thrownCode(html), thrownCode(reset)])).not.toMatch(/jane|acme|sk-live/);
+  });
 });
 
 describe("the api engine's own stops", () => {
@@ -213,5 +239,40 @@ describe("a cli that quit before its result, for every cli engine", () => {
 
   it("an empty line still reads by its exit code", () => {
     expect(failureOf("", { code: cliExitCode({ code: 3, output: false }) })).toEqual({ reason: "cli_exit_early", detail: "exit_3:no_output" });
+  });
+});
+
+describe("causes the unknown bucket held (prod 11-21: these details came back as reason unknown)", () => {
+  it("reads a mid-stream gateway error chunk by the upstream status it carries", () => {
+    const chunk = completionError({ error: { code: 502, message: "Provider returned error" } } as never, "streaming completion error")!;
+    expect(failureOf(chunk.message)).toEqual({ reason: "provider_down", detail: "http_502" });
+    const limited = completionError({ error: { code: 429, message: "Rate limit exceeded" } } as never, "streaming completion error")!;
+    expect(failureOf(limited.message).reason).toBe("rate_limit");
+    expect(completionError({ error: { code: "bad_thing", message: "x" } } as never, "completion error")!.message).toBe("provider returned a completion error: x");
+  });
+
+  it("reads a finish reason the reply ended on (an output allowance is left alone: it is not a full chat)", () => {
+    const filtered = unfinishedReply("half a reply", "content_filter")!;
+    expect(failureOf(filtered.message, { code: failureCodeOf(filtered), stopReason: "error" }).reason).toBe("refused");
+    const errored = unfinishedReply("half a reply", "error")!;
+    expect(failureOf(errored.message, { code: failureCodeOf(errored), stopReason: "error" }).reason).toBe("provider_down");
+  });
+
+  it.each([
+    ["ServiceUnavailableError: the model is overloaded right now", "provider_down", "ServiceUnavailableError"],
+    ["KVTransferError: prefill node lost", "provider_down", "KVTransferError"],
+    ["APIConnectionError: could not connect", "network", "APIConnectionError"],
+    ["AuthenticationError: no", "auth", "AuthenticationError"],
+  ])("names an SDK error class: %s", (text, reason, detail) => {
+    expect(failureOf(text)).toEqual({ reason, detail });
+  });
+
+  it("keeps an error class a driver hands over as its code", () => {
+    expect(failureOf("Something went wrong", { code: "ServiceUnavailableError" })).toEqual({ reason: "provider_down", detail: "ServiceUnavailableError" });
+    expect(failureOf("Something went wrong", { code: "UnknownError" }).reason).toBe("unknown");
+  });
+
+  it.each([["empty_turn", "no_reply"], ["incomplete_action", "no_reply"], ["api_error", "provider_down"]])("reads the bare stop reason %s", (stopReason, reason) => {
+    expect(failureOf(stopReason, { stopReason }).reason).toBe(reason);
   });
 });

@@ -9,7 +9,8 @@ import { connect as tlsConnect } from "node:tls";
 
 import { sendJobNote } from "./dusk-notify.ts";
 
-export interface TelegramMessage { chat: string; chatId: number; from: string; text: string; at: number }
+/** `id` is Telegram's message_id, the same for a message and its edits, so a run can tell a new post from one it logged. */
+export interface TelegramMessage { chat: string; chatId: number; id?: number; from: string; text: string; at: number }
 
 /** Telegram's Bot API (https://core.telegram.org/bots/api), the fields this reads. */
 interface Update {
@@ -17,7 +18,7 @@ interface Update {
   message?: RawMessage; edited_message?: RawMessage; channel_post?: RawMessage; edited_channel_post?: RawMessage;
 }
 interface RawMessage {
-  date: number; text?: string; caption?: string;
+  message_id?: number; date: number; text?: string; caption?: string;
   chat: { id: number; title?: string; username?: string; first_name?: string; type: string };
   from?: { first_name?: string; last_name?: string; username?: string };
   sender_chat?: { title?: string };
@@ -31,7 +32,7 @@ export function messagesOf(updates: readonly Update[]): TelegramMessage[] {
     if (!raw || !text) continue;
     const chat = raw.chat.title ?? raw.chat.username ?? raw.chat.first_name ?? String(raw.chat.id);
     const from = raw.from ? [raw.from.first_name, raw.from.last_name].filter(Boolean).join(" ") || raw.from.username || "someone" : raw.sender_chat?.title ?? chat;
-    out.push({ chat, chatId: raw.chat.id, from, text, at: raw.date * 1000 });
+    out.push({ chat, chatId: raw.chat.id, ...(typeof raw.message_id === "number" ? { id: raw.message_id } : {}), from, text, at: raw.date * 1000 });
   }
   return out;
 }
@@ -44,8 +45,8 @@ export function wanted(message: TelegramMessage, chats: readonly string[], keywo
 }
 
 export function noteFor(messages: readonly TelegramMessage[], limit = 3_800): string {
-  const lines = messages.map((m) => `[${m.chat}] ${m.from} (${new Date(m.at).toISOString().slice(0, 16).replace("T", " ")} UTC): ${m.text.replace(/\s+/g, " ").trim()}`);
-  let note = `New Telegram messages (${messages.length}):\n`;
+  const lines = messages.map((m) => `[${m.chat}] ${m.from} (${new Date(m.at).toISOString().slice(0, 16).replace("T", " ")} UTC${m.id === undefined ? "" : `, message ${m.id}`}): ${m.text.replace(/\s+/g, " ").trim()}`);
+  let note = `New Telegram messages (${messages.length}), each with all this watch knows of it: chat, sender, time, message id and text:\n`;
   for (const line of lines) {
     if (note.length + line.length + 1 > limit) { note += "[more messages were left out]"; break; }
     note += `${line}\n`;

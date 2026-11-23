@@ -32,6 +32,7 @@ import { HomeScreen, releasePressed } from "./HomeScreen";
 import { panelOpenAction, SheetHost } from "./SheetHost";
 import { backLayerCount, closeTopSheet, Sheet, subscribeBackLayers } from "./Sheet";
 import { t } from "@/lib/i18n";
+import { systemDialogs } from "@/lib/system-dialog";
 import { dismissKeyboard, useKeyboardDismiss, useKeyboardSync } from "./keyboard";
 import { useNativeGlass } from "./native-glass";
 import { useNativeHomeGlass } from "./native-home-glass";
@@ -44,6 +45,7 @@ import { useOutbox } from "./outbox";
 import { installPress } from "./press";
 import { MessageHold } from "./MessageHold";
 import { ViewerHost } from "./viewers/ViewerHost";
+import { opensBrowserTakeoverDirectly, PhoneBrowserTakeover } from "./PhoneBrowserTakeover";
 import { usePlatform } from "./platform";
 import type { MobileSheet } from "./sheets";
 import { PanelDetailsTab } from "@/components/bot-panel/PanelShell";
@@ -143,6 +145,39 @@ function Shell() {
   }, [dispatch]);
   const closeSheet = useCallback(() => setSheetOpen(false), []);
 
+  const [browserTakeover, setBrowserTakeover] = useState<{
+    botId: string;
+    signIn: { url: string; site: string; nonce: number } | null;
+  } | null>(null);
+  const openBrowserTakeover = useCallback((botId: string, signIn: { url: string; site: string; nonce: number } | null = null) => {
+    if (rootRef.current) dismissKeyboard(platform, rootRef.current);
+    setBrowserTakeover({ botId, signIn });
+  }, [platform]);
+  const lastBrowserSignIn = useRef(0);
+  useEffect(() => {
+    const focus = state.signInFocus;
+    if (!focus || focus.consumed || focus.place !== "browser") return;
+    if (lastBrowserSignIn.current === focus.requestId) return;
+    lastBrowserSignIn.current = focus.requestId;
+    openBrowserTakeover(focus.botId, { url: focus.url, site: focus.site, nonce: focus.requestId });
+    dispatch({ type: "signInFocusConsumed", requestId: focus.requestId });
+    dispatch({ type: "toggleSettings", open: false });
+  }, [state.signInFocus, dispatch, openBrowserTakeover]);
+
+  const lastComputerRequest = useRef(state.computerTabRequest);
+  useEffect(() => {
+    if (state.computerTabRequest === lastComputerRequest.current) return;
+    lastComputerRequest.current = state.computerTabRequest;
+    if (!state.settingsOpen) return;
+    if (state.signInFocus?.place === "browser" && (!state.signInFocus.consumed || lastBrowserSignIn.current === state.signInFocus.requestId)) return;
+    const targetId = (state.signInFocus && !state.signInFocus.consumed ? state.signInFocus.botId : null)
+      ?? state.selectedId
+      ?? shownChat.current;
+    if (!targetId) return;
+    setSheet((current) => (current?.kind === "computer" && current.botId === targetId ? current : { kind: "computer", botId: targetId }));
+    setSheetOpen(true);
+  }, [state.computerTabRequest, state.settingsOpen, state.selectedId, state.signInFocus]);
+
   // a shared card that opens the computer app's settings (connect an AI, add a key) has nothing to open on a phone: it
   // says where that lives instead of doing nothing
   const [desktopOnly, setDesktopOnly] = useState(false);
@@ -151,7 +186,19 @@ function Shell() {
     dispatch({ type: "toggleAppSettings", open: false });
     // voice input is set up on the phone itself: its own settings sheet has the page
     if (state.appSettingsSection === "voice") openSheet({ kind: "settings", page: "voice" });
-    else setDesktopOnly(true);
+    else {
+      const dialogs = systemDialogs();
+      if (dialogs) {
+        void dialogs.alert({
+          title: t("mobile.desktopOnly.title"),
+          message: t("mobile.desktopOnly.body"),
+          confirmLabel: t("mobile.desktopOnly.done"),
+          singleAction: true,
+        });
+      } else {
+        setDesktopOnly(true);
+      }
+    }
   }, [state.appSettingsOpen, state.appSettingsSection, dispatch, openSheet]);
 
   useEffect(() => {
@@ -177,12 +224,16 @@ function Shell() {
       else openChat(id);
       if (target.messageId && target.threadId) dispatch({ type: "focusMessage", threadId: target.threadId, messageId: target.messageId });
     }
-    if (target.view === "computer" && target.botId) openSheet({ kind: "computer", botId: target.botId });
+    if (target.view === "computer" && target.botId) {
+      const targetBot = latest.current.bots.find((b) => b.id === target.botId);
+      if (targetBot && opensBrowserTakeoverDirectly(targetBot, latest.current)) openBrowserTakeover(targetBot.id);
+      else openSheet({ kind: "computer", botId: target.botId });
+    }
     else if (target.view === "profile" && id) openSheet({ kind: "profile", id });
     else if (target.view === "settings") openSheet({ kind: "settings" });
     else if (target.view === "notifications") openSheet({ kind: "notifications" });
     else if (target.view === "routines") openSheet({ kind: "routines", botId: target.botId });
-  }, [dispatch, openChat, openSheet, place]);
+  }, [dispatch, openBrowserTakeover, openChat, openSheet, place]);
 
   useEffect(() => platform.onAppUrl?.((url) => {
     if (parseSlackOAuthLink(url)) { void completeSlackOAuth(url); return true; }
@@ -251,6 +302,11 @@ function Shell() {
   useNativeHomeGlass(platform, rootRef);
   const leaveChat = useCallback(() => { if (rootRef.current) dismissKeyboard(platform, rootRef.current); }, [platform]);
 
+  const takeoverBot = browserTakeover ? state.bots.find((b) => b.id === browserTakeover.botId) : undefined;
+  useEffect(() => {
+    if (browserTakeover && state.hydrated && !takeoverBot) setBrowserTakeover(null);
+  }, [browserTakeover, state.hydrated, takeoverBot]);
+
   const page = bot || group ? (
     <ChatScreen
       bot={bot}
@@ -258,7 +314,10 @@ function Shell() {
       members={members}
       onBack={backToList}
       onProfile={() => openSheet({ kind: "profile", id: chatId! })}
-      onComputer={() => openSheet({ kind: "computer", botId: chatId! })}
+      onComputer={() => {
+        if (bot && opensBrowserTakeoverDirectly(bot, state)) openBrowserTakeover(bot.id);
+        else openSheet({ kind: "computer", botId: chatId! });
+      }}
     />
   ) : null;
 
@@ -277,6 +336,9 @@ function Shell() {
       <ConnectAppsHost />
       <MessageHold rootRef={rootRef} />
       <ViewerHost rootRef={rootRef} />
+      {browserTakeover && takeoverBot && (
+        <PhoneBrowserTakeover bot={takeoverBot} signIn={browserTakeover.signIn} onClose={() => setBrowserTakeover(null)} />
+      )}
       <AiConsentSheet />
       <Sheet open={desktopOnly} onClose={() => setDesktopOnly(false)} title={t("mobile.desktopOnly.title")}>
         <div className="px-5 pb-[calc(var(--m-safe-bottom)+16px)]">

@@ -101,6 +101,47 @@ describe("Codex app-server pool", () => {
     expect(killed).toEqual([busy.child]);
   });
 
+  it("a busy app-server holding the thread is asked to let it go, and a new process resumes it only once it did", async () => {
+    const child = spawn();
+    const busy = pool.adopt("key", asChild(child));
+    busy.threads.set("native-1", { contract: "c", approval: {}, lastUsed: clock });
+    expect(pool.take("other", "native-1")).toBeNull();
+    let released = false;
+    void pool.released("native-1").then(() => { released = true; });
+    await flush();
+    expect(child.written).toEqual([{ jsonrpc: "2.0", id: 1, method: "thread/unsubscribe", params: { threadId: "native-1" } }]);
+    expect(released).toBe(false);
+    child.say({ jsonrpc: "2.0", id: 1, result: { status: "unsubscribed" } });
+    await flush();
+    expect(released).toBe(true);
+    expect(killed).toEqual([]);
+    await pool.released("native-1");
+  });
+
+  it("a stalled app-server that does not let the thread go in time is stopped, so the next turn can write the conversation", async () => {
+    vi.useFakeTimers();
+    const busy = pool.adopt("key", asChild(spawn()));
+    busy.threads.set("native-1", { contract: "c", approval: {}, lastUsed: clock });
+    pool.take("other", "native-1");
+    let released = false;
+    void pool.released("native-1").then(() => { released = true; });
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(released).toBe(false);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(killed).toEqual([busy.child]);
+    expect(released).toBe(true);
+    expect(pool.size()).toBe(0);
+  });
+
+  it("an idle app-server holding the thread has exited before the thread is resumed elsewhere", async () => {
+    const holder = pool.adopt("old", asChild(spawn()));
+    holder.threads.set("native-1", { contract: "c", approval: {}, lastUsed: clock });
+    pool.release(holder);
+    pool.take("new", "native-1");
+    await pool.released("native-1");
+    expect(killed).toEqual([holder.child]);
+  });
+
   it("closes an idle app-server after the idle limit", async () => {
     vi.useFakeTimers();
     const server = pool.adopt("key", asChild(spawn()));

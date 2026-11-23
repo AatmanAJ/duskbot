@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aiName, aiTiles, freeModel, funnelSteps, nextStep, previousStep } from "./funnel";
+import { aiName, aiTiles, foundPicks, freeModel, funnelSteps, nextStep, previousStep } from "./funnel";
 
 const ai = (instanceId: string, driverKind: string, ready = false, extra: Record<string, unknown> = {}) => ({
   instanceId, driverKind, displayName: instanceId, access: "subscription", snapshot: { state: ready ? "available" : "unavailable", ...extra },
@@ -50,7 +50,7 @@ describe("the AI grid", () => {
   it("names each AI as people know it, in a fixed order, with only the ones this app can connect", () => {
     const tiles = aiTiles([ai("claude", "claudeAgent"), ai("chatgpt", "codex"), ai("antigravity", "antigravityAgent"), ai("openrouter", "openai-compat")], ready);
     expect(tiles.map((tile) => [tile.id, tile.label, tile.instance.instanceId])).toEqual([
-      ["chatgpt", "ChatGPT", "chatgpt"], ["claude", "Claude", "claude"], ["gemini", "Gemini", "antigravity"], ["openrouter", "OpenRouter", "openrouter"],
+      ["chatgpt", "ChatGPT", "chatgpt"], ["claude", "Claude", "claude"], ["antigravity", "Antigravity", "antigravity"], ["openrouter", "OpenRouter", "openrouter"],
     ]);
     expect(aiName({ instanceId: "chatgpt", driverKind: "codex", displayName: "ChatGPT plan" })).toBe("ChatGPT");
     expect(aiName({ instanceId: "kimi", driverKind: "kimiAgent", displayName: "Kimi" })).toBe("Kimi");
@@ -61,8 +61,31 @@ describe("the AI grid", () => {
     expect(tiles[0]!.instance.instanceId).toBe("codex");
   });
 
+  it("never offers an AI whose saved driver this build lacks, falling back to one of its kind it does know", () => {
+    const unknown = (instanceId: string) => ({ ...ai(instanceId, "not-a-real-driver"), unknownDriver: true as const });
+    const tiles = aiTiles([ai("claude", "claudeAgent"), unknown("openaiCompat"), unknown("cursor"), unknown("chatgpt"), ai("codex", "codex")], ready);
+    expect(tiles.map((tile) => [tile.id, tile.instance.instanceId])).toEqual([["chatgpt", "codex"], ["claude", "claude"]]);
+    expect(tiles[0]!.candidates.map((candidate) => candidate.instanceId)).toEqual(["codex"]);
+  });
+
   it("offers the free model only when it is ready", () => {
     expect(freeModel([ai("opencodeGo", "opencodeGo", true, { freeFallback: true })], ready)?.instanceId).toBe("opencodeGo");
     expect(freeModel([ai("opencodeGo", "opencodeGo", false, { freeFallback: true })], ready)).toBeUndefined();
+  });
+});
+
+describe("the AIs the AI step records as chosen", () => {
+  const found = { found: true as const };
+  it("records the AI the person used, and every ready card they continued with, when the server only found it here", () => {
+    const claude = { ...ai("claude", "claudeAgent", true), ...found };
+    const codex = { ...ai("codex", "codex", true), ...found };
+    const grok = ai("grok", "grokAgent", true);
+    const cursor = { ...ai("cursor", "cursorAgent", false), ...found };
+    const all = [claude, codex, grok, cursor];
+    expect(foundPicks("own", claude, all, ready)).toEqual([claude]);
+    expect(foundPicks("own", grok, all, ready), "one already chosen needs nothing").toEqual([]);
+    expect(foundPicks("connected", undefined, all, ready).map((one) => one.instanceId).sort()).toEqual(["claude", "codex"]);
+    expect(foundPicks("free", claude, all, ready)).toEqual([]);
+    expect(foundPicks("later", claude, all, ready)).toEqual([]);
   });
 });

@@ -87,4 +87,9 @@ export interface MachineImage {
   rollbackCommand: string;
   /** prints the bot computers' image state: ready, building, failed or none */
   desktopStatusCommand: string;
+  /** moves the home's saved phone relay tunnel aside (prints "moved aside" or "none") */
+  phoneRelayAsideCommand: string;
+  /** brings docker and the docker gate back (prints ok, none, healed <what>... or down docker|gate); `refreshGate`
+   *  also restarts a gate that answers but runs an older package's code, which cuts live bot computer sessions */
+  computerCheckCommand(refreshGate: boolean): string;
 }

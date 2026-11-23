@@ -87,3 +87,18 @@ it("streams a volume far larger than the memory it uses", async () => {
   const checked = await backups.check(ID, KEY, record.file);
   expect(checked).toEqual({ problem: null, sha256: record.sha256 });
 }, 60_000);
+
+it("checks a backup of many read pieces without piling up listeners on its unzip stream", async () => {
+  const { backups } = store();
+  const noise = Buffer.alloc(14 * (1 << 20));
+  for (let at = 0; at < noise.length; at += 4) noise.writeUInt32LE((Math.imul(at, 2654435761) ^ (at >>> 7)) >>> 0, at);
+  const record = backups.write(ID, KEY, home([{ name: "home/noise.bin", data: noise.toString("latin1") }]));
+  const warnings: Error[] = [];
+  const onWarning = (warning: Error) => warnings.push(warning);
+  process.on("warning", onWarning);
+  try {
+    expect((await backups.check(ID, KEY, record.file)).problem).toBeNull();
+    await new Promise(resolve => setImmediate(resolve));
+  } finally { process.off("warning", onWarning); }
+  expect(warnings.filter(warning => warning.name === "MaxListenersExceededWarning")).toEqual([]);
+});

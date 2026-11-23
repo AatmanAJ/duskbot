@@ -32,7 +32,7 @@ import { botAvatarUrlFromStoredPath } from "../shared/bot-avatar.ts";
 import { BOT_PROFILE_LIMITS } from "../shared/bot-profile.ts";
 import { ERROR_DUMP_REFUSAL, sendsErrorDump, withoutEchoedPrompt } from "../shared/failed-turn.ts"; import { failedTurnRow } from "./failed-turn-row.ts";
 import { plainComputerFailure } from "../shared/computer-unreachable.ts";
-import { routinePromptName } from "../shared/routine-run.ts";
+import { routinePromptName, routineStartMark, routineStartOf } from "../shared/routine-run.ts";
 import { assistantTranscript, errorTranscript } from "../shared/client-cancel.ts"; import { PersonStops, stoppedTurnRow } from "./person-stops.ts"; import { LiveTurns } from "./live-turns.ts"; import { askedElsewhereAt, personClock, previousPersonMessageAt } from "./turn-gap.ts";
 import { phonePairingLink } from "../shared/pairing-link.ts"; import { personTagNames, withoutPersonTags } from "../shared/person-mention.ts";
 import { canWorkOnCloud, type CloudEngine } from "../shared/cloud-computer.ts";
@@ -84,7 +84,7 @@ import { RoomTurnDeadline, RoomTurnStallRegistry, effectiveRoomTurnTimeoutMinute
 import { roomTurnEnd, type RoomClaimEnd } from "./room-turn-end.ts";
 import { applyHoldDirective, classifyHoldDirective, heldMemberLine, rememberHeldMessage, stopWordPlacement } from "./room-holds.ts";
 import { createPersonStop } from "./host/person-stop.ts"; import { createTurnOrder } from "./host/turn-order.ts"; import { createQueuedNotes, createWaitWords } from "./host/wait-words.ts"; import { settleParkedFiles, type ParkedTurnAttachment } from "./host/turn-attachments.ts"; import type { DirectSendInput, DirectSendReceipt } from "./direct-send.ts";
-import { finishedWithoutSummaryLine, isPassText, ROOM_SUMMARY_REASK, roomTurnNarrationIds, roomTurnReply } from "./room-reply.ts"; import { isDirectPassText } from "./silent-reply.ts"; import { createStreamedReply, turnHadOutput } from "./host/streamed-reply.ts"; import { answeredAboveNote, cleanBotVoice, mentionCueNote, roomTalkRules, roomTurnVoiceNote } from "./group-voice.ts"; import { asksFor, MentionChain } from "./room-mention-chain.ts"; import { teammatesNote, workInProgressNote, type InHand } from "./room-team-context.ts"; import { createRoomEarlier, ROOM_EARLIER_LABEL } from "./host/room-earlier.ts"; import { replyBubbles } from "./reply-bubbles.ts";
+import { finishedWithoutSummaryLine, isPassText, ROOM_SUMMARY_REASK, roomTurnNarrationIds, roomTurnReply } from "./room-reply.ts"; import { createStreamedReply } from "./host/streamed-reply.ts"; import { answeredAboveNote, cleanBotVoice, mentionCueNote, roomTalkRules, roomTurnVoiceNote } from "./group-voice.ts"; import { asksFor, MentionChain } from "./room-mention-chain.ts"; import { teammatesNote, workInProgressNote, type InHand } from "./room-team-context.ts"; import { createRoomEarlier, ROOM_EARLIER_LABEL } from "./host/room-earlier.ts"; import { replyBubbles } from "./reply-bubbles.ts";
 import { pickComputer } from "./computer-selection.ts";
 import { keyHint, keyStatus, nestedKeyStatus, withoutKeyHints } from "./key-hint.ts";
 import { chartRenderer, compileChart, dataEngine, validateVegaLite } from "./data/deps.ts";
@@ -125,10 +125,10 @@ import { connectorCardDescription, connectorCardText } from "./connector-card-te
 import { BOT_LIMIT_CODE } from "../shared/bot-limit.ts"; import { createBotLimit } from "./host/starter-bot-limit.ts"; import { chiefOfStaffSystemPrompt } from "./chief-of-staff.ts"; import { chiefLevel, readTeamRolesWith } from "./chief-level.ts"; import { defaultBotRefusal, ensureDefaultBot, renameLegacyDefaultBots } from "./default-bot.ts";
 import { buildRecall, recallRooms, recallThreadIds, withRecalled } from "./recall.ts";
 import { heldMemory, takeMemoryDelta } from "./memory-snapshot.ts";
-import { aboutOwner, embedPendingFacts } from "./memory-facts.ts";
+import { aboutOwner, embedPendingFacts, hasPendingFactsToEmbed } from "./memory-facts.ts";
 import { migrateMemory } from "./memory-migrate.ts";
 import { personsOwnWords, readOutsideContent } from "./memory-trust.ts";
-import { embedderSettled, warmEmbedder } from "./memory-embed.ts";
+import { embedderSettled, stopEmbedder, warmEmbedder } from "./memory-embed.ts";
 import { generalForPrompt, listGeneralHistory } from "./general-memory.ts";
 import { computerFailuresToResolve, RESOLVE_SCAN } from "./computer-failure-resolution.ts";
 import { chatMessageCount, habitReminder } from "./habit-reminder.ts"; import { HANDOFF_BRIEF_RULE } from "./handoff-brief.ts"; import { hostTimeZone, personTimeZone, takesTurnClock, withTurnClock } from "./turn-clock.ts";
@@ -185,21 +185,21 @@ import {
   roomMemoryCaptureEnabled,
   tidyHour,
   builtInBrowserEnabled,
-  persistableInstanceConfigs,
+  persistableInstanceConfigs, withProviderChosen,
   type AppConfig,
   vpsSshAlias, vpsIsThisServer,
   mergeVpsConfig,
   DATA_DIR, EVENTS_DIR,
   onConfigSaved,
   CLAUDE_API_INSTANCE,
-  openCodeProviderKeys,
+  openCodeProviderKeys, configFileProblem,
 } from "./config.ts";
 import { serveStatic } from "./static-files.ts";
 import { startUpkeep } from "./host/start-upkeep.ts";
-import { CONTROL_SILENCE_MS, CONTROL_SILENCE_SWEEP_MS, ComputerControl } from "./computer-control.ts"; import { answerBotPointer } from "./bot-pointer.ts";
+import { CONTROL_SILENCE_MS, ComputerControl, createControlSilenceSweeper } from "./computer-control.ts"; import { answerBotPointer } from "./bot-pointer.ts";
 import { resetPathCache } from "./env-path.ts";
 import { registerEnginesBinDir } from "./engine-install.ts";
-import { startFreeBackupPreinstall } from "./free-backup.ts";
+import { freeBackupArriving, startFreeBackupPreinstall } from "./free-backup.ts";
 import { appendUsage, flushUsageLedger, queuedTurnTrigger, usageTriggerFor, type UsageRow, type UsageTrigger } from "./usage-ledger.ts"; import { createUsageAttribution } from "./usage-attribution.ts";
 import { createTraceRecorder } from "./usage-trace/recorder.ts";
 import { GroupUsageReader } from "./group-thread-usage.ts";
@@ -483,7 +483,7 @@ import { screenFrameHash, screenSurfaceForTool, screenTouchingTool, settledFrame
 import { asSchedule, RoutineRequestService } from "./routine-requests.ts"; import { ownerSpokeOnly } from "./cloud-routine-level.ts"; import { routineRunCard, routineRunFallbackText } from "./routine-run-card.ts";
 import { activeRoutinesContext } from "./active-routines-context.ts";
 import { createRefusedHandoffs } from "./host/refused-handoffs.ts"; import { automationContextText, createAutomationReports, newestAutomationLines } from "./automation-reports.ts"; import { createAutomationDestinations } from "./automation-destinations.ts"; import { createProactive } from "./host/proactive.ts"; import { READ_AND_DRAFT_PARTS, READ_AND_DRAFT_REFUSAL, READ_AND_DRAFT_TOOLS, recordsAnswer } from "./read-and-draft.ts"; import { createPresenceRoutes } from "./routes/presence.ts"; import { needsYouNow } from "./today.ts";
-import { aiProductName, engineLabel, LimitResetClock, nearLimitNote } from "./limit-resets.ts"; import { loadPlanUsage, planAccountsFromInstances } from "./plan-usage.ts"; import { LimitFailovers, limitBackupAllowed } from "./limit-failover.ts"; import { createLimitResetRoutes } from "./routes/limit-resets.ts"; import { createComputerEgress } from "./computer-egress.ts"; import { createComputerEgressRoutes } from "./routes/computer-egress.ts"; import { createMobileLink, mobileLookupRelay, notifyPhones, readOnPhones, turnActivityToPhones } from "./mobile/link.ts"; import { turnActivityAttributes } from "./mobile/turn-activity.ts"; import { isThisServerVps } from "./vps-local.ts";
+import { aiProductName, engineLabel, LimitResetClock, nearLimitNote } from "./limit-resets.ts"; import { clearPlanUsageCache, loadPlanUsage, planAccountsFromInstances } from "./plan-usage.ts"; import { LimitFailovers, limitBackupAllowed } from "./limit-failover.ts"; import { createLimitResetRoutes } from "./routes/limit-resets.ts"; import { createComputerEgress } from "./computer-egress.ts"; import { createComputerEgressRoutes } from "./routes/computer-egress.ts"; import { createMobileLink, mobileLookupRelay, notifyPhones, readOnPhones, turnActivityToPhones } from "./mobile/link.ts"; import { turnActivityAttributes } from "./mobile/turn-activity.ts"; import { isThisServerVps } from "./vps-local.ts";
 import { parseTriggerRequest, triggerTarget } from "./trigger-tools.ts"; import { WebhookRequestError, WebhookRequestService } from "./webhook-requests.ts"; import { createAppTriggerHost } from "./app-trigger-host.ts";
 import { appliesNow, directApply, UNDO_STALE, type DirectApply } from "./direct-apply.ts";
 import { createAgentCard } from "./chat-widgets.ts";
@@ -637,6 +637,7 @@ import { createDirectSockets } from "./routes/direct-sockets.ts";
 import { createBrowserViewerRoutes } from "./routes/browser-viewers.ts";
 import { localDesktopTarget, localVmViewerStatus } from "./desktop-viewer-targets.ts";
 import { viewerTargetId } from "../shared/desktop-viewer.ts";
+import { endedTurnActivity } from "../shared/phone-activity.ts";
 import { createComputerPreviews } from "./computer-previews.ts";
 import { createAntigravityLeftoverRoutes } from "./routes/antigravity-leftovers.ts";
 import { createAntigravityAccountRoutes } from "./routes/antigravity-accounts.ts";
@@ -657,7 +658,7 @@ import { createNotificationRoutes } from "./routes/notifications.ts";
 import { createTodayRoutes } from "./routes/today.ts"; import { createInboxRoutes } from "./routes/inbox.ts"; import { createSidebarSectionRoutes } from "./routes/sidebar-sections.ts";
 import { createToolTimingRoute, createUsageRoutes } from "./routes/usage.ts"; import { createSpendRoutes } from "./routes/spend.ts"; import { createSpend } from "./spend.ts"; import { createRoutineGuard, DRY_RUN_REFUSAL } from "./host/routine-guard.ts"; import { testRunMounts } from "./dry-run-mounts.ts"; import { createRoutineHost } from "./host/routine-quiet-host.ts"; import { appLabel, reconnectCard, signedOutApps } from "./host/routine-auth.ts";
 import { createReconnectResume } from "./host/reconnect-resume.ts"; import { mcpServerLabel } from "./remote-mcp-label.ts"; import { tokenApp as tokenAppSpec } from "../shared/app-tokens.ts";
-import { createFinishGuard } from "./host/finish-guard.ts"; import { createDeliverableCheck } from "./host/deliverable-check.ts"; import { createOpenAsks } from "./host/open-asks.ts"; import { createTurnWorkers } from "./host/turn-workers.ts"; import { runsCommands } from "./bot-reach.ts"; import { forwardedAsks } from "./host/forwarded-ask.ts"; import { createLimitHold, refusedStartWaits } from "./host/limit-hold.ts"; import { createBatchContinue } from "./host/batch-continue.ts"; import { checklistDir, readChecklist } from "./batch-checklist.ts"; import { createChecklistRoutes } from "./routes/checklist.ts"; import { createActionReceipts } from "./host/action-receipts.ts"; import { createDocumentRoutes } from "./routes/bot-documents.ts"; import { BotDocuments } from "./bot-documents.ts"; import { carryIntoNextTurn } from "./drivers/openai-chat-carry.ts";
+import { createFinishGuard } from "./host/finish-guard.ts"; import { createDeliverableCheck } from "./host/deliverable-check.ts"; import { createOpenAsks } from "./host/open-asks.ts"; import { createTurnWorkers } from "./host/turn-workers.ts"; import { runsCommands } from "./bot-reach.ts"; import { forwardedAsks } from "./host/forwarded-ask.ts"; import { createLimitHold, probeEngine, refusedStartWaits } from "./host/limit-hold.ts"; import { createBatchContinue } from "./host/batch-continue.ts"; import { checklistDir, readChecklist } from "./batch-checklist.ts"; import { createChecklistRoutes } from "./routes/checklist.ts"; import { createActionReceipts } from "./host/action-receipts.ts"; import { createDocumentRoutes } from "./routes/bot-documents.ts"; import { BotDocuments } from "./bot-documents.ts"; import { carryIntoNextTurn } from "./drivers/openai-chat-carry.ts";
 import { createBrowserLoops } from "./host/browser-loops.ts"; import { createBotMessageRoutes } from "./routes/bot-messages.ts";
 import { clearInternalTurn, isInternalTurn, markInternalTurn } from "./internal-turns.ts"; import { createFirstReplyRescue } from "./first-reply-rescue.ts"; import { createTurnBeats } from "./turn-beats.ts"; import { createSideReplies, repliesWhileWorking, type SideRequest, type SideSendFacts } from "./host/side-replies.ts";
 import { createReactionRoutes } from "./routes/reactions.ts";
@@ -937,7 +938,7 @@ const CLOUD_OWNER_KEY = CLOUD_PERSONAL ? `p_${createHash("sha256").update(`cloud
 let cloudEarlierOwners: Pick<CloudOwnership, "adopted" | "proven"> = { adopted: new Set(), proven: new Set() };
 /** Until it is settled, a Cloud home counts as shared. */
 let cloudHome: ReturnType<typeof settleCloudHome> | null = null; const teamHost = createCloudTeamHost({ team: CLOUD_TEAM, dataDir: DATA_DIR, store: { groupByThread: (threadId) => store.groupByThread(threadId), get bots() { return store.bots; } }, engineHomes, starters: threadStarters, markers: new Set([CLOUD_NOBODY_KEY, CLOUD_OUTSIDE_KEY]), language: appLanguage,
-  serverProfile: { read: () => cfg.profile, clear: () => { adminActorScope.exit(() => saveConfig({ profile: { name: "", email: "", aboutMe: "", avatarUrl: "", accountName: "" } })); Object.assign(cfg, loadConfig()); } } });
+  serverProfile: { read: () => cfg.profile, clear: () => { adminActorScope.exit(() => saveConfig({ profile: { name: "", email: "", aboutMe: "", avatarUrl: "", accountName: "", accountFace: null } })); Object.assign(cfg, loadConfig()); } } });
 const teamOwners = createTeamOwners({ team: CLOUD_TEAM, dataDir: DATA_DIR, sessions, store: () => store, audienceOf: (threadId) => teamHost.audienceOf(threadId) }); const duskOwnChat = createDuskOwnChat({ bots: () => store.bots, starters: threadStarters, personKey: (email) => personKey({ id: "", email }), moveNotes: (from, to) => moveMemoryLayer(from, to, appLanguage()) });
 const personRooms = createPersonRooms({ reads: CLOUD_TEAM ? createRoomReads(DATA_DIR) : null, store: () => store, newestMessageId: (threadId) => readCursor(threadId).lastReadMessageId, publicGroupState, broadcast });
 
@@ -2530,12 +2531,11 @@ const computerControl = new ComputerControl((key, snapshot) => {
   }
   broadcast({ kind: "computer-control", botId, held: snapshot.held, helpReason: snapshot.helpReason, ...(snapshot.help ? { help: snapshot.help } : {}) });
   }
+  syncControlSilenceTimer();
 });
 const controlLeaseIdSchema = z.string().min(16).max(120).regex(/^[A-Za-z0-9_-]+$/);
 const controlSilenceMs = Math.max(500, Number(process.env.DUSK_CONTROL_SILENCE_MS) || CONTROL_SILENCE_MS);
-setInterval(() => {
-  for (const key of computerControl.releaseSilent(controlSilenceMs)) trail("takeover.silent", { key, silenceMs: controlSilenceMs });
-}, Math.min(CONTROL_SILENCE_SWEEP_MS, Math.ceil(controlSilenceMs / 5))).unref();
+const syncControlSilenceTimer = createControlSilenceSweeper(computerControl, controlSilenceMs, (key) => trail("takeover.silent", { key, silenceMs: controlSilenceMs }));
 function controlIntegration(
   botId: string,
   threadId: string,
@@ -3011,7 +3011,7 @@ const actingPeople = createActingPeople({ store, direct: (threadId) => directReq
 const { stopThreadForPerson, stopOnTypedCommand, restartForPerson } = createPersonStop({
   store, routines: () => routines, handoffs: () => handoffs, interruptDirectThread, clearUnattended,
   dropAsks: (threadId) => openAsks.dropped(threadId), stopWorkers: async (_botId, threadId) => { await turnWorkers.stop(threadId); },
-  stopGoal: (threadId) => oneOnOneGoals.stop(threadId), cancelHeld: (threadId) => limitHold.cancel(threadId), markStopped: (threadId, said) => { personStops.stop(threadId, liveTurns.running(threadId), directTurnDispatchClaims.has(threadId)); if (said !== undefined) streamedReply.saidAtStop(threadId, said); }, working: (botId, threadId) => threadBusy(botId, threadId) || coordinator.activeDirect(threadId) || Boolean(limitHold.held(threadId)), asking: (threadId) => coordinator.awaitingAnswer(threadId) || Boolean(openPersonCard(threadId)), language: threadLanguage,
+  stopGoal: (threadId) => oneOnOneGoals.stop(threadId), cancelHeld: (threadId) => limitHold.cancel(threadId), markStopped: (threadId, said) => { personStops.stop(threadId, liveTurns.running(threadId), directTurnDispatchClaims.has(threadId)); if (said !== undefined) streamedReplies.saidAtStop(threadId, said); }, working: (botId, threadId) => threadBusy(botId, threadId) || coordinator.activeDirect(threadId) || Boolean(limitHold.held(threadId)), asking: (threadId) => coordinator.awaitingAnswer(threadId) || Boolean(openPersonCard(threadId)), language: threadLanguage,
 }); const teamMessages = createTeamMessages({ place: CLOUD_TEAM ? null : createPlaceInbox({ dataDir: DATA_DIR, store, openCards: openCardRows, waiting: () => personWaits.waiting(), send: (notification) => { broadcast({ kind: "notify", notification: logNotification(notification) }); }, sees: (auth, threadId) => visibleTo(viewerFor(auth)).thread(threadId), mayAnswer: (auth, threadId, requestId) => cardAnswerRefusal(auth, threadId, requestId, "allow") === null, viewer: (auth) => placeInboxViewer(auth, { personal: CLOUD_PERSONAL, owner: cloudOwnerSession, personOf: personKey }), guestOf: (threadId) => { if (!CLOUD_PERSONAL || !cloudGuestDriven(threadId)) return null; const person = [...cloudThreadStarters(threadId), threadPersonKey(threadId)].find((one) => one && one !== CLOUD_OUTSIDE_KEY && !cloudOwnerPerson(one)); return person ?? null; }, guestName: (threadId) => guestNameIn(store.messagesFor(threadId)), handedBy: (threadId) => { const from = delegatorOf(threadId); return from && from.threadId !== threadId ? from.botId ?? store.botByThread(from.threadId)?.id ?? null : null; } }), team: CLOUD_TEAM, dataDir: DATA_DIR, store, confined: (threadId) => cloudGuestDriven(threadId), people: teamOwners.people, personName: teamHost.personName, audienceOf: teamHost.audienceOf, starters: threadStarters, notify, sees: (person) => visibleTo(person.role === "member" ? { kind: "member", email: person.email } : { kind: "all", email: person.email }), inbox: { askedPerson: teamOwners.routing.askedPerson, changed: (threadId) => { const bot = store.botByThread(threadId); if (bot) broadcast({ kind: "bot", bot: wireBot(bot) }); }, ensureOwnBot: (email) => { ensureDefaultBot(store, { dataDir: DATA_DIR, person: email, team: CLOUD_TEAM?.name ?? null }); }, handedFrom: (threadId) => { const from = delegatorOf(threadId); return from && from.threadId !== threadId ? from.threadId : null; }, continueTurn: relayedTurn({ store, startTurn, state: (botId, threadId) => ({ atCapacity: botAtThreadCapacity(botId, threadId), threadBusy: threadBusy(botId, threadId), groupTurn: roomTurnHolds(activeGroupTurnForBot(botId), threadId, false), parksBehindCoordination: parksBehindCoordination(botId, threadId) }) }), representative: { generate: async (botId, prompt) => (await sideJobs.text("representative", botId)?.generateText(prompt, { timeoutMs: 60_000 })) ?? null, busy: createPersonCalendar({ access: (person) => teamConnections.personApps().includes("googlecalendar") ? teamConnections.people.appsAccess(person) : null, connected: async (access) => (await composio.connectedServices(cfg, access)).googlecalendar?.connected === true, relay: (payload, session, signal, access) => composio.relayMcp(cfg, payload as never, session, undefined, signal, access) }).busy } } });
 const noAiNotice = createNoAiNotice({ team: CLOUD_TEAM, dataDir: DATA_DIR, people: () => teamOwners.people?.list() ?? [], personName: teamHost.personName, inbox: () => teamMessages.inbox, language: personLanguages.forLine, threadLanguage: conversationLanguage });
 const botNameClash = createBotNameClash({ store, people: () => teamMessages.people(), profileName: () => cfg.profile?.name });
@@ -5230,10 +5230,10 @@ function requestBehavior(value: unknown): "allow" | "deny" | "answer" | null {
 
 const lastReply = new Map<string, string>(); /** Turns whose reply tagged the person before the tag was rewritten. */ const personTaggedTurns = new Map<string, string>();
 const stoppedTurns = new Map<string, string | undefined>(), personStops = new PersonStops();
-const streamedReply = createStreamedReply({ messagesFor: (threadId) => store.messagesFor(threadId), patchMessage: (threadId, id, patch) => store.patchMessage(threadId, id, patch),
-  inRoom: (threadId) => !store.botByThread(threadId) && Boolean(store.groupByThread(threadId)), directPassAllowed: (threadId) => directPassAllowed(threadId) });
-const directPassAllowed = (threadId: string) =>
-  Boolean(store.botByThread(threadId)) && !activeRoutineRunForThread(threadId) && !isInternalTurn(threadId) && !botApiThread(threadId) && !coordinator.assignerOf(threadId);
+const streamedReplies = createStreamedReply({
+  store,
+  directPassAllowed: (threadId) => Boolean(store.botByThread(threadId)) && !activeRoutineRunForThread(threadId) && !isInternalTurn(threadId) && !botApiThread(threadId) && !coordinator.assignerOf(threadId),
+});
 // The turn each thread runs, from its start to its end, and nothing once the thread is idle: what Stop and the rescue check.
 const liveTurns = new LiveTurns((threadId) => { const owner = store.botByThread(threadId); return owner ? threadBusy(owner.id, threadId) : groupSpeakers.has(threadId); });
 const settlingTurns = new Set<string>();
@@ -7155,15 +7155,12 @@ bus.subscribe((event: RuntimeEvent) => {
   const privateImageEvent = event.type === "item.completed" && event.itemType === "assistant_image";
   // words the engine still had in flight when the person pressed Stop: what streamed before it stays, the rest never lands
   const replyText = (event.type === "content.delta" && event.streamKind === "assistant_text") || (event.type === "item.completed" && event.itemType === "assistant_text");
-  if (event.type === "turn.started") streamedReply.turnStarted(event.threadId);
+  if (event.type === "turn.started") streamedReplies.turnStarted(event.threadId);
   const afterPersonStop = replyText && personStops.stopped(event.threadId, event.turnId);
-  const { delta: broadcastedDelta, passItem: suppressedPassItem } = replyText ? streamedReply.onReply(event, event.turnId, afterPersonStop) : { passItem: false };
-  if (!privateImageEvent && !afterPersonStop && broadcastedDelta !== null && !suppressedPassItem) {
+  const shownEvent = streamedReplies.shown(event, afterPersonStop);
+  if (!privateImageEvent && shownEvent) {
     // Exact executable input is internal; the bus's persistence redactor does not scrub the live event.
-    const publicEvent = event.type === "request.opened" ? { ...event, command: undefined, commandLine: undefined, reads: undefined }
-      : broadcastedDelta !== undefined && event.type === "content.delta" ? { ...event, delta: broadcastedDelta }
-      : event;
-    broadcast({ kind: "runtime", event: publicEvent });
+    broadcast({ kind: "runtime", event: shownEvent.type === "request.opened" ? { ...shownEvent, command: undefined, commandLine: undefined, reads: undefined } : shownEvent });
   }
   const routineRun = privateImageEvent ? null : (routines?.handleRuntimeEvent(event) ?? null);
   limitClock.noteRuntimeEvent(runningTurnEngines.get(event.threadId)?.instanceId, event);
@@ -7199,15 +7196,12 @@ bus.subscribe((event: RuntimeEvent) => {
       return;
     }
     if (group && isPassText(spoken.text) && spoken.text.trim()) return;
-    if (bot && directPassAllowed(event.threadId) && isDirectPassText(spoken.text)) {
-      streamedReply.passed(event.threadId);
-      return;
-    }
-    const voiced = cleanBotVoice(spoken.text, (speaker ?? bot)?.name); if (voiced.taggedLine && turnId && group && !personTaggedTurns.has(`${event.threadId}:${turnId}`)) personTaggedTurns.set(`${event.threadId}:${turnId}`, voiced.taggedLine);
+    if (bot && streamedReplies.passes(event.threadId, spoken.text)) return;
+    const voiced = cleanBotVoice(streamedReplies.stripTrailingPass(event.threadId, spoken.text), (speaker ?? bot)?.name); if (voiced.taggedLine && turnId && group && !personTaggedTurns.has(`${event.threadId}:${turnId}`)) personTaggedTurns.set(`${event.threadId}:${turnId}`, voiced.taggedLine);
     // while a human-check card waits, it is the only ask: lines that only say it again never reach the chat
     const shown = pendingCheckCard(store.activePath(event.threadId), speaker?.botId ?? bot?.id) ? withoutCheckAsk(voiced.text) : voiced.text;
     if (!shown.trim()) return;
-    streamedReply.spoke(event.threadId);
+    streamedReplies.spoke(event.threadId);
     for (const bubble of replyBubbles(shown)) if (!repeatedBubble(store.activePath(event.threadId), bubble, Date.now())) pushMessage({ role: "bot", kind: "text", text: bubble, turnId });
     lastReply.set(event.threadId, shown);
   };
@@ -7247,7 +7241,7 @@ bus.subscribe((event: RuntimeEvent) => {
         if (!afterPersonStop) pushAssistantText(event.text, event.turnId);
         else {
           // the half answer that streamed before the Stop settles as a finished bubble, once
-          const kept = streamedReply.takeKept(event.threadId);
+          const kept = streamedReplies.takeKept(event.threadId);
           if (kept.trim()) pushAssistantText(kept, event.turnId);
         }
       } else if (event.itemType === "assistant_image") {
@@ -7541,10 +7535,10 @@ bus.subscribe((event: RuntimeEvent) => {
       introTurns.delete(event.threadId);
       // a Stop the engine ended without a last item: the half answer it had streamed still settles as a bubble
       if (personStops.stopped(event.threadId, completedTurnId)) {
-        const kept = streamedReply.keptAtEnd(event.threadId, completedTurnId);
+        const kept = streamedReplies.keptAtTurnEnd(event.threadId, completedTurnId);
         if (kept.trim()) pushAssistantText(kept, completedTurnId);
       }
-      streamedReply.turnEnded(event.threadId);
+      streamedReplies.replyEnded(event.threadId);
       askCards.settleWaitingOnPersonChips(event.threadId);
       const internal = isInternalTurn(event.threadId);
       clearInternalTurn(event.threadId);
@@ -7562,8 +7556,8 @@ bus.subscribe((event: RuntimeEvent) => {
           .map((message) => message.text ?? "").join("\n"));
       }
       const reply = lastReply.get(event.threadId) ?? "";
-      const passedQuietly = streamedReply.takePassed(event.threadId) && event.ok && !stopped && !turnHadOutput(store.activePath(event.threadId), reply, completedTurnId, turnStartedAt.get(event.threadId));
-      if (!internal) turnActivityToPhones(event.threadId, event.ok && !stopped && !passedQuietly ? { type: "done" } : { type: "stopped" }, { reply });
+      const passedQuietly = streamedReplies.passedQuietly(event.threadId, { turnId: completedTurnId, startedAt: turnStartedAt.get(event.threadId), reply }) && event.ok && !stopped;
+      if (!internal) turnActivityToPhones(event.threadId, endedTurnActivity({ ok: event.ok, stopped }), { reply });
       if (personStops.stopped(event.threadId, completedTurnId)) pushStoppedTurn(completedTurnId);
       personStops.turnEnded(event.threadId, completedTurnId);
       lastReply.delete(event.threadId);
@@ -8195,7 +8189,7 @@ async function acceptDirectSend(
             void settle().then(() => followSettledDefault(profile.id, threadId, applied))
               .catch((error) => console.warn(`[engines] settling the default after a send failed: ${error instanceof Error ? error.message : String(error)}`));
           } else {
-            await settle();
+            await settle(); const arriving = freeBackupArriving(); if (arriving) await arriving;
           }
         }
       }
@@ -8710,7 +8704,7 @@ async function beginTurn(
   else { clearInternalTurn(threadId); doneNotice.personTurnStarted(threadId); }
   if (answer.quiet) quietTurnThreads.add(threadId);
   else quietTurnThreads.delete(threadId);
-  if (resolvedImages.text.trim() && !opts?.cardContinuation && !opts?.replyTo?.reactedWith && opts?.automationSource === undefined) {
+  if (resolvedImages.text.trim() && !opts?.cardContinuation && !opts?.replyTo?.reactedWith && opts?.automationSource === undefined && routinePromptName(resolvedImages.text) === null) {
     const titled = store.titleTaskFromFirstMessage(bot.id, resolvedImages.text, threadId);
     const snippet = titled?.title;
     if (titled && snippet && !titled.openedBy?.botId && llmThreadTitlesEnabled(cfg) && instance.generateText) {
@@ -8744,6 +8738,7 @@ async function beginTurn(
 
   let userMessage = opts?.userMessage;
   if (opts?.editedMessageId) {
+    if (routineStartOf(store.messagesFor(threadId).find((message) => message.id === opts.editedMessageId) ?? { role: "" })) throw Object.assign(new Error("a routine run's prompt is not a message to send again: run the routine again instead"), { status: 409, code: "routine_line" });
     const edited = store.branchMessage(threadId, opts.editedMessageId, text, opts.sendId, opts.sender, opts.dataContext);
     if (!edited) throw Object.assign(new Error("only a user text message can be edited"), { status: 400 });
     store.patchTask(bot.id, threadId, { rewound: true });
@@ -8764,7 +8759,7 @@ async function beginTurn(
           sender: opts?.sender,
           ...spokenLineFields(opts?.via, opts?.callId),
           ...(opts?.relayed ? { relayed: true } : {}),
-          ...(opts?.automationSource !== undefined ? { routineStart: { name: activeRoutineRunForThread(threadId)?.routineName ?? routinePromptName(text) ?? "" } } : {}),
+          ...(opts?.automationSource !== undefined ? { routineStart: routineStartMark(activeRoutineRunForThread(threadId), text) } : {}),
         });
   }
   const personLine = !opts?.coordination && !opts?.cardContinuation && !opts?.automationSource && !opts?.compactOnly
@@ -9525,6 +9520,7 @@ async function beginTurn(
       const clock = takesTurnClock(userTurnText) && !introTurns.has(threadId) ? personClock(Date.now(), personTimeZone(proactive.brief.timeZone()), previousPersonMessageAt(activeMessages, userMessage.id), askedElsewhereAt(store.bot(bot.id)?.tasks, threadId)) + habitReminder(chatMessageCount(activeMessages), userTurnText) + nearLimitNote(limitClock.limit(instanceId), engineName(instanceId), personTimeZone(proactive.brief.timeZone())) : "";
       const shareNote = skillsHost.shareNote(bot, threadId, Boolean(privateWorkspace));
       const startupRecovery = (opts?.automaticRecoveryIndex ?? 0) < startupBackups(liveBot ?? bot, cfg.automaticRecovery).length;
+      if (opts?.automationSource === undefined && !opts?.commsDepth && !opts?.cardContinuation && limitClock.heldByGuess(instanceId)) limitClock.release(instanceId); // a person's own message tries an AI out of credit again: a top-up ends that at any moment
       const held = limitTakeover.heldAtStart(bot, { instanceId, model }, startupRecovery); // a limit or a sign-out already known: straight to an AI that can carry on, with the reset only when one was named
       if (held) throw held.scope === "signed-out" ? new TurnAuthenticationRefusedError(`signed-out-${randomUUID()}`, `${engineName(instanceId)} is signed out.`, true) : new TurnUsageLimitRefusedError(`limit-${randomUUID()}`, held.scope === "provider" ? `${engineName(instanceId)} did not answer a few minutes ago.` : `${engineName(instanceId)} is at its usage limit.`, held.resetsAt, held.scope, true);
       const dispatch = await guardTurnDispatch(shareNote.after(quickFallback.sendTurn(instance, {
@@ -9865,7 +9861,7 @@ async function stopBotForEmergencyApprovalDowngrade(botId: string): Promise<void
 const engineName = (engine: string) => engineLabel(engine, registry.get(engine) ?? undefined);
 const limitClock = new LimitResetClock({ file: join(DATA_DIR, "limit-holds.json"), usageFile: join(DATA_DIR, "limit-usage.json"), accounts: () => planAccountsFromInstances(instanceConfigs(cfg)), onChange: () => routines?.retimeLimitResets(),
   waiting: () => Boolean(routines?.listRoutines().some((routine) => routine.enabled && routine.schedule.type === "limit_reset")) }); const limitTakeover = createLimitTakeover({ file: join(DATA_DIR, "limit-notices.json"), limitMode: (botId) => store.bot(botId)?.limitMode ?? "wait", holdsFile: join(DATA_DIR, "limit-takeover-holds.json"), configs: () => instanceConfigs(cfg), context: selectionContext, blockedUntil: (engine) => limitClock.blockedUntil(engine), resetAt: (engine) => limitClock.resetAt(engine), enabled: () => quotaSwitchEnabled(), where: CLOUD_HOME ? "on the Cloud" : "on this computer", signedOutNow: (id) => registry.knownSnapshot(id)?.authenticated === false, signedOutNoticed: () => registry.forgetSnapshots(), engineName, engines: () => selectableInstances(registry.instances().map((engine) => ({ instanceId: engine.instanceId, driverKind: engine.driverKind, displayName: engine.displayName, enabled: engine.enabled, access: registry.access(engine.instanceId), models: engine.models, snapshot: registry.knownSnapshot(engine.instanceId) ?? { state: "unavailable" as const, reason: "not read yet" }, capabilities: engine.adapter.capabilities }))), chosen: (botId) => [...(store.bot(botId)?.fallback ?? []), ...(cfg.automaticRecovery?.backup ? [cfg.automaticRecovery.backup] : [])], automatic: (botId, from, engines) => { const bot = store.bot(botId); return bot && !cfg.automaticRecovery?.backup ? automaticBackups(bot, engines, from, selectionContext) : []; }, signedOutChosen: (botId) => { const bot = store.bot(botId); if (!bot) return []; const pick = testedAi.appPick(botId); return [...startupBackups(bot, cfg.automaticRecovery), ...(pick ? [pick] : [])]; }, tell: (about, text) => notify(buildNoticeNotification(about, store.bot(about.id)?.threadId ?? "", text)), record: (failover) => limitFailovers.record(failover) });
-const limitHold = createLimitHold({ file: join(DATA_DIR, "limit-held-turns.json"), blockedUntil: (engine) => limitClock.blockedUntil(engine), resetAt: (engine) => limitClock.resetAt(engine), refreshUsage: () => limitClock.refresh(true),
+const limitHold = createLimitHold({ file: join(DATA_DIR, "limit-held-turns.json"), blockedUntil: (engine) => limitClock.blockedUntil(engine), resetAt: (engine) => limitClock.resetAt(engine), refreshUsage: () => limitClock.refresh(true), canProbe: (engine) => limitClock.heldByGuess(engine) && Boolean(registry.get(engine)?.generateText), release: (engine) => void limitClock.release(engine), probe: (turn) => { const selection = store.projectBotForTask(turn.botId, turn.threadId)?.modelSelection, instance = registry.get(turn.engine); return selection?.instanceId === turn.engine && instance?.generateText ? probeEngine(instance.generateText.bind(instance), selection.model) : Promise.resolve(null); },
   threadEngine: (botId, threadId) => (store.taskByThread(botId, threadId) ? store.projectBotForTask(botId, threadId)?.modelSelection.instanceId : undefined),
   busy: (botId, threadId) => threadBusy(botId, threadId) || hasQueuedSteeredMessages(botId, threadId),
   checklist: (botId, threadId) => { const dir = checklistDir(TASK_WORKSPACES_DIR, botId, threadId); return dir ? readChecklist(dir) : null; },
@@ -9875,7 +9871,7 @@ const limitHold = createLimitHold({ file: join(DATA_DIR, "limit-held-turns.json"
   paused: (threadId, state) => { const failed = store.messagesFor(threadId).slice(-50).findLast((row) => row.kind === "activity" && row.tool?.name.startsWith("error:")); if (failed?.tool) store.patchMessage(threadId, failed.id, { tool: { ...failed.tool, limitHold: state } }); },
   waitEnded: (threadId) => { for (const row of store.messagesFor(threadId).slice(-200)) if (row.tool?.limitHold) store.patchMessage(threadId, row.id, { tool: { ...row.tool, limitHold: undefined } }); },
   language: threadLanguage });
-bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) limitHold.onEvent(event); });
+bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) limitHold.onEvent(event); }); onThreadSeen((threadId) => void limitHold.checkNow(threadId));
 const limitFailovers = new LimitFailovers({ file: join(DATA_DIR, "limit-failovers.json"), blockedUntil: (engine) => limitClock.blockedUntil(engine), signedOut: (engine) => limitTakeover.stillSignedOut(engine), engineName,
   threadModel: (botId, threadId) => store.projectBotForTask(botId, threadId)?.modelSelection ?? null,
   note: (threadId, line) => store.appendMessage(threadId, { role: "bot", kind: "activity", tool: { name: `recovery: ${line}`, ok: true } }),
@@ -12914,7 +12910,7 @@ function configStatus() {
   const eventLogMaxBytes = threadEventLogMaxBytes(cfg);
   const eventLogRetentionDays = threadEventLogRetentionDays(cfg);
   return {
-    cloudStarter: cloudPlanTier.starter(), botLimit: botLimit.limit(), waitingForRoom: engineMemory.waiting(), xai: keyStatus(cfg.xai?.key),
+    configFile: configFileProblem(), cloudStarter: cloudPlanTier.starter(), botLimit: botLimit.limit(), waitingForRoom: engineMemory.waiting(), xai: keyStatus(cfg.xai?.key),
     mistral: keyStatus(cfg.mistral?.key),
     cerebras: keyStatus(cfg.cerebras?.key),
     groq: keyStatus(cfg.groq?.key), greenference: keyStatus(cfg.greenference?.key),
@@ -12937,7 +12933,7 @@ function configStatus() {
     imageGen: avatarImageStatus(cfg), savedKeys: nestedKeyStatus(cfg),
     live: liveSettingsFor(cfg),
     profile: CLOUD_TEAM ? NOBODY_PROFILE : { name: cfg.profile?.name ?? "", email: cfg.profile?.email ?? "", aboutMe: cfg.profile?.aboutMe ?? "", ...(cfg.profile?.avatarUrl ? { avatarUrl: cfg.profile.avatarUrl } : {}),
-      ...(cfg.profile?.accountName ? { accountName: cfg.profile.accountName } : {}) },
+      ...(cfg.profile?.accountName ? { accountName: cfg.profile.accountName } : {}), ...(cfg.profile?.accountFace ? { accountFace: cfg.profile.accountFace } : {}) },
     managedPolicy: managedPolicy.summary(),
     ...(CLOUD_HOME ? { cloudHome: true } : {}), ...(CLOUD_TEAM ? { team: { id: CLOUD_TEAM.id, name: CLOUD_TEAM.name, ...(CLOUD_HOME ? { cloudPage: `${CLOUD_HOME.adminOrigin}/cloud` } : {}) } } : {}),
     language: appLanguage() ?? "", computerName: cfg.computerName ?? "", talkingStyle: talkingStyleOf(cfg.talkingStyle),
@@ -12945,7 +12941,7 @@ function configStatus() {
     mcp: { callTimeoutMinutes: mcpCallTimeoutMinutes(cfg) },
     automaticRecovery: cfg.automaticRecovery ?? { enabled: false },
     cacheKeepWarm: cacheKeepWarmSettings(cfg),
-    newBots: cfg.newBots?.effort ? { effort: cfg.newBots.effort } : {},
+    newBots: cfg.newBots?.effort ? { effort: cfg.newBots.effort } : {}, ...(cfg.defaultModelSelection ? { defaultModelSelection: cfg.defaultModelSelection } : {}),
     threads: {
       maxConcurrentPerBot: maxConcurrentBotThreads(cfg, botThreadsHost(cloudPlanTier.starter())),
       ...(eventLogMaxBytes !== null ? { eventLogMaxBytes } : {}),
@@ -13569,7 +13565,7 @@ ROUTES.push(createInstanceRoutes({
   providerConfigBusy: { get: () => providerConfigBusy, set: (busy) => { providerConfigBusy = busy; } },
   providerInstancesChanging, describeInstances, persistProviderInstance, configStatus, broadcast, testCliBinary,
   cliProbeEnvironment, threadBusy, botForThread, activeGroupTurnForBot, checkInstance: testedAi.check, cloudHome: placeFromEnv(process.env) === "cloud",
-  releaseProvider,
+  releaseProvider, onAuthChanged: () => { clearPlanUsageCache(); limitClock.invalidate(); }, chooseProvider: (instanceId) => { const instances = withProviderChosen(cfg, instanceId); if (instances) { saveConfig({ instances }, { replaceInstances: true }); cfg.instances = instances; } },
 }));
 const modelCatalog = new ModelCatalogStore({ dataDir: DATA_DIR });
 ROUTES.push(createModelProviderRoutes({
@@ -14644,7 +14640,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
           return json(res, persistence.status, { error: persistence.error });
         }
         const sender = owner.group ? { botId: from.id, name: from.name, color: from.color } : undefined;
-        if (request.kind === "app") return appTriggers.submit(res, json, { ...triggerContext, operation: request.operation, forBot, sender });
+        if (request.kind === "app") return appTriggers.submit(res, json, { ...triggerContext, operation: request.operation, forBot, sender, ...(request.payload !== undefined ? { payload: request.payload } : {}) });
         if (request.kind === "webhook") {
           // Its calls start the owner's bot: a turn the Cloud's owner did not drive cannot add or change one.
           if (cloudGuestDriven(fromThreadId)) return json(res, 403, { error: "Only the Cloud's owner can set up or change webhook triggers. Tell the person to ask from their own conversation." });
@@ -16651,6 +16647,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
   } catch (e) {
     if (isDiskFull(e)) return json(res, 507, { error: "The disk is full, so this could not be saved. Free up some space, then try again.", code: "disk_full" });
     const status = (e as any)?.status ?? 500;
+    if ((e as { status?: unknown })?.status === undefined) console.error(`unhandled error on ${method} ${path}:`, e);
     const candidateCode = (e as { code?: unknown })?.code;
     const code = typeof candidateCode === "string" && ["guarded_busy", "guarded_branch", "guarded_permissions", "guarded_request_changed", "guarded_request_untracked", "outside_workspace", "no_ai", BOT_LIMIT_CODE].includes(candidateCode)
       ? candidateCode : undefined;
@@ -16687,7 +16684,9 @@ const useThisServerComputers = (): void => {
   }
 };
 useThisServerComputers();
-setInterval(useThisServerComputers, 15_000).unref();
+if (process.platform === "linux" || process.env.DUSK_VPS_DOCKER === "local") {
+  setInterval(useThisServerComputers, 15_000).unref();
+}
 // Before any row below settles: an interrupted dispatch's words come back with a review notice, never to a model a second time.
 followupAtBoot("");
 for (const row of chatFollowups()) {
@@ -16738,12 +16737,18 @@ if (CLOUD_HOME) registerCloudPower(cloudPower = createCloudPower({ dataDir: DATA
   ...workProbes, job: () => jobs.busy(), nextDueAt: () => { const due = [routines?.nextDueAt() ?? null, botWaits.nextWakeAt()].filter((at): at is number => at !== null); return due.length ? Math.min(...due) : null; }, upcoming: () => routines?.upcoming() ?? [],
  } })); if (!DESKTOP_MANAGED) updateState = createUpdateHost({ dataDir: DATA_DIR, version: serverVersion(), log: (line) => console.log(line), health: () => Array.isArray(store.bots), browser: async () => (builtInBrowserEnabled(cfg) ? (await chromeLauncher.binary()).path : null), connected: async () => { if (!composio.configured(cfg)) return null; const services = await composio.connectedServices(cfg); return { gmail: services.gmail?.connected === true, googlecalendar: services.googlecalendar?.connected === true }; }, relay: (payload, session, signal) => composio.relayMcp(cfg, payload as never, session, undefined, signal), runs: () => routines?.listRuns() ?? [] }); // the Mac app's server never updates itself
 
+server.on("error", (error: NodeJS.ErrnoException) => {
+  console.error(error.code === "EADDRINUSE"
+    ? `dusk bot cannot listen on 127.0.0.1:${PORT}: the port is already in use, often by another dusk bot server on the same host. Stop that program, or set DUSK_PORT to another port.`
+    : `dusk bot's server failed to listen on 127.0.0.1:${PORT}: ${error.message}`);
+  process.exit(1);
+});
 server.listen(PORT, "127.0.0.1", async () => {
   engineProgressReady = true;
   companyRuntimeReady();
   console.log(`duskbot server on http://127.0.0.1:${PORT}`);
   void wslPortShareWarning(PORT).then((warning) => { if (warning) console.warn(warning); }, () => {});
-  startFreeBackupPreinstall(process.env, () => void freeBackupInstalled());
+  startFreeBackupPreinstall(process.env, () => freeBackupInstalled());
   personWaits.boot(); browserSweep.start(); if (!sealedFixture()) browserPart.start(); autoInstallBrowserEngine(); startCloudTeamPolicy({ cloudHome: CLOUD_HOME, dataDir: DATA_DIR, managed: managedPolicy, sessions }); moveFreeze.hold(() => appTriggers.start(), () => void appTriggers.stop()); startCloudHomeConnectedApps({ cloudHome: CLOUD_HOME !== null, dataDir: DATA_DIR, cloudGrant: CLOUD_ENV.DUSK_CLOUD_CONNECTED_APPS_GRANT, apply: (access) => { composio.setManagedBrokerAccess(access); broadcast({ kind: "config", ...configStatus() }); } });
   void afterFirstEngineRead().then(() => { if (builtInBrowserEnabled(cfg)) chromeLauncher.start(); }); void updateState?.boot()?.catch((error) => console.warn("[update] self-test failed to run:", error)); if (updateState) routineHost.rerunFree(updateState.takeFreeReruns());
   followupsReady = true;
@@ -16766,7 +16771,7 @@ server.listen(PORT, "127.0.0.1", async () => {
   } catch (error) {
     console.warn(`memory: could not build the fact store now; recall builds it as it goes: ${(error as Error).message}`);
   }
-  if (store.bots.some((bot) => bot.memoryEnabled !== false)) {
+  if (store.bots.some((bot) => bot.memoryEnabled !== false) && hasPendingFactsToEmbed()) {
     warmEmbedder();
     void embedderSettled().then(async (ready) => {
       while (ready && (await embedPendingFacts(undefined, 400)) > 0);
@@ -16781,6 +16786,9 @@ if (TUNNEL_SOCKET) {
   if (process.platform !== "win32") rmSync(TUNNEL_SOCKET, { force: true });
   tunnelListener = createServer(IDLE_HTTP_SERVER, gzipTunnelReplies(handleRequest));
   upgrades.attach(tunnelListener, handleRequest);
+  tunnelListener.on("error", (error: NodeJS.ErrnoException) => {
+    console.error(`dusk bot's tunnel listener failed on ${TUNNEL_SOCKET}: ${error.message}`);
+  });
   tunnelListener.listen(TUNNEL_SOCKET, () => {
     console.log(`duskbot tunnel listener on ${TUNNEL_SOCKET}`);
   });
@@ -16849,6 +16857,7 @@ const gracefulShutdown = createGracefulShutdown({
       await browserRuntime.closeAll();
     },
     () => liveCalls.shutdown(),
+    () => stopEmbedder(),
     () => flushDeferredSaves(),
     () => flushAllProfileHistory(),
     () => flushAllMemoryJournals(),

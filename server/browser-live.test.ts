@@ -469,6 +469,16 @@ describe("authenticated browser viewer relay", () => {
   ])("refuses a batch with %s", (_name, events) => {
     expect(() => parseBrowserLiveAction({ type: "input_batch", events })).toThrow("Invalid browser action.");
   });
+  it("copies the page's selected text to the phone, and nothing from a page another person holds", async () => {
+    const a = await open(); const b = await open({ botId: "bot-b", owner: "admin-b" });
+    execute.mockImplementation(async (_command: string, args: string[]) => args[0] === "eval" ? output({ result: "the selected words" }) : output(ready));
+    expect(await a.action({ type: "copy" })).toEqual({ ok: true });
+    expect(a.res.events("clipboard")).toEqual([{ text: "the selected words" }]);
+    expect(execute).toHaveBeenCalledWith("/trusted/agent-browser", ["eval", expect.stringContaining("getSelection"), "--json", "--no-webmcp"], expect.anything());
+    await a.action({ type: "take" });
+    await b.action({ type: "copy" });
+    expect(b.res.events("clipboard")).toEqual([{ text: "" }]);
+  });
   it("requires the person's own human lease and releases only theirs on disconnect", async () => {
     const a = await open(); const b = await open({ botId: "bot-b", owner: "admin-b" });
     // a person's own command takes the browser rather than failing

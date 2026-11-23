@@ -181,6 +181,21 @@ floor on its own as well. The owner sees one line in the app ("Updated to 1.4.2"
 Audit actions: `update_applied`, `update_settled`, `update_rolled_back`, `update_refused`, `update_install_failed`,
 `update_stuck` (alerted: a rollback is due and nothing allowed is left to go back to).
 
+A run that failed for want of its bot computer is never counted for or against the version on trial: the home marks
+one whose error is the computer-unreachable sentence or a raw docker transport error (`infra`), and the reconciler
+checks the machine when a trial run fails; if that check found docker or the gate not answering, the failed runs are
+excused (`update_runs_excused`). Nothing installs on a home whose computer is down. A `runs_failed` rollback whose
+trial saw the computer down gives its version back once (`update_forgiven`), as does, once per cloud, a `runs_failed`
+rollback between 2026-11-21 and 2026-11-28 (0.2.26 and 0.2.27, blamed while gates on homes set up before 2026-11-19
+were wedged).
+
+The bot computers' docker and docker gate are checked, and repaired, after every wake, every 10 minutes while a home
+runs, before and after an update and after a rollback (`src/computer-health.ts`, the inline `COMPUTER_CHECK_SCRIPT` in
+`src/home.ts`, so homes set up by any release get it): docker is started when it does not answer; the gate is restarted
+when its socket gives no 200 to `/_ping` or when it started before the installed package; drop-ins give the gate no
+start limit and make `docker.service` want it. Audit actions: `computer_healed`, `computer_down`, `computer_ok`; one
+operator alert per incident.
+
 ## Settings
 
 `DUSK_MANAGED=1`, `INSTABOX_API_KEY`, `DUSK_CLOUD_SEAL_KEY`, `DUSK_ENTITLEMENT_SIGNING_KEY`, `DUSK_MANAGED_PUBLIC_DOMAIN`,

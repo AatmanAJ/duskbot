@@ -6,20 +6,40 @@
 // (server/update-state.ts); a failed self-test, or the next two runs failing in a row, rolls it back to the version
 // before (`omb-home rollback`, never below the floor). The home itself tells its owner, in one line.
 import { readFileSync, statSync } from "node:fs";
-import { acceptPolicy, freshUpdateRecord, idleForUpdate, refusal, review, rolledBack, sawRun, selfTested, settle, startTrial, type Release, type UpdatePolicy, type UpdateRecord, type Verdict } from "../../../shared/update-guard.ts";
+import { acceptPolicy, forgive, freshUpdateRecord, idleForUpdate, refusal, review, rolledBack, sawRun, selfTested, settle, startTrial, TRIAL_MS, type Release, type UpdatePolicy, type UpdateRecord, type Verdict } from "../../../shared/update-guard.ts";
 import { RetryableCloudError } from "../../dashboard/server/clouds/http.ts";
 import type { HomeClient, StoredCloud } from "../../dashboard/server/clouds/types.ts";
 import type { Audit } from "./audit.ts";
+import { COMPUTER_CHECK_MS, type ComputerHealthChecks } from "./computer-health.ts";
 import type { MachineImage, MachineProvider } from "./provider.ts";
 import { verifyRelease, type ReleaseKey } from "./release-signing.ts";
 
 /** a home package on offer: its signature names its version; an unsigned one (loopback and the e2e harness only) may say it */
 export interface HomeRelease { sha256: string; url?: string; file?: string; signature?: string; version?: string; clouds?: readonly string[] }
-export interface HomeUpdateState { guard: UpdateRecord; refused: string | null; stuck: boolean; retryAt: number | null }
+/** `forgiven`: rollbacks (version@at) already cleared from failed_here as the computer's, never twice */
+export interface HomeUpdateState { guard: UpdateRecord; refused: string | null; stuck: boolean; retryAt: number | null; forgiven?: string[] }
+
+/** known open risk: a home on these versions exits at every start once phone-relay.json holds a tunnel (its bundled link
+ *  agent runs as a command), so it gets no link grant and its saved tunnel is moved aside before it starts */
+export const RELAY_EXITS_ON: readonly string[] = ["0.2.26"];
+/** the version a managed home runs, as its update record knows it; null before the record exists */
+export const homeVersion = (c: StoredCloud): string | null => c.managed?.update?.guard.current?.version ?? null;
+export const relayExits = (version: string | null) => version !== null && RELAY_EXITS_ON.includes(version);
+/** a link grant goes only to a home whose version is known and loads its phone relay safely */
+export const takesLinkGrant = (c: StoredCloud) => { const version = homeVersion(c); return version !== null && !relayExits(version); };
 
 /** how long a new version gets to answer and pass its self-test */
 export const SELF_TEST_WAIT_MS = 5 * 60_000;
 const INSTALL_RETRY_MS = 60 * 60_000;
+/** an install restarts the home: never this close to a scheduled run, which the busy list read earlier in the pass
+ *  cannot show yet once it starts */
+export const DUE_RUN_GUARD_MS = 3 * 60_000;
+/** Releases rolled back on runs_failed in this window, while docker gates were down on homes set up before 2026-11-19:
+ *  their runs failed for want of their computer, not for the release. A cloud whose last rollback is in the window gets
+ *  these versions back once, offered again once its computer answers. `to` runs past this fix's deploy: until then the
+ *  old reconciler blamed releases the same way. */
+export const MISBLAMED = { from: Date.UTC(2026, 10, 21), to: Date.UTC(2026, 11, 15), versions: ["0.2.26", "0.2.27"] } as const;
+const MISBLAMED_KEY = "misblamed-2026-11";
 const SHA256 = /^[a-f0-9]{64}$/;
 
 /** DUSK_MANAGED_HOME_RELEASE_FILE: `{ sha256, signature, url | file, clouds? }`, read again whenever it changes; `clouds`
@@ -58,12 +78,16 @@ export interface HomeUpdateDeps {
   /** what this service offers now, newest first: the release file, then the package it started with */
   releases(): Array<HomeRelease | null>;
   policy(): UpdatePolicy | null;
+  /** the bot computers' docker and gate (computer-health.ts): checked before an install, after a restart, and when a
+   *  trial's run fails */
+  computer?: ComputerHealthChecks;
   now(): number;
   save(cloud: StoredCloud): void;
 }
 
 /** what the reconciler knows of the home this pass */
-export interface HomeUpdateContext { origin: string; upstream: string; secret: string; busy: readonly string[] | null }
+/** `nextDueAt`: the home's next scheduled run, as it last said */
+export interface HomeUpdateContext { origin: string; upstream: string; secret: string; busy: readonly string[] | null; nextDueAt?: number | null }
 
 export function createHomeUpdates(deps: HomeUpdateDeps) {
   const log = (c: StoredCloud, action: string, reason: string, detail?: Record<string, string | number | boolean | null>, actor: "reconciler" | "operator" = "reconciler") =>
@@ -94,20 +118,46 @@ export function createHomeUpdates(deps: HomeUpdateDeps) {
     const done = await deps.provider.run(c.serverId!, deps.image.rollbackCommand, 300);
     if (!done.ok || !done.stdout.includes("rolled back")) {
       log(c, "update_rollback_failed", verdict.reason, { from, to: verdict.to.version });
-      console.warn(`managed: ALERT cloud ${c.id}: the rollback from ${from} to ${verdict.to.version} failed; it is tried again`);
+      console.warn(`managed: cloud ${c.id}: the rollback from ${from} to ${verdict.to.version} failed; it is tried again`);
       throw new RetryableCloudError("Cloud update rollback failed.");
     }
     const { failedRuns } = rolledBack(u.guard, verdict.to, verdict.reason, deps.now());
     c.managed!.installed = verdict.to.sha256; u.stuck = false;
     log(c, "update_rolled_back", verdict.reason, { from, to: verdict.to.version, rerunFree: failedRuns.length });
-    console.warn(`managed: ALERT cloud ${c.id}: the update to ${from} was rolled back to ${verdict.to.version} (${verdict.reason})`);
+    console.log(`managed: cloud ${c.id}: the update to ${from} was rolled back to ${verdict.to.version} (${verdict.reason})`);
     deps.save(c);
+    if (relayExits(verdict.to.version)) await asideRelay(c);
     const started = await deps.provider.run(c.serverId!, deps.image.startCommand(x.origin, x.upstream), 120);
     if (!started.ok) throw new RetryableCloudError("Cloud home did not start after a rollback.");
+    await deps.computer?.check(c, "after_rollback", deps.now(), true);
+  }
+
+  /** a runs_failed rollback the computer caused gives its version back once: inside MISBLAMED, or when a check from the
+   *  trial's day to just after the rollback found docker or the gate not answering. It installs again only once the
+   *  computer answers (the check before an install) */
+  function forgiveMisblamed(c: StoredCloud, u: HomeUpdateState) {
+    const last = u.guard.last;
+    if (last?.kind !== "rolled_back" || last.reason !== "runs_failed" || u.guard.trial) return;
+    const inWindow = last.at >= MISBLAMED.from && last.at < MISBLAMED.to && !u.forgiven?.includes(MISBLAMED_KEY);
+    const key = inWindow ? MISBLAMED_KEY : `${last.version}@${last.at}`;
+    if (u.forgiven?.includes(key)) return;
+    const computerDown = (c.managed?.computer?.history ?? []).some(([at, infra]) => infra && at >= last.at - TRIAL_MS && at <= last.at + COMPUTER_CHECK_MS);
+    if (!inWindow && !computerDown) return;
+    const versions = inWindow ? [...new Set<string>([last.version, ...MISBLAMED.versions])] : [last.version];
+    const cleared = versions.filter(v => forgive(u.guard, v));
+    u.forgiven = [...(u.forgiven ?? []), key].slice(-20);
+    if (cleared.length) { u.refused = null; log(c, "update_forgiven", inWindow ? "computer_down_2026_11" : "computer_down", { versions: cleared.join(":") }); }
+    deps.save(c);
+  }
+
+  async function asideRelay(c: StoredCloud) {
+    const done = await deps.provider.run(c.serverId!, deps.image.phoneRelayAsideCommand, 60);
+    if (!done.ok) console.warn(`managed: cloud ${c.id}: its saved phone relay tunnel could not be moved aside before it starts`);
+    else if (done.stdout.includes("moved aside")) log(c, "phone_relay_aside", "relay_exits", { version: homeVersion(c) });
   }
 
   /** the trial's verdict this pass: the home's own report of its self-test and runs; null while its self-test runs */
-  async function judge(x: HomeUpdateContext, u: HomeUpdateState): Promise<Verdict | null> {
+  async function judge(c: StoredCloud, x: HomeUpdateContext, u: HomeUpdateState): Promise<Verdict | null> {
     const trial = u.guard.trial!, now = deps.now();
     const report = await deps.home.update?.(x.upstream, x.secret).catch(() => null) ?? null;
     let verdict: Verdict = { action: "wait" };
@@ -117,7 +167,18 @@ export function createHomeUpdates(deps: HomeUpdateDeps) {
       else if (report?.selfTest === "passed") verdict = selfTested(u.guard, true, now);
       else return null;
     }
-    for (const run of report?.runs ?? []) if (verdict.action === "wait" && run.at >= trial.at) verdict = sawRun(u.guard, run, now);
+    const fresh = (report?.runs ?? []).filter(run => run.at >= trial.at && !trial.runs.some(r => r.id === run.id) && !trial.excused?.includes(run.id));
+    const failed = fresh.filter(run => !run.ok && !run.infra);
+    // a failed run is the release's only when the computer answered at the first check after it
+    if (failed.length && deps.computer) await deps.computer.check(c, "trial_run_failed", Math.max(...failed.map(run => run.at)));
+    let excused = 0;
+    for (const run of fresh) {
+      if (verdict.action !== "wait") break;
+      const infra = !run.ok && (run.infra === true || deps.computer?.downAfter(c, run.at) === true);
+      if (infra) excused += 1;
+      verdict = sawRun(u.guard, { id: run.id, ok: run.ok, infra }, now);
+    }
+    if (excused) log(c, "update_runs_excused", "computer_unreachable", { version: trial.to.version, runs: excused });
     return verdict.action === "wait" ? review(u.guard, now) : verdict;
   }
 
@@ -130,7 +191,8 @@ export function createHomeUpdates(deps: HomeUpdateDeps) {
     const u = stateOf(c), now = deps.now();
     const policy = deps.policy();
     if (policy && acceptPolicy(u.guard, policy)) { log(c, "update_policy", "signed", { serial: policy.serial, floor: policy.floor, blocked: policy.blocked.length }); deps.save(c); }
-    const verdict = u.guard.trial ? await judge(x, u) : review(u.guard, now);
+    forgiveMisblamed(c, u);
+    const verdict = u.guard.trial ? await judge(c, x, u) : review(u.guard, now);
     if (verdict === null) { deps.save(c); return true; }
     if (verdict.action === "settle") { const to = u.guard.trial!.to.version; settle(u.guard, now); log(c, "update_settled", "trial_passed", { version: to }); deps.save(c); return false; }
     if (verdict.action === "stuck") {
@@ -154,6 +216,9 @@ export function createHomeUpdates(deps: HomeUpdateDeps) {
     }
     // staged: it waits for an idle moment
     if (!idleForUpdate(x.busy) || (u.retryAt !== null && u.retryAt > now)) return false;
+    if (x.nextDueAt != null && Math.abs(x.nextDueAt - now) < DUE_RUN_GUARD_MS) return false;
+    // a home whose computer is down is repaired first: a trial there would blame the release for it
+    if (deps.computer?.downRecently(c) || (await deps.computer?.check(c, "before_update", now - 2 * 60_000, true))?.health === "down") return false;
     if (pkg.file) await deps.provider.upload(c.serverId, deps.image.packagePath, readFileSync(pkg.file));
     const floor = pkg.signature ? u.guard.policy.floor : null;
     const done = await deps.provider.run(c.serverId, deps.image.installCommand(pkg.sha256, pkg.url, pkg.signature, floor), 600);
@@ -171,7 +236,10 @@ export function createHomeUpdates(deps: HomeUpdateDeps) {
     if (!started.ok) {
       const failed = selfTested(u.guard, false, deps.now());
       if (failed.action === "rollback") await rollback(c, x, u, failed);
+      return true;
     }
+    // an omb-home from before 2026-11-19 leaves the gate on the older package's code
+    await deps.computer?.check(c, "after_update", deps.now(), true);
     return true;
   }
 
@@ -187,6 +255,6 @@ export function createHomeUpdates(deps: HomeUpdateDeps) {
     deps.save(c);
     return { ended: version };
   }
-  return { step, endTrial, state: (c: StoredCloud) => c.managed?.update ?? null };
+  return { step, endTrial, asideRelay, state: (c: StoredCloud) => c.managed?.update ?? null };
 }
 export type HomeUpdates = ReturnType<typeof createHomeUpdates>;
