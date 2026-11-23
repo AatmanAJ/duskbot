@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# puts a published release's installers and mac update zips on dusk.bot (https://dusk.bot/releases/<version>/<name>,
+# puts a published release's desktop installers and mac update zips on dusk.bot (https://dusk.bot/releases/<version>/<name>,
 # served by apps/site/release-mirror.js), so updates and downloads never depend on GitHub alone. run on the Mac after
 # publish-downloads.sh; the server fetches each file from the public downloads release itself, keeps it only when its
 # sha256 is in that release's SHA256SUMS (itself checked against the signed latest.json when it is the latest), names
@@ -57,6 +57,10 @@ while IFS=$'\t' read -r name size url pinned; do
   if [ -n "$pinned" ]; then real=$([ "$sum" = "$pinned" ] && echo "$name" || true)
   else real=$(awk -v s="$sum" '$1 == s { print $2; exit }' "$incoming/SHA256SUMS"); fi
   if [ -z "$real" ]; then echo "skip $name: its sha256 is not in SHA256SUMS" >&2; rm -f "$incoming/$name"; continue; fi
+  # only what release-mirror.js MIRRORED serves; the phone apk stays on GitHub, where the download page links it
+  if ! [[ "$real" =~ ^DuskBot-${VERSION//./\\.}-[A-Za-z0-9_.-]+\.(zip|dmg|exe|deb|AppImage)$ ]]; then
+    echo "skip $real: dusk.bot/releases serves only versioned desktop files"; rm -f "$incoming/$name"; continue
+  fi
   mv "$incoming/$name" "$incoming/files/$real"
   echo "ok $real ($((size / 1048576)) MB)"
 done < "$incoming/assets.tsv"
