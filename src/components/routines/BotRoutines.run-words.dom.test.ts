@@ -45,7 +45,6 @@ beforeEach(() => {
 });
 afterEach(() => { root.unmount(); document.body.innerHTML = ""; });
 
-/** What a screen reader reads for an element: its text without the parts hidden from assistive tech. */
 function spoken(element: HTMLElement): string {
   const copy = element.cloneNode(true) as HTMLElement;
   for (const hidden of copy.querySelectorAll("[aria-hidden=true]")) hidden.remove();
