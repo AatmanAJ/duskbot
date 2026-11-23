@@ -8,6 +8,7 @@ import { InstanceProviderMark } from "@/components/ProviderIcons";
 import { WindowDragStrip } from "@/components/DesktopCapabilities";
 import { splitEngineRail } from "@/lib/engine-rail";
 import { t } from "@/lib/i18n";
+import { friendlyError } from "@/lib/plain-error";
 import { productName } from "../lib/brand";
 import { openKeySettings } from "./keys/key-focus";
 
@@ -15,14 +16,19 @@ export function NoEngines() {
   const { state, dispatch, refreshInstances } = useStore();
   const remoteClient = window.duskDesktop?.remoteClient?.active === true;
   const [rechecking, setRechecking] = useState(false);
+  const [checkFailed, setCheckFailed] = useState<string | null>(null);
   const recheck = async () => {
     setRechecking(true);
+    setCheckFailed(null);
     try {
-      await refreshInstances();
+      await refreshInstances({ reportErrors: true });
+    } catch (cause) {
+      setCheckFailed(friendlyError(cause, t("noEngines.checkFailed")));
     } finally {
       setRechecking(false);
     }
   };
+  const failure = checkFailed && <p role="alert" className="mt-2 text-[13px] text-danger">{checkFailed}</p>;
 
   if (remoteClient) {
     return (
@@ -36,6 +42,7 @@ export function NoEngines() {
           <button onClick={() => void recheck()} disabled={rechecking} className="mt-5 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-60">
             {rechecking ? t("common.checking") : t("common.checkAgain")}
           </button>
+          {failure}
         </div>
       </main>
     );
@@ -108,6 +115,7 @@ export function NoEngines() {
           {rechecking ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
           {rechecking ? t("common.checking") : t("common.checkAgain")}
         </button>
+        {failure}
       </div>
     </main>
   );
