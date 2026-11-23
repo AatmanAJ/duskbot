@@ -135,7 +135,7 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
           <Icon name="close" size={14} />
         </button>
         <div className="flex shrink-0 flex-col items-start gap-1 border-b border-transparent p-4">
-          <h2 id={titleId} className="m-0 text-[14px] font-semibold leading-[22px] tracking-[-0.15px]">Create new bot</h2>
+          <h2 id={titleId} className="m-0 text-[14px] font-semibold leading-[22px] tracking-[-0.15px]">{t("createBot.title")}</h2>
         </div>
         <div className="min-h-0 w-full overflow-auto p-4 leading-[18px] tracking-[-0.08px]">
           <div className="flex flex-col gap-3">
@@ -146,7 +146,7 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
               autoFocus
               type="text"
               aria-label={t("botPanel.nameField")}
-              placeholder="Name your bot"
+              placeholder={t("createBot.namePlaceholder")}
               value={name}
               maxLength={80}
               onChange={(event) => rename(event.target.value)}
@@ -168,7 +168,7 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
                   <button
                     key={swatch}
                     type="button"
-                    aria-label={`${t(MAUS_COLOR_LABEL[swatch])} character color`}
+                    aria-label={t("createBot.colorAria", { color: t(MAUS_COLOR_LABEL[swatch]) })}
                     aria-pressed={swatch === color}
                     onClick={() => pickColor(swatch)}
                     {...watch}
@@ -194,7 +194,7 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
           >
             {t("createBot.groupInstead")}
           </button>
-          <button type="button" onClick={onClose} className={cn(KIT_BUTTON, "bg-ink/6 text-ink hover:bg-ink/10")}><span>Cancel</span></button>
+          <button type="button" onClick={onClose} className={cn(KIT_BUTTON, "bg-ink/6 text-ink hover:bg-ink/10")}><span>{t("common.cancel")}</span></button>
           <button
             type="button"
             disabled={!canCreate}
@@ -202,7 +202,7 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
             onClick={create}
             className={cn(KIT_BUTTON, "bg-ink text-app hover:bg-[color-mix(in_srgb,var(--color-ink)_88%,var(--color-app))] disabled:bg-ink/15 disabled:text-ink/30")}
           >
-            <span>{creating ? t("createBot.creating") : "Create"}</span>
+            <span>{creating ? t("createBot.creating") : t("createBot.create")}</span>
           </button>
         </div>
       </div>
