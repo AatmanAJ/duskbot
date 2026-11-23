@@ -145,6 +145,7 @@ export function VoiceSettings({
   useEffect(() => setVoices([]), [provider, usesLocalSystem]);
 
   useEffect(() => {
+    setListError(null);
     if (usesLocalSystem) {
       const load = () => setVoices(listLocalSystemVoices());
       load();
