@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { join } from "node:path";
-const R = "/Users/lives/.t3/worktrees/duskbot/t3-5206edbd";
+const R = process.cwd();
 const { launchRestartableServer } = await import(R + "/server/testing/restartable-server.ts");
 const { mountPreview } = await import(R + "/scripts/testing/preview-fixture.ts");
 const ui = await import(R + "/scripts/testing/control-dusk-ui.ts");
