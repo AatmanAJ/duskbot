@@ -7202,7 +7202,7 @@ bus.subscribe((event: RuntimeEvent) => {
     const shown = pendingCheckCard(store.activePath(event.threadId), speaker?.botId ?? bot?.id) ? withoutCheckAsk(voiced.text) : voiced.text;
     if (!shown.trim()) return;
     streamedReplies.spoke(event.threadId);
-    for (const bubble of replyBubbles(shown)) if (!repeatedBubble(store.activePath(event.threadId), bubble, Date.now())) pushMessage({ role: "bot", kind: "text", text: bubble, turnId });
+    for (const bubble of replyBubbles(shown)) if (!repeatedBubble(store.activePath(event.threadId), bubble, Date.now(), speaker?.botId ?? bot?.id)) pushMessage({ role: "bot", kind: "text", text: bubble, turnId });
     lastReply.set(event.threadId, shown);
   };
   const landParkedFiles = (stopped: boolean) => {

@@ -19,4 +19,11 @@ describe("repeatedBubble", () => {
     expect(repeatedBubble([bot("On it.", T0)], "Done.", T0 + MIN)).toBe(false);
     expect(repeatedBubble([], "On it.", T0)).toBe(false);
   });
+
+  it("keeps a room member's words when another member said the same", () => {
+    const from = (botId: string) => ({ botId, name: botId, color: "green" });
+    const path = [person("morning all", T0), { ...bot("Morning!", T0 + MIN), from: from("ada") }];
+    expect(repeatedBubble(path, "Morning!", T0 + 2 * MIN, "basil")).toBe(false);
+    expect(repeatedBubble(path, "Morning!", T0 + 2 * MIN, "ada")).toBe(true);
+  });
 });
