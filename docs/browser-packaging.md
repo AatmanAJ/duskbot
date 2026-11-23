@@ -56,7 +56,8 @@ unless a Chrome is named too.
 from the binary itself once per version: its own user agent without
 "HeadlessChrome", and its own client hints (brands, full version list,
 platform version, architecture). agent-browser runs a generated launcher
-(`browser/chrome-launcher.sh`, `.cmd` on Windows) that adds
+(`browser/chrome-launcher.sh`; on Windows Chrome itself, with these flags in
+`AGENT_BROWSER_ARGS` and `AGENT_BROWSER_USER_AGENT`, so no console window opens) that adds
 `--disable-blink-features=AutomationControlled`, that user agent, the primary
 display's size and, when dusk bot knows it, the language; on a server it also
 passes the server's `TZ`. A bot's Chrome never touches the person's keychain

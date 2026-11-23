@@ -13,7 +13,7 @@ import { needsNoSandbox, type ChromeIdentity } from "./identity.ts";
 import { installChromeForTesting, type ChromeForTestingPin, type DownloadProgress } from "./install.ts";
 import { chromeHost, legacyBrowserFound, resolveChromePlan, type ChromeEngine, type ChromeHost, type ChromePlan, type FoundChrome } from "./resolve.ts";
 import { IdentitySidecars } from "./sidecar.ts";
-import { browserLanguage, browserTimeZone, languageList, launcherPath, primaryScreen, writeLauncher, type LauncherBox, type LauncherSettings, type Screen } from "./wrapper.ts";
+import { browserLanguage, browserTimeZone, languageList, launcherFlags, launcherPath, primaryScreen, writeLauncher, type LauncherBox, type LauncherSettings, type Screen } from "./wrapper.ts";
 
 type Ready = { kind: "ready"; chrome: FoundChrome; identity: ChromeIdentity; product: string; fingerprint: string; launcher?: LauncherSettings };
 type State =
@@ -120,7 +120,24 @@ export class ChromeLauncher implements BrowserLaunch {
     if (this.state.kind === "failed" || this.plan().kind === "legacy") return {};
     void this.prepare();
     this.followTimeZone();
-    return { AGENT_BROWSER_EXECUTABLE_PATH: this.path, AGENT_BROWSER_HIDE_SCROLLBARS: "0" };
+    return this.direct() ?? { AGENT_BROWSER_EXECUTABLE_PATH: this.path, AGENT_BROWSER_HIDE_SCROLLBARS: "0" };
+  }
+
+  /** Windows: Chrome itself, with the launcher's flags in agent-browser's own settings (the user agent apart, as it holds
+   * commas). agent-browser 0.37 runs a batch launcher through cmd.exe, which opens a console window on the person's screen
+   * because agent-browser's daemon has no console of its own; Chrome, a GUI program, opens none. */
+  private direct(): Record<string, string> | null {
+    const state = this.state;
+    if (this.options.platform !== "win32" || state.kind !== "ready" || !state.launcher) return null;
+    const flags = launcherFlags(state.launcher, "win32").filter((flag) => !flag.startsWith("--user-agent="));
+    return { AGENT_BROWSER_EXECUTABLE_PATH: state.chrome.path, AGENT_BROWSER_USER_AGENT: state.launcher.userAgent, AGENT_BROWSER_ARGS: flags.join("\n"), AGENT_BROWSER_HIDE_SCROLLBARS: "0" };
+  }
+
+  /** A launch asked for before Chrome was ready goes to Chrome itself as the launches after it do (Windows). */
+  private launchDirect(spec: LaunchSpec): void {
+    const direct = this.direct();
+    if (!direct || !spec.env || spec.env.AGENT_BROWSER_EXECUTABLE_PATH !== this.path) return;
+    Object.assign(spec.env, direct, { AGENT_BROWSER_ARGS: [direct.AGENT_BROWSER_ARGS, spec.env.AGENT_BROWSER_ARGS].filter(Boolean).join("\n") });
   }
 
   /** The owner's app can give a Cloud its time zone at any time (server/time-zone.ts): the next Chrome this starts tells
@@ -177,6 +194,7 @@ export class ChromeLauncher implements BrowserLaunch {
         : "Getting the browser ready. Try again in a moment.");
     }
     if (this.state.kind === "failed") throw new Error(`Chrome could not be started (${this.state.reason}). Try again: your next browser call uses the built-in browser.`);
+    this.launchDirect(spec);
   }
 
   async started(session: string, spec: LaunchSpec): Promise<void> {
@@ -207,7 +225,9 @@ export class ChromeLauncher implements BrowserLaunch {
   }
 
   private uses(spec: LaunchSpec): boolean {
-    return spec.env?.AGENT_BROWSER_EXECUTABLE_PATH === this.path && !attachesToChrome(spec.env);
+    const path = spec.env?.AGENT_BROWSER_EXECUTABLE_PATH;
+    return (path === this.path || (path !== undefined && path === this.direct()?.AGENT_BROWSER_EXECUTABLE_PATH && spec.env?.AGENT_BROWSER_USER_AGENT !== undefined))
+      && !attachesToChrome(spec.env);
   }
 
   private fresh(state: Ready): boolean {
