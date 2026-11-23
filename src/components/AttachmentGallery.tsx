@@ -351,7 +351,8 @@ function AudioAttachment({ file, message }: { file: GalleryFile; message: Messag
   useEffect(() => {
     if (!src || !focusPlayer.current) return;
     focusPlayer.current = false;
-    playerRef.current?.focus();
+    const at = document.activeElement;
+    if (at === null || at === document.body || at === playRef.current) playerRef.current?.focus();
   }, [src]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
