@@ -26,6 +26,7 @@ import { captureCliTree, cliVersionReader, describeSpawnFailure, execCli, killCl
 import { CodexAppServerPool, codexSpawnKey, codexWarmEnabled, type CodexUsageTotal } from "./codex-app-server-pool.ts";
 import { codexLaunch, codexLaunchSlot, codexRpcTimeoutMs, keepStopping, RELAUNCH_EXIT_WAIT_MS, spawnHoldingSlot, tryCodexLaunchSlot } from "./codex-process.ts";
 import { isReservedMcpEnvEntry } from "../mcp-registry.ts";
+import { MCP_RESTART_ENV } from "../mcp-app-catalog.ts";
 
 import type {
   DriverCreateInput,
@@ -508,7 +509,8 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       const approvalMode: ApprovalMode = turn.approvalMode ?? (config.fullAuto ? "full" : "ask");
       for (const [name, server] of Object.entries(turn.integrations?.custom ?? {})) {
         if ("url" in server) continue;
-        const reserved = Object.entries(server.env).find(([key, value]) => isReservedMcpEnvEntry(key, value));
+        // Saving a server refuses every DUSK_ name, so only the harness itself puts the restart count here.
+        const reserved = Object.entries(server.env).find(([key, value]) => key !== MCP_RESTART_ENV && isReservedMcpEnvEntry(key, value));
         if (reserved) {
           throw new Error(`Custom MCP server “${name}” cannot set reserved environment variable “${reserved[0]}”`);
         }
