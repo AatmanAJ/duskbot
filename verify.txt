@@ -1,0 +1,18 @@
+## the new test on untouched main (dbfefd93d)
+   × when search is unavailable, Enter in the search field tries again, as Try again does 524ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+
+## the same test on this branch (eef473f4c)
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9208 English strings)
+
+## related tests: src/components/CommandPalette src/components/SearchResults
+ Test Files  2 passed (2)
+      Tests  5 passed (5)

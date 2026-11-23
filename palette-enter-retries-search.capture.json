@@ -1,0 +1,41 @@
+{
+  "about": "Searching from the command palette (Cmd-K) while message search is unreachable, then pressing Enter once it is back. Staged: the page's fetch refuses /api/search until the step before Enter lets it through again; everything else is the app as it is.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1280,
+  "height": 720,
+  "scale": 2,
+  "steps": [
+    {
+      "eval": "(() => {\n  window.__searchDown = true;\n  const real = window.fetch.bind(window);\n  window.fetch = (input, init) => window.__searchDown && String(input).includes('/api/search')\n    ? Promise.reject(new TypeError('Failed to fetch'))\n    : real(input, init);\n  return true;\n})()"
+    },
+    {
+      "press": "Meta+k"
+    },
+    {
+      "waitMs": 500
+    },
+    {
+      "eval": "(() => { const f = document.querySelector('input[role=combobox][aria-label=Search]') || document.activeElement; f.focus(); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(f, 'like me to do'); f.dispatchEvent(new Event('input', { bubbles: true })); return document.activeElement === f; })()"
+    },
+    {
+      "waitMs": 900
+    },
+    {
+      "shot": "f01-unavailable",
+      "only": "after"
+    },
+    {
+      "eval": "(window.__searchDown = false, true)"
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "waitMs": 1200
+    },
+    {
+      "shot": true
+    }
+  ]
+}
