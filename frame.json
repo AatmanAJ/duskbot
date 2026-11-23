@@ -1,0 +1,1 @@
+{ "find-bar-focus-return.before-after.png": { "crop": "280,478,1000,242", "arrange": "stack", "labels": ["before: Escape, then typed Thanks", "after: Thanks lands in the box"] }, "find-bar-focus-return.f01-find-open.png": { "shots": ["find-bar-focus-return.f01-find-open.raw.png"], "crop": "280,0,1000,205" } }

@@ -1,0 +1,20 @@
+## the new test on untouched main (dbfefd93d)
+   × closing find with Escape puts the cursor back in the message box 20ms
+   × closing find from a menu that is gone still lands in the message box, not on the page 4ms
+   × the match count is announced as it changes 2ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  3 failed (3)
+
+## the same test on this branch (cebec9797)
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9208 English strings)
+
+## related tests: src/components/ChatFindBar src/components/ChatView src/lib/chat-find
+ Test Files  26 passed (26)
+      Tests  152 passed (152)

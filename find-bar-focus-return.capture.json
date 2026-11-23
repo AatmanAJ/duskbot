@@ -1,0 +1,22 @@
+{
+  "about": "Find in Pepper's chat opened with Cmd-F from the message box, a word searched, Escape, then the next keys typed: on main they go nowhere, on this branch they land in the message box. The focused element is outlined for the shot.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1280,
+  "height": 720,
+  "scale": 2,
+  "steps": [
+    { "click": "Message Pepper" },
+    { "press": "Meta+f" },
+    { "waitFor": "document.activeElement?.getAttribute('aria-label') === 'Find in this conversation'" },
+    { "press": "P" }, { "press": "e" }, { "press": "p" },
+    { "waitMs": 900 },
+    { "shot": "f01-find-open", "only": "after" },
+    { "press": "Escape" },
+    { "waitMs": 400 },
+    { "press": "T" }, { "press": "h" }, { "press": "a" }, { "press": "n" }, { "press": "k" }, { "press": "s" },
+    { "waitMs": 300 },
+    { "eval": "(() => { const el = document.activeElement; window.__focusedTag = el ? (el.getAttribute('aria-label') || el.tagName) : 'none'; return true; })()" },
+    { "shot": true }
+  ]
+}
