@@ -133,7 +133,8 @@ export async function editableAt(page: CdpPage, x: number, y: number): Promise<b
   return await valueInWorld<boolean>(page.frames, page.frames.mainFrameId, `${EDITABLE_AT}(${cssNumber(x)}, ${cssNumber(y)})`) === true;
 }
 
-const SELECTED_TEXT = `(() => {
+/** The page's selected text, as an expression either engine can evaluate. */
+export const SELECTED_TEXT = `(() => {
   let doc = document;
   let el = doc.activeElement;
   while (el && el.tagName === "IFRAME") {

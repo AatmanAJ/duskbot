@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import type { PageSize } from "./browser-page-size.ts";
 import { attachesToChrome, browserRuntimeEnv, type BrowserRuntime } from "./browser-runtime.ts";
 import { requestedSize } from "./browser/viewers/viewport.ts";
+import { SELECTED_TEXT } from "./browser/viewers/popups.ts";
 import { threadOfTabLabel } from "./browser-thread-tabs.ts";
 import { readFileSync } from "node:fs";
 import { browserDaemonFile, closeBrowserSession } from "./browser-engine.ts";
@@ -947,7 +948,7 @@ export class BrowserLive {
     }
     if (action.type === "take") return this.takeControl(viewer);
     if (action.type === "copy") {
-      this.send(viewer, { type: "clipboard", text: "" });
+      this.send(viewer, { type: "clipboard", text: await this.selection(viewer) });
       return { ok: true };
     }
     if (this.shared(viewer)) return this.together(viewer, action);
@@ -1030,6 +1031,14 @@ export class BrowserLive {
       viewer.pendingActions -= 1;
       if (viewer.closed && viewer.pendingActions === 0) viewer.idle?.();
     }
+  }
+
+  /** The page's selected text, for a view that is shown the page: never while another person holds it. */
+  private async selection(viewer: Viewer): Promise<string> {
+    const holder = this.runtime.heldBy(viewer.session);
+    if (holder && holder !== viewer.person) return "";
+    const data = await this.command(viewer, ["eval", SELECTED_TEXT], 5_000).catch(() => null);
+    return typeof data?.result === "string" ? data.result : "";
   }
 
   private async takeControl(viewer: Viewer): Promise<{ ok: true; waited: boolean }> {
