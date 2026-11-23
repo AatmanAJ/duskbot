@@ -25,10 +25,12 @@ export function loudnessChain(context: BaseAudioContext, destination: AudioNode)
   return compressor;
 }
 
-/** Plays an <audio> element through the chain. Where the page has no Web Audio it plays as it is. */
+/** Plays an <audio> element through the chain. Where the page has no Web Audio it plays as it is, and so it does in the
+ * iPhone app: WebKit treats an element fed into Web Audio as Web Audio, which the ring/silent switch mutes, and a
+ * context made after the reply's audio download (outside the tap) stays suspended, so nothing was heard. */
 export function playLouder(audio: HTMLAudioElement): void {
   try {
-    if (typeof globalThis.AudioContext !== "function") return;
+    if (typeof globalThis.AudioContext !== "function" || globalThis.document?.documentElement?.dataset?.mobileApp === "ios") return;
     if (!shared) {
       const context = new AudioContext();
       shared = { context, input: loudnessChain(context, context.destination) };
