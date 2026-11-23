@@ -31,6 +31,9 @@ export const takesLinkGrant = (c: StoredCloud) => { const version = homeVersion(
 /** how long a new version gets to answer and pass its self-test */
 export const SELF_TEST_WAIT_MS = 5 * 60_000;
 const INSTALL_RETRY_MS = 60 * 60_000;
+/** an install restarts the home: never this close to a scheduled run, which the busy list read earlier in the pass
+ *  cannot show yet once it starts */
+export const DUE_RUN_GUARD_MS = 3 * 60_000;
 /** Releases rolled back on runs_failed in this window, while docker gates were down on homes set up before 2026-11-19:
  *  their runs failed for want of their computer, not for the release. A cloud whose last rollback is in the window gets
  *  these versions back once, offered again once its computer answers. `to` runs past this fix's deploy: until then the
@@ -83,7 +86,8 @@ export interface HomeUpdateDeps {
 }
 
 /** what the reconciler knows of the home this pass */
-export interface HomeUpdateContext { origin: string; upstream: string; secret: string; busy: readonly string[] | null }
+/** `nextDueAt`: the home's next scheduled run, as it last said */
+export interface HomeUpdateContext { origin: string; upstream: string; secret: string; busy: readonly string[] | null; nextDueAt?: number | null }
 
 export function createHomeUpdates(deps: HomeUpdateDeps) {
   const log = (c: StoredCloud, action: string, reason: string, detail?: Record<string, string | number | boolean | null>, actor: "reconciler" | "operator" = "reconciler") =>
@@ -212,6 +216,7 @@ export function createHomeUpdates(deps: HomeUpdateDeps) {
     }
     // staged: it waits for an idle moment
     if (!idleForUpdate(x.busy) || (u.retryAt !== null && u.retryAt > now)) return false;
+    if (x.nextDueAt != null && Math.abs(x.nextDueAt - now) < DUE_RUN_GUARD_MS) return false;
     // a home whose computer is down is repaired first: a trial there would blame the release for it
     if (deps.computer?.downRecently(c) || (await deps.computer?.check(c, "before_update", now - 2 * 60_000, true))?.health === "down") return false;
     if (pkg.file) await deps.provider.upload(c.serverId, deps.image.packagePath, readFileSync(pkg.file));
