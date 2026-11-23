@@ -1,9 +1,11 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { ExternalLink, Loader2, LockKeyhole, RefreshCw } from "../icons";
 
-import { CUSTOM_SECRET_TARGET, credentialResumeOutcome, credentialSaveRequest, desktopCredentialSlot, isConfigCredentialTarget, isCredentialTargetId } from "../../shared/credential-request";
+import { CUSTOM_SECRET_TARGET, credentialConfigPatch, credentialResumeOutcome, desktopCredentialSlot, isConfigCredentialTarget, isCredentialTargetId } from "../../shared/credential-request";
 import { credentialProvider } from "@/lib/analytics-allowlist";
 import { cn } from "@/lib/cn";
+import { connectOnePassword } from "@/lib/logins";
+import { putConfig } from "@/lib/sealed-send";
 import { t } from "@/lib/i18n";
 import { keySaved, keySaveFailure, savedKeyResult } from "@/lib/product-events";
 import { api, ApiError, useStore, type Bot, type ConfigStatus, type Message } from "@/state/store";
@@ -189,14 +191,13 @@ export function SecretRequestCardBody({
         const next = value.trim();
         const target = secret.target;
         // The 1Password token goes to this server's Logins, which checks it with 1Password first, never the settings file.
-        const request = credentialSaveRequest(target, next);
         const slot = desktopCredentialSlot(target);
         if (isConfigCredentialTarget(target)) {
           const status: ConfigStatus = slot && window.duskDesktop?.setCredential
             ? await window.duskDesktop.setCredential(slot, next)
-            : await api(request.path, { method: request.method, body: JSON.stringify(request.body) });
+            : await putConfig(credentialConfigPatch(target, next) as Record<string, unknown>);
           dispatch({ type: "configStatus", config: status });
-        } else await api(request.path, { method: request.method, body: JSON.stringify(request.body) });
+        } else await connectOnePassword(next);
         saved = true;
         keySaved(provider, "chat_request", savedKeyResult(provider));
         setValue("");
