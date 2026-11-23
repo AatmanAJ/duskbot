@@ -25,6 +25,8 @@ beforeEach(() => {
 });
 afterEach(() => { act(() => root.unmount()); host.remove(); document.body.innerHTML = ""; });
 
+const dialog = () => [...document.querySelectorAll<HTMLElement>("[data-create-bot-dialog]")].find((el) => !el.closest("[data-leaving]")) ?? null;
+
 function type(field: HTMLInputElement, value: string) {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value);
   field.dispatchEvent(new Event("input", { bubbles: true }));
@@ -33,7 +35,7 @@ function type(field: HTMLInputElement, value: string) {
 async function startCreating() {
   await act(async () => { root.render(createElement(CreateBotDialog)); });
   await act(async () => { openCreateBot(); });
-  const field = document.querySelector<HTMLInputElement>("[data-create-bot-dialog] input")!;
+  const field = dialog()!.querySelector<HTMLInputElement>("input")!;
   await act(async () => { type(field, "Waffle"); });
   await act(async () => { field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
   const made = fixture.actions.find((action) => action.type === "newBot");
@@ -44,16 +46,16 @@ async function startCreating() {
 it("Escape while the bot is being made keeps the dialog, so a failure still shows", async () => {
   const made = await startCreating();
   await act(async () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
-  expect(document.querySelector("[data-create-bot-dialog]")).not.toBeNull();
+  expect(dialog()).not.toBeNull();
   await act(async () => { made.onError!("Couldn't make a new bot: The bots folder is read-only"); });
   expect(document.querySelector("[role=alert]")?.textContent).toBe("Couldn't make a new bot: The bots folder is read-only");
 });
 
 it("a click outside while the bot is being made keeps the dialog", async () => {
   await startCreating();
-  const scrim = document.querySelector<HTMLElement>("[data-create-bot-dialog]")!.previousElementSibling as HTMLElement;
+  const scrim = dialog()!.previousElementSibling as HTMLElement;
   await act(async () => { scrim.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })); });
-  expect(document.querySelector("[data-create-bot-dialog]")).not.toBeNull();
+  expect(dialog()).not.toBeNull();
 });
 
 it("Escape still closes the dialog while a bot from somewhere else is being made", async () => {
@@ -61,5 +63,5 @@ it("Escape still closes the dialog while a bot from somewhere else is being made
   await act(async () => { root.render(createElement(CreateBotDialog)); });
   await act(async () => { openCreateBot(); });
   await act(async () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
-  expect(document.querySelector("[data-create-bot-dialog]")).toBeNull();
+  expect(dialog()).toBeNull();
 });
