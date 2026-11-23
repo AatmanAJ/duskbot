@@ -157,6 +157,7 @@ export class CodexAppServer {
  * process holding an older copy of its history. */
 export class CodexAppServerPool {
   private readonly servers = new Set<CodexAppServer>();
+  private readonly lettingGo = new Map<string, Promise<void>>();
   private readonly label: string;
   private readonly now: () => number;
   private readonly idleMs: () => number;
@@ -236,13 +237,29 @@ export class CodexAppServerPool {
     return [...this.servers].filter((server) => !server.leased).length;
   }
 
+  /** Settles once no other process of this pool still holds `nativeThreadId` (Codex lets one process at a time write a
+   * thread: another resuming it before then is refused with "already has a writer"). */
+  async released(nativeThreadId: string): Promise<void> {
+    await this.lettingGo.get(nativeThreadId);
+  }
+
+  /** A process busy with another thread's turn is asked to unload this one; one that does not answer in time (a stalled
+   * turn) is stopped, as is an idle one. */
   private unloadElsewhere(nativeThreadId: string, keep: CodexAppServer | null): void {
+    const letting: Promise<unknown>[] = [];
     for (const server of this.servers) {
       if (server === keep || !server.threads.has(nativeThreadId)) continue;
       server.threads.delete(nativeThreadId);
-      if (server.leased) server.retiring = true;
-      else void this.close(server);
+      if (!server.leased) { letting.push(this.close(server)); continue; }
+      server.retiring = true;
+      letting.push(server.request("thread/unsubscribe", { threadId: nativeThreadId }, UNSUBSCRIBE_TIMEOUT_MS).catch(() => this.close(server)));
     }
+    if (!letting.length) return;
+    const before = this.lettingGo.get(nativeThreadId);
+    const done: Promise<void> = Promise.all([before, ...letting]).then(() => {}, () => {}).finally(() => {
+      if (this.lettingGo.get(nativeThreadId) === done) this.lettingGo.delete(nativeThreadId);
+    });
+    this.lettingGo.set(nativeThreadId, done);
   }
 
   private forget(server: CodexAppServer): void {

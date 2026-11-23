@@ -662,6 +662,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         const warm = codexWarmEnabled() && !turn.guestConfined;
         const spawnKey = codexSpawnKey({ cli: config.cli, args: appServerArgs, env, cwd: turn.cwd ?? homedir(), login: launchedLogin });
         const reused = warm && !cold ? appServers.take(spawnKey, typeof turn.resumeCursor === "string" ? turn.resumeCursor : null) : null;
+        if (typeof turn.resumeCursor === "string") await appServers.released(turn.resumeCursor);
         const releaseSlot = reused ? () => {} : tryCodexLaunchSlot() ?? await waitForLaunchSlot(attempt);
         if (!releaseSlot) return;
         const server = reused ?? appServers.adopt(spawnKey, spawnHoldingSlot(releaseSlot, () => spawnCli(...codexLaunch(config.cli, appServerArgs), {
