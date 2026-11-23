@@ -89,14 +89,15 @@ export function createComputerHealth(deps: ComputerHealthDeps) {
       const last = c.managed?.computer?.last?.at ?? null;
       return last === null || deps.now() - last >= COMPUTER_CHECK_MS;
     },
-    /** checks and repairs the home's docker and gate, unless a check ran at or after `notBefore` (default: now); never throws */
-    async check(c: StoredCloud, why: string, notBefore = deps.now()): Promise<ComputerCheck | null> {
+    /** checks and repairs the home's docker and gate, unless a check ran at or after `notBefore` (default: now); never
+     *  throws. `refreshGate` only while the home is idle: a gate that answers but runs an older package's code restarts */
+    async check(c: StoredCloud, why: string, notBefore = deps.now(), refreshGate = false): Promise<ComputerCheck | null> {
       if (!c.serverId || !c.managed) return null;
       const s = stateOf(c);
       if (s.last && s.last.health !== "unknown" && s.last.at >= notBefore) return s.last;
       let stdout: string;
       try {
-        const done = await deps.provider.run(c.serverId, deps.image.computerCheckCommand, 240);
+        const done = await deps.provider.run(c.serverId, deps.image.computerCheckCommand(refreshGate), 240);
         stdout = done.stdout;
       } catch (error) {
         console.warn(`managed: the computer check of ${c.id} could not run: ${(error as Error).message}`);
@@ -105,6 +106,12 @@ export function createComputerHealth(deps: ComputerHealthDeps) {
       const check = parseComputerCheck(stdout, deps.now());
       record(c, why, check);
       return check;
+    },
+    /** whether the last check found docker or the gate down and did not bring it back, less than COMPUTER_CHECK_MS ago:
+     *  checking again before then would only hold a reconciler lane for the repair's minutes */
+    downRecently(c: StoredCloud): boolean {
+      const last = c.managed?.computer?.last;
+      return last?.health === "down" && deps.now() - last.at < COMPUTER_CHECK_MS;
     },
     /** whether the first check at or after `at` found docker or the gate not answering: a run that failed at `at` failed
      *  for want of its computer, whatever version the home ran */

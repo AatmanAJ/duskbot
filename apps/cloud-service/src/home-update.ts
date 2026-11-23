@@ -125,7 +125,7 @@ export function createHomeUpdates(deps: HomeUpdateDeps) {
     if (relayExits(verdict.to.version)) await asideRelay(c);
     const started = await deps.provider.run(c.serverId!, deps.image.startCommand(x.origin, x.upstream), 120);
     if (!started.ok) throw new RetryableCloudError("Cloud home did not start after a rollback.");
-    await deps.computer?.check(c, "after_rollback", deps.now());
+    await deps.computer?.check(c, "after_rollback", deps.now(), true);
   }
 
   /** a runs_failed rollback the computer caused gives its version back once: inside MISBLAMED, or when a check from the
@@ -213,7 +213,7 @@ export function createHomeUpdates(deps: HomeUpdateDeps) {
     // staged: it waits for an idle moment
     if (!idleForUpdate(x.busy) || (u.retryAt !== null && u.retryAt > now)) return false;
     // a home whose computer is down is repaired first: a trial there would blame the release for it
-    if ((await deps.computer?.check(c, "before_update", now - 2 * 60_000))?.health === "down") return false;
+    if (deps.computer?.downRecently(c) || (await deps.computer?.check(c, "before_update", now - 2 * 60_000, true))?.health === "down") return false;
     if (pkg.file) await deps.provider.upload(c.serverId, deps.image.packagePath, readFileSync(pkg.file));
     const floor = pkg.signature ? u.guard.policy.floor : null;
     const done = await deps.provider.run(c.serverId, deps.image.installCommand(pkg.sha256, pkg.url, pkg.signature, floor), 600);
@@ -234,7 +234,7 @@ export function createHomeUpdates(deps: HomeUpdateDeps) {
       return true;
     }
     // an omb-home from before 2026-11-19 leaves the gate on the older package's code
-    await deps.computer?.check(c, "after_update", deps.now());
+    await deps.computer?.check(c, "after_update", deps.now(), true);
     return true;
   }
 
