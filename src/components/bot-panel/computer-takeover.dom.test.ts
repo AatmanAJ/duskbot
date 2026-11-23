@@ -38,9 +38,6 @@ vi.mock("./CloudDesktop", () => ({
   CloudDesktopListRow: () => null,
   useCloudDesktop: () => null,
 }));
-vi.mock("./PanelSteps", () => ({
-  PanelSteps: () => null,
-}));
 vi.mock("./LocalBrowser", () => ({
   LocalBrowserSection: () => createElement("div", { "data-stub-local-browser": "true" }),
 }));
