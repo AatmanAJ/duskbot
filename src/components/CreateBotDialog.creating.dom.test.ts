@@ -3,11 +3,11 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const fixture = vi.hoisted(() => ({ actions: [] as Array<{ type: string; onError?: (message: string) => void }> }));
+const fixture = vi.hoisted(() => ({ actions: [] as Array<{ type: string; onError?: (message: string) => void }>, otherBotPending: false }));
 vi.mock("@/state/store", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   const dispatch = (action: { type: string }) => { fixture.actions.push(action); };
-  return { ...original, useStore: () => ({ state: original.initialState, dispatch }) };
+  return { ...original, useStore: () => ({ state: { ...original.initialState, botCreationPending: fixture.otherBotPending }, dispatch }) };
 });
 vi.mock("@/lib/bot-defaults-prefetch", () => ({ prefetchBotDefaults: () => {} }));
 
@@ -18,6 +18,7 @@ import { CreateBotDialog, openCreateBot } from "./CreateBotDialog";
 let host: HTMLDivElement, root: Root;
 beforeEach(() => {
   fixture.actions = [];
+  fixture.otherBotPending = false;
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -53,4 +54,12 @@ it("a click outside while the bot is being made keeps the dialog", async () => {
   const scrim = document.querySelector<HTMLElement>("[data-create-bot-dialog]")!.previousElementSibling as HTMLElement;
   await act(async () => { scrim.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })); });
   expect(document.querySelector("[data-create-bot-dialog]")).not.toBeNull();
+});
+
+it("Escape still closes the dialog while a bot from somewhere else is being made", async () => {
+  fixture.otherBotPending = true;
+  await act(async () => { root.render(createElement(CreateBotDialog)); });
+  await act(async () => { openCreateBot(); });
+  await act(async () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+  expect(document.querySelector("[data-create-bot-dialog]")).toBeNull();
 });

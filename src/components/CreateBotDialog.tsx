@@ -99,7 +99,7 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
   };
 
   const busy = useRef(false);
-  busy.current = creating || pending;
+  busy.current = creating;
   const leave = () => { if (!busy.current) onClose(); };
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
