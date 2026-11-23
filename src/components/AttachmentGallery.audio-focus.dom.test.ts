@@ -33,3 +33,26 @@ it("pressing Play on a voice memo with the keyboard leaves focus on the player, 
   expect(host.querySelector("audio")).not.toBeNull();
   expect(document.activeElement).toBe(host.querySelector("audio"));
 });
+
+it("leaves focus where the person moved it while the memo was still loading", async () => {
+  let answer!: (response: Response) => void;
+  vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => { answer = resolve; })));
+  const composer = document.createElement("textarea");
+  document.body.append(composer);
+  await act(async () => {
+    root.render(createElement(MessageAttachmentGallery, {
+      text: "",
+      attachments: [{ kind: "file", path: "/store/memo.mp3", name: "Standup notes.mp3" }],
+      message: { threadId: "t1", messageId: "m1" },
+    }));
+  });
+  const play = host.querySelector<HTMLButtonElement>("button[aria-label*='Standup notes.mp3']")!;
+  play.focus();
+  await act(async () => { play.click(); });
+  composer.focus();
+  await act(async () => { answer(new Response("audio bytes", { headers: { "content-type": "audio/mpeg" } })); });
+  for (let i = 0; i < 5; i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  expect(host.querySelector("audio")).not.toBeNull();
+  expect(document.activeElement).toBe(composer);
+  composer.remove();
+});
