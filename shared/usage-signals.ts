@@ -142,6 +142,35 @@ const DRIVER_CODE = /^(?:[a-z][a-zA-Z0-9_]{1,39}|[A-Z][A-Za-z0-9]{1,40}Error)$/;
 export const failureCode = (value: unknown): string | undefined => typeof value === "string" && value.length <= 40 && DRIVER_CODE.test(value) ? value : undefined;
 /** a JSON-RPC error's numeric code as a driver code ("rpc_32603"), for an engine whose error named no code of its own */
 export const rpcCode = (value: unknown): string | undefined => Number.isInteger(value) && Math.abs(value as number) < 100_000 ? `rpc_${Math.abs(value as number)}` : undefined;
+// what a JSON-RPC "invalid request" was about, by the engine's own wording: a fixed word, never the message
+const RPC_WORDS: ReadonlyArray<[RegExp, string]> = [
+  [/already has a writer/i, "writer_held"],
+  [/expected (?:active )?turn|turn id|no active turn/i, "turn_mismatch"],
+  [/(?:thread|conversation|rollout|session)[^.]{0,40}not found|no (?:thread|rollout|conversation)\b/i, "thread_not_found"],
+  [/unknown variant|invalid type|invalid value|missing field|unknown field|failed to deserialize|invalid params/i, "invalid_params"],
+  [/not loaded|not subscribed/i, "thread_not_loaded"],
+];
+/** a JSON-RPC error as a driver code with what it was about when the engine's words say ("rpc_32600:writer_held") */
+export function rpcFailureCode(code: unknown, message: unknown): string | undefined {
+  const base = rpcCode(code);
+  if (!base) return undefined;
+  const text = typeof message === "string" ? message.slice(0, 500) : "";
+  const word = RPC_WORDS.find(([pattern]) => pattern.test(text))?.[1];
+  return word ? `${base}:${word}` : base;
+}
+
+/** a thrown value's own class, HTTP status and errno as a driver code ("TypeError:err_invalid_url"), for a failure whose
+ * words may name no cause; never its message */
+export function thrownCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const value = error as { name?: unknown; status?: unknown; code?: unknown; cause?: { code?: unknown } };
+  const name = typeof value.name === "string" && /^[A-Z][A-Za-z0-9]{1,40}Error$/.test(value.name) ? value.name : undefined;
+  const status = Number.isInteger(value.status) && (value.status as number) >= 400 && (value.status as number) < 600 ? `http_${value.status}` : undefined;
+  const errno = [value.code, value.cause?.code].find((code): code is string => typeof code === "string" && /^[A-Z][A-Z0-9_]{2,38}$/.test(code))?.toLowerCase();
+  const parts = [name, status, errno].filter((part): part is string => Boolean(part));
+  return parts.length ? parts.join(":") : undefined;
+}
+
 /** a driver's code hint ("httpConnectionFailed:http_502") as its checked parts */
 const hintParts = (value: unknown): string[] => typeof value === "string" && value.length <= DETAIL_MAX
   ? value.split(":").filter((part, index) => index === 0 ? !!failureCode(part) : /^http_\d{3}$/.test(part) || !!failureCode(part)) : [];

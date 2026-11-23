@@ -1,6 +1,6 @@
 // real-shaped failures per engine, as each driver emits them in runtime.error, read into a usage reason and a detail
 import { describe, expect, it } from "vitest";
-import { FAILURE_DETAIL, cleanUsageTurn, cliExitCode, failureOf, modelFamily, opencodeProvider, rpcCode } from "../shared/usage-signals.ts";
+import { FAILURE_DETAIL, cleanUsageTurn, cliExitCode, failureOf, modelFamily, opencodeProvider, rpcCode, rpcFailureCode, thrownCode } from "../shared/usage-signals.ts";
 import { codexErrorCode } from "./drivers/codex-errors.ts";
 import { engineFailureMessage } from "./drivers/engine-errors.ts";
 import { completionError } from "./drivers/openai-chat-refusals.ts";
@@ -146,6 +146,30 @@ describe("a JSON-RPC failure with no words to go on (ACP agents, codex app-serve
     expect(failureOf("Invalid params (session/prompt)", { code: rpcCode(-32602), stopReason: "rpc_error" })).toEqual({ reason: "bad_request", detail: "rpc_32602" });
     expect(rpcCode("x")).toBeUndefined();
     expect(rpcCode(1.5)).toBeUndefined();
+  });
+
+  it("names what codex's invalid request was about with a fixed word, never its message", () => {
+    const said = (message: string) => failureOf(message, { code: rpcFailureCode(-32600, message), stopReason: "rpc_error" });
+    expect(said("Conversation already has a writer")).toEqual({ reason: "bad_request", detail: "rpc_32600:writer_held" });
+    expect(said("thread not found: 0199a1b2")).toEqual({ reason: "bad_request", detail: "rpc_32600:thread_not_found" });
+    expect(said("Invalid request: unknown variant `max`, expected one of `low`, `medium`")).toEqual({ reason: "bad_request", detail: "rpc_32600:invalid_params" });
+    expect(said(`Invalid request ${SECRET}`)).toEqual({ reason: "bad_request", detail: "rpc_32600" });
+    expect(rpcFailureCode("x", "already has a writer")).toBeUndefined();
+  });
+});
+
+describe("an api-key turn that threw before the provider answered", () => {
+  it("keeps the error's class, status and errno as its detail instead of the bare stop reason", () => {
+    const badUrl = Object.assign(new TypeError(`Failed to parse URL from ${SECRET}`), { code: "ERR_INVALID_URL" });
+    expect(thrownCode(badUrl)).toBe("TypeError:err_invalid_url");
+    expect(failureOf(badUrl.message, { code: thrownCode(badUrl), stopReason: "error" })).toEqual({ reason: "unknown", detail: "TypeError:err_invalid_url" });
+    const html = new SyntaxError(`Unexpected token '<', "<!DOCTYPE "... is not valid JSON ${SECRET}`);
+    expect(failureOf(html.message, { code: thrownCode(html), stopReason: "error" }).detail).toBe("SyntaxError");
+    const reset = new TypeError("fetch failed", { cause: Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" }) });
+    expect(failureOf(reset.message, { code: thrownCode(reset), stopReason: "error" })).toEqual({ reason: "network", detail: "TypeError:und_err_socket" });
+    expect(thrownCode(new Error(SECRET))).toBeUndefined();
+    expect(thrownCode(Object.assign(new Error("x"), { code: "a secret code with spaces" }))).toBeUndefined();
+    expect(JSON.stringify([thrownCode(badUrl), thrownCode(html), thrownCode(reset)])).not.toMatch(/jane|acme|sk-live/);
   });
 });
 

@@ -32,7 +32,7 @@ import { carriedSteps, carriedWorkFile, chatLimitFacts, sharedCarriedWork } from
 import { CORRECTIVE_ROUND, LOCAL_CORRECTIVE_ROUNDS, announcesAction, ownsFailure, withoutRepeats, claimsUnmadeChange, effectfulCall, leakedReasoning, leakedToolSyntax, LeakHoldback, NUDGE_ANNOUNCED_ACTION, REASONING_AGAIN, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
 import { plainFailureMessage } from "./engine-errors.ts"; import { toolFailureMessage } from "./tool-failure.ts"; import { chosenEffort, withModelEfforts, type ModelEffort } from "./api-effort.ts";
 import { refusesRequestSize, RequestTooLargeError, sizeChange, smallerResend } from "./chat-size-limit.ts";
-import { requestTooLargeMessage } from "../../shared/request-too-large.ts"; import { failureCodeOf, inPlainWords, noReplyError, nudgeOnce, unfinishedReply } from "./openai-chat-final.ts";
+import { requestTooLargeMessage } from "../../shared/request-too-large.ts"; import { thrownCode } from "../../shared/usage-signals.ts"; import { failureCodeOf, inPlainWords, noReplyError, nudgeOnce, unfinishedReply } from "./openai-chat-final.ts";
 import { toolSchemaProfileFor } from "../tool-schema-profile.ts";
 import { classifyContinuable, writeTurnHandoff } from "../turn-continuation.ts";
 import { repairToolArguments } from "../tool-argument-repair.ts"; import { TurnGates } from "../turn-stop-gates.ts"; import { outboundSendKey } from "../../shared/declined-sends.ts";
@@ -885,7 +885,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         if (!ok) throw stoppedAfter(`${MAX_CHAT_ROUNDS} steps`);
       } catch (value) {
         stopReason = abort.signal.aborted ? "interrupted" : stopReason ?? "error";
-        failure = safeText(asError(inPlainWords(value)).message).slice(0, 2_000); failureCode = failureCodeOf(value);
+        failure = safeText(asError(inPlainWords(value)).message).slice(0, 2_000); failureCode = failureCodeOf(value) ?? thrownCode(value);
         limitFacts = abort.signal.aborted ? null : chatLimitFacts(value);
         if (limitFacts) carried.keep(turn.threadId, carriedSteps(messages, Math.max(-1, messages.indexOf(request) - priorSteps.length - 1)));
       } finally {
