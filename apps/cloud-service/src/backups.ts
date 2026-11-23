@@ -269,9 +269,13 @@ export function createBackupStore(options: { dir: string; now?: () => number; fr
         const unzip = format === "gzip" ? createGunzip() : null;
         let unzipFailed = false;
         unzip?.on("data", (chunk: Buffer) => scan.push(chunk)).on("error", () => { unzipFailed = true; });
+        const first = (events: string[]) => new Promise<void>(resolve => {
+          const done = () => { for (const event of events) unzip!.off(event, done); resolve(); };
+          for (const event of events) unzip!.once(event, done);
+        });
         const feed = async (opened: Buffer) => {
           if (!unzip) { scan.push(opened); return; }
-          if (!unzipFailed && !unzip.write(opened)) await new Promise<void>(resolve => { unzip.once("drain", resolve); unzip.once("error", () => resolve()); });
+          if (!unzipFailed && !unzip.write(opened)) await first(["drain", "error"]);
         };
         hash.update(head);
         for (let pos = head.length; pos < bodyEnd;) {
@@ -284,7 +288,7 @@ export function createBackupStore(options: { dir: string; now?: () => number; fr
         let last: Buffer;
         try { last = decipher.final(); } catch { unzip?.destroy(); return { problem: "unreadable", sha256: hash.digest("hex") }; }
         await feed(last);
-        if (unzip && !unzipFailed) await new Promise<void>(resolve => { unzip.once("end", resolve); unzip.once("error", () => resolve()); unzip.end(); });
+        if (unzip && !unzipFailed) { const ended = first(["end", "error"]); unzip.end(); await ended; }
         if (unzipFailed) return { problem: "unreadable", sha256: hash.digest("hex") };
         return { problem: scan.end(), sha256: hash.digest("hex") };
       } finally { await fh.close(); }
