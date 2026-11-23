@@ -98,12 +98,15 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
       onCreated: () => onClose(), onError: (message) => { setCreating(false); setError(message); } });
   };
 
+  const busy = useRef(false);
+  busy.current = creating || pending;
+  const leave = () => { if (!busy.current) onClose(); };
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const onKey = (event: KeyboardEvent) => {
       const root = dialog.current;
       if (!root) return;
-      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); return; }
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); leave(); return; }
       if (event.key !== "Tab") return;
       const controls = [...root.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled])")];
       const first = controls[0], last = controls.at(-1);
@@ -122,7 +125,7 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
 
   return (
     <ModalLayer><div {...played.layer} className="fixed inset-0 z-[60]">
-      <ScrimMotion {...played.scrim} aria-hidden className="absolute inset-0 bg-black/50" onMouseDown={onClose} />
+      <ScrimMotion {...played.scrim} aria-hidden className="absolute inset-0 bg-black/50" onMouseDown={leave} />
       <SheetMotion
         {...played.sheet}
         ref={dialog}
@@ -135,8 +138,9 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
         <button
           type="button"
           aria-label={t("common.close")}
-          onClick={onClose}
-          className="absolute right-2.5 top-2.5 z-[1] flex size-8 items-center justify-center rounded-[9999px] text-ink-secondary hover:bg-ink/6 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          disabled={creating}
+          onClick={leave}
+          className="absolute right-2.5 top-2.5 z-[1] flex size-8 items-center justify-center rounded-[9999px] text-ink-secondary enabled:hover:bg-ink/6 enabled:hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-default disabled:opacity-50"
         >
           <Icon name="close" size={14} />
         </button>
@@ -201,7 +205,7 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
           >
             {t("createBot.groupInstead")}
           </button>
-          <button type="button" onClick={onClose} className={cn(KIT_BUTTON, "bg-ink/6 text-ink hover:bg-ink/10")}><span>Cancel</span></button>
+          <button type="button" disabled={creating} onClick={leave} className={cn(KIT_BUTTON, "bg-ink/6 text-ink enabled:hover:bg-ink/10 disabled:opacity-50")}><span>Cancel</span></button>
           <button
             type="button"
             disabled={!canCreate}
