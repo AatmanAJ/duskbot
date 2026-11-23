@@ -3,7 +3,7 @@
 import { PassThrough } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import worker, { deliveryId, wakeReason, QUEUE_LIMITS, type EdgeEnv } from "../edge/worker.js";
+import worker, { deliveryId, openingWake, wakeReason, QUEUE_LIMITS, type EdgeEnv } from "../edge/worker.js";
 import { INSTABOX_RAILS } from "./instabox.ts";
 import { homeFixture } from "./test-fixture.ts";
 import { fakeHookQueues } from "./fake-hook-queue.ts";
@@ -76,6 +76,34 @@ describe("the public edge and a sleeping home", () => {
     expect(Date.now() - started).toBeLessThan(15_000);
     expect(f.audit.entries(c.id).map(e => `${e.action}:${e.actor}`)).toEqual(expect.arrayContaining(["wake_asked:edge", "awake:reconciler"]));
   }, 30_000);
+
+  it("wakes a sleeping home for the desktop's reconnect check and a signed-in page load, answering waking at once", async () => {
+    const { f, c, send, asleep } = await edged(60);
+    await asleep();
+    const electron = "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 (KHTML, like Gecko) dusk bot/0.2.28 Chrome/142.0 Electron/39.0 Safari/537.36";
+    const look = await send("/.well-known/duskbot/environment", { headers: { "user-agent": electron, accept: "application/json" } });
+    expect(look.status).toBe(503);
+    expect(look.headers.get("x-dusk-cloud-power")).toBe("waking");
+    expect(c.wantPower).toBe("on");
+    expect(f.audit.entries(c.id).map(e => `${e.action}:${e.actor}`)).toContain("wake_asked:edge");
+    for (let k = 0; k < 10 && c.status !== "running"; k++) { c.nextAttemptAt = 0; await f.service.reconcile(); }
+    expect(c.status).toBe("running");
+    expect((await send("/.well-known/duskbot/environment", { headers: { "user-agent": electron } })).status).toBe(200);
+  }, 30_000);
+
+  it("tells a person's app opening its home from crawlers and background reads", () => {
+    const at = (path: string, headers: Record<string, string>, method = "GET") => openingWake(new Request(`https://d.example${path}`, { method, headers }), new URL(`https://d.example${path}`));
+    const electron = { "user-agent": "Mozilla/5.0 dusk bot/0.2.28 Chrome/142.0 Electron/39.0 Safari/537.36" };
+    const page = { "sec-fetch-dest": "document", "sec-fetch-mode": "navigate" };
+    expect(at("/.well-known/duskbot/environment", electron)).toBe(true);
+    expect(at("/.well-known/duskbot/environment", { "user-agent": "Mozilla/5.0 (compatible; Googlebot/2.1)" })).toBe(false);
+    expect(at("/.well-known/duskbot/environment", { ...electron, "x-dusk-background": "1" })).toBe(false);
+    expect(at("/", { ...electron })).toBe(false);
+    expect(at("/", { ...page, cookie: "dusk_session_ab=s" })).toBe(true);
+    expect(at("/", { ...page, cookie: "theme=dark" })).toBe(false);
+    expect(at("/", { cookie: "dusk_session=s" })).toBe(false);
+    expect(at("/api/events", { ...page, cookie: "dusk_session=s", "x-dusk-background": "1" })).toBe(false);
+  });
 
   it("never wakes a home for anonymous traffic, and webhook storms never make it flap", async () => {
     const { f, c, send, asleep } = await edged(60);
