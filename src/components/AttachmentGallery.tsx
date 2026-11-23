@@ -345,6 +345,15 @@ async function readMessageAudio(
 
 function AudioAttachment({ file, message }: { file: GalleryFile; message: MessageAttachmentContext }) {
   const [src, setSrc] = useState<string | null>(null);
+  const playRef = useRef<HTMLButtonElement>(null);
+  const playerRef = useRef<HTMLAudioElement>(null);
+  const focusPlayer = useRef(false);
+  useEffect(() => {
+    if (!src || !focusPlayer.current) return;
+    focusPlayer.current = false;
+    const at = document.activeElement;
+    if (at === null || at === document.body || at === playRef.current) playerRef.current?.focus();
+  }, [src]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const request = useRef<AbortController | null>(null);
@@ -355,6 +364,7 @@ function AudioAttachment({ file, message }: { file: GalleryFile; message: Messag
     if (request.current) return;
     const controller = new AbortController();
     request.current = controller;
+    focusPlayer.current = document.activeElement === playRef.current;
     setLoading(true);
     setError("");
     try {
@@ -373,7 +383,7 @@ function AudioAttachment({ file, message }: { file: GalleryFile; message: Messag
       <div className="flex items-center gap-2">
         {src ? <Music size={14} className="shrink-0 text-accent" aria-hidden="true" />
           : (
-            <button type="button" disabled={loading} onClick={() => void load()} aria-label={t("attach.previewAudio", { name: file.name })}
+            <button ref={playRef} type="button" disabled={loading} onClick={() => void load()} aria-label={t("attach.previewAudio", { name: file.name })}
               className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent transition-colors hover:bg-accent/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-wait">
               {loading ? <LoaderCircle size={14} className="animate-spin" /> : <Play size={13} fill="currentColor" />}
             </button>
@@ -382,7 +392,7 @@ function AudioAttachment({ file, message }: { file: GalleryFile; message: Messag
         {src && <a href={src} download={file.name} aria-label={t("attach.saveAria", { name: file.name })} title={t("attach.saveAria", { name: file.name })}
           className="shrink-0 rounded-lg p-1 text-ink-secondary hover:bg-raised hover:text-ink"><Download size={14} /></a>}
       </div>
-      {src && !error && <audio src={src} controls autoPlay preload="metadata" aria-label={t("attach.previewAudio", { name: file.name })} onError={() => { setSrc(null); setError(t("attach.audioUnavailable")); }} className="h-9 w-full" />}
+      {src && !error && <audio ref={playerRef} src={src} controls autoPlay preload="metadata" aria-label={t("attach.previewAudio", { name: file.name })} onError={() => { setSrc(null); setError(t("attach.audioUnavailable")); }} className="h-9 w-full" />}
       {error && <p role="alert" className="text-[11px] text-danger">{error}</p>}
     </div>
   );
