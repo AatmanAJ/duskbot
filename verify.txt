@@ -1,0 +1,19 @@
+## the new test on untouched main (dbfefd93d)
+   × the New bot dialog speaks de, not English 48ms
+   × the New bot dialog speaks es, not English 25ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+
+## the same test on this branch (7ca9fea4a)
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9212 English strings)
+
+## related tests: src/components/CreateBotDialog src/components/NewBotDialog src/locales src/testing
+ Test Files  16 passed (16)
+      Tests  57 passed | 3 todo (60)

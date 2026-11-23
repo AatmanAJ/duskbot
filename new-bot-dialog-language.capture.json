@@ -1,0 +1,34 @@
+{
+  "about": "The app set to Deutsch (PATCH /api/config language \"de\", as ui launch sets English), then New bot. The dialog picks a random shape and colour, so the capture clicks the first shape and the orange swatch on both.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1280,
+  "height": 760,
+  "scale": 2,
+  "steps": [
+    {
+      "eval": "fetch('/api/config', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ language: 'de' }) }).then((r) => r.status)"
+    },
+    {
+      "reload": true
+    },
+    {
+      "waitMs": 1200
+    },
+    {
+      "eval": "(document.querySelector('[data-tour] button, button'), [...document.querySelectorAll('button')].find((b) => /Neuer Bot|New bot/.test(b.getAttribute('aria-label') ?? b.title ?? ''))?.click(), true)"
+    },
+    {
+      "waitMs": 900
+    },
+    {
+      "eval": "(() => { const groups = document.querySelectorAll('[data-create-bot-dialog] [role=group]'); groups[0].querySelector('button').click(); groups[1].querySelectorAll('button')[5].click(); document.activeElement?.blur(); return true; })()"
+    },
+    {
+      "waitMs": 900
+    },
+    {
+      "shot": true
+    }
+  ]
+}
