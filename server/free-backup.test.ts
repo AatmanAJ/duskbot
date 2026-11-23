@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StandaloneRelease } from "./contracts.ts";
 import { OPENCODE_STANDALONE } from "./drivers/acp/opencode-release.ts";
 import type { StandaloneInstalled } from "./engine-standalone.ts";
-import { PREINSTALL_FREE_BACKUP_ENV, preinstallFreeBackup, startFreeBackupPreinstall } from "./free-backup.ts";
+import { freeBackupArriving, PREINSTALL_FREE_BACKUP_ENV, preinstallFreeBackup, startFreeBackupPreinstall } from "./free-backup.ts";
 
 const installed: StandaloneInstalled = { version: OPENCODE_STANDALONE.version, executablePath: "/data/tools/standalone/opencode/bin/opencode", binDir: "/data/tools/standalone/opencode/bin" };
 
@@ -114,6 +114,24 @@ describe("the preinstall at server start", () => {
     } finally {
       process.off("unhandledRejection", unhandled);
     }
+  });
+
+  it("lets a first message wait for a download still under way, until the engines were read again, and never past its cap", async () => {
+    expect(freeBackupArriving()).toBeNull();
+    const download = gate();
+    let refreshedAt = 0;
+    const refreshed = async () => { await new Promise((resolve) => setTimeout(resolve, 5)); refreshedAt = Date.now(); };
+    const run = startFreeBackupPreinstall({ [PREINSTALL_FREE_BACKUP_ENV]: "1" }, refreshed, { present: () => false, install: async () => { await download.opened; return installed; } });
+    const arriving = freeBackupArriving();
+    expect(arriving).not.toBeNull();
+    const capped = await Promise.race([freeBackupArriving(20)!.then(() => "capped"), new Promise((resolve) => setTimeout(() => resolve("hung"), 500))]);
+    expect(capped).toBe("capped");
+    download.open();
+    await arriving;
+    expect(refreshedAt).toBeGreaterThan(0);
+    await run;
+    await Promise.resolve();
+    expect(freeBackupArriving()).toBeNull();
   });
 
   it("reads the engines again only when a copy was added", async () => {

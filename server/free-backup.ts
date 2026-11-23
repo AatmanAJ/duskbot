@@ -73,15 +73,31 @@ async function preinstallOnce(deps: FreeBackupPreinstallDeps): Promise<FreeBacku
   }
 }
 
+/** How long a first message to a bot with no AI waits on the free backup still downloading before it is refused. */
+export const FREE_BACKUP_SEND_WAIT_MS = 120_000;
+
+let arriving: Promise<void> | null = null;
+
 /** At boot: starts the preinstall without waiting on it when `env` asks for one; `installed` runs once a copy was added. */
 export function startFreeBackupPreinstall(
   env: NodeJS.ProcessEnv,
-  installed: () => void,
+  installed: () => void | Promise<void>,
   deps: FreeBackupPreinstallDeps = {},
 ): Promise<FreeBackupPreinstall> | null {
   if (env[PREINSTALL_FREE_BACKUP_ENV] !== "1") return null;
   const run = preinstallFreeBackup(deps);
-  void run.then(({ outcome }) => { if (outcome === "installed") installed(); })
-    .catch((error: unknown) => trailError("free_backup.installed", error));
+  const landed = run.then(async ({ outcome }) => { if (outcome === "installed") await installed(); })
+    .catch((error: unknown) => trailError("free_backup.installed", error))
+    .finally(() => { if (arriving === landed) arriving = null; });
+  arriving = landed;
   return run;
+}
+
+/** The free backup started at boot and still downloading: settles once it landed and `installed` ran, or after `capMs`.
+ * Null when none is on its way. */
+export function freeBackupArriving(capMs = FREE_BACKUP_SEND_WAIT_MS): Promise<void> | null {
+  if (!arriving) return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cap = new Promise<void>((resolve) => { timer = setTimeout(resolve, capMs); timer.unref?.(); });
+  return Promise.race([arriving, cap]).finally(() => clearTimeout(timer));
 }
