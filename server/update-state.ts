@@ -11,7 +11,8 @@ import { runSelfTest, type SelfTestChecks, type SelfTestResult } from "./update-
 
 export const UPDATE_STATE_FILE = "update-state.json";
 export interface UpdateDigest { kind: "updated" | "rolled_back"; version: string; at: number }
-export interface FinishedRun { id: string; ok: boolean; at: number }
+/** `infra`: it failed because its bot computer could not be reached (docker or its gate), not for anything the version did */
+export interface FinishedRun { id: string; ok: boolean; at: number; infra?: true }
 export interface UpdateReport { v: 1; version: string; bootedAt: number; selfTest: "running" | "passed" | "failed" | null; runs: FinishedRun[] }
 interface Stored {
   v: 1;

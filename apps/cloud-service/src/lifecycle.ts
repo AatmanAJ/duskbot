@@ -25,6 +25,7 @@ import { ManagedCloudError } from "../../dashboard/server/clouds/managed.ts";
 import type { HomeClient, HomePower, StoredCloud } from "../../dashboard/server/clouds/types.ts";
 import type { HomeLifecycleState } from "./state.ts";
 import { homeVersion, relayExits, takesLinkGrant, type HomeUpdates } from "./home-update.ts";
+import type { ComputerHealthChecks } from "./computer-health.ts";
 import { createEgressGuard } from "./egress.ts";
 
 /** how long open apps have between the owner's pause notice and the machine stopping (the reconciler's next pass or so) */
@@ -162,6 +163,8 @@ export interface LifecycleDeps {
   spend?: SpendLedger;
   /** staged updates of a running home, with their self-test and rollback (home-update.ts) */
   updates?: HomeUpdates;
+  /** the bot computers' docker and gate, checked and repaired after a wake and every COMPUTER_CHECK_MS (computer-health.ts) */
+  computer?: ComputerHealthChecks;
 }
 
 /** a start the rails held back (a failing home's backoff, the provider's hard cap or not-before time, a busy minute):
@@ -959,7 +962,9 @@ export function createLifecycle(deps: LifecycleDeps) {
       log(c, "awake", "reconciler", "healthy", { ms: b.wakeStartedAt === null ? null : now() - b.wakeStartedAt });
       c.status = "running"; c.powerSince = now(); b.wakeStartedAt = null; b.sleptAt = null; b.sleepReason = null; b.lastPowerAt = now(); b.leaseAt = now();
       await provider.lease(c.serverId, settings.leaseSeconds);
-      deps.save(c); return;
+      deps.save(c);
+      await deps.computer?.check(c, "wake", now());
+      return;
     }
     // the owner asked for a stop, or to apply a plan change now (resized while stopped): only once the start back is paid
     // for under the monthly ceiling, else the home stays up
@@ -980,6 +985,7 @@ export function createLifecycle(deps: LifecycleDeps) {
     b.lastPowerAt = now();
     await entitle(c, false).catch(() => {});
     const power = deps.home.power ? await deps.home.power(homeOrigin(c), secret(c), Math.max(1, Math.round(rails.minIdleMs / MINUTE))).catch(() => null) : null;
+    if (deps.computer?.due(c)) await deps.computer.check(c, "periodic");
     if (await deps.updates?.step(c, { origin: c.origin!, upstream: homeOrigin(c), secret: secret(c), busy: power?.busy ?? null })) { deps.save(c); return; }
     if (!power) { deps.save(c); return; }
     const m = memory(c);

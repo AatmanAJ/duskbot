@@ -454,8 +454,78 @@ export const SNAPSHOT_DONE_COMMAND = `sudo -n ${HOME_CONTROL} snapshot-done`;
 export const DESKTOP_STATUS_COMMAND = `sudo -n ${HOME_CONTROL} desktop-status`;
 export const PHONE_RELAY_ASIDE_COMMAND = `sudo -n sh -c 'f=${CLOUD_HOME.data}/phone-relay.json; if [ -f "$f" ]; then mv -f "$f" "$f.aside-$(date +%s)" && echo "moved aside"; else echo "none"; fi'`;
 
+/** marks the computer check in a command line (the fake machine answers it by this) */
+export const COMPUTER_CHECK_MARK = "dusk-computer-check";
+/**
+ * Brings docker and the docker gate back on any home, whatever release set it up: the reconciler sends it inline, since
+ * omb-home is written once at setup and an older one neither restarts the gate after an install nor lets docker pull it
+ * back. Idempotent. Prints one line of fixed words: `ok`, `none` (no docker here), `healed <what>...` or `down docker|gate`.
+ * - drop-ins: the gate restarts without a start limit, and docker.service wants it, so a docker restart brings it back
+ * - docker: started (or restarted when it does not answer its ping three times)
+ * - the gate: restarted when its socket gives no HTTP 200 to /_ping, or when it started before the installed package
+ *   (it still runs the gate code of an older package)
+ */
+export const COMPUTER_CHECK_SCRIPT = `set -u
+# ${COMPUTER_CHECK_MARK}
+gate=omb-docker-gate.service
+unit=/etc/systemd/system/$gate
+installed=${ROOT}/installed
+if [ ! -S /var/run/docker.sock ] && ! systemctl cat docker.service >/dev/null 2>&1; then echo none; exit 0; fi
+fixed=""
+put() {
+  tmp="$(mktemp)"; cat > "$tmp"
+  if [ -f "$1" ] && cmp -s "$tmp" "$1"; then rm -f "$tmp"; return 1; fi
+  install -d -m 0755 "$(dirname "$1")"; install -m 0644 "$tmp" "$1"; rm -f "$tmp"; return 0
+}
+if [ -f "$unit" ]; then
+  reload=""
+  if put /etc/systemd/system/$gate.d/dusk-heal.conf <<'DUSK_GATE_HEAL'
+[Unit]
+StartLimitIntervalSec=0
+DUSK_GATE_HEAL
+  then reload=1; fi
+  if put /etc/systemd/system/docker.service.d/dusk-gate.conf <<'DUSK_DOCKER_GATE'
+[Unit]
+Wants=omb-docker-gate.service
+DUSK_DOCKER_GATE
+  then reload=1; fi
+  if [ -n "$reload" ]; then systemctl daemon-reload; fixed="$fixed units"; fi
+fi
+dping() { curl -fsS -m 5 --unix-socket /var/run/docker.sock http://docker/_ping >/dev/null 2>&1; }
+answers() { for i in 1 2 3; do "$1" && return 0; sleep 2; done; return 1; }
+if ! answers dping; then
+  systemctl reset-failed docker.socket docker.service >/dev/null 2>&1 || true
+  if systemctl is-active --quiet docker.service; then systemctl restart docker.service >/dev/null 2>&1 || true; else systemctl start docker.service >/dev/null 2>&1 || true; fi
+  up=""; for i in $(seq 1 30); do dping && { up=1; break; }; sleep 2; done
+  [ -n "$up" ] || { echo "down docker"; exit 0; }
+  fixed="$fixed docker"
+fi
+if [ -f "$unit" ]; then
+  sock="$(sed -n 's/^ExecStart=.* --listen \\([^ ]*\\) .*/\\1/p' "$unit" | head -n 1)"
+  [ -n "$sock" ] || sock=/run/${HOME_GATE_RUN}/docker.sock
+  gping() { [ -S "$sock" ] && [ "$(curl -s -o /dev/null -w '%{http_code}' -m 5 --unix-socket "$sock" http://docker/_ping 2>/dev/null)" = 200 ]; }
+  stale=""
+  if [ -f "$installed" ] && systemctl is-active --quiet $gate; then
+    since="$(date -d "$(systemctl show -p ActiveEnterTimestamp --value $gate)" +%s 2>/dev/null)" || since=""
+    if [ -n "$since" ] && [ "$since" -lt "$(stat -c %Y "$installed")" ]; then stale=1; fi
+  fi
+  ok=""; answers gping && ok=1
+  if [ -z "$ok" ] || [ -n "$stale" ]; then
+    systemctl reset-failed $gate >/dev/null 2>&1 || true
+    systemctl enable $gate >/dev/null 2>&1 || true
+    systemctl restart $gate >/dev/null 2>&1 || true
+    up=""; for i in $(seq 1 15); do gping && { up=1; break; }; sleep 1; done
+    [ -n "$up" ] || { echo "down gate"; exit 0; }
+    if [ -z "$ok" ]; then fixed="$fixed gate"; else fixed="$fixed gate-code"; fi
+  fi
+fi
+if [ -n "$fixed" ]; then echo "healed$fixed"; else echo ok; fi
+`;
+export const COMPUTER_CHECK_COMMAND = `sudo -n bash -c ${shellQuote(COMPUTER_CHECK_SCRIPT)}`;
+
 export const HOME_IMAGE: MachineImage = {
   homeVolume: INSTABOX_HOME_VOLUME, packagePath: INSTABOX_PACKAGE_FILE, restorePath: INSTABOX_RESTORE_FILE,
   bootFile, claimBootFile, bootContent, setupScript: homeSetupScript,
   installCommand, startCommand, restoreCommand: RESTORE_COMMAND, rollbackCommand: ROLLBACK_COMMAND, desktopStatusCommand: DESKTOP_STATUS_COMMAND, phoneRelayAsideCommand: PHONE_RELAY_ASIDE_COMMAND,
+  computerCheckCommand: COMPUTER_CHECK_COMMAND,
 };

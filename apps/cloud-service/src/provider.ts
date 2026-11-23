@@ -89,4 +89,6 @@ export interface MachineImage {
   desktopStatusCommand: string;
   /** moves the home's saved phone relay tunnel aside (prints "moved aside" or "none") */
   phoneRelayAsideCommand: string;
+  /** brings docker and the docker gate back (prints ok, none, healed <what>... or down docker|gate) */
+  computerCheckCommand: string;
 }

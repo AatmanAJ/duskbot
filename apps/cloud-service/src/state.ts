@@ -4,6 +4,7 @@ import type { PowerMemory } from "./power/rails.ts";
 import type { PlannedRun } from "./power/schedule.ts";
 import type { HomeUpdateState } from "./home-update.ts";
 import type { EgressState } from "./egress.ts";
+import type { ComputerState } from "./computer-health.ts";
 
 /** one managed home's lifecycle record (lifecycle.ts) */
 export interface HomeLifecycleState {
@@ -105,6 +106,8 @@ export interface HomeLifecycleState {
   resizeBlocked?: string | null;
   /** the home's updates: the version it runs, the one before, the trial of a new one, the signed policy held (home-update.ts) */
   update?: HomeUpdateState;
+  /** the bot computers' docker and docker gate as the reconciler last checked them (computer-health.ts) */
+  computer?: ComputerState;
 }
 
 declare module "../../dashboard/server/clouds/types.ts" {

@@ -4,6 +4,9 @@
 import { createConnectedReads, READ_APPS, type ConnectedReadDeps, type ReadApp } from "../connected-reads.ts";
 import { createUpdateState, type FinishedRun } from "../update-state.ts";
 import { browserPageCheck } from "../update-selftest.ts";
+import { COMPUTER_UNREACHABLE, isRawComputerTransportError } from "../../shared/computer-unreachable.ts";
+
+const computerUnreachable = (error: string | undefined) => !!error && (error.includes(COMPUTER_UNREACHABLE) || isRawComputerTransportError(error));
 
 export interface UpdateHostDeps {
   dataDir: string;
@@ -14,7 +17,7 @@ export interface UpdateHostDeps {
   /** which Google apps are connected (null: connected apps are not set up) and the relay their reads go through */
   connected(): Promise<Record<ReadApp, boolean> | null>;
   relay: ConnectedReadDeps["relay"];
-  runs(): ReadonlyArray<{ id: string; status: string; finishedAt?: number }>;
+  runs(): ReadonlyArray<{ id: string; status: string; finishedAt?: number; error?: string }>;
   log(line: string): void;
 }
 
@@ -36,7 +39,7 @@ export function createUpdateHost(deps: UpdateHostDeps) {
     },
     runs: (since): FinishedRun[] => deps.runs()
       .filter(r => (r.status === "completed" || r.status === "failed") && (r.finishedAt ?? 0) >= since)
-      .map(r => ({ id: r.id, ok: r.status === "completed", at: r.finishedAt! }))
+      .map(r => ({ id: r.id, ok: r.status === "completed", at: r.finishedAt!, ...(r.status === "failed" && computerUnreachable(r.error) ? { infra: true as const } : {}) }))
       .sort((a, b) => a.at - b.at),
   });
 }

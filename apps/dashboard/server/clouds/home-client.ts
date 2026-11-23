@@ -80,8 +80,9 @@ export function createHomeClient(options: { fetch?: typeof fetch; now?: () => nu
       if (!value || value.v !== 1) throw new Error("Invalid cloud update answer.");
       const selfTest = ["running", "passed", "failed"].includes(value.selfTest as string) ? value.selfTest as "running" | "passed" | "failed" : null;
       const runs = Array.isArray(value.runs) ? value.runs.slice(0, 20).flatMap((r: unknown) => {
-        const run = r as { id?: unknown; ok?: unknown; at?: unknown };
-        return typeof run?.id === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(run.id) && typeof run.ok === "boolean" && Number.isSafeInteger(run.at) ? [{ id: run.id, ok: run.ok, at: run.at as number }] : [];
+        const run = r as { id?: unknown; ok?: unknown; at?: unknown; infra?: unknown };
+        return typeof run?.id === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(run.id) && typeof run.ok === "boolean" && Number.isSafeInteger(run.at)
+          ? [{ id: run.id, ok: run.ok, at: run.at as number, ...(run.infra === true ? { infra: true } : {}) }] : [];
       }) : [];
       return { version: typeof value.version === "string" && /^\d+\.\d+\.\d+$/.test(value.version) ? value.version : null, selfTest, runs };
     },
