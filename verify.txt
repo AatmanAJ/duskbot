@@ -1,0 +1,18 @@
+## the new test on untouched main (dbfefd93d)
+   × Saver mode that could not be turned on says so beside the limit, instead of doing nothing 10ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+
+## the same test on this branch (de1dae737)
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9209 English strings)
+
+## related tests: src/components/usage src/lib/allowance-notice src/components/ChatView
+ Test Files  24 passed (24)
+      Tests  143 passed (143)

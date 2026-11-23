@@ -1,0 +1,45 @@
+{
+  "about": "Pepper's chat after one turn, with a weekly allowance of $0.01 set through the app's own API so the turn reaches it: the real server reports the limit. Turning Saver mode on is refused: the page's fetch answers 503 for /api/usage/allowance/saver only.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1280,
+  "height": 720,
+  "scale": 2,
+  "script": [
+    {
+      "text": "Booked: the 9:05 to Leeds, coach C, seat 42."
+    }
+  ],
+  "steps": [
+    {
+      "type": {
+        "name": "Message Pepper",
+        "text": "Book me the 9am train to Leeds"
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "settle": 60
+    },
+    {
+      "eval": "(async () => {\n  const { api } = await import('/src/state/store.tsx');\n  await api('/api/usage/allowance', { method: 'PUT', body: JSON.stringify({ usd: 0.01 }) });\n  window.dispatchEvent(new Event('focus'));\n  return true;\n})()"
+    },
+    {
+      "waitFor": "Boolean(document.querySelector('[data-weekly-limit]'))"
+    },
+    {
+      "eval": "(() => {\n  const real = window.fetch;\n  window.fetch = (input, init) => String(input instanceof Request ? input.url : input).includes('/api/usage/allowance/saver')\n    ? Promise.resolve(new Response(JSON.stringify({ error: 'Service unavailable' }), { status: 503, headers: { 'content-type': 'application/json' } }))\n    : real(input, init);\n  return true;\n})()"
+    },
+    {
+      "click": "Saver mode"
+    },
+    {
+      "waitMs": 800
+    },
+    {
+      "shot": true
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "saver-mode-failure-says-so.before-after.png": {
+    "crop": "280,478,1000,242",
+    "arrange": "stack",
+    "labels": [
+      "before: Saver mode refused, nothing said",
+      "after: it says so"
+    ]
+  },
+  "saver-mode-failure-says-so.phone.png": {
+    "shots": [
+      "saver-mode-failure-says-so.phone.raw.png"
+    ],
+    "crop": "0,560,400,200",
+    "labels": [
+      "after, at phone width"
+    ]
+  }
+}
