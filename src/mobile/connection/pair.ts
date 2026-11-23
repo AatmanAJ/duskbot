@@ -1,11 +1,11 @@
 import { observePairing } from "@/lib/product-analytics";
-import { appLinkFromUniversal, parseSignInLink, DEFAULT_MOBILE_RELAY, MOBILE_LOOKUP_SALT, pairingFromPayload, parseMobilePayload, parseMobilePairingLink, type MobileRedeemRequest, type MobileRedeemResponse, type MobileCapabilities, type MobileConnectionRecord, type MobilePairingPayload, type SignInService } from "../../../shared/mobile-link";
+import { appLinkFromUniversal, parseSignInLink, DEFAULT_MOBILE_RELAY, MOBILE_LOOKUP_SALT, pairingFromPayload, parseMobilePayload, parseMobilePairingLink, type MobileRedeemRequest, type MobileRedeemResponse, type MobileCapabilities, type MobileConnectionRecord, type MobilePairingPayload, type MobileTransport, type SignInService } from "../../../shared/mobile-link";
 import { randomUuid } from "@/lib/random-uuid";
 import { cleanPhoneSignInCode } from "../../../shared/account-api";
 import type { MobilePlatform } from "../platform";
 import { createRelaySecrets, hex, hkdf, sha256hex, subtle, unbase64, unseal, UnsupportedCryptoError, utf8, type RelaySecrets } from "../transport/link-crypto";
 import { open as openRelay } from "../transport/relay";
-import { directStillWorthIt, routeOrder, routeTimeout } from "./route-order";
+import { raceRoutes, routeHeadStart, routeOrder, routeTimeout, type RouteOutcome } from "./route-order";
 
 export type TypedPairing = MobilePairingPayload;
 export type TypedCode = { kind: "code"; code: string };
@@ -256,13 +256,15 @@ async function redeemPairingResult(payload: MobilePairingPayload, platform: Mobi
       device: { name: platform.deviceName(), platform: platform.kind === "web" ? "other" : platform.kind, app: platform.appVersion, install: await installId(platform) },
       ...(keys ? { relay: { pub: keys.pub, verifier: await sha256hex(keys.token) } } : {}),
     };
-    let lastError = new PairError("unreachable");
-    const startedAt = Date.now();
-    for (const route of routeOrder(payload.via, platform.kind)) {
-      if (signal?.aborted) break;
-      if (route.kind === "relay" && !keys) { lastError = new PairError("unsupported"); continue; }
-      if (route.kind === "companion" && !platform.native) { lastError = new PairError("unsupported"); continue; }
-      if (!directStillWorthIt(route, payload.via, startedAt, Date.now(), platform.kind)) continue;
+    type Paired = { record: MobileConnectionRecord; token: string };
+    const via = payload.via;
+    const ordered = routeOrder(via, platform.kind);
+    const errors: PairError[] = [];
+    const attempt = async (route: MobileTransport, raced: AbortSignal): Promise<RouteOutcome<Paired>> => {
+      const index = ordered.indexOf(route);
+      const fail = (error: PairError): RouteOutcome<Paired> => { errors[index] = error; return { kind: "failed" }; };
+      if (route.kind === "relay" && !keys) return fail(new PairError("unsupported"));
+      if (route.kind === "companion" && !platform.native) return fail(new PairError("unsupported"));
       let channel: ReturnType<typeof openRelay> | undefined;
       let response: Response;
       let answer: unknown;
@@ -273,7 +275,7 @@ async function redeemPairingResult(payload: MobilePairingPayload, platform: Mobi
           const grant = openRelay(route.base, route.channel, route.token, unbase64(route.key));
           channel = grant;
           const ask = async () => {
-            const reply = await grant.request("POST", "/api/mobile/redeem", headers, utf8(body), limit(12_000, signal));
+            const reply = await grant.request("POST", "/api/mobile/redeem", headers, utf8(body), limit(12_000, raced));
             return { reply, answer: await reply.json().catch(() => null) as unknown };
           };
           ({ reply: response, answer } = await ask());
@@ -284,26 +286,27 @@ async function redeemPairingResult(payload: MobilePairingPayload, platform: Mobi
             if (again?.reply.ok && (again.answer as MobileRedeemResponse | null)?.relay) ({ reply: response, answer } = again);
           }
         } else {
-          response = await fetch(`${route.url}/api/mobile/redeem`, { method: "POST", headers, body, credentials: "omit", redirect: "error", signal: limit(routeTimeout(route, payload.via, 15_000, platform.kind), signal) });
+          response = await fetch(`${route.url}/api/mobile/redeem`, { method: "POST", headers, body, credentials: "omit", redirect: "error", signal: limit(routeTimeout(route, via, 15_000, platform.kind), raced) });
           answer = await response.json().catch(() => null);
         }
-      } catch (error) { lastError = pairError(error); continue; }
+      } catch (error) { return fail(pairError(error)); }
       finally { channel?.close(); }
       if (!response.ok) {
         const refusal = responseError(response.status, answer && typeof answer === "object" ? answer as PairAnswer : {});
         // Cloudflare answers 502/530 for a tunnel whose server is not connected: that route is down, not the grant
-        if (response.status >= 500) { lastError = refusal; continue; }
-        throw refusal;
+        if (response.status >= 500) return fail(refusal);
+        errors[index] = refusal;
+        return { kind: "final" };
       }
       const paired = answer as MobileRedeemResponse | null;
-      if (!paired || typeof paired.token !== "string" || !paired.token || typeof paired.device?.id !== "string" || typeof paired.workspace?.name !== "string" || !Array.isArray(paired.scopes)) throw new PairError("invalid");
-      if (payload.environmentId && paired.workspace.environmentId && payload.environmentId !== paired.workspace.environmentId) throw new PairError("mismatch");
+      if (!paired || typeof paired.token !== "string" || !paired.token || typeof paired.device?.id !== "string" || typeof paired.workspace?.name !== "string" || !Array.isArray(paired.scopes)) { errors[index] = new PairError("invalid"); return { kind: "final" }; }
+      if (payload.environmentId && paired.workspace.environmentId && payload.environmentId !== paired.workspace.environmentId) { errors[index] = new PairError("mismatch"); return { kind: "final" }; }
       const origin = route.kind === "relay" ? undefined : route.url;
       const relay = paired.relay ?? (route.kind === "relay" ? { base: route.base, channel: route.channel } : undefined);
       const now = Date.now();
       const record: MobileConnectionRecord = {
         id, environmentId: paired.workspace.environmentId ?? origin ?? relay!.channel, label: paired.workspace.name,
-        transport: route.kind, ...(origin ? { origin } : {}), ...(relay ? { relay } : {}), via: payload.via,
+        transport: route.kind, ...(origin ? { origin } : {}), ...(relay ? { relay } : {}), via,
         deviceId: paired.device.id, sessionRef: `token.${id}`,
         capabilities: {
           chat: true, uploads: true, computerView: true, computerControl: route.kind !== "companion", routines: route.kind !== "companion",
@@ -311,9 +314,14 @@ async function redeemPairingResult(payload: MobilePairingPayload, platform: Mobi
         },
         addedAt: now, lastUsedAt: now,
       };
-      return { record, token: paired.token };
-    }
-    throw lastError;
+      return { kind: "ok", value: { record, token: paired.token } };
+    };
+    // the routes race with head starts, so on mobile data the relay is not left the seconds the computer's Wi-Fi and
+    // https addresses spent failing; every route redeems the same attempt, which the computer answers with one device
+    const result = await raceRoutes(ordered, { headStart: (route) => routeHeadStart(route, via, platform.kind), attempt, signal: signal ?? new AbortController().signal });
+    if ("won" in result) return result.won;
+    const final = result.outcomes.findIndex((outcome) => outcome?.kind === "final");
+    throw errors[final >= 0 ? final : errors.length - 1] ?? new PairError("unreachable");
   } catch (error) { throw pairError(error); }
 }
 

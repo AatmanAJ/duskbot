@@ -277,6 +277,27 @@ describe("v2 pairing", () => {
     expect(stillLate.close).toHaveBeenCalledOnce();
   });
 
+  it("on mobile data starts the relay within seconds while the computer's Wi-Fi and https addresses never answer, so a pairing the computer took is never cut off", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const lan = { kind: "companion", url: "http://192.168.1.20:8810", net: "lan", priority: 0 } as const;
+      const tailnet = { kind: "companion", url: "http://100.64.0.2:8810", net: "tailnet", priority: 1 } as const;
+      const source = { ...v2Payload(), via: [lan, tailnet, { kind: "https", url: "https://workspace.test" }, grantRoute] } as MobileLinkPayload;
+      const silent = vi.fn<typeof fetch>((_url, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")))));
+      vi.stubGlobal("fetch", silent);
+      const channel = { request: vi.fn(async () => response(v2Answer())), close: vi.fn() };
+      const opened = vi.spyOn(relay, "open").mockReturnValue(channel);
+      const pairing = redeemPairing(pairingFromPayload(source), fakePlatform().platform);
+      await vi.waitFor(() => expect(silent).toHaveBeenCalled());
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(opened).toHaveBeenCalledOnce();
+      const { record } = await pairing;
+      expect(record).toMatchObject({ transport: "relay", relay: v2Answer().relay });
+      expect(silent).toHaveBeenCalledTimes(3);
+      for (const call of silent.mock.calls) expect(call[1]?.signal?.aborted).toBe(true);
+    } finally { vi.useRealTimers(); }
+  });
+
   it("stops on the first HTTP answer, including a refusal", async () => {
     const opened = vi.spyOn(relay, "open");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({}, 401)));

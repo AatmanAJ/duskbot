@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { MobileTransport } from "../../../shared/mobile-link";
 import {
-  COMPANION_HEAD_START_MS, DIRECT_BUDGET_MS, DIRECT_TRY_MS, directStillWorthIt, HTTPS_BEFORE_RELAY_MS, HTTPS_HEAD_START_MS, raceRoutes, RELAY_HEAD_START_MS, routeHeadStart,
+  COMPANION_HEAD_START_MS, DIRECT_TRY_MS, HTTPS_BEFORE_RELAY_MS, HTTPS_HEAD_START_MS, raceRoutes, RELAY_HEAD_START_MS, routeHeadStart,
   routeOrder, routeTimeout, type RouteOutcome,
 } from "./route-order";
 
@@ -29,13 +29,6 @@ describe("route order", () => {
     for (const os of ["ios", "android"]) expect(routeTimeout(https, [https, relay], 15_000, os)).toBe(HTTPS_BEFORE_RELAY_MS);
     expect(routeTimeout(https, [https], 15_000)).toBe(15_000);
     expect(HTTPS_BEFORE_RELAY_MS + 5_000).toBeLessThanOrEqual(15_000);
-  });
-
-  it("stops trying direct routes once their budget is spent, only when a relay waits", () => {
-    expect(directStillWorthIt(lan, [lan, relay], 0, DIRECT_BUDGET_MS - 1)).toBe(true);
-    expect(directStillWorthIt(lan, [lan, relay], 0, DIRECT_BUDGET_MS)).toBe(false);
-    expect(directStillWorthIt(relay, [lan, relay], 0, DIRECT_BUDGET_MS * 10)).toBe(true);
-    expect(directStillWorthIt(lan, [lan], 0, DIRECT_BUDGET_MS * 10)).toBe(true);
   });
 });
 
@@ -94,6 +87,5 @@ describe("on Android", () => {
     expect(routeOrder([lan, relay], "android")).toEqual([relay, lan]);
     expect(routeOrder([lan, relay], "ios")).toEqual([lan, relay]);
     expect(routeTimeout(lan, [lan, relay], 15_000, "android")).toBe(15_000);
-    expect(directStillWorthIt(lan, [lan, relay], 0, 60_000, "android")).toBe(true);
   });
 });
