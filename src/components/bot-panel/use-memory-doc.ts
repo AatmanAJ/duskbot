@@ -31,7 +31,7 @@ export function useMemoryDoc(bot: Pick<Bot, "id" | "memoryEnabled" | "busy">): M
       const docs = await readDocs(botId, mine);
       if (!cancelled?.()) setState({ botId, docs, error: false });
     } catch {
-      if (!cancelled?.()) setState({ botId, docs: null, error: true });
+      if (!cancelled?.()) setState((current) => ({ botId, docs: current.botId === botId ? current.docs : null, error: true }));
     }
   };
 
