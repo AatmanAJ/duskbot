@@ -230,7 +230,8 @@ it("keeps a file secret and a ref secret out of every record, and the bot uses e
 
   // Only the secret file holds one value, and only the MCP server's settings the other.
   expect(filesHolding(home, FILE_CANARY)).toEqual([relative(home, secretFile)]);
-  expect(filesHolding(home, REF_CANARY)).toEqual([join(".duskbot", "config.json")]);
+  expect(filesHolding(home, REF_CANARY).sort()).toEqual([join(".duskbot", "config.json"), join(".duskbot", "config.json.last-good")]);
+  if (process.platform !== "win32") expect(statSync(join(home, ".duskbot", "config.json.last-good")).mode & 0o777).toBe(0o600);
   // the Vault kept it sealed (and has since forgotten it): only the card's own private file ever held it in the clear
   expect(filesHolding(home, VAULT_CANARY)).toEqual([relative(home, vaultFile)]);
   for (const where of [...said, log]) {

@@ -150,7 +150,7 @@ export function createBilling(options: BillingOptions) {
   const store = createBillingStore(options.dataDir);
   billingStore = store;
   const mode = billingProvider === "dodo" && dodoMode === "live" ? "live" as const : "test" as const;
-  const retry = env.DUSK_BILLING_RETRY ?? "off";
+  const retry = env.DUSK_BILLING_RETRY || "off";
   if (retry !== "off" && retry !== "paid" && retry !== "all") throw new Error("Invalid DUSK_BILLING_RETRY.");
   const service = createBillingService({ store, provider, clouds, config, publicUrl: url.origin, now, notify: options.notify, onLedger: options.onLedger, onRetention: options.onRetention, mode, retry });
   if (options.accountExists) service.scrubDeleted(options.accountExists);

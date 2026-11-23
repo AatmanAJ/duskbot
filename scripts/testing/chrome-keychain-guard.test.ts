@@ -25,6 +25,7 @@ const EXEMPT: Record<string, string> = {
   "server/browser-processes.ts": "matches running processes by their switches",
   "server/browser-tool-shape.test.ts": "a switch inside sample text",
   "server/browser/cdp/transport.ts": "names the pipe protocol, starts nothing",
+  "server/browser/chrome/launcher.test.ts": "asserts the launch settings with a fake agent-browser, starts nothing",
   "server/browser/chrome/processes.test.ts": "matches running processes by their switches",
   "server/vps-browser-close.ts": "matches running processes on the vps",
 };

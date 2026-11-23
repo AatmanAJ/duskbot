@@ -1,6 +1,6 @@
 // A server connected by hand, before the window goes there: the window goes only to a server that answers; one that
 // doesn't (its name no longer resolves, nothing listens) is the person's choice: try again, remove it, or stay.
-import { goneAnswer } from "./cloud-power.mjs";
+import { asleepAnswer, goneAnswer } from "./cloud-power.mjs";
 
 /** How long a server has to answer before it counts as not answering. */
 export const SERVER_LOOK_MS = 3_000;
@@ -23,6 +23,7 @@ export async function serverLook(origin, fetchImpl, timeoutMs = SERVER_LOOK_MS) 
     });
     await response.body?.cancel?.().catch(() => {});
     if (goneAnswer(response)) return "gone";
+    if (asleepAnswer(response)) return "asleep";
     return response.status < 500 ? "yes" : "no";
   } catch {
     return "no";

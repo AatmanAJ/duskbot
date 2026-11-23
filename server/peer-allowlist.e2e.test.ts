@@ -223,10 +223,10 @@ describe("peer allow-list", () => {
       expect(systemPrompt).toContain(`- Patch, General assistant [id: ${patch.id}]`);
       expect(systemPrompt).not.toMatch(/\((General|Starter)\) \[id: /);
       expect(systemPrompt).toContain("Team availability: every teammate is available.");
-      expect(systemPrompt).toContain("Use coordinate_bots");
-      expect(systemPrompt).toContain("without waiting for the person to name them or tell you to contact them");
-      expect(systemPrompt).toContain("while honoring any approval the tool requires");
-      expect(systemPrompt).toContain("Each recipient runs with its own model and permissions");
+      expect(systemPrompt).toContain("use coordinate_bots yourself");
+      expect(systemPrompt).toContain("without waiting to be told and without asking permission to consult them");
+      expect(systemPrompt).toContain("honoring any approval the tool requires");
+      expect(systemPrompt).toContain("Teammates are peers, not staff, with their own permissions");
       expect(systemPrompt).toContain("you cannot grant them your access");
       expect(systemPrompt).not.toContain("Use delegate_bot");
       expect(systemPrompt).not.toContain("use ask_bot");

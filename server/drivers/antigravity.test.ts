@@ -1023,7 +1023,11 @@ describe("Antigravity driver over shared ACP", () => {
       { method: "session/set_config_option", params: { sessionId: "fake-acp-session", configId: "thinking_level", value: "high" } },
     ]);
     const mcp = JSON.parse(readFileSync(`${dump}.mcp.json`, "utf8"));
-    expect(mcp).toEqual([{ name: "docs", command: "docs-mcp", args: ["serve"], env: [{ name: "TOKEN", value: "scoped" }] }]);
+    expect(mcp).toHaveLength(1);
+    const gateEnv = Object.fromEntries(mcp[0].env.map(({ name, value }: { name: string; value: string }) => [name, value]));
+    expect(mcp[0]).toMatchObject({ name: "docs", command: process.execPath, args: [expect.stringMatching(/mcp-gate\.ts$/u)] });
+    expect(gateEnv).toMatchObject({ DUSK_GATE_NAME: "docs", DUSK_TOOL_SCHEMA_PROFILE: "antigravity" });
+    expect(JSON.parse(gateEnv.DUSK_GATE_UPSTREAM)).toEqual({ command: "docs-mcp", args: ["serve"], env: { TOKEN: "scoped" } });
     // Checked on every OS, so the macOS and Linux runs prove the dump carries TEMP.
     const expectedTemp = process.platform === "win32" ? antigravityTempDir(DATA_DIR, instanceId) : fake.directory;
     expect([dumpState.env.TEMP, dumpState.env.TMP]).toEqual([expectedTemp, expectedTemp]);

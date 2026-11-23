@@ -1724,6 +1724,7 @@ const workspaceReconnect = createWorkspaceReconnect({ fetch: cloudFetch, store: 
   active: () => activeRemote(environmentsState), keeps: entry => handSaved(entry),
   places: () => [{ id: LOCAL_ID, name: "This computer", local: true }, ...environmentsState.environments.map(entry => ({ id: entry.id, name: entry.name }))],
   choose: id => workspaceMenuAction(() => switchEnvironment(id)), remove: id => workspaceMenuAction(() => forgetEnvironment(id)), log: slog,
+  wake: entry => cloudAccount?.state().machine?.origin === entry.origin ? cloudAccount.wakeHome("click") : null,
   publish: view => { if (mainWindow && !mainWindow.isDestroyed() && senderIsLocal({ sender: mainWindow.webContents })) mainWindow.webContents.send("workspace-reconnect:changed", view); } });
 installWorkspaceReconnectIpc({ ipcMain, reconnect: workspaceReconnect });
 

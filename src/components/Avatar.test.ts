@@ -66,7 +66,8 @@ describe("mascot facial feature colors", () => {
     const markup = renderBot({ mascotBody: "pumpkin" });
     expect(attr(markup, "body")).toBe("pip");
     expect(attr(markup, "eyes")).toBe("#fff");
-    expect(markup).not.toContain("<svg");
+    expect(markup).toContain('shape-rendering="crispEdges"');
+    expect(markup.match(/<path /g)).toHaveLength(2);
   });
 
   it("does not paint features over an uploaded image", () => {
