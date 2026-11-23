@@ -11,6 +11,7 @@ import { emailConfig } from "../email/templates.ts";
 import { CSRF_HEADER } from "../../../../shared/account-api.ts";
 import { fingerprint, maskText, clientText, routeOf, stackFrames, topFrame } from "./fingerprint.ts";
 import { createIncidents, RULES } from "./index.ts";
+import { incidentEmail } from "./email.ts";
 import { memoryIncidentStore, recordUpdate } from "./store.ts";
 import { tapConsole } from "./process.ts";
 import { ERRORS_PER_HOUR, MAX_ERROR_BYTES } from "./routes.ts";
