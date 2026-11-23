@@ -76,6 +76,16 @@ export function wakeReason(request, url) {
   return null;
 }
 
+const SESSION_COOKIE = /(?:^|;\s*)(?:dusk|omb)_session[\w-]*=/;
+/** a person's app or browser looking for the home it has open, which a read alone would leave asleep: the desktop's reconnect
+ *  check (dusk bot 0.2.26 to 0.2.28 send it without credentials, so it is told by its Electron agent and the path) and a
+ *  signed-in page load. Answered "waking" at once while the wake runs, under the account service's hourly cap. */
+export function openingWake(request, url) {
+  if (request.method !== "GET" || request.headers.get("x-dusk-background") === "1" || request.headers.get("x-omb-background") === "1") return false;
+  if (url.pathname === "/.well-known/duskbot/environment") return /\bElectron\//.test(request.headers.get("user-agent") ?? "");
+  return request.headers.get("sec-fetch-dest") === "document" && request.headers.get("sec-fetch-mode") === "navigate" && SESSION_COOKIE.test(request.headers.get("cookie") ?? "");
+}
+
 const sleepFor = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function wakeAndWait(label, reason, env, ctx, now = () => Date.now()) {
@@ -180,6 +190,10 @@ export default {
       route = await routeFor(label, env, ctx, { fresh: true }).catch(() => null);
       if (route?.gone) return goneHome();
       if (!route || route.awake) return response ?? waking(503);
+    }
+    if (!reason && route.wakeable && !route.awake && openingWake(request, url)) {
+      const asked = await askWake(label, "client", env);
+      return waking(asked === 429 ? 429 : 503);
     }
     if (!reason || !route.wakeable) return waking(503, { asleep: !reason && route.wakeable && !route.awake, wakeable: route.wakeable });
     if (request.body && body === undefined) {

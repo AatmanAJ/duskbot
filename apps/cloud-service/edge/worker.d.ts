@@ -1,6 +1,7 @@
 export declare const HOLD_MS: number;
 export declare const MISSING_TTL_S: number;
 export declare const MISSES_PER_MINUTE: number;
+export declare function openingWake(request: Request, url: URL): boolean;
 export declare function wakeReason(request: Request, url: URL): "webhook" | "client" | null;
 export declare function routeFor(label: string, env: EdgeEnv, ctx: { waitUntil(p: Promise<unknown>): void }, options?: { fresh?: boolean }): Promise<{ upstream: string; awake: boolean; wakeable: boolean } | null>;
 export declare function deliveryId(request: Request, url: URL, body: ArrayBuffer | undefined): Promise<string>;
