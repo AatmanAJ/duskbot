@@ -397,7 +397,9 @@ function AutomationDetail({ id, bot, automation, routine, actions, focusEdit, on
                       className="-mx-1 flex w-[calc(100%+8px)] items-baseline gap-1.5 rounded-md px-1 py-0.5 text-left enabled:cursor-pointer enabled:hover:bg-ink/[0.06] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
                     >
                       <span className="shrink-0 text-ink-secondary">{line.when}</span>
-                      <span className={cn("shrink-0", line.mark === "✓" ? "text-success" : line.mark === "✗" ? "text-danger" : line.mark === "–" ? "text-ink-tertiary" : "text-warning")}>{line.mark}</span>
+                      <span aria-hidden="true" className={cn("shrink-0", line.mark === "✓" ? "text-success" : line.mark === "✗" ? "text-danger" : line.mark === "–" ? "text-ink-tertiary" : "text-warning")}>{line.mark}</span>
+                      {line.mark === "✓" && <span className="sr-only">{t("automations.run.done")}</span>}
+                      {line.mark === "✗" && <span className="sr-only">{t("routines.strip.failed")}</span>}
                       {run.dryRun && <span className="shrink-0 rounded bg-ink/6 px-1 text-[11px] leading-4 text-ink-secondary">{t("automations.run.test")}</span>}
                       <span className="min-w-0 truncate">{line.text}</span>
                       {forecast?.runCosts?.[run.id] ? <span className="ms-auto shrink-0 tabular-nums text-ink-secondary">{formatCost(forecast.runCosts[run.id])}</span> : null}
