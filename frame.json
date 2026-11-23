@@ -1,0 +1,1 @@
+{ "confirm-waits-while-pending.before-after.png": { "crop": "285,150,680,420", "arrange": "row", "labels": ["before: Escape while signing out", "after: the confirm waits"] } }

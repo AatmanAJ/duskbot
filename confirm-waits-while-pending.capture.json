@@ -1,0 +1,29 @@
+{
+  "about": "Signing out of dusk cloud, still under way when Escape is pressed. The sign-out is staged: the app's own sign-out confirm (CloudSignOutConfirm) is mounted pending from the page, since the fixture has no dusk cloud account; its Cancel removes it, as the settings pane's does.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1280,
+  "height": 720,
+  "scale": 2,
+  "steps": [
+    {
+      "eval": "(async () => {\n  const urls = performance.getEntriesByType('resource').map((e) => e.name);\n  const pick = (re) => urls.find((u) => re.test(new URL(u).pathname));\n  const [client, react, menu] = await Promise.all([import(pick(/\\/deps\\/react-dom_client\\.js$/)), import(pick(/\\/deps\\/react\\.js$/)), import('/src/components/AccountMenu.tsx')]);\n  const host = document.createElement('div');\n  document.body.append(host);\n  const createRoot = client.createRoot ?? client.default.createRoot;\n  const h = react.createElement ?? react.default.createElement;\n  const root = createRoot(host);\n  root.render(h(menu.CloudSignOutConfirm, { open: true, pending: true, onCancel: () => { root.unmount(); host.remove(); }, onConfirm: () => {} }));\n  return true;\n})()"
+    },
+    {
+      "waitMs": 700
+    },
+    {
+      "shot": "f01-signing-out",
+      "only": "after"
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "waitMs": 700
+    },
+    {
+      "shot": true
+    }
+  ]
+}

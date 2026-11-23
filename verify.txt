@@ -1,0 +1,19 @@
+## the new test on untouched main (dbfefd93d)
+   × Escape does not walk away from a confirm whose action is still running 10ms
+   × a click outside does not walk away from a confirm whose action is still running 2ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  2 failed | 1 passed (3)
+
+## the same test on this branch (1472d295c)
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9208 English strings)
+
+## related tests: src/components/ConfirmDialog src/components/Sidebar src/components/BulkSelectBar src/components/AccountMenu
+ Test Files  38 passed (38)
+      Tests  418 passed (418)
