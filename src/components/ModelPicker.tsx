@@ -228,6 +228,7 @@ export function ModelPicker({
   const [query, setQuery] = useState("");
   const [loadingInstances, setLoadingInstances] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [refreshFailedId, setRefreshFailedId] = useState<string | null>(null);
   const [probing, setProbing] = useState<ReadonlySet<string>>(() => new Set());
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const ownerOrAdmin = useOwnerOrAdmin();
@@ -292,6 +293,7 @@ export function ModelPicker({
 
   const selection = bot.modelSelection;
   const refocusAfterPick = useRefocusAfterPick(menuRef, open, selection, query);
+  useEffect(() => setRefreshFailedId(null), [state.instances]);
   const instances = withTypedModels(state.instances, selection, query);
   const active = instances.find((instance) => instance.instanceId === selection.instanceId);
   const pickerInstances = configuredModelInstances(instances, selection.instanceId);
@@ -317,9 +319,10 @@ export function ModelPicker({
     if (refreshingRef.current || !instanceId) return;
     refreshingRef.current = true;
     setRefreshingId(instanceId);
-    void refreshInstances()
+    setRefreshFailedId(null);
+    void refreshInstances({ reportErrors: true })
       .then(() => refreshInstanceModels(instanceId))
-      .catch(() => {})
+      .catch(() => setRefreshFailedId(instanceId))
       .finally(() => {
         refreshingRef.current = false;
         setRefreshingId(null);
@@ -606,6 +609,7 @@ export function ModelPicker({
     probing,
     loading: loadingInstances,
     refreshing: refreshingId,
+    refreshFailed: refreshFailedId,
     starred,
   });
 
