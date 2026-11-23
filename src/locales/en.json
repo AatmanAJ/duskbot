@@ -2318,6 +2318,7 @@
   "chat.browserPart.getting": "Getting the browser ready…",
   "chat.browserPart.failed": "Couldn't get the browser ready. It will try again by itself.",
   "chat.browserPart.retry": "Try again",
+  "chat.browserPart.retryFailed": "The download didn't start. Try again in a moment.",
   "chat.computerStarting": "Starting {name}'s cloud desktop. The first start takes about a minute.",
   "chat.computerWaking": "Waking {name}'s cloud desktop…",
   "chat.jumpToLatest": "Jump to latest",

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "@/state/store";
 import { t } from "@/lib/i18n";
+import { friendlyError } from "@/lib/plain-error";
 import type { BrowserPart } from "@/lib/browser-part";
 import { InstallBusy } from "./onboarding/SignInPill";
 
@@ -9,14 +10,19 @@ const QUIET = "min-h-8 rounded-full px-3 text-[13px] leading-[18px] text-ink-sec
 /** One quiet line in the chat while the bot's browser downloads, the onboarding install look; a failed try offers another. */
 export function BrowserPartLine({ part }: { part: BrowserPart }) {
   const [asked, setAsked] = useState(false);
+  const [retryFailed, setRetryFailed] = useState<string | null>(null);
   if (part.phase === "failed") {
     return (
       <div data-browser-part="failed" className="flex flex-col items-start gap-1">
         <p role="status" className="m-0 text-[13px] leading-[18px] text-ink-secondary">{t("chat.browserPart.failed")}</p>
         <button type="button" className={`${QUIET} -ml-3`} disabled={asked} onClick={() => {
           setAsked(true);
-          void api("/api/browser-engine/install", { method: "POST" }).catch(() => {}).finally(() => setAsked(false));
+          setRetryFailed(null);
+          void api("/api/browser-engine/install", { method: "POST" })
+            .catch((cause: unknown) => setRetryFailed(friendlyError(cause, t("chat.browserPart.retryFailed"))))
+            .finally(() => setAsked(false));
         }}>{t("chat.browserPart.retry")}</button>
+        {retryFailed && <p role="alert" className="m-0 text-[13px] leading-[18px] text-danger">{retryFailed}</p>}
       </div>
     );
   }
