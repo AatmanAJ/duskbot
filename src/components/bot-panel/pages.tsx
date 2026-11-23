@@ -21,7 +21,7 @@ import { LibraryPage } from "./LibraryTab";
 import { FilesPage } from "../documents/FilesSection";
 import { DocumentPage } from "../documents/DocumentPage";
 import type { SimplePageId } from "./page-registry";
-import { BotSwitch, buttonCls, Card, fieldCls, LinkRow, NoteRow, RadioRow, rowCls, SwitchRow, TextRow, TrashButton } from "./rows";
+import { BotSwitch, buttonCls, Card, fieldCls, LinkRow, MemoryReadError, NoteRow, RadioRow, rowCls, SwitchRow, TextRow, TrashButton } from "./rows";
 import { ForgetUndoToast } from "./modals/MemoryModal";
 import { useMemoryEditor } from "./modals/use-memory-editor";
 import { useSkillActions } from "./modals/use-skill-actions";
@@ -94,15 +94,15 @@ export function RoutinesPage({ bot }: PageContext) {
 
 export function MemoryPage({ bot }: PageContext) {
   const editor = useMemoryEditor(bot);
-  const { memoryOn, readError, notes, index, draft, setDraft, saving, error, forget, add } = editor;
+  const { memoryOn, readError, readAgain, notes, index, draft, setDraft, saving, error, forget, add } = editor;
 
   return (
     <>
       <Card>
         {!memoryOn ? (
           <NoteRow>{t("botPanel.library.memoryOff", { name: bot.name })}</NoteRow>
-        ) : readError ? (
-          <NoteRow tone="warn">{t("botPanel.library.memoryError")}</NoteRow>
+        ) : readError && notes === null ? (
+          <MemoryReadError readAgain={readAgain} />
         ) : notes === null ? (
           <NoteRow>{t("botPanel.ui.commonChecking")}</NoteRow>
         ) : notes.length === 0 ? (
@@ -113,6 +113,7 @@ export function MemoryPage({ bot }: PageContext) {
             <TrashButton label={t("botPanel.memory.forget")} disabled={saving} onClick={() => forget(note)} />
           </div>
         ))}
+        {memoryOn && readError && notes !== null && <MemoryReadError readAgain={readAgain} />}
         {error && <NoteRow tone="warn">{error}</NoteRow>}
       </Card>
       {memoryOn && (
