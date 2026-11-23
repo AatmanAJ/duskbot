@@ -1,0 +1,1 @@
+{ "no-ai-check-again-says-why.before-after.png": { "crop": "500,440,560,360", "arrange": "row", "labels": ["before: Check again, then nothing", "after: it says the check failed"] } }

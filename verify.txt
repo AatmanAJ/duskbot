@@ -1,0 +1,18 @@
+## the new test on untouched main (dbfefd93d)
+   × Check again on the no-AI screen says when the check itself failed, instead of just stopping 13ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+
+## the same test on this branch (b7d16bff9)
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9209 English strings)
+
+## related tests: src/components/NoEngines src/components/Engine src/state
+ Test Files  49 passed (49)
+      Tests  498 passed (498)

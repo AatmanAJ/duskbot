@@ -1,0 +1,37 @@
+{
+  "about": "The Connect an AI screen, then Check again while the check can't get through. Staged in the page: the cached engine read reports the fixture's fake engine as unavailable, which brings up the screen, and the fresh check (/api/instances?fresh=1) answers 503.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1280,
+  "height": 800,
+  "scale": 2,
+  "steps": [
+    {
+      "eval": "(async () => {\n  const real = window.fetch.bind(window);\n  window.fetch = async (input, init) => {\n    const url = new URL(typeof input === 'string' ? input : input.url, location.href);\n    if (url.pathname === '/api/instances' && url.searchParams.get('fresh') === '1') {\n      return new Response(JSON.stringify({ error: 'The engine check timed out.' }), { status: 503, headers: { 'content-type': 'application/json' } });\n    }\n    const response = await real(input, init);\n    if (url.pathname !== '/api/instances') return response;\n    const body = await response.clone().json();\n    for (const instance of body.instances ?? []) instance.snapshot = { ...instance.snapshot, state: 'unavailable' };\n    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });\n  };\n  window.dispatchEvent(new Event('focus'));\n  return true;\n})()"
+    },
+    {
+      "waitFor": "document.body.innerText.includes('Check again')"
+    },
+    {
+      "waitMs": 600
+    },
+    {
+      "eval": "(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.includes('Check again')).click(); return true; })()"
+    },
+    {
+      "waitMs": 1500
+    },
+    {
+      "eval": "(() => { let el = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('Check again')); while (el && !(el.scrollHeight > el.clientHeight + 1 && getComputedStyle(el).overflowY !== 'visible')) el = el.parentElement; if (el) el.scrollTop = el.scrollHeight; return Boolean(el); })()"
+    },
+    {
+      "waitMs": 400
+    },
+    {
+      "shot": true
+    },
+    {
+      "eval": "JSON.stringify([...document.querySelectorAll('button')].find((b) => b.textContent.includes('Check again')).getBoundingClientRect())"
+    }
+  ]
+}
