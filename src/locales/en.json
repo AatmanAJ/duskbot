@@ -847,6 +847,7 @@
   "voice.chatterboxHelp": "Any OpenAI-compatible server running Chatterbox works, no key needed.",
   "voice.chatterboxHowTo": "How to run one locally",
   "voice.loading": "Loading voices…",
+  "voice.listFailed": "Couldn't load the voices just now.",
   "voice.macDefault": "Mac system default",
   "voice.installDefault": "Installation default",
   "voice.search": "Search voices or paste a link",
