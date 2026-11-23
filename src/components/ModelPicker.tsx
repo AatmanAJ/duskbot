@@ -13,7 +13,7 @@ import type { Typeahead } from "@/lib/menu-keys";
 import { usePopoverDismiss } from "@/hooks/use-popover-dismiss";
 import { InstanceProviderMark } from "./ProviderIcons";
 import { ELEVATED_FLOAT } from "./elevated";
-import { needsCli, needsSignIn } from "./EngineSetup";
+import { needsCli, needsSignIn } from "@/lib/engine-needs";
 import { engineReady } from "./EngineLibrary";
 import { offersLocalModels, probeLocalModels } from "./local-model-probe";
 import { ConfirmDialog } from "./ConfirmDialog";

@@ -49,6 +49,7 @@ const { ChatView, ErrorRow, FailedTurnRow } = await import("./ChatView");
 const { claudeUpdateTarget } = await import("@/lib/failed-turn");
 const { NewConversationInstead } = await import("./NewConversationInstead");
 const { activityPreview } = await import("@/lib/failed-turn");
+await (await import("./lazy-screens")).EngineSetupCard.preload();
 afterAll(() => vi.unstubAllGlobals());
 
 /** A remote client keeps the full header: the model, the computer, Stop, the role and ⋯. */

@@ -12,6 +12,9 @@ import { ConnectPanel, type ConnectFlowHandle } from "./SignInPill";
 import { ConnectProviderDialog } from "../models/ConnectProviderDialog";
 import type { ProviderInfo } from "@/lib/model-providers";
 import type { ConnectState } from "./connect-flow";
+import { EngineSetupCard } from "../lazy-screens";
+
+await EngineSetupCard.preload();
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

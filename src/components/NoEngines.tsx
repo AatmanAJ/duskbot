@@ -2,7 +2,7 @@ import { ArrowUpRight, KeyRound, Loader2, RefreshCw } from "../icons";
 import { useState } from "react";
 import { useStore } from "@/state/store";
 import { EngineGroupLabel } from "@/components/EngineGroupLabel";
-import { EngineSetup } from "@/components/EngineSetup";
+import { EngineSetupCard } from "@/components/lazy-screens";
 import { installsHere } from "@/state/engine-install";
 import { InstanceProviderMark } from "@/components/ProviderIcons";
 import { WindowDragStrip } from "@/components/DesktopCapabilities";
@@ -67,7 +67,7 @@ export function NoEngines() {
                   <InstanceProviderMark instance={instance} size={16} />
                   {instance.displayName}
                 </div>
-                <EngineSetup
+                <EngineSetupCard
                   instance={instance}
                   intent={instance.access === "custom" ? "inject" : "cloud"}
                   className="mt-0.5"
