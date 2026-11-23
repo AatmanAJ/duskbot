@@ -969,6 +969,12 @@ export function createCloudSend({ local, cloud, handoff, store, onChange = () =>
       if (view.local && view.theirs) view = { ...view, plan: plan(origin, view.local, view.theirs) };
       return publish();
     },
+    /** Forgets what was sent to this address: a move there starts from nothing, as to a new install. */
+    forget(origin) {
+      if (typeof origin === "string" && saved.clouds[origin]) { delete saved.clouds[origin]; persist(); }
+      view = { cloud: "none", plan: null, local: null, theirs: null, chats: null };
+      return publish();
+    },
     dismiss(signature) {
       const origin = cloud.origin();
       if (origin && typeof signature === "string") { entry(origin).dismissed = signature.slice(0, 20_000); persist(); }

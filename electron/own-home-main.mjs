@@ -18,6 +18,8 @@ const ENVIRONMENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 export const OWNER_KNOWN_MS = 10 * 60_000;
 /** How long a server that did not say who owns it is left alone before it is asked again. */
 export const OWNER_RETRY_MS = 60_000;
+/** How long Try again waits for a pass of an earlier move to end before it lets go of that move. */
+const LET_GO_WAIT_MS = 15_000;
 /** A chosen move that could not begin (this computer's server did not answer) looks again this often. */
 const START_RETRY_MS = 30_000;
 /** How long a pass waits for the server to answer (a linked vps's tunnel opens a moment after launch) before it fails. */
@@ -215,6 +217,8 @@ export function installOwnHome({ localRequest: anyServer, clean = null, fetch: f
     return Boolean(known?.own) && now() - known.at < OWNER_KNOWN_MS;
   };
   const moving = () => { const kept = parseJournal(journal.read()); return Boolean(kept) && kept.phase !== "back"; };
+  /** Nothing left this computer yet and it was never frozen for it: a move that can be let go of. */
+  const beforeTheFreeze = (kept) => !kept || kept.phase === "back" ? !kept?.switchBack : (kept.phase === "copy" || kept.phase === "wait") && !kept.thaw;
   const cloudMoving = () => { const kept = parseJournal(cloudJournal()); return Boolean(kept) && kept.phase !== "back"; };
   let retry = null;
   /** Goes on with the move; a choice whose server was forgotten here before anything ran there is let go of, and one whose
@@ -266,16 +270,34 @@ export function installOwnHome({ localRequest: anyServer, clean = null, fetch: f
         if (!known || now() - known.at >= (known.unanswered ? OWNER_RETRY_MS : OWNER_KNOWN_MS)) void owner(place);
       }
     },
-    /** The person chose this server as their home: asked once more, then the move starts. */
+    /** The person chose this server as their home: asked once more, then the move starts. Asked again (Try again), a move
+     * to this same server goes on; one that never got past copying is let go of and starts clean when its server is a new
+     * install, was forgotten here, or the move already ended with the bots here. */
     async start(id) {
       const place = environments().find((entry) => entry.id === id && handSaved(entry));
       if (!place) throw new Error("That server isn't in this app any more.");
-      if (moving() || chosen()) throw new Error("Your bots are already moving.");
+      const kept = parseJournal(journal.read()), before = chosen();
+      if ((moving() || before) && !beforeTheFreeze(kept)) throw new Error("Your bots are already moving.");
       if (cloudMoving()) throw new Error("Your bots are moving to My Cloud.");
       const who = await serverRequests(place, fetchImpl).who().catch(() => null);
       if (!who?.signedIn) throw new Error(`This app isn't signed in to ${place.name}. Open ${place.name} in this app, then try again.`);
       if (!who.own) throw new Error(`${place.name} has other people on it, so your bots stay here. Only a server that's yours alone can be your bots' home.`);
       if (!who.takesMove || !who.environmentId) throw new Error(`Update dusk bot on ${place.name} first, then try again.`);
+      if (moving() || before) {
+        const there = before ? placeOf(before) : null;
+        if (there?.id === place.id && before.environmentId === who.environmentId && kept?.phase !== "back") {
+          void home.retry().then(() => kick()).catch((error) => log(`own home: ${error?.message ?? error}`));
+          return { started: true, continued: true };
+        }
+        if (kept && kept.phase !== "back" && there && there.id !== place.id) throw new Error(`Your bots are already moving to ${before.name}.`);
+        if (!(await home.idle(LET_GO_WAIT_MS)) || !beforeTheFreeze(parseJournal(journal.read())) || chosen()?.environmentId !== before?.environmentId) {
+          throw new Error("Your bots are already moving. Try again in a moment.");
+        }
+        log(`own home: an earlier move to ${before?.name ?? "a server"} was let go of (${!kept || kept.phase === "back" ? "it ended" : there ? "the server is a new install" : "the server was forgotten"})`);
+        journal.write(null);
+        if (before) send.forget(before.origin);
+        choice.write(null);
+      }
       choice.write({ v: 1, id: place.id, origin: place.origin, environmentId: who.environmentId, name: place.name, at: now() });
       onChange();
       void kick().catch((error) => log(`own home: ${error?.message ?? error}`));
