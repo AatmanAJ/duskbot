@@ -1,0 +1,19 @@
+## the new test on untouched main (dbfefd93d)
+   × a failed re-read keeps the notes already shown and offers Try again 19ms
+   × a first read that fails says so with Try again 5ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+
+## the same test on this branch (d63986dc7)
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9208 English strings)
+
+## related tests: src/components/bot-panel src/components/BotSettingsDialog
+ Test Files  19 passed (19)
+      Tests  216 passed (216)

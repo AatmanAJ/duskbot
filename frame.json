@@ -1,0 +1,1 @@
+{ "memory-read-error-keeps-notes.before-after.png": { "crop": "400,55,690,355", "arrange": "row", "labels": ["before: a failed re-read", "after: notes stay, Try again"] } }

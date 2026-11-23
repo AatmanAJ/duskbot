@@ -1,0 +1,61 @@
+{
+  "about": "Pepper's memory notes in Settings, then a turn starts and the memory re-read that comes with it fails. Staged: the three notes are written through the memory file route, and fetch is wrapped in the page so every memory file read answers 500 after the first shot; the turn is a message sent through the messages route.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1280,
+  "height": 720,
+  "scale": 2,
+  "script": [
+    {
+      "waitMs": 1500
+    },
+    {
+      "text": "The 9:04 from Central, same as usual."
+    }
+  ],
+  "steps": [
+    {
+      "eval": "(async () => { const bots = (await (await fetch('/api/bots')).json()).bots; const pepper = bots.find((b) => b.name === 'Pepper'); const r = await fetch(`/api/bots/${pepper.id}/memory/file`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: 'MEMORY.md', text: '# Memory\\n- Prefers the 9am train on weekdays\\n- Keeps receipts in the Travel folder\\n- Likes short replies before noon\\n' }) }); return r.status; })()"
+    },
+    {
+      "click": "Open Pepper's profile"
+    },
+    {
+      "waitMs": 800
+    },
+    {
+      "click": "Advanced"
+    },
+    {
+      "waitMs": 600
+    },
+    {
+      "eval": "(() => { const m = document.querySelector('[data-panel-page=\"memory\"]'); m?.click(); return Boolean(m); })()"
+    },
+    {
+      "waitMs": 800
+    },
+    {
+      "eval": "(() => { const row = [...document.querySelectorAll('button')].find((b) => /^Notes/.test(b.textContent.trim())); row?.click(); return Boolean(row); })()"
+    },
+    {
+      "waitMs": 900
+    },
+    {
+      "shot": "f01-notes",
+      "only": "after"
+    },
+    {
+      "eval": "(async () => { const real = window.fetch.bind(window); window.fetch = (input, init) => (String(input instanceof Request ? input.url : input).includes('/memory/file') && (!init || !init.method || init.method === 'GET')) ? Promise.resolve(new Response(JSON.stringify({ error: 'Memory file unavailable' }), { status: 500, headers: { 'content-type': 'application/json' } })) : real(input, init); const bots = (await (await real('/api/bots')).json()).bots; const pepper = bots.find((b) => b.name === 'Pepper'); const r = await real(`/api/bots/${pepper.id}/messages`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: 'Which train do I take tomorrow?', threadId: pepper.threadId, sendId: crypto.randomUUID() }) }); return r.status; })()"
+    },
+    {
+      "settle": 60
+    },
+    {
+      "waitMs": 1200
+    },
+    {
+      "shot": true
+    }
+  ]
+}
