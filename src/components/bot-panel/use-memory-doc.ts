@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 
 import { fetchMemoryDoc, fetchMemoryOverview, MEMORY_INDEX, type MemoryDoc } from "@/lib/memory";
 import { useStore, type Bot } from "@/state/store";
+import { isArchiveTopic } from "../../../shared/memory-topics";
 
 export interface MemoryNotesState {
-  /** MEMORY.md first; on a Team Cloud also the person's topic files. Null until read. */
+  /** MEMORY.md first, then the topic files (never the archive). Null until read. */
   docs: MemoryDoc[] | null;
   error: boolean;
   /** On a Team Cloud the notes are the signed-in person's own layer. */
@@ -14,9 +15,9 @@ export interface MemoryNotesState {
 }
 
 async function readDocs(botId: string, mine: boolean): Promise<MemoryDoc[]> {
-  if (!mine) return [await fetchMemoryDoc(botId, MEMORY_INDEX)];
-  const overview = await fetchMemoryOverview(botId, true);
-  return Promise.all([MEMORY_INDEX, ...overview.topics.map((topic) => topic.path)].map((path) => fetchMemoryDoc(botId, path, true)));
+  const overview = await fetchMemoryOverview(botId, mine);
+  const topics = (overview.topics ?? []).filter((topic) => !isArchiveTopic(topic.path.slice("memory/".length)));
+  return Promise.all([MEMORY_INDEX, ...topics.map((topic) => topic.path)].map((path) => fetchMemoryDoc(botId, path, mine)));
 }
 
 /** The notes the bot panel shows for a bot whose memory is on. They are read again as a turn starts and ends, so a note
