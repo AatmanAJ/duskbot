@@ -366,9 +366,17 @@ export function createDashboardApp(options: DashboardAppOptions) {
     // once per cloud, ever: clouds/service.ts keeps cloud.mailed.ready, so a restart, a wake or a rebuild never sends it again
     cloudEvent: (kind, cloud) => !courtesy(emailOf(cloud.accountId)) ? undefined : kind === "ready" ? sendTo(cloud.accountId, "cloudStatus", cloudReadyEmail(emailCfg, cloudFacts(cloud)))
       : sendTo(cloud.accountId, "required", cloudDeletedEmail(emailCfg, { name: cloud.name, at: now() })),
-    // cloud lifecycle (deletions, reconciler steps, backups) never emails the operator: it is in the managed audit, admin and
-    // the daily digest. a real cloud problem prints a "managed: ALERT" line, which the console tap makes an incident
-    alert: entry => { if (entry.action === "starts_alert") incidents.report({ source: "log", name: "managed alert", message: `${entry.action} ${entry.cloudId}: ${entry.reason}` }); }, dataDir: options.dataDir, publicUrl, dashboard: store, now, fetch: options.fetch, wakeStats: () => slackEdge?.edge.wakeStats() ?? {}, accounts: {
+    // cloud lifecycle (deletions, reconciler steps, backups, repairs that worked) never emails the operator: it is in the
+    // managed audit, admin and the daily digest. a problem the backend could not fix opens an outage (one email, and one
+    // more when it is over) or prints a "managed: ALERT" line, which the console tap makes an incident
+    alert: entry => {
+      if (entry.action === "starts_alert") incidents.report({ source: "log", name: "managed alert", message: `${entry.action} ${entry.cloudId}: ${entry.reason}` });
+      const key = entry.detail?.key, title = entry.detail?.title;
+      if (typeof key !== "string" || typeof title !== "string") return;
+      const outage = { source: "ops" as const, name: title, key };
+      if (entry.action === "outage_open") incidents.report({ ...outage, message: entry.reason });
+      if (entry.action === "outage_close") void incidents.recovered(incidents.idOf(outage), entry.reason).catch(() => false);
+    }, dataDir: options.dataDir, publicUrl, dashboard: store, now, fetch: options.fetch, wakeStats: () => slackEdge?.edge.wakeStats() ?? {}, accounts: {
     fromCookie: req => { try { return account(req); } catch (error) { if (error instanceof AuthError && error.code === "signed_out") return null; throw error; } },
     fromBearer: req => auth.appSession(req)?.account ?? null } });
   const pagesRoutes = pagesRoutesFromEnv({ dataDir: options.dataDir, publicUrl, clouds: billing.clouds, now, fetch: options.fetch });

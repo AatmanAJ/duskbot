@@ -100,7 +100,9 @@ export function createManagedCloud(deps: ManagedCloudDeps): ManagedCloudFactory 
       // each home's monthly cost book: nothing is charged to a home past its ceiling (power/ceiling.ts, docs/power.md)
       const spend = createSpendLedger({ store: fileSpendStore(ctx.dataDir, "spend"), profile, reserveStarts: params.rails.costReserveStarts, now: ctx.now, mono: deps.mono,
         alert: (cloudId, text, key) => {
-          console.warn(`managed: ALERT ${text}`);
+          // the reserve is the policy keeping a restless home up for the month: recorded, not an operator's problem
+          if (key === "reserve") console.log(`managed: ${text}`);
+          else console.warn(`managed: ALERT ${text}`);
           deps.audit.record({ cloudId, action: "cost_ceiling_alert", actor: "reconciler", reason: key });
           deps.alert?.({ at: ctx.now(), cloudId, action: "cost_ceiling", actor: "reconciler", reason: text.slice(0, 120) });
         } });

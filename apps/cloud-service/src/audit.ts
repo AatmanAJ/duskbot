@@ -38,3 +38,10 @@ export function createAudit(options: { dataDir: string; now?: () => number; aler
   };
 }
 export type Audit = ReturnType<typeof createAudit>;
+
+/**
+ * the alert hook's outage pair: "outage_open" is the operator's one "something's wrong" email for a problem the backend
+ * could not fix by itself, "outage_close" its one "back to normal"; `key` names that one outage, `title` is the subject
+ */
+export const outageEntry = (open: boolean, at: number, cloudId: string, key: string, title: string, text: string): AuditEntry =>
+  ({ at, cloudId, action: open ? "outage_open" : "outage_close", actor: "reconciler", reason: text.slice(0, 900), detail: { key, title: title.slice(0, 60) } });

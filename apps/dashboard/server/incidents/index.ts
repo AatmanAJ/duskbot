@@ -80,9 +80,10 @@ export function createIncidents(options: IncidentsOptions) {
 
   const dayOf = (at: number) => Math.floor(at / DAY);
   const muted = (incident: Incident) => incident.mutedUntil !== null && incident.mutedUntil > now();
-  // only what needs the owner now emails: the server itself failing. client and desktop errors and new problem groups
-  // stay in the admin panel (the owner asked for urgent mail only, 2026-11-17)
-  const urgent = (incident: Pick<Incident, "source" | "name">) => !isClientSource(incident.source) && incident.name !== "NewProblemGroup";
+  // only what needs the owner now emails: the server itself failing, or an ALERT line. client and desktop errors, new
+  // problem groups and warnings about what is retried by itself stay in the admin panel
+  const urgent = (incident: Pick<Incident, "source" | "name">) => !isClientSource(incident.source) && incident.name !== "NewProblemGroup"
+    && !(incident.source === "log" && incident.name.endsWith(" warn"));
   function count() { const day = dayOf(now()); if (today.day !== day) Object.assign(today, { day, mails: 0, clientMails: 0 }); return today; }
   function within(list: number[], ms: number) { const time = now(); while (list.length && list[0]! <= time - ms) list.shift(); return list.length; }
 
@@ -240,6 +241,8 @@ export function createIncidents(options: IncidentsOptions) {
 
   return {
     report,
+    /** the id `report` gives this input, without counting a sighting */
+    idOf: (input: IncidentInput) => sample(input, now()).id,
     tick,
     flushNew,
     load,

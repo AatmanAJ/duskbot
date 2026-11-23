@@ -107,9 +107,10 @@ printf 000; exit 7`);
 });
 
 describe("the reconciler's computer check", () => {
-  it("checks a running home every 10 minutes and after a wake, alerts once per incident and logs when it answers again", async () => {
+  it("checks a running home every 10 minutes and after a wake; a repair that worked is only audited, a computer still down after two repairs emails once, and once more when it answers", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    cleanup.push(() => warn.mockRestore());
+    const info = vi.spyOn(console, "log").mockImplementation(() => {});
+    cleanup.push(() => { warn.mockRestore(); info.mockRestore(); });
     const f = await homeFixture();
     const { c } = await f.paid();
     const checks = () => f.api.requests.filter(r => r.path.endsWith("/exec") && (r.body as { cmd: string }).cmd.includes(COMPUTER_CHECK_MARK)).length;
@@ -124,18 +125,36 @@ describe("the reconciler's computer check", () => {
     await pass(COMPUTER_CHECK_MS);
     await pass(COMPUTER_CHECK_MS);
     expect(checks()).toBe(4);
-    expect(actions()).toEqual(["computer_healed:periodic", "computer_healed:periodic", "computer_ok:recovered"]);
-    expect(warn.mock.calls.filter(([line]) => String(line).includes("ALERT") && String(line).includes("bot computers"))).toHaveLength(1);
+    expect(actions()).toEqual(["computer_healed:periodic", "computer_healed:periodic"]);
+    expect(f.outages).toEqual([]);
+    expect(warn.mock.calls.filter(([line]) => String(line).includes("bot computers"))).toEqual([]);
     expect(c.managed!.computer!.incident).toBeNull();
     expect(c.managed!.computer!.history.map(([, infra]) => infra)).toEqual([false, true, true, false]);
 
     await f.asleep(c);
     const before = checks();
-    f.api.computerAnswers("down docker");
+    f.api.computerAnswers("down gate", "down gate", "down gate", "healed gate");
     c.wantPower = "on";
     await f.settle(c, x => x.status === "running", 20, 61_000);
     expect(checks()).toBe(before + 1);
     expect(actions().at(-1)).toBe("computer_down:wake");
-    expect(c.managed!.computer!.incident).toMatchObject({ what: "down_docker" });
+    expect(c.managed!.computer!.incident).toMatchObject({ what: "down_gate", downs: 1, alerted: false });
+    expect(f.outages).toEqual([]);
+    await pass(COMPUTER_CHECK_MS);
+    await pass(COMPUTER_CHECK_MS);
+    expect(f.outages.map(o => o.action)).toEqual(["outage_open"]);
+    const [open] = f.outages;
+    expect(open!.title).toBe(`cloud ${c.id.slice(0, 8)}: bot computers down`);
+    expect(open!.reason).toContain(`cloud ${c.id}: its bot computers cannot be reached: the docker gate stopped answering and did not come back after 2 restarts`);
+    expect(open!.reason).toContain("journalctl -u omb-docker-gate");
+    expect(c.managed!.computer!.incident).toMatchObject({ downs: 3, alerted: true });
+    expect(c.status).toBe("sleeping");
+    c.wantPower = "on";
+    await f.settle(c, x => x.status === "running", 20, 61_000);
+    expect(f.outages.map(o => o.action)).toEqual(["outage_open", "outage_close"]);
+    expect(f.outages[1]!.key).toBe(open!.key);
+    expect(f.outages[1]!.reason).toContain("its bot computers answer again (gate restarted)");
+    expect(actions().slice(-2)).toEqual(["computer_healed:wake", "computer_ok:recovered"]);
+    expect(c.managed!.computer!.incident).toBeNull();
   });
 });

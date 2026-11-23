@@ -1,14 +1,18 @@
 // A running home's bot computers need docker and the docker gate in front of it. Either can stop answering while the
 // machine keeps running (a docker restart the gate did not follow, a gate wedged on an older package's code), and
 // nothing on the machine brings it back before a reboot. The reconciler checks after every wake and every
-// COMPUTER_CHECK_MS while a home runs, with a command that repairs what it finds (home.ts COMPUTER_CHECK_SCRIPT). The
-// operator hears once per incident; the update guard reads the history so a release is not blamed for runs that failed
-// because the computer was down.
+// COMPUTER_CHECK_MS while a home runs, with a command that repairs what it finds (home.ts COMPUTER_CHECK_SCRIPT). A
+// repair that worked is only audited; the operator hears once when DOWN_ALERT_CHECKS repairs in a row did not bring it
+// back, and once when it answers again. The update guard reads the history so a release is not blamed for runs that
+// failed because the computer was down.
 import type { StoredCloud } from "../../dashboard/server/clouds/types.ts";
+import { outageEntry } from "./audit.ts";
 import type { Audit, AuditEntry } from "./audit.ts";
 import type { MachineImage, MachineProvider } from "./provider.ts";
 
 export const COMPUTER_CHECK_MS = 10 * 60_000;
+/** checks in a row that restarted docker or the gate and still found it down before the operator is emailed */
+export const DOWN_ALERT_CHECKS = 2;
 const HISTORY = 40;
 
 export type ComputerHealth = "ok" | "healed" | "down" | "none" | "unknown";
@@ -25,8 +29,9 @@ export interface ComputerState {
   last: ComputerCheck | null;
   /** recent checks, oldest first: [at, infra] */
   history: Array<[number, boolean]>;
-  /** an open incident (docker or the gate found not answering), closed by the next clean check */
-  incident: { since: number; what: string } | null;
+  /** an open incident (docker or the gate down after its repair), closed by the next check that finds it answering;
+   *  `downs` counts its checks, `alerted` whether the operator was told */
+  incident: { since: number; what: string; downs?: number; alerted?: boolean } | null;
 }
 
 export function parseComputerCheck(stdout: string, at: number): ComputerCheck {
@@ -59,25 +64,35 @@ export function createComputerHealth(deps: ComputerHealthDeps) {
   const log = (c: StoredCloud, action: string, reason: string, detail?: Record<string, string | number | boolean | null>) =>
     deps.audit.record({ cloudId: c.id, action, actor: "reconciler", reason, serverId: c.serverId, ...(detail ? { detail } : {}) });
 
+  const outageKey = (c: StoredCloud, since: number) => `computer-${c.id}-${since}`;
+  const outageTitle = (c: StoredCloud) => `cloud ${c.id.slice(0, 8)}: bot computers down`;
+  const minutes = (ms: number) => `${Math.max(1, Math.round(ms / 60_000))} min`;
+
   function record(c: StoredCloud, why: string, check: ComputerCheck) {
     const s = stateOf(c);
     s.last = check;
     if (check.health !== "unknown") s.history = [...s.history, [check.at, check.infra] as [number, boolean]].slice(-HISTORY);
-    const what = check.down ? `down_${check.down}` : check.fixed.filter(f => f === "docker" || f === "gate").join("_");
     if (check.health === "healed") log(c, "computer_healed", why, { fixed: check.fixed.join(":") });
-    if (check.infra) {
-      const opened = !s.incident;
-      if (check.down && (opened || s.incident!.what !== what)) log(c, "computer_down", why, { what: check.down });
-      if (opened) {
-        const text = check.down
-          ? `cloud ${c.id}: its bot computers cannot be reached: ${check.down === "docker" ? "docker" : "the docker gate"} did not come back after a restart`
-          : `cloud ${c.id}: its bot computers were not answering (${what.replaceAll("_", " and ")} restarted); they answer again`;
-        console.warn(`managed: ALERT ${text}`);
-        deps.alert?.({ at: check.at, cloudId: c.id, action: "computer_down", actor: "reconciler", reason: text.slice(0, 900) });
+    if (check.down) {
+      const what = `down_${check.down}`, open = s.incident;
+      if (!open || open.what !== what) log(c, "computer_down", why, { what: check.down });
+      const incident = { since: open?.since ?? check.at, what, downs: (open?.downs ?? 0) + 1, alerted: open?.alerted ?? false };
+      s.incident = incident;
+      if (!incident.alerted && incident.downs >= DOWN_ALERT_CHECKS) {
+        incident.alerted = true;
+        const part = check.down === "docker" ? "docker" : "the docker gate";
+        const text = `cloud ${c.id}: its bot computers cannot be reached: ${part} stopped answering and did not come back after `
+          + `${incident.downs} restarts over ${minutes(check.at - incident.since)}. bot work that needs a computer fails on this cloud until it does. `
+          + `look at journalctl -u ${check.down === "docker" ? "docker" : "omb-docker-gate"} on its machine.`;
+        console.log(`managed: ${text}`);
+        deps.alert?.(outageEntry(true, check.at, c.id, outageKey(c, incident.since), outageTitle(c), text));
       }
-      s.incident = { since: s.incident?.since ?? check.at, what };
     } else if (s.incident && check.health !== "unknown") {
       log(c, "computer_ok", "recovered", { since: s.incident.since, was: s.incident.what });
+      if (s.incident.alerted) {
+        deps.alert?.(outageEntry(false, check.at, c.id, outageKey(c, s.incident.since), outageTitle(c),
+          `cloud ${c.id}: its bot computers answer again${check.fixed.length ? ` (${check.fixed.join(", ")} restarted)` : ""}, after ${minutes(check.at - s.incident.since)} down.`));
+      }
       s.incident = null;
     }
     deps.save(c);

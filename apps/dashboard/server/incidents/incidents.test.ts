@@ -206,10 +206,38 @@ describe("alert throttling", () => {
     target.warn("persistence: writer lease renewal failed; retrying");
     target.warn("admin: 2 allowed accounts");
     target.warn("incidents: an alert email failed");
+    target.warn("clouds: pairing with cloud c1 works again after 1 failed tries (timeout)");
     target.error("Email delivery failed.");
     restore();
     target.error("after restore");
     expect(seen).toEqual(["managed alert|ALERT cloud c1: its setup failed 3 times", "persistence warn|writer lease renewal failed; retrying", "service error|Email delivery failed."]);
+  });
+  it("emails an ALERT line, keeps a warning about something retried on the health page only, and says what broke in the subject", async () => {
+    const { mailer, incidents, store } = setup();
+    const target = { error: () => {}, warn: () => {} } as unknown as Pick<Console, "error" | "warn">;
+    const restore = tapConsole(incidents, target);
+    target.warn("clouds: cloud c86782fd18a767092ed3de619 step failed (attempt 1): RetryableCloudError: Cloud provider temporarily unavailable.");
+    target.warn("managed: the entitlement push to c4516115ce891170f48c343ae failed (http_502); tried again with a growing wait");
+    await incidents.flushNew();
+    expect(mailer.outbox).toEqual([]);
+    target.warn("managed: ALERT cloud c29d69b9186236b1f9c4da634: its plan ended and its final backup keeps failing (disk_low)");
+    restore();
+    await incidents.flushNew();
+    expect(mailer.outbox.map(mail => mail.subject)).toEqual(["something's wrong: cloud c29d69b9: its plan ended and its final backup keeps failing (disk_low)"]);
+    expect(mailer.outbox[0]!.text).toContain("cloud c29d69b9: its plan ended");
+    expect(mailer.outbox[0]!.text).not.toMatch(/\bALERT /);
+    await incidents.tick();
+    expect((await store.list({ limit: 10 })).map(item => item.name).sort()).toEqual(["clouds warn", "managed alert", "managed warn"]);
+  });
+  it("never cuts a subject inside a word", async () => {
+    const { mailer, incidents } = setup();
+    incidents.report({ source: "log", name: "managed alert", message: "ALERT managed backups: under 20 GiB free on the backup disk; new backups are skipped until there is room" });
+    incidents.report({ source: "log", name: "billing alert", message: "ALERT cloud c4f18b1065a1df7dea9b6b43e is not on the managed backend and can't take a dedicated plan in place, its plan changed" });
+    await incidents.flushNew();
+    expect(mailer.outbox[0]!.subject).toBe("something's wrong: managed backups: under 20 GiB free on the backup disk (+1 more)");
+    incidents.report({ source: "log", name: "billing alert", message: "ALERT cloud c4f18b1065a1df7dea9b6b43e is not on the managed backend and can't take a dedicated plan in place, its plan changed" });
+    expect(incidentEmail(emailConfig({}, { publicUrl: "https://dusk.bot" }), { kind: "new", env: "production", panelUrl: "x", incidents: (await incidents.list({ limit: 5 })).filter(item => item.name === "billing alert") }).subject)
+      .toBe("something's wrong: cloud c4f18b10 is not on the managed backend and can't take a dedicated plan in place…");
   });
 });
 
@@ -297,7 +325,7 @@ describe("an ops alert's end", () => {
     const id = incidents.report({ source: "ops", name: "contabo disk", message: "91% (alert when > 85%)", key: "ops-contabo-disk-1" })!;
     await incidents.flushNew();
     expect(mailer.outbox).toHaveLength(1);
-    expect(mailer.outbox[0]!.subject).toBe("something's wrong: contabo disk (ops monitor)");
+    expect(mailer.outbox[0]!.subject).toBe("something's wrong: contabo disk");
     time.now += HOUR;
     expect(await incidents.recovered(id, "contabo disk is back to normal: 60%.")).toBe(true);
     expect(await incidents.recovered(id, "contabo disk is back to normal: 60%.")).toBe(false);

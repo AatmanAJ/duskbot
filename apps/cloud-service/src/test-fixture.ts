@@ -51,6 +51,7 @@ export async function homeFixture(options: { costProfile?: ProviderCostProfile; 
   const subscriptions: StoredSubscription[] = [];
   const notices: Array<{ cloudId: string; kind: string; at: number | null; link?: string }> = [];
   const alerts: string[] = [];
+  const outages: Array<{ action: string; reason: string; key: unknown; title: unknown }> = [];
   const audit = createAudit({ dataDir, now, alert: entry => alerts.push(`${entry.action}:${entry.reason}`) });
   const disk = { free: 1024 ** 4 };
   const backups = createBackupStore({ dir: join(dataDir, "managed-backups"), now, freeBytes: () => disk.free });
@@ -62,6 +63,7 @@ export async function homeFixture(options: { costProfile?: ProviderCostProfile; 
       settings: { ...DEFAULT_MANAGED_SETTINGS, package: { sha256: SHA, url: "https://packages.example.test/home.tgz" }, ...(options.retentionDays ? { retentionDays: options.retentionDays } : {}), ...options.settings },
       ...(options.releaseKeys ? { releaseKeys: options.releaseKeys } : {}), ...(options.edgeToken ? { edgeToken: options.edgeToken } : {}),
       ...(options.costProfile ? { costProfile: options.costProfile } : {}), ...(options.release ? { release: options.release } : {}), ...(options.updatePolicy ? { updatePolicy: options.updatePolicy } : {}),
+      alert: entry => { if (entry.action.startsWith("outage_")) outages.push({ action: entry.action, reason: entry.reason, key: entry.detail?.key, title: entry.detail?.title }); },
       entitlement: cloud => entitlementOf(subscriptions, cloud, at),
       notify: (cloud, kind, when, link) => notices.push({ cloudId: cloud.id, kind, at: when, ...(link ? { link } : {}) }) }) });
   cleanup.push(() => service.close());
@@ -86,7 +88,7 @@ export async function homeFixture(options: { costProfile?: ProviderCostProfile; 
     power.idle = true; power.busy = [];
     await settle(c, x => x.status === "sleeping", 60, 5 * 60_000);
   }
-  return { api, provider, service, home, power, update, subscriptions, notices, alerts, audit, backups, disk, dataDir, paid, settle, asleep, workspaces,
+  return { api, provider, service, home, power, update, subscriptions, notices, alerts, outages, audit, backups, disk, dataDir, paid, settle, asleep, workspaces,
     advance(ms: number) { at += ms; }, now };
 }
 

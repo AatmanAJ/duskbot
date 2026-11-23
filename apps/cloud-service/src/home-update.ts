@@ -118,13 +118,13 @@ export function createHomeUpdates(deps: HomeUpdateDeps) {
     const done = await deps.provider.run(c.serverId!, deps.image.rollbackCommand, 300);
     if (!done.ok || !done.stdout.includes("rolled back")) {
       log(c, "update_rollback_failed", verdict.reason, { from, to: verdict.to.version });
-      console.warn(`managed: ALERT cloud ${c.id}: the rollback from ${from} to ${verdict.to.version} failed; it is tried again`);
+      console.warn(`managed: cloud ${c.id}: the rollback from ${from} to ${verdict.to.version} failed; it is tried again`);
       throw new RetryableCloudError("Cloud update rollback failed.");
     }
     const { failedRuns } = rolledBack(u.guard, verdict.to, verdict.reason, deps.now());
     c.managed!.installed = verdict.to.sha256; u.stuck = false;
     log(c, "update_rolled_back", verdict.reason, { from, to: verdict.to.version, rerunFree: failedRuns.length });
-    console.warn(`managed: ALERT cloud ${c.id}: the update to ${from} was rolled back to ${verdict.to.version} (${verdict.reason})`);
+    console.log(`managed: cloud ${c.id}: the update to ${from} was rolled back to ${verdict.to.version} (${verdict.reason})`);
     deps.save(c);
     if (relayExits(verdict.to.version)) await asideRelay(c);
     const started = await deps.provider.run(c.serverId!, deps.image.startCommand(x.origin, x.upstream), 120);

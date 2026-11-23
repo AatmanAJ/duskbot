@@ -29,10 +29,11 @@ describe("the hourly entitlement refresh", () => {
     warn.mockRestore();
   });
 
-  it("logs the cause once, waits longer between tries, alerts once and clears when the home takes it again", async () => {
+  it("logs the cause once, waits longer between tries, emails only once under 6 hours of the last entitlement are left, and once more when the home takes it again", async () => {
     const { f, c, pass } = await runningHome();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const entitledAt = c.entitledAt;
+    const info = vi.spyOn(console, "log").mockImplementation(() => {});
+    const entitledAt = c.entitledAt!;
     f.home.entitle.mockClear();
     f.home.entitle.mockRejectedValue(refused(403, "entitlement_required"));
     await pass(HOUR + MINUTE);
@@ -45,14 +46,26 @@ describe("the hourly entitlement refresh", () => {
     expect(f.home.entitle).toHaveBeenCalledTimes(8);
     expect(b.entitleProblem!.tries).toBe(4);
     expect(c.entitledAt).toBe(entitledAt);
-    const lines = warn.mock.calls.flat().join("\n");
-    expect(lines.match(/entitlement push to \S+ failed/g)).toHaveLength(1);
-    expect(lines.match(/ALERT cloud \S+: its entitlement refresh keeps failing/g)).toHaveLength(1);
+    expect(warn.mock.calls.flat().join("\n").match(/entitlement push to \S+ failed/g)).toHaveLength(1);
+    expect(f.outages).toEqual([]);
+    while (entitledAt + 24 * HOUR - f.now() >= 6 * HOUR) {
+      expect(f.outages).toEqual([]);
+      await pass(30 * MINUTE);
+    }
+    expect(f.outages.map(o => o.action)).toEqual(["outage_open"]);
+    expect(f.outages[0]!.title).toBe(`cloud ${c.id.slice(0, 8)}: entitlement failing`);
+    expect(f.outages[0]!.reason).toMatch(new RegExp(`^cloud ${c.id}: its entitlement refresh has failed \\d+ times since .* utc \\(http_403:entitlement_required\\)\\. the home stops serving its apps in \\d+ min`));
+    await pass(30 * MINUTE);
+    expect(f.outages).toHaveLength(1);
     f.home.entitle.mockResolvedValue({ expiresAt: f.now() + HOUR });
-    await pass(20 * MINUTE);
+    await pass(30 * MINUTE);
     expect(b.entitleProblem).toBeNull();
     expect(c.entitledAt).toBe(f.now());
-    expect(warn.mock.calls.flat().join("\n")).toContain("works again after 4 failed tries (http_403:entitlement_required)");
+    expect(f.outages.map(o => o.action)).toEqual(["outage_open", "outage_close"]);
+    expect(f.outages[1]!.key).toBe(f.outages[0]!.key);
+    expect(warn.mock.calls.flat().join("\n")).not.toContain("ALERT");
+    expect(info.mock.calls.flat().join("\n")).toContain("works again after");
+    info.mockRestore();
     warn.mockRestore();
   });
 });

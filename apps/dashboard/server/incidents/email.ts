@@ -11,6 +11,18 @@ const SOURCE_LABEL: Record<string, string> = {
   web: "dashboard page", admin: "admin page", desktop: "desktop app page", "desktop-main": "desktop app",
 };
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+const SUBJECT_MAX = 90;
+
+/** a service line as the owner reads it: no ALERT marker, a cloud named by its first 8 characters */
+const plain = (text: string) => text.replace(/^ALERT\s+/, "").replace(/\b(cloud )(c[0-9a-f]{7})[0-9a-f]{8,}\b/g, "$1$2");
+const cut = (text: string, max: number) => text.length <= max ? text : `${text.slice(0, text.lastIndexOf(" ", max - 1) > max / 2 ? text.lastIndexOf(" ", max - 1) : max - 1).replace(/[\s,;:.(]+$/, "")}…`;
+
+/** what broke, in the words the owner acts on: a service line's own text, an ops rule's name, else the error and where */
+export function headline(incident: Pick<Incident, "source" | "name" | "message" | "route">): string {
+  if (incident.source === "log") return cut(plain(incident.message.split(/;\s/)[0] ?? incident.message), SUBJECT_MAX);
+  if (incident.source === "ops") return cut(incident.name, SUBJECT_MAX);
+  return cut(`${incident.name}${incident.route ? ` on ${incident.route}` : ` (${SOURCE_LABEL[incident.source] ?? incident.source})`}`, SUBJECT_MAX);
+}
 
 function incidentBlocks(incident: Incident): Block[] {
   const rows: Array<[string, string]> = [
@@ -24,7 +36,7 @@ function incidentBlocks(incident: Incident): Block[] {
   if (incident.version || incident.os) rows.push(["app", [incident.version, incident.os].filter(Boolean).join(" · ")]);
   rows.push(["id", incident.id]);
   return [
-    { t: "h2", text: `${incident.name}: ${incident.message || "(no message)"}`.slice(0, 200) },
+    { t: "h2", text: incident.source === "log" ? plain(incident.message).slice(0, 300) : `${incident.name}: ${incident.message || "(no message)"}`.slice(0, 300) },
     { t: "facts", rows },
     ...(incident.stack.length ? [{ t: "label" as const, text: "stack" }, { t: "log" as const, text: incident.stack.slice(0, 6).join("\n") }] : []),
   ];
@@ -37,7 +49,7 @@ export function incidentEmail(cfg: EmailConfig, input: { kind: IncidentMailKind;
   if (kind === "recovered") {
     const first = incidents[0]!;
     return render(cfg, {
-      subject: `${prefix}back to normal: ${first.name}`, preheader: (input.note ?? first.name).slice(0, 120), tag: input.env === "production" ? "alert" : `alert · ${input.env}`, say: "phew, all good again", accent: "lime", status: ["recovered", "ok"],
+      subject: `${prefix}back to normal: ${headline(first)}`, preheader: plain(input.note ?? first.name).slice(0, 120), tag: input.env === "production" ? "alert" : `alert · ${input.env}`, say: "phew, all good again", accent: "lime", status: ["recovered", "ok"],
       blocks: [
         { t: "h1", text: "back to normal" },
         { t: "p", text: input.note ?? `${first.name} is back to normal.` },
@@ -50,7 +62,7 @@ export function incidentEmail(cfg: EmailConfig, input: { kind: IncidentMailKind;
   }
   const first = incidents[0]!;
   const subject = input.test ? `${prefix}test alert: this is what a problem looks like`
-    : kind === "new" ? `${prefix}something's wrong: ${first.name}${first.route ? ` on ${first.route}` : ` (${SOURCE_LABEL[first.source] ?? first.source})`}${incidents.length > 1 ? ` and ${incidents.length - 1} more` : ""}`
+    : kind === "new" ? `${prefix}something's wrong: ${headline(first)}${incidents.length > 1 ? ` (+${incidents.length - 1} more)` : ""}`
     : `${prefix}${plural(incidents.length, "problem")} not emailed yet on dusk bot`;
   const heading = input.test ? "test alert" : kind === "new" ? "something's wrong" : "problems you haven't heard about";
   const intro = input.test ? `this is a test from the ${input.env} account service. a real one looks just like this.`
@@ -58,7 +70,7 @@ export function incidentEmail(cfg: EmailConfig, input: { kind: IncidentMailKind;
     : `these showed up on ${input.env} but were held back by the daily email limit.`;
   const shown = incidents.slice(0, SHOWN);
   return render(cfg, {
-    subject, preheader: `${first.name}: ${first.message}`.slice(0, 120), tag: input.env === "production" ? "alert" : `alert · ${input.env}`,
+    subject, preheader: plain(first.message || first.name).slice(0, 120), tag: input.env === "production" ? "alert" : `alert · ${input.env}`,
     ...(input.test ? { say: "just a test", accent: "lav" as const, status: ["test", "off"] as [string, "off"] }
       : kind === "new" ? { say: "uh oh, something broke", accent: "pink" as const, status: ["open", "bad"] as [string, "bad"] }
       : { say: "a few you missed", accent: "lemon" as const, status: [`${incidents.length} held back`, "warn"] as [string, "warn"] }),
