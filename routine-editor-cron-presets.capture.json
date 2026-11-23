@@ -1,0 +1,46 @@
+{
+  "about": "A routine moved from another app is saved as a cron line (Fridays at 16:00 in this computer's zone). It is made through the routines route, then opened in Pepper's panel, Edit, When, Every week.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1280,
+  "height": 800,
+  "scale": 2,
+  "steps": [
+    {
+      "eval": "(async () => { const { bots } = await (await fetch('/api/bots')).json(); const pepper = bots.find((bot) => bot.name === 'Pepper'); await fetch('/api/routines', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Friday promises', prompt: 'List every open promise, oldest first.', botId: pepper.id, enabled: true, schedule: { type: 'cron', expression: '0 16 * * 5', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone } }) }); return true; })()"
+    },
+    {
+      "reload": true
+    },
+    {
+      "click": "Open Pepper's profile"
+    },
+    {
+      "waitFor": "!!document.querySelector('[data-panel-routine]')"
+    },
+    {
+      "eval": "document.querySelector('[data-panel-routine] button').click()"
+    },
+    {
+      "click": "Edit"
+    },
+    {
+      "waitMs": 300
+    },
+    {
+      "click": "When"
+    },
+    {
+      "waitMs": 200
+    },
+    {
+      "eval": "[...document.querySelectorAll('[role=option]')].find((option) => option.textContent.trim() === 'Every week').click()"
+    },
+    {
+      "waitMs": 300
+    },
+    {
+      "shot": true
+    }
+  ]
+}
