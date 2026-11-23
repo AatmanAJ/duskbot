@@ -8,7 +8,7 @@ import { z } from "zod";
 import { normalizeImageGenerationUrl, type ImageGenerationConfig } from "../shared/image-generation.ts";
 import { botAvatarUrlSchema } from "../shared/bot-avatar.ts"; import { isProfileEmail, PROFILE_EMAIL_MAX, PROFILE_NAME_MAX } from "../shared/person-profile.ts";
 import type { SyncedAccountFace } from "../shared/user-avatar.ts"; import { TALKING_STYLES, type TalkingStyle } from "../shared/talking-style.ts";
-import { accountFaceSchema } from "./account-face-schema.ts";
+import { accountFaceSchema, storedAccountFaceSchema } from "./account-face-schema.ts";
 import { writeFileAtomic } from "./atomic.ts"; import { configFile } from "./config-file.ts";
 import { defaultBotThreads, MAX_CONCURRENT_BOT_THREADS } from "./bot-thread-limits.ts";
 import { anthropicKeyEnv } from "./anthropic-key-env.ts";
@@ -418,6 +418,7 @@ const appConfigSchema = z.object({
 });
 const storedAppConfigSchema = appConfigSchema.extend(helperStoredShape).extend({
   browserProfiles: storedBrowserProfilesSchema.optional(),
+  profile: appConfigSchema.shape.profile.unwrap().extend({ accountFace: storedAccountFaceSchema }).optional(),
   /** Loose like mcpServers: a bad provider key is dropped later, never the whole file. */
   opencodeGo: z.object({
     apiKey: optionalText,

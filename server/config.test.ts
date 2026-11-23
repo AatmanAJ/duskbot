@@ -821,6 +821,26 @@ describe("a config.json saved with a byte order mark", () => {
     }
   });
 
+  it("reads a synced accountFace another app version wrote without failing the file", () => {
+    const path = join(DATA_DIR, "config.json");
+    mkdirSync(DATA_DIR, { recursive: true });
+    const read = (accountFace: unknown) => {
+      writeFileSync(path, JSON.stringify({ profile: { name: "Ada", accountFace } }));
+      const config = loadConfig();
+      expect(configFileProblem()).toBeNull();
+      expect(config.profile?.name).toBe("Ada");
+      return config.profile?.accountFace;
+    };
+    try {
+      expect(read({ id: "acc_1", avatar: "photo", avatarFrame: "round", shape: { radius: 4 } })).toEqual({ id: "acc_1", avatar: "photo" });
+      expect(read({ id: "acc_1", avatar: "sticker:new-kind", avatarUrl: "http://insecure.test/a.png", email: 7 })).toEqual({ id: "acc_1" });
+      expect(read({ avatar: "photo" })).toBeUndefined();
+      expect(read("acc_1")).toBeUndefined();
+    } finally {
+      rmSync(path, { force: true });
+    }
+  });
+
   it("keeps a default model the person picked marked as theirs until the app replaces it", () => {
     const path = join(DATA_DIR, "config.json");
     mkdirSync(DATA_DIR, { recursive: true });
