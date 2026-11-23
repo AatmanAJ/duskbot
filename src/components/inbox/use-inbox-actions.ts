@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import type { InboxRow, InboxView } from "../../../shared/inbox";
 import { openThread, useStore } from "@/state/store";
-import { doneInboxRow, openInbox, readInboxRow, refreshInbox } from "@/state/inbox";
+import { doneInboxRow, openInbox, readInboxRow, refreshInbox, settleInboxRow } from "@/state/inbox";
 import type { CardResponse } from "@/lib/card-answer";
 import { answerThread, closeResponse, type QuickAction } from "./inbox-view";
 
@@ -28,8 +28,8 @@ export function useInboxActions(view: InboxView | null) {
   }, [view, state, dispatch]);
 
   const run = useCallback((row: InboxRow, action: QuickAction) => {
-    if (action === "allow" || action === "deny") answer(row, { behavior: action });
-    else if (action === "close") answer(row, closeResponse(row));
+    if (action === "allow" || action === "deny") { answer(row, { behavior: action }); settleInboxRow(row); }
+    else if (action === "close") { answer(row, closeResponse(row)); settleInboxRow(row); }
     else if (action === "done") doneInboxRow(row);
     else if (action === "open") openInChat(row);
     else { readInboxRow(row); openInbox({ reading: row.id }); }
