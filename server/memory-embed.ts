@@ -26,6 +26,9 @@ const QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 const MIN_FREE_BYTES = 1024 ** 3;
 const RETRY_AFTER_MS = 6 * 60 * 60_000;
 const DEFAULT_IDLE_MS = 60_000;
+/** A cold worker forks, starts ort and loads the model before its first answer; past this it is taken as hung. */
+const REQUEST_TIMEOUT_MS = 30_000;
+const REQUEST_TIMEOUT_PER_TEXT_MS = 200;
 
 /** `DUSK_MEMORY_EMBED=0` turns local embeddings off; under a test runner they are off unless set to 1. */
 export function embeddingsWanted(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -174,16 +177,28 @@ function startWorker(): { proc: ChildProcess; pending: PendingMap } {
   return { proc, pending };
 }
 
-function runWorker(dir: string, texts: readonly string[]): Promise<Float32Array[]> {
+function runWorker(dir: string, texts: readonly string[], timeoutMs: number): Promise<Float32Array[]> {
   clearIdleTimer();
   const active = (worker ??= startWorker());
   const id = nextRequestId++;
   active.proc.channel?.ref();
   return new Promise<Float32Array[]>((resolve, reject) => {
-    active.pending.set(id, { resolve, reject });
+    const timer = setTimeout(() => {
+      if (!active.pending.delete(id)) return;
+      reject(new Error(`no answer from the embedding worker in ${Math.round(timeoutMs / 1000)} s`));
+      if (worker === active) stopEmbedder();
+      else active.proc.kill();
+    }, timeoutMs);
+    timer.unref?.();
+    const settle = <T,>(fn: (value: T) => void) => (value: T) => {
+      clearTimeout(timer);
+      fn(value);
+    };
+    active.pending.set(id, { resolve: settle(resolve), reject: settle(reject) });
     const message: EmbedWorkerRequest = { id, op: "embed", dir, texts };
     active.proc.send(message, (error) => {
       if (error && active.pending.delete(id)) {
+        clearTimeout(timer);
         if (active.pending.size === 0) {
           active.proc.channel?.unref();
           armIdleTimer();
@@ -231,7 +246,12 @@ export async function embedderSettled(): Promise<boolean> {
 export function embedPassages(texts: readonly string[]): Promise<Float32Array[] | null> {
   const dir = readyDir;
   if (!dir || !texts.length) return Promise.resolve(dir ? [] : null);
-  const next = chain.then(() => runWorker(dir, texts)).catch((error: unknown) => {
+  return embedIn(dir, texts);
+}
+
+/** One model call with the model files in `dir`, queued behind the others; null when it fails or the worker hangs. */
+export function embedIn(dir: string, texts: readonly string[], timeoutMs = REQUEST_TIMEOUT_MS + texts.length * REQUEST_TIMEOUT_PER_TEXT_MS): Promise<Float32Array[] | null> {
+  const next = chain.then(() => runWorker(dir, texts, timeoutMs)).catch((error: unknown) => {
     log(`memory: embedding failed: ${(error as Error).message}`);
     return null;
   });
