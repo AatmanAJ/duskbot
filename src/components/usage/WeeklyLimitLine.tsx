@@ -19,6 +19,8 @@ export function WeeklyLimitLine({ onSeeUsage, error, clearError }: { onSeeUsage:
   const [failed, setFailed] = useState(false);
   const refused = Boolean(limit) && isLimitRefusal(error);
   useEffect(() => { if (refused) clearError?.(); }, [refused, clearError]);
+  const reached = Boolean(limit);
+  useEffect(() => { if (!reached) setFailed(false); }, [reached]);
   if (!limit) return null;
   const { report } = limit;
   return (
