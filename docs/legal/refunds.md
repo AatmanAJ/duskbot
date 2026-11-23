@@ -1,6 +1,6 @@
 ## Refund and cancellation policy
 
-Effective date: 12 November 2026. Last updated: 12 November 2026.
+Effective date: 12 November 2026. Last updated: 23 November 2026.
 
 This policy explains how cancelling and refunds work for paid dusk bot plans. It is part of our [terms of use](terms.md). Nothing here limits rights you have under the consumer law that applies to you.
 
@@ -26,11 +26,7 @@ If you start the plan again before the desktop is deleted, it is kept.
 
 ## Refunds
 
-**Your first payment.** If you are not happy with a new plan, email hello@dusk.bot from the address on your account within 14 days of your first payment for that plan and we will refund that payment in full. We then end the plan and its dusk cloud desktop.
-
-**Yearly renewals.** If a yearly plan renews and you did not mean to keep it, email us within 14 days of the renewal and we will refund the renewal payment in full and end the plan.
-
-**Monthly renewals.** Monthly renewals are not refunded. Cancel before the renewal date to avoid the next charge. The plan keeps working until the end of the month you have paid for.
+**Payments are not refundable.** All payments, including your first payment, monthly renewals and yearly renewals, are final and are not refunded. Your free trial is the time to try a plan: cancel before it ends and you are not charged. To stop a plan, cancel before the next renewal date. It keeps working until the end of the period you have paid for.
 
 **Changing plans.** Moving to a higher plan charges the difference for the rest of the current period at once. Moving to a lower plan takes effect without a refund for the time already paid.
 
