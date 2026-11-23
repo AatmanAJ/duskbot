@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, normalize } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,7 +23,7 @@ import {
   type PlanResponse,
 } from "./plan-usage.ts";
 import { antigravityProfileDirectory } from "./drivers/antigravity-acp.ts";
-import { asciiJson, codexKeychainItem, codexUsesKeyring, readCursorStateDb, readOpenCodeGoDbKey } from "./plan-usage-renewal.ts";
+import { asciiJson, codexKeychainItem, codexUsesKeyring, readCursorStateDb, readOpenCodeGoDbKey, renewClaudeToken } from "./plan-usage-renewal.ts";
 import { DatabaseSync } from "node:sqlite";
 
 const SECRET = "plan-usage-fixture-secret";
@@ -597,8 +597,10 @@ describe("plan usage fetcher", () => {
     expect(report.providers[0]?.plan).toBe("Max 20x");
   });
 
-  it("renews an expired Claude file credential under lock, writes ASCII JSON back, and retries usage", async () => {
-    const dir = makeTempDir("dusk-claude-renew-");
+  it("renews an expired Claude credential in a dusk bot profile folder under lock, writes ASCII JSON back, and retries usage", async () => {
+    const dataDir = makeTempDir("dusk-claude-renew-");
+    const dir = join(dataDir, "providers", "claude-work");
+    mkdirSync(dir, { recursive: true });
     const credsPath = join(dir, ".credentials.json");
     const oldToken = "claude-expired-token";
     const freshToken = "claude-renewed-token";
@@ -633,7 +635,7 @@ describe("plan usage fetcher", () => {
       now: () => NOW,
       credentials: fileCredentialReader({
         now: () => NOW,
-        writable: true,
+        renewWithin: dataDir,
         env: { HOME: dir, USERPROFILE: dir },
         readText: (path) => {
           try { return readFileSync(path, "utf8"); } catch { return null; }
@@ -942,103 +944,109 @@ describe("plan usage fetcher", () => {
     expect(parseOpenCodeUsage({ usage: {} }, NOW).plan).toBe("Go");
   });
 
-  it("renews expired Codex, Grok, and expiring Cursor file credentials, honors Cursor shouldLogout, and enforces CURSOR_CONFIG_DIR isolation", async () => {
-    // 1. Codex renewal
-    const codexDir = makeTempDir("dusk-codex-renew-");
-    const expiredCodexJwt = makeJwt({ exp: Math.floor((NOW - 60_000) / 1000) });
-    const freshCodexJwt = makeJwt({
-      exp: Math.floor((NOW + 86_400_000) / 1000),
-      "https://api.openai.com/auth": { chatgpt_account_id: "acct-renewed" },
-    });
-    const codexFile = join(codexDir, "auth.json");
-    writeFileSync(codexFile, JSON.stringify({
-      tokens: { access_token: expiredCodexJwt, refresh_token: "codex-old-ref", account_id: "acct-renewed" },
-      keep: 1,
-    }));
-    const codexFetch = vi.fn<PlanFetch>(async (url) => {
-      if (url === "https://auth.openai.com/oauth/token") {
-        return jsonResponse({ access_token: freshCodexJwt, refresh_token: "codex-new-ref" });
-      }
-      return jsonResponse({
-        plan_type: "plus",
-        rate_limit: { primary_window: { used_percent: 15, limit_window_seconds: 18_000 } },
-      });
-    });
-    const codexReport = await fetchPlanUsage([account("codex", { environment: { CODEX_HOME: codexDir } })], {
-      fetch: codexFetch,
+  it("never spends the refresh token of a CLI's own Claude, Codex, Grok or Cursor login, and keeps the last reading while it is expired", async () => {
+    const home = makeTempDir("dusk-cli-logins-");
+    const dataDir = makeTempDir("dusk-data-");
+    const expiredJwt = makeJwt({ sub: "auth0|u1", exp: Math.floor((NOW - 60_000) / 1000) });
+    const files: Record<string, string> = {
+      [join(home, ".claude", ".credentials.json")]: JSON.stringify({ claudeAiOauth: { accessToken: "claude-old", refreshToken: "claude-ref", expiresAt: NOW - 60_000 } }),
+      [join(home, ".codex", "auth.json")]: JSON.stringify({ tokens: { access_token: expiredJwt, refresh_token: "codex-ref", account_id: "acct" } }),
+      [join(home, ".grok", "auth.json")]: JSON.stringify({ "https://auth.x.ai::grok-cli": { key: "grok-old", refresh_token: "grok-ref", expires_at: new Date(NOW - 60_000).toISOString() } }),
+      [join(home, ".cursor", "auth.json")]: JSON.stringify({ accessToken: expiredJwt, refreshToken: expiredJwt }),
+    };
+    for (const [path, text] of Object.entries(files)) {
+      mkdirSync(join(path, ".."), { recursive: true });
+      writeFileSync(path, text);
+    }
+    const fetchImpl = vi.fn<PlanFetch>(async () => jsonResponse({}, 500));
+    const accounts = [account("claude"), account("codex"), account("grok"), account("cursor")];
+    const report = await fetchPlanUsage(accounts, {
+      fetch: fetchImpl,
       now: () => NOW,
       credentials: fileCredentialReader({
         now: () => NOW,
-        writable: true,
-        env: { HOME: codexDir, USERPROFILE: codexDir },
+        dataDir,
+        renewWithin: dataDir,
+        env: { HOME: home, USERPROFILE: home },
         readText: (path) => { try { return readFileSync(path, "utf8"); } catch { return null; } },
       }),
     });
-    expect(codexReport.providers[0]).toMatchObject({ ok: true, fiveHour: { usedPercent: 15 } });
-    expect(JSON.parse(readFileSync(codexFile, "utf8"))).toMatchObject({
-      keep: 1,
-      tokens: { access_token: freshCodexJwt, refresh_token: "codex-new-ref" },
-    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(report.providers.map((row) => [row.driver, row.ok, row.error])).toEqual([
+      ["claude", false, "Sign in again in Claude"],
+      ["codex", false, "Sign in again in Codex"],
+      ["grok", false, "Sign in again in Grok"],
+      ["cursor", false, "Sign in again in Cursor"],
+    ]);
+    for (const [path, text] of Object.entries(files)) expect(readFileSync(path, "utf8")).toBe(text);
+  });
 
-    // 2. Grok renewal via OIDC discovery
-    const grokDir = makeTempDir("dusk-grok-renew-");
-    const grokFile = join(grokDir, "auth.json");
-    writeFileSync(grokFile, JSON.stringify({
-      "https://auth.x.ai::grok-cli": {
-        key: "grok-expired-tok",
-        refresh_token: "grok-old-ref",
-        expires_at: new Date(NOW - 60_000).toISOString(),
-      },
+  it("shows the last good Claude reading while the CLI's own token is expired, without renewing it", async () => {
+    const dir = makeTempDir("dusk-claude-cli-");
+    const credsPath = join(dir, ".credentials.json");
+    const usage = vi.fn<PlanFetch>(async () => jsonResponse({
+      five_hour: { utilization: 10, resets_at: new Date(NOW + 3_600_000).toISOString() },
+      seven_day: { utilization: 40, resets_at: new Date(NOW + 86_400_000).toISOString() },
     }));
-    const grokFetch = vi.fn<PlanFetch>(async (url) => {
-      if (url === "https://auth.x.ai/.well-known/openid-configuration") {
-        return jsonResponse({ token_endpoint: "https://auth.x.ai/oauth2/token" });
-      }
-      if (url === "https://auth.x.ai/oauth2/token") {
-        return jsonResponse({ access_token: "grok-fresh-tok", refresh_token: "grok-new-ref", expires_in: 21_600 });
-      }
-      if (url.includes("format=credits")) {
-        return jsonResponse({ config: { creditUsagePercent: 19, currentPeriod: { type: "WEEK", end: new Date(NOW + 86_400_000).toISOString() } } });
-      }
-      return jsonResponse({}, 404);
+    let at = NOW;
+    const credentials = fileCredentialReader({
+      now: () => at,
+      renewWithin: makeTempDir("dusk-data-"),
+      env: { HOME: dir, USERPROFILE: dir },
+      readText: (path) => { try { return readFileSync(path, "utf8"); } catch { return null; } },
     });
-    const grokReport = await fetchPlanUsage([account("grok", { environment: { GROK_HOME: grokDir } })], {
-      fetch: grokFetch,
-      now: () => NOW,
-      credentials: fileCredentialReader({
-        now: () => NOW,
-        writable: true,
-        env: { HOME: grokDir, USERPROFILE: grokDir },
-        readText: (path) => { try { return readFileSync(path, "utf8"); } catch { return null; } },
-      }),
-    });
-    expect(grokReport.providers[0]).toMatchObject({ ok: true, weekly: { usedPercent: 19 } });
-    expect(JSON.parse(readFileSync(grokFile, "utf8"))["https://auth.x.ai::grok-cli"]).toMatchObject({
-      key: "grok-fresh-tok",
-      refresh_token: "grok-new-ref",
-    });
+    writeFileSync(credsPath, JSON.stringify({ claudeAiOauth: { accessToken: "claude-live", refreshToken: "claude-ref", expiresAt: NOW + 60_000 } }));
+    const first = await fetchPlanUsage([account("claude", { configDir: dir })], { fetch: usage, now: () => at, credentials });
+    expect(first.providers[0]).toMatchObject({ ok: true, weekly: { usedPercent: 40 } });
+    at = NOW + 120_000;
+    const later = await fetchPlanUsage([account("claude", { configDir: dir })], { fetch: usage, now: () => at, credentials });
+    expect(usage).toHaveBeenCalledTimes(1);
+    expect(later.providers[0]).toMatchObject({ ok: true, weekly: { usedPercent: 40 } });
+    expect(JSON.parse(readFileSync(credsPath, "utf8")).claudeAiOauth.refreshToken).toBe("claude-ref");
+  });
 
-    // 3. Cursor renewal rejects shouldLogout: true even on HTTP 200, and custom CURSOR_CONFIG_DIR never falls back
-    const cursorDir = makeTempDir("dusk-cursor-renew-");
-    const dueCursorJwt = makeJwt({ sub: "auth0|u1", exp: Math.floor((NOW + 3600_000) / 1000) });
-    writeFileSync(join(cursorDir, "auth.json"), JSON.stringify({ accessToken: dueCursorJwt, refreshToken: dueCursorJwt }));
-    const cursorFetch = vi.fn<PlanFetch>(async (url) => {
-      if (url === "https://api2.cursor.sh/oauth/token") return jsonResponse({ shouldLogout: true }, 200);
-      return jsonResponse({}, 200);
+  it("does not spend a Claude refresh token it cannot write back, and never reports an unsaved renewal", async () => {
+    const dir = makeTempDir("dusk-claude-locked-");
+    const credsPath = join(dir, ".credentials.json");
+    const doc = JSON.stringify({ claudeAiOauth: { accessToken: "claude-old", refreshToken: "claude-ref", expiresAt: NOW - 60_000 } });
+    writeFileSync(credsPath, doc);
+    mkdirSync(join(dir, ".storage-write"));
+    const fetchImpl = vi.fn<PlanFetch>(async () => jsonResponse({ access_token: "claude-new", refresh_token: "claude-ref-2", expires_in: 3600 }));
+    const target = { kind: "claude-file" as const, folder: dir, filePath: credsPath };
+    const locked = await renewClaudeToken({ target, token: "claude-old", fetch: fetchImpl, now: () => NOW, storageWaitMs: 50 });
+    expect(locked).toEqual({ status: "unchanged" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    rmSync(join(dir, ".storage-write"), { recursive: true });
+
+    const signedOutMeanwhile = vi.fn<PlanFetch>(async () => {
+      rmSync(credsPath);
+      return jsonResponse({ access_token: "claude-new", refresh_token: "claude-ref-2", expires_in: 3600 });
     });
+    const unsaved = await renewClaudeToken({ target, token: "claude-old", fetch: signedOutMeanwhile, now: () => NOW });
+    expect(signedOutMeanwhile).toHaveBeenCalledTimes(1);
+    expect(unsaved).toEqual({ status: "unchanged" });
+  });
+
+  it("keeps Cursor to CURSOR_CONFIG_DIR without renewing it, and reads the SQLite credential stores", async () => {
+    const cursorDir = makeTempDir("dusk-cursor-iso-");
+    const validCursorJwt = makeJwt({ sub: "auth0|u1", exp: Math.floor((NOW + 3600_000) / 1000) });
+    writeFileSync(join(cursorDir, "auth.json"), JSON.stringify({ accessToken: validCursorJwt, refreshToken: validCursorJwt }));
+    const cursorFetch = vi.fn<PlanFetch>(async () => jsonResponse({}, 401));
     const cursorReport = await fetchPlanUsage([account("cursor", { environment: { CURSOR_CONFIG_DIR: cursorDir } })], {
       fetch: cursorFetch,
       now: () => NOW,
       credentials: fileCredentialReader({
         now: () => NOW,
-        writable: true,
         env: { HOME: cursorDir, USERPROFILE: cursorDir },
         readText: (path) => { try { return readFileSync(path, "utf8"); } catch { return null; } },
         readCursorKeychain: async () => ({ accessToken: "host-keychain-must-not-be-used", refreshToken: null }),
       }),
     });
     expect(cursorReport.providers[0]).toMatchObject({ ok: false, error: "Sign in again in Cursor" });
-    expect(cursorFetch).toHaveBeenCalledTimes(1);
+    for (const call of cursorFetch.mock.calls) {
+      expect(call[0]).not.toContain("oauth/token");
+      expect(call[1].headers.Authorization ?? "").not.toContain("host-keychain");
+    }
 
     // 4. SQLite readers for Cursor state.vscdb and OpenCode 2 credential table
     const sqlDir = makeTempDir("dusk-sqlite-");

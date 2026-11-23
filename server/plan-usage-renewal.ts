@@ -3,8 +3,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import { writeFileAtomic } from "./atomic.ts";
@@ -39,36 +38,13 @@ export interface ClaudeRenewalTarget {
   account?: string;
 }
 
-export interface CodexRenewalTarget {
-  kind: "codex-file";
-  home: string;
-  filePath: string;
-}
-
-export interface GrokRenewalTarget {
-  kind: "grok-file";
-  folder: string;
-  filePath: string;
-  entryKey: string | null;
-}
-
-export interface CursorRenewalTarget {
-  kind: "cursor-file";
-  filePath: string;
-}
-
 export interface AntigravityRenewalTarget {
   kind: "antigravity-memory";
   clientId?: string;
   clientSecret?: string;
 }
 
-export type CredentialStoreTarget =
-  | ClaudeRenewalTarget
-  | CodexRenewalTarget
-  | GrokRenewalTarget
-  | CursorRenewalTarget
-  | AntigravityRenewalTarget;
+export type CredentialStoreTarget = ClaudeRenewalTarget | AntigravityRenewalTarget;
 
 export const CLAUDE_USER_AGENT = "claude-cli/2.1.294 (external, cli)";
 const CLAUDE_TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
@@ -81,13 +57,6 @@ const CLAUDE_DEFAULT_SCOPES = [
   "user:file_upload",
   "user:plugins",
 ];
-
-const CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token";
-const CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
-
-const CURSOR_TOKEN_URL = "https://api2.cursor.sh/oauth/token";
-const CURSOR_CLIENT_ID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB";
-export const CURSOR_RENEWAL_WINDOW_MS = 3 * 86_400_000;
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 // Installed desktop/CLI OAuth client shipped in Antigravity and `agy`; Google treats installed-app secrets as non-confidential.
@@ -103,14 +72,12 @@ const SECURITY_INTERACTIVE_MAX_LINE = 4032;
 const RENEWAL_TIMEOUT_MS = 10_000;
 
 const rejectedRefreshes = new Set<string>();
-const grokTokenEndpoints = new Map<string, string>();
 const antigravityMemoryTokens = new Map<string, { token: string; expiresAt: number }>();
 const keychainRefusals = new Map<string, number>();
 let cachedAntigravityAgent: string | null = null;
 
 export function clearPlanUsageRenewalState(): void {
   rejectedRefreshes.clear();
-  grokTokenEndpoints.clear();
   antigravityMemoryTokens.clear();
   keychainRefusals.clear();
   cachedAntigravityAgent = null;
@@ -427,9 +394,9 @@ async function acquireFolderLocks(locks: FolderLock[], attempts: number, minWait
   return null;
 }
 
-async function acquireStorageLock(folder: string): Promise<FolderLock | null> {
+async function acquireStorageLock(folder: string, maxWaitMs: number): Promise<FolderLock | null> {
   const lock = new FolderLock(join(folder, ".storage-write"), 15_000);
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + maxWaitMs;
   let waitMs = 100;
   while (!lock.take()) {
     if (Date.now() >= deadline) return null;
@@ -437,14 +404,6 @@ async function acquireStorageLock(folder: string): Promise<FolderLock | null> {
     waitMs = Math.min(waitMs * 2, 1_000);
   }
   return lock;
-}
-
-function appRenewalLockPath(scope: string): string {
-  const dir = join(tmpdir(), "dusk-plan-usage-locks");
-  try {
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
-  } catch {}
-  return join(dir, `${sha256Prefix(scope, 24)}.lock`);
 }
 
 async function postJson(fetchImpl: PlanFetchFn, url: string, headers: Record<string, string>, payload: unknown, timeoutMs: number) {
@@ -493,6 +452,7 @@ export async function renewClaudeToken(input: {
   now?: () => number;
   timeoutMs?: number;
   lockAttempts?: number;
+  storageWaitMs?: number;
 }): Promise<RenewalOutcome> {
   const now = input.now ?? Date.now;
   const { target } = input;
@@ -547,314 +507,70 @@ export async function renewClaudeToken(input: {
     const refreshHash = `claude:${sha256Prefix(refresh)}`;
     if (rejectedRefreshes.has(refreshHash)) return { status: "rejected" };
 
-    const scopes = Array.isArray(oauth?.scopes)
-      ? oauth!.scopes.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
-      : [];
-    const clientId = nonEmptySecret(oauth?.clientId) ?? CLAUDE_CLIENT_ID;
-    const response = await postJson(
-      input.fetch,
-      CLAUDE_TOKEN_URL,
-      { Accept: "application/json", "User-Agent": CLAUDE_USER_AGENT },
-      {
-        grant_type: "refresh_token",
-        refresh_token: refresh,
-        client_id: clientId,
-        scope: (scopes.length ? scopes : CLAUDE_DEFAULT_SCOPES).join(" "),
-      },
-      input.timeoutMs ?? RENEWAL_TIMEOUT_MS,
-    );
-    if (!response) return { status: "unchanged" };
-    const renewedToken = response.ok ? nonEmptySecret(response.body?.access_token) : null;
-    if (!renewedToken) {
-      if ((response.status === 400 || response.status === 401) && response.body?.error === "invalid_grant") {
-        rejectedRefreshes.add(refreshHash);
-        return { status: "rejected" };
-      }
-      return { status: "unchanged" };
-    }
-
-    const renewedRefresh = nonEmptySecret(response.body?.refresh_token) ?? refresh;
-    const at = now();
-    const expiresIn = numericSeconds(response.body?.expires_in) ?? 3600;
-    const renewedExpires = Math.round(at + expiresIn * 1000);
-    const changes: Record<string, unknown> = {
-      accessToken: renewedToken,
-      refreshToken: renewedRefresh,
-      expiresAt: renewedExpires,
-    };
-    const grantedScope = typeof response.body?.scope === "string"
-      ? response.body.scope.split(/\s+/).filter(Boolean)
-      : [];
-    if (grantedScope.length) changes.scopes = grantedScope;
-    const refreshExpiresIn = numericSeconds(response.body?.refresh_token_expires_in);
-    if (refreshExpiresIn != null) changes.refreshTokenExpiresAt = Math.round(at + refreshExpiresIn * 1000);
-
-    const storageLock = await acquireStorageLock(target.folder);
-    if (storageLock) {
-      try {
-        for (let attempt = 0; attempt < 3; attempt += 1) {
-          if (attempt > 0) await sleep(100 * attempt);
-          const saved = await readStore();
-          const savedOauth = asRecord(saved?.claudeAiOauth);
-          if (!saved || !savedOauth) continue;
-          const storedRefresh = nonEmptySecret(savedOauth.refreshToken) ?? "";
-          if (storedRefresh && storedRefresh !== refresh) break;
-          saved.claudeAiOauth = { ...savedOauth, ...changes };
-          const wrote = await writeStore(asciiJson(saved));
-          if (!wrote) continue;
-          const verify = asRecord((await readStore())?.claudeAiOauth);
-          if (verify?.accessToken === renewedToken) break;
+    // a refresh token is single use: never spend it unless the new one can be written back under the storage lock
+    const storageLock = await acquireStorageLock(target.folder, input.storageWaitMs ?? 20_000);
+    if (!storageLock) return { status: "unchanged" };
+    try {
+      const scopes = Array.isArray(oauth?.scopes)
+        ? oauth!.scopes.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+        : [];
+      const clientId = nonEmptySecret(oauth?.clientId) ?? CLAUDE_CLIENT_ID;
+      const response = await postJson(
+        input.fetch,
+        CLAUDE_TOKEN_URL,
+        { Accept: "application/json", "User-Agent": CLAUDE_USER_AGENT },
+        {
+          grant_type: "refresh_token",
+          refresh_token: refresh,
+          client_id: clientId,
+          scope: (scopes.length ? scopes : CLAUDE_DEFAULT_SCOPES).join(" "),
+        },
+        input.timeoutMs ?? RENEWAL_TIMEOUT_MS,
+      );
+      if (!response) return { status: "unchanged" };
+      const renewedToken = response.ok ? nonEmptySecret(response.body?.access_token) : null;
+      if (!renewedToken) {
+        if ((response.status === 400 || response.status === 401) && response.body?.error === "invalid_grant") {
+          rejectedRefreshes.add(refreshHash);
+          return { status: "rejected" };
         }
-      } finally {
-        storageLock.release();
+        return { status: "unchanged" };
       }
-    }
-    return { status: "renewed", token: renewedToken, refreshToken: renewedRefresh, expiresAt: renewedExpires };
-  } finally {
-    for (const lock of locks.reverse()) lock.release();
-  }
-}
 
-export async function renewCodexToken(input: {
-  target: CodexRenewalTarget;
-  token: string;
-  turnedAway?: boolean;
-  fetch: PlanFetchFn;
-  now?: () => number;
-  timeoutMs?: number;
-}): Promise<RenewalOutcome> {
-  const now = input.now ?? Date.now;
-  const locks = await acquireFolderLocks(
-    [new FolderLock(appRenewalLockPath(`codex:${resolve(input.target.home)}`), 60_000)],
-    4,
-    250,
-    600,
-  );
-  if (!locks) return { status: "unchanged" };
-  try {
-    const currentDoc = readJsonFile(input.target.filePath);
-    const tokens = asRecord(currentDoc?.tokens);
-    const stored = nonEmptySecret(tokens?.access_token);
-    const refresh = nonEmptySecret(tokens?.refresh_token);
-    if (!stored || !refresh) return { status: "unchanged" };
-    const expiresAt = readTimeMs(tokens?.expires_at ?? tokens?.expiresAt) ?? jwtExpiryMs(stored);
-    const stillValid = expiresAt == null || expiresAt > now();
-    if (stored !== input.token && stillValid) return { status: "renewed", token: stored, refreshToken: refresh, expiresAt };
-    if (stored === input.token && stillValid && !input.turnedAway) return { status: "unchanged" };
-    const refreshHash = `codex:${sha256Prefix(refresh)}`;
-    if (rejectedRefreshes.has(refreshHash)) return { status: "rejected" };
-
-    const response = await postJson(
-      input.fetch,
-      CODEX_TOKEN_URL,
-      { Accept: "application/json" },
-      { grant_type: "refresh_token", client_id: CODEX_CLIENT_ID, refresh_token: refresh },
-      input.timeoutMs ?? RENEWAL_TIMEOUT_MS,
-    );
-    if (!response) return { status: "unchanged" };
-    const renewed = response.ok ? nonEmptySecret(response.body?.access_token) : null;
-    if (!renewed) {
-      const errField = response.body?.error;
-      const errCode = typeof asRecord(errField)?.code === "string"
-        ? (asRecord(errField)!.code as string)
-        : typeof errField === "string" ? errField : "";
-      if (response.status === 401 || (response.status === 400 && (errCode === "invalid_grant" || errCode.startsWith("refresh_token_")))) {
-        rejectedRefreshes.add(refreshHash);
-        return { status: "rejected" };
-      }
-      return { status: "unchanged" };
-    }
-    const renewedRefresh = nonEmptySecret(response.body?.refresh_token) ?? refresh;
-    const saved = readJsonFile(input.target.filePath);
-    const savedTokens = asRecord(saved?.tokens);
-    if (saved && savedTokens && nonEmptySecret(savedTokens.refresh_token) === refresh) {
-      const updatedTokens: Record<string, unknown> = {
-        ...savedTokens,
-        access_token: renewed,
-        refresh_token: renewedRefresh,
+      const renewedRefresh = nonEmptySecret(response.body?.refresh_token) ?? refresh;
+      const at = now();
+      const expiresIn = numericSeconds(response.body?.expires_in) ?? 3600;
+      const renewedExpires = Math.round(at + expiresIn * 1000);
+      const changes: Record<string, unknown> = {
+        accessToken: renewedToken,
+        refreshToken: renewedRefresh,
+        expiresAt: renewedExpires,
       };
-      const idToken = nonEmptySecret(response.body?.id_token);
-      if (idToken) updatedTokens.id_token = idToken;
-      saved.tokens = updatedTokens;
-      saved.last_refresh = new Date(now()).toISOString();
-      try {
-        writeFileAtomic(input.target.filePath, `${JSON.stringify(saved, null, 2)}\n`, { mode: 0o600 });
-      } catch {}
-    }
-    return { status: "renewed", token: renewed, refreshToken: renewedRefresh, expiresAt: jwtExpiryMs(renewed) };
-  } finally {
-    for (const lock of locks.reverse()) lock.release();
-  }
-}
+      const grantedScope = typeof response.body?.scope === "string"
+        ? response.body.scope.split(/\s+/).filter(Boolean)
+        : [];
+      if (grantedScope.length) changes.scopes = grantedScope;
+      const refreshExpiresIn = numericSeconds(response.body?.refresh_token_expires_in);
+      if (refreshExpiresIn != null) changes.refreshTokenExpiresAt = Math.round(at + refreshExpiresIn * 1000);
 
-async function discoverGrokTokenEndpoint(issuer: string, fetchImpl: PlanFetchFn, timeoutMs: number): Promise<string | null> {
-  const cached = grokTokenEndpoints.get(issuer);
-  if (cached) return cached;
-  const base = issuer.replace(/\/+$/, "");
-  try {
-    const response = await fetchImpl(`${base}/.well-known/openid-configuration`, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!response.ok) return null;
-    const doc = parseJsonObject(await response.text().catch(() => ""));
-    const endpoint = typeof doc?.token_endpoint === "string" ? doc.token_endpoint.trim() : "";
-    if (!endpoint.startsWith("https://")) return null;
-    grokTokenEndpoints.set(issuer, endpoint);
-    return endpoint;
-  } catch {
-    return null;
-  }
-}
-
-export async function renewGrokToken(input: {
-  target: GrokRenewalTarget;
-  token: string;
-  turnedAway?: boolean;
-  fetch: PlanFetchFn;
-  now?: () => number;
-  timeoutMs?: number;
-}): Promise<RenewalOutcome> {
-  const now = input.now ?? Date.now;
-  const locks = await acquireFolderLocks(
-    [new FolderLock(join(input.target.folder, "auth.json.lock"), 60_000)],
-    4,
-    250,
-    600,
-  );
-  if (!locks) return { status: "unchanged" };
-  try {
-    const doc = readJsonFile(input.target.filePath);
-    if (!doc) return { status: "unchanged" };
-    const entry = input.target.entryKey ? asRecord(doc[input.target.entryKey]) : doc;
-    if (!entry) return { status: "unchanged" };
-    const stored = nonEmptySecret(entry.key) ?? nonEmptySecret(entry.access_token);
-    const refresh = nonEmptySecret(entry.refresh_token) ?? nonEmptySecret(entry.refresh);
-    if (!stored || !refresh) return { status: "unchanged" };
-    const expiresAt = readTimeMs(entry.expires_at ?? entry.expiresAt ?? entry.expires) ?? jwtExpiryMs(stored);
-    const stillValid = expiresAt == null || expiresAt > now();
-    if (stored !== input.token && stillValid) return { status: "renewed", token: stored, refreshToken: refresh, expiresAt };
-    if (stored === input.token && stillValid && !input.turnedAway) return { status: "unchanged" };
-    const refreshHash = `grok:${sha256Prefix(refresh)}`;
-    if (rejectedRefreshes.has(refreshHash)) return { status: "rejected" };
-
-    const issuer = nonEmptySecret(entry.oidc_issuer) ?? "https://auth.x.ai";
-    const keySuffix = input.target.entryKey?.includes("::")
-      ? input.target.entryKey.split("::").pop()?.trim() ?? null
-      : null;
-    const clientId = nonEmptySecret(entry.oidc_client_id) ?? keySuffix;
-    if (!clientId) return { status: "unchanged" };
-    const endpoint = await discoverGrokTokenEndpoint(issuer, input.fetch, input.timeoutMs ?? RENEWAL_TIMEOUT_MS);
-    if (!endpoint) return { status: "unchanged" };
-
-    const response = await postForm(
-      input.fetch,
-      endpoint,
-      { grant_type: "refresh_token", client_id: clientId, refresh_token: refresh },
-      input.timeoutMs ?? RENEWAL_TIMEOUT_MS,
-    );
-    if (!response) return { status: "unchanged" };
-    const renewed = response.ok ? nonEmptySecret(response.body?.access_token) : null;
-    if (!renewed) {
-      if ((response.status === 400 || response.status === 401) && response.body?.error === "invalid_grant") {
-        rejectedRefreshes.add(refreshHash);
-        return { status: "rejected" };
+      let written = false;
+      for (let attempt = 0; attempt < 3 && !written; attempt += 1) {
+        if (attempt > 0) await sleep(100 * attempt);
+        const saved = await readStore();
+        const savedOauth = asRecord(saved?.claudeAiOauth);
+        if (!saved || !savedOauth) continue;
+        const storedRefresh = nonEmptySecret(savedOauth.refreshToken) ?? "";
+        if (storedRefresh && storedRefresh !== refresh) break;
+        saved.claudeAiOauth = { ...savedOauth, ...changes };
+        if (!(await writeStore(asciiJson(saved)))) continue;
+        const verify = asRecord((await readStore())?.claudeAiOauth);
+        written = verify?.accessToken === renewedToken && verify?.refreshToken === renewedRefresh;
       }
-      return { status: "unchanged" };
+      if (!written) return { status: "unchanged" };
+      return { status: "renewed", token: renewedToken, refreshToken: renewedRefresh, expiresAt: renewedExpires };
+    } finally {
+      storageLock.release();
     }
-    const expiresIn = numericSeconds(response.body?.expires_in);
-    const renewedExpires = expiresIn != null ? Math.round(now() + expiresIn * 1000) : jwtExpiryMs(renewed);
-    const renewedRefresh = nonEmptySecret(response.body?.refresh_token) ?? refresh;
-
-    const saved = readJsonFile(input.target.filePath);
-    const savedEntry = saved ? (input.target.entryKey ? asRecord(saved[input.target.entryKey]) : saved) : null;
-    const savedRefresh = nonEmptySecret(savedEntry?.refresh_token) ?? nonEmptySecret(savedEntry?.refresh);
-    if (saved && savedEntry && savedRefresh === refresh) {
-      const updated: Record<string, unknown> = { ...savedEntry };
-      if ("key" in updated || !("access_token" in updated)) updated.key = renewed;
-      else updated.access_token = renewed;
-      if ("refresh_token" in updated || !("refresh" in updated)) updated.refresh_token = renewedRefresh;
-      else updated.refresh = renewedRefresh;
-      if (renewedExpires != null) updated.expires_at = new Date(renewedExpires).toISOString();
-      const idToken = nonEmptySecret(response.body?.id_token);
-      if ("id_token" in updated && idToken) updated.id_token = idToken;
-      if (input.target.entryKey) saved[input.target.entryKey] = updated;
-      else Object.assign(saved, updated);
-      try {
-        writeFileAtomic(input.target.filePath, `${JSON.stringify(saved, null, 2)}\n`, { mode: 0o600 });
-      } catch {}
-    }
-    return { status: "renewed", token: renewed, refreshToken: renewedRefresh, expiresAt: renewedExpires };
-  } finally {
-    for (const lock of locks.reverse()) lock.release();
-  }
-}
-
-export function cursorRenewalDue(token: string, now = Date.now()): boolean {
-  const expiry = jwtExpiryMs(token);
-  return expiry != null && expiry - now < CURSOR_RENEWAL_WINDOW_MS;
-}
-
-export async function renewCursorToken(input: {
-  target: CursorRenewalTarget;
-  token: string;
-  turnedAway?: boolean;
-  fetch: PlanFetchFn;
-  now?: () => number;
-  timeoutMs?: number;
-}): Promise<RenewalOutcome> {
-  const now = input.now ?? Date.now;
-  const locks = await acquireFolderLocks(
-    [new FolderLock(appRenewalLockPath(`cursor:${resolve(input.target.filePath)}`), 60_000)],
-    4,
-    250,
-    600,
-  );
-  if (!locks) return { status: "unchanged" };
-  try {
-    const doc = readJsonFile(input.target.filePath);
-    if (!doc) return { status: "unchanged" };
-    const storedAccess = nonEmptySecret(doc.accessToken) ?? nonEmptySecret(doc.access_token);
-    const storedRefresh = nonEmptySecret(doc.refreshToken) ?? nonEmptySecret(doc.refresh_token);
-    const stored = storedAccess ?? storedRefresh;
-    const refresh = storedRefresh ?? storedAccess;
-    if (!stored || !refresh) return { status: "unchanged" };
-    const due = cursorRenewalDue(stored, now());
-    if (stored !== input.token && !due) return { status: "renewed", token: stored, refreshToken: refresh, expiresAt: jwtExpiryMs(stored) };
-    if (stored === input.token && !due && !input.turnedAway) return { status: "unchanged" };
-    const refreshHash = `cursor:${sha256Prefix(refresh)}`;
-    if (rejectedRefreshes.has(refreshHash)) return { status: "rejected" };
-
-    const response = await postJson(
-      input.fetch,
-      CURSOR_TOKEN_URL,
-      { Accept: "application/json" },
-      { grant_type: "refresh_token", client_id: CURSOR_CLIENT_ID, refresh_token: refresh },
-      input.timeoutMs ?? RENEWAL_TIMEOUT_MS,
-    );
-    if (!response) return { status: "unchanged" };
-    // Cursor signals a revoked login with `shouldLogout: true` even on HTTP 200.
-    if (response.body?.shouldLogout === true) {
-      rejectedRefreshes.add(refreshHash);
-      return { status: "rejected" };
-    }
-    const renewed = response.ok ? nonEmptySecret(response.body?.access_token) : null;
-    if (!renewed) return { status: "unchanged" };
-
-    const saved = readJsonFile(input.target.filePath);
-    if (saved) {
-      const currentRefresh = nonEmptySecret(saved.refreshToken) ?? nonEmptySecret(saved.refresh_token)
-        ?? nonEmptySecret(saved.accessToken) ?? nonEmptySecret(saved.access_token);
-      if (currentRefresh === refresh) {
-        saved["access_token" in saved ? "access_token" : "accessToken"] = renewed;
-        saved["refresh_token" in saved ? "refresh_token" : "refreshToken"] = renewed;
-        try {
-          writeFileAtomic(input.target.filePath, `${JSON.stringify(saved, null, 2)}\n`, { mode: 0o600 });
-        } catch {}
-      }
-    }
-    return { status: "renewed", token: renewed, refreshToken: renewed, expiresAt: jwtExpiryMs(renewed) };
   } finally {
     for (const lock of locks.reverse()) lock.release();
   }

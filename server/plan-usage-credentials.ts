@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, relative, resolve, isAbsolute } from "node:path";
 
 import { DATA_DIR } from "./config.ts";
 import {
@@ -25,9 +25,6 @@ import {
   readOpenCodeGoDbKey,
   type AntigravityRenewalTarget,
   type ClaudeRenewalTarget,
-  type CodexRenewalTarget,
-  type CursorRenewalTarget,
-  type GrokRenewalTarget,
 } from "./plan-usage-renewal.ts";
 import {
   asRecord,
@@ -72,7 +69,7 @@ export function defaultCredentialReader(env: NodeJS.ProcessEnv = process.env, da
   return fileCredentialReader({
     env,
     dataDir,
-    writable: true,
+    renewWithin: dataDir,
     readText(path) {
       try {
         const stat = statSync(path);
@@ -105,6 +102,20 @@ export function defaultCredentialReader(env: NodeJS.ProcessEnv = process.env, da
   });
 }
 
+function canonical(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+function renewable(source: CredentialSource, folder: string): boolean {
+  if (!source.renewWithin) return false;
+  const inside = relative(canonical(source.renewWithin), canonical(folder));
+  return inside !== "" && !inside.startsWith("..") && !isAbsolute(inside);
+}
+
 function claudeCredentialFromText(text: string | null, now: number, store?: ClaudeRenewalTarget): PlanCredential {
   const oauth = asRecord(asRecord(parseJson(text))?.claudeAiOauth);
   const token = secretString(oauth?.accessToken);
@@ -113,9 +124,7 @@ function claudeCredentialFromText(text: string | null, now: number, store?: Clau
   const planHint = claudePlanName(oauth?.subscriptionType, oauth?.rateLimitTier);
   const expiry = timeMs(oauth?.expiresAt);
   if (expiry != null && expiry <= now) {
-    if (refreshToken && store) {
-      return { token, accountId: null, expired: true, refreshToken, planHint, store };
-    }
+    if (refreshToken) return { token, accountId: null, expired: true, refreshToken, planHint, store };
     return expiredCredential();
   }
   return { token, accountId: null, expired: false, refreshToken, planHint, store };
@@ -160,7 +169,8 @@ async function readClaudeCredential(
     return missingCredential();
   }
   const filePath = join(resolvedDir, ".credentials.json");
-  const fileStore: ClaudeRenewalTarget | undefined = source.writable
+  const owned = renewable(source, resolvedDir);
+  const fileStore: ClaudeRenewalTarget | undefined = owned
     ? { kind: "claude-file", folder: resolvedDir, filePath }
     : undefined;
   const file = claudeCredentialFromText(source.readText(filePath), now, fileStore);
@@ -183,7 +193,7 @@ async function readClaudeCredential(
     } catch {
       raw = null;
     }
-    const keychainStore: ClaudeRenewalTarget | undefined = source.writable && matchedAccount
+    const keychainStore: ClaudeRenewalTarget | undefined = owned && matchedAccount
       ? { kind: "claude-keychain", folder: resolvedDir, service, account: matchedAccount }
       : undefined;
     const parsed = claudeCredentialFromText(decodeKeychainSecret(raw), now, keychainStore);
@@ -195,11 +205,7 @@ async function readClaudeCredential(
   return sawExpired ?? missingCredential();
 }
 
-function codexCredentialFromRecord(
-  root: Record<string, unknown> | null,
-  now: number,
-  store?: CodexRenewalTarget,
-): PlanCredential {
+function codexCredentialFromRecord(root: Record<string, unknown> | null, now: number): PlanCredential {
   if (!root) return missingCredential();
   const tokens = asRecord(root.tokens);
   const token = secretString(tokens?.access_token) ?? secretString(root.access_token);
@@ -208,10 +214,10 @@ function codexCredentialFromRecord(
   const accountId = secretString(tokens?.account_id) ?? secretString(root.account_id) ?? codexJwtAccountId(token);
   const expiry = timeMs(tokens?.expires_at ?? tokens?.expiresAt ?? root.expires_at ?? root.expiresAt) ?? jwtExpiryMs(token);
   if (expiry != null && expiry <= now) {
-    if (refreshToken && store) return { token, accountId, expired: true, refreshToken, store };
+    if (refreshToken) return { token, accountId, expired: true, refreshToken };
     return expiredCredential();
   }
-  return { token, accountId, expired: false, refreshToken, store };
+  return { token, accountId, expired: false, refreshToken };
 }
 
 async function readCodexCredential(
@@ -222,10 +228,7 @@ async function readCodexCredential(
   const home = codexHome(env);
   if (!home) return missingCredential();
   const filePath = join(home, "auth.json");
-  const fileStore: CodexRenewalTarget | undefined = source.writable
-    ? { kind: "codex-file", home, filePath }
-    : undefined;
-  const fromFile = codexCredentialFromRecord(asRecord(parseJson(source.readText(filePath))), now, fileStore);
+  const fromFile = codexCredentialFromRecord(asRecord(parseJson(source.readText(filePath))), now);
   if (fromFile.token || fromFile.expired) return fromFile;
   if (!source.readCodexKeychain) return missingCredential();
   if (!codexUsesKeyring(source.readText(join(home, "config.toml")))) return missingCredential();
@@ -243,15 +246,14 @@ interface GrokCandidate {
   token: string;
   refreshToken: string | null;
   expiresAt: number | null;
-  entryKey: string | null;
 }
 
-function grokCandidate(record: Record<string, unknown>, entryKey: string | null): GrokCandidate | null {
+function grokCandidate(record: Record<string, unknown>): GrokCandidate | null {
   const token = secretString(record.access_token) ?? secretString(record.key);
   if (!token) return null;
   const refreshToken = secretString(record.refresh_token) ?? secretString(record.refresh);
   const expiresAt = timeMs(record.expires_at ?? record.expiresAt ?? record.expires) ?? jwtExpiryMs(token);
-  return { token, refreshToken, expiresAt, entryKey };
+  return { token, refreshToken, expiresAt };
 }
 
 function readGrokCredential(
@@ -263,25 +265,20 @@ function readGrokCredential(
   const filePath = join(rootDir, "auth.json");
   const root = asRecord(parseJson(source.readText(filePath)));
   if (!root) return missingCredential();
-  const makeStore = (entryKey: string | null): GrokRenewalTarget | undefined =>
-    source.writable ? { kind: "grok-file", folder: rootDir, filePath, entryKey } : undefined;
-  const direct = grokCandidate(root, null);
+  const direct = grokCandidate(root);
   if (direct) {
-    const store = makeStore(null);
     if (direct.expiresAt != null && direct.expiresAt <= now) {
-      if (direct.refreshToken && store) {
-        return { token: direct.token, accountId: null, expired: true, refreshToken: direct.refreshToken, store };
-      }
+      if (direct.refreshToken) return { token: direct.token, accountId: null, expired: true, refreshToken: direct.refreshToken };
       return expiredCredential();
     }
-    return { token: direct.token, accountId: null, expired: false, refreshToken: direct.refreshToken, store };
+    return { token: direct.token, accountId: null, expired: false, refreshToken: direct.refreshToken };
   }
   let best: GrokCandidate | null = null;
   let bestExpired: GrokCandidate | null = null;
-  for (const [key, value] of Object.entries(root)) {
+  for (const value of Object.values(root)) {
     const record = asRecord(value);
     if (!record) continue;
-    const candidate = grokCandidate(record, key);
+    const candidate = grokCandidate(record);
     if (!candidate) continue;
     if (candidate.expiresAt != null && candidate.expiresAt <= now) {
       if (
@@ -304,13 +301,11 @@ function readGrokCredential(
       accountId: null,
       expired: false,
       refreshToken: best.refreshToken,
-      store: makeStore(best.entryKey),
     };
   }
   if (bestExpired) {
-    const store = makeStore(bestExpired.entryKey);
-    if (bestExpired.refreshToken && store) {
-      return { token: bestExpired.token, accountId: null, expired: true, refreshToken: bestExpired.refreshToken, store };
+    if (bestExpired.refreshToken) {
+      return { token: bestExpired.token, accountId: null, expired: true, refreshToken: bestExpired.refreshToken };
     }
     return expiredCredential();
   }
@@ -392,21 +387,20 @@ function cursorCredentialFromTokens(
   access: string | null,
   refresh: string | null,
   now: number,
-  options: { planHint?: string | null; store?: CursorRenewalTarget } = {},
+  planHint: string | null = null,
 ): PlanCredential {
   const token = access ?? refresh;
   if (!token) return missingCredential();
   const expiry = jwtExpiryMs(token);
   const expired = expiry != null && expiry <= now;
   const effectiveRefresh = refresh ?? access;
-  if (expired && !(effectiveRefresh && options.store)) return expiredCredential();
+  if (expired && !refresh) return expiredCredential();
   return {
     token,
     accountId: jwtSubject(token),
     expired,
     refreshToken: effectiveRefresh,
-    planHint: options.planHint ?? null,
-    store: options.store,
+    planHint,
   };
 }
 
@@ -415,8 +409,7 @@ function cursorCredentialFromFile(filePath: string, source: CredentialSource, no
   if (!doc) return missingCredential();
   const access = secretString(doc.accessToken) ?? secretString(doc.access_token);
   const refresh = secretString(doc.refreshToken) ?? secretString(doc.refresh_token);
-  const store: CursorRenewalTarget | undefined = source.writable ? { kind: "cursor-file", filePath } : undefined;
-  return cursorCredentialFromTokens(access, refresh, now, { store });
+  return cursorCredentialFromTokens(access, refresh, now);
 }
 
 async function readCursorCredential(
@@ -438,7 +431,7 @@ async function readCursorCredential(
   let sawExpired: PlanCredential | null = null;
   for (const filePath of filePaths) {
     const parsed = cursorCredentialFromFile(filePath, source, now);
-    if ((parsed.token && !parsed.expired) || (parsed.expired && parsed.refreshToken && parsed.store)) return parsed;
+    if (parsed.token && !parsed.expired) return parsed;
     if (parsed.expired && !sawExpired) sawExpired = parsed;
   }
 
@@ -455,9 +448,7 @@ async function readCursorCredential(
     try {
       const ide = source.readCursorIdeDb(cursorStateDbPath(env));
       if (ide) {
-        const parsed = cursorCredentialFromTokens(ide.accessToken, ide.refreshToken, now, {
-          planHint: formatCursorMembership(ide.membership),
-        });
+        const parsed = cursorCredentialFromTokens(ide.accessToken, ide.refreshToken, now, formatCursorMembership(ide.membership));
         if (parsed.token && !parsed.expired) return parsed;
         if (parsed.expired && !sawExpired) sawExpired = parsed;
       }

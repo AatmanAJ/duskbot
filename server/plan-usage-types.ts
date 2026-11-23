@@ -102,7 +102,9 @@ export interface CredentialSource {
   env?: NodeJS.ProcessEnv;
   now?: () => number;
   dataDir?: string;
-  writable?: boolean;
+  /** Credential stores in this folder belong to dusk bot and may be renewed in place. Every other store is read only:
+   * a CLI's own login is refreshed by that CLI, and spending its single-use refresh token here signs it out. */
+  renewWithin?: string;
   readClaudeKeychain?: (service: string) => string | null | Promise<string | null>;
   readClaudeKeychainWithAccount?: (service: string, account?: string) => Promise<{ raw: string | null; account?: string }>;
   readCodexKeychain?: (service: string, account: string) => string | null | Promise<string | null>;

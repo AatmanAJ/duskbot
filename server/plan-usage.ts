@@ -22,13 +22,9 @@ import {
   antigravityUserAgent,
   CLAUDE_USER_AGENT,
   clearPlanUsageRenewalState,
-  cursorRenewalDue,
   jwtSubject,
   renewAntigravityToken,
   renewClaudeToken,
-  renewCodexToken,
-  renewCursorToken,
-  renewGrokToken,
   type PlanFetchInit,
   type PlanHttpResponse,
 } from "./plan-usage-renewal.ts";
@@ -332,11 +328,7 @@ async function tryRenewCredential(
   }
   if (!credential.token) return { status: "unchanged" };
   const common = { token: credential.token, turnedAway, fetch: deps.fetch, now: deps.now, timeoutMs };
-  if (store.kind === "claude-file" || store.kind === "claude-keychain") return renewClaudeToken({ target: store, ...common });
-  if (store.kind === "codex-file") return renewCodexToken({ target: store, ...common });
-  if (store.kind === "grok-file") return renewGrokToken({ target: store, ...common });
-  if (store.kind === "cursor-file") return renewCursorToken({ target: store, ...common });
-  return { status: "unchanged" };
+  return renewClaudeToken({ target: store, ...common });
 }
 
 /** Accounts on one sign-in (two Claude engines on the same login) share one read: Claude's usage endpoint answers 429 to
@@ -387,12 +379,7 @@ async function fetchProviderForLogin(
   if (cooldown && cooldown.until > now) return cachedRowOr(errorRow(account, rateLimitedError(account.driver)));
 
   let token = credential.token;
-  const needsProactiveRenewal =
-    credential.expired ||
-    !token ||
-    (account.driver === "cursor" && credential.store?.kind === "cursor-file" && cursorRenewalDue(token, now));
-
-  if (needsProactiveRenewal && credential.refreshToken && credential.store) {
+  if ((credential.expired || !token) && credential.refreshToken && credential.store) {
     const renewed = await tryRenewCredential(credential, false, deps);
     if (renewed.status === "renewed") {
       token = renewed.token;
@@ -403,6 +390,9 @@ async function fetchProviderForLogin(
     } else if (credential.expired || !token) {
       return cachedRowOr(errorRow(account, account.driver === "antigravity" ? couldNotReach("antigravity") : signInAgain(account.driver)));
     }
+  } else if (credential.expired && credential.refreshToken) {
+    // the CLI renews its own login the next time it runs; until then the last reading stands
+    return cachedRowOr(errorRow(account, signInAgain(account.driver)));
   } else if (credential.expired || !token) {
     lastGoodRows.delete(loginKey);
     rateLimitCooldowns.delete(loginKey);
