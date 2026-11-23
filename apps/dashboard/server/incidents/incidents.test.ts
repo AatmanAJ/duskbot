@@ -4,7 +4,7 @@ import type { Server } from "node:http";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createDashboardApp } from "../app.ts";
+import { createDashboardApp, HOME_DID_NOT_ANSWER } from "../app.ts";
 import { memoryMailer } from "../auth/mail.ts";
 import type { Mailer } from "../auth/mail.ts";
 import { emailConfig } from "../email/templates.ts";
@@ -262,6 +262,11 @@ describe("error endpoints", () => {
     csrf.set(cookie, (await verify.json() as { csrfToken: string }).csrfToken);
     return cookie;
   }
+
+  it("never makes a pairing's 503 (the person's own home not answering) an incident, and still makes every other 503 one", () => {
+    for (const path of ["/api/cloud/desktop/pairing", "/api/cloud/desktop/teams/team_1/pairing", "/api/cloud/desktop/pairing?x=1"]) expect(HOME_DID_NOT_ANSWER.test(path)).toBe(true);
+    for (const path of ["/api/cloud/desktop/wake", "/v1/billing/subscriptions/x/card", "/api/cloud/desktop/pairing/x", "/api/cloud/desktop/teams/a/b/pairing"]) expect(HOME_DID_NOT_ANSWER.test(path)).toBe(false);
+  });
 
   it("takes a client error into the incident pipeline, capped in size, rate and origin", async () => {
     const sent = await post("/v1/errors", { source: "desktop", type: "TypeError", message: "x is undefined", stack: "at a (app://bundle/assets/i.js:1:2)", path: "/chat/42", version: "0.1.141", os: "darwin 25" });
