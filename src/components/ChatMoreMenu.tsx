@@ -1,4 +1,4 @@
-import { useMemo, useState, type JSX } from "react";
+import { useEffect, useMemo, useState, type JSX } from "react";
 import { Copy, Cpu, Download, Gauge, Monitor, MoreHorizontal, Search, Share, UserRound } from "../icons";
 import { currentTaskBot, useStore, visibleMessages, type Bot } from "@/state/store";
 import { requestChatFind, useChatFindOpen } from "@/lib/chat-find";
@@ -10,6 +10,7 @@ import {
   slugifyTranscriptFilename,
 } from "@/lib/export-transcript";
 import { cn } from "@/lib/cn";
+import { COPY_FEEDBACK_MS } from "@/lib/copy-text";
 import { t } from "@/lib/i18n";
 import { ELEVATED_CONTROL, ELEVATED_HOVER, ELEVATED_OPEN } from "./elevated";
 import { ShortcutHint } from "./ShortcutHint";
@@ -26,6 +27,11 @@ export function useChatMoreItems(profile: Bot, phoneHeader = false): { items: Si
   const { state, dispatch } = useStore();
   const findOpen = useChatFindOpen(bot.threadId);
   const [copyStatus, setCopyStatus] = useState<"copied" | "failed" | null>(null);
+  useEffect(() => {
+    if (!copyStatus) return;
+    const timer = window.setTimeout(() => setCopyStatus(null), COPY_FEEDBACK_MS);
+    return () => window.clearTimeout(timer);
+  }, [copyStatus]);
   const remoteClient = window.duskDesktop?.remoteClient?.active === true;
   const usage = usageSummary(bot, state.instances);
   const hasMessages = messages.length > 0;
