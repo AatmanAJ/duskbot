@@ -63,6 +63,8 @@ export interface ConfigStatus {
   botLimit?: number;
   /** A task on this Cloud is waiting for memory right now. */
   waitingForRoom?: boolean;
+  /** The free models are still downloading at this server's start; absent once they landed, failed or were never asked for. */
+  freeBackupDownloading?: true;
   threads?: { maxConcurrentPerBot: number; eventLogMaxBytes?: number; eventLogRetentionDays?: number };
   automaticRecovery?: { enabled: boolean; backup?: ModelSelection };
   /** Prompt-cache keep-warm for idle Claude threads. Absent from older servers. */

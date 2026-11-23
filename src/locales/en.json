@@ -3416,6 +3416,7 @@
   "funnel.ai.useOwnSub": "Found on this computer, so there's nothing to sign in to.",
   "funnel.ai.useFree": "Use free models",
   "funnel.ai.useFreeSub": "Ready now. No account and no card.",
+  "funnel.ai.useFreeDownloading": "Getting them ready, usually under a minute. No account and no card.",
   "funnel.ai.usePlan": "Use my plan",
   "funnel.ai.usePlanSub": "Claude, ChatGPT, Antigravity and more you already pay for.",
   "funnel.ai.useFreeInstead": "Use free models instead",
