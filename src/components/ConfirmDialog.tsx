@@ -30,8 +30,8 @@ export interface ConfirmDialogProps {
 
 /**
  * Grok's confirmation modal: the confirm button takes focus, so Enter confirms and Escape cancels, and Tab moves to
- * Cancel. While pending, focus parks on the dialog. Portalled to <body>: the sidebar's translate below md would become
- * the containing block.
+ * Cancel. While pending, focus parks on the dialog and neither Escape nor a click outside cancels. Portalled to <body>:
+ * the sidebar's translate below md would become the containing block.
  */
 export function ConfirmDialog(props: ConfirmDialogProps) {
   const { open, onCancel, returnFocusRef } = props;
@@ -39,6 +39,8 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
   const confirmRef = useRef<HTMLButtonElement>(null);
   const cancelAction = useRef(onCancel);
   cancelAction.current = onCancel;
+  const pendingRef = useRef(props.pending);
+  pendingRef.current = props.pending;
   useEffect(() => {
     if (!open) return;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -46,7 +48,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        cancelAction.current();
+        if (!pendingRef.current) cancelAction.current();
         return;
       }
       if (event.key === "Tab") {
@@ -83,7 +85,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
   return createPortal(
     <div
       className={`fixed inset-0 ${props.layer ?? "z-50"} flex items-center justify-center p-6`}
-      onMouseDown={(event) => event.target === event.currentTarget && onCancel()}
+      onMouseDown={(event) => event.target === event.currentTarget && !props.pending && onCancel()}
     >
       <ScrimMotion aria-hidden="true" className="ui-dialog-scrim pointer-events-none absolute inset-0" />
       <ConfirmDialogCard ref={dialogRef} confirmRef={confirmRef} animated {...props} />
