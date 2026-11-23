@@ -1,0 +1,19 @@
+## the new test on untouched main (dbfefd93d)
+   × Tab stays inside the Archived bots dialog instead of reaching the sidebar behind it 21ms
+   × closing the Archived bots dialog puts focus back where it was opened from 3ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+
+## the same test on this branch (573bb1b84)
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9208 English strings)
+
+## related tests: src/components/ArchivedBotsPanel src/components/Sidebar src/components/SettingsPanes
+ Test Files  36 passed (36)
+      Tests  397 passed (397)

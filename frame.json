@@ -1,0 +1,1 @@
+{ "archived-dialog-focus.before-after.png": { "crop": "190,44,900,430", "arrange": "stack", "labels": ["before: Escape, focus is lost", "after: Escape, back on Archived bots"] } }

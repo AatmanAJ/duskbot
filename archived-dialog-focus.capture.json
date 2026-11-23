@@ -1,0 +1,61 @@
+{
+  "about": "One archived bot, Waffle (made through the API). Settings > Advanced features > Archived bots (opened from its row with the keyboard focus on it), then Escape. The element that has focus afterwards is outlined in red by the capture (an eval step); when focus has fallen to the page body, the whole page is outlined.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1280,
+  "height": 760,
+  "scale": 2,
+  "steps": [
+    {
+      "eval": "(async () => {\n  const j = { 'content-type': 'application/json' };\n  const made = await (await fetch('/api/bots', { method: 'POST', headers: j, body: JSON.stringify({ name: 'Waffle' }) })).json();\n  await fetch('/api/bots/' + made.bot.id, { method: 'PATCH', headers: j, body: JSON.stringify({ color: 'green', hidden: true }) });\n  return true;\n})()"
+    },
+    {
+      "reload": true
+    },
+    {
+      "waitMs": 800
+    },
+    {
+      "click": "You"
+    },
+    {
+      "waitMs": 400
+    },
+    {
+      "click": "Settings"
+    },
+    {
+      "waitMs": 700
+    },
+    {
+      "click": "Advanced features"
+    },
+    {
+      "waitMs": 600
+    },
+    {
+      "press": "Tab"
+    },
+    {
+      "press": "Shift+Tab"
+    },
+    {
+      "eval": "(document.querySelector('[data-settings-open=archived]').focus(), document.querySelector('[data-settings-open=archived]').click(), true)"
+    },
+    {
+      "waitMs": 700
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "waitMs": 500
+    },
+    {
+      "eval": "(() => { const a = document.activeElement; const target = a && a !== document.body ? a : document.querySelector('#root'); target.style.setProperty('outline', '3px solid #ff3b30', 'important'); target.style.setProperty('outline-offset', a && a !== document.body ? '2px' : '-3px', 'important'); return a === document.body ? 'body' : (a.getAttribute('aria-label') || a.textContent).trim().slice(0, 60); })()"
+    },
+    {
+      "shot": true
+    }
+  ]
+}
