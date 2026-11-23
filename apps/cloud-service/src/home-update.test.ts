@@ -6,8 +6,8 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { DESKTOP_IMAGE_STATUS, homeControlScript, homeSetupScript, HOME_CONTROL, HOME_SCREEN_DIRECT_PORTS } from "./home.ts";
-import { createReleaseFile, type HomeRelease } from "./home-update.ts";
+import { COMPUTER_CHECK_MARK, DESKTOP_IMAGE_STATUS, homeControlScript, homeSetupScript, HOME_CONTROL, HOME_SCREEN_DIRECT_PORTS } from "./home.ts";
+import { createReleaseFile, MISBLAMED, type HomeRelease } from "./home-update.ts";
 import { signRelease, type ReleaseKey } from "./release-signing.ts";
 import { createPolicySource, signPolicy, verifyPolicy } from "./update-policy.ts";
 import { homeFixture, cleanup } from "./test-fixture.ts";
@@ -123,7 +123,7 @@ describe("staged home updates", () => {
     Object.assign(t.f.update, { version: "1.1.0", selfTest: "failed" });
     await t.pass();
     expect(t.commands().some(x => x.includes("omb-home rollback"))).toBe(true);
-    expect(t.commands().at(-1)).toContain("omb-home start");
+    expect(t.commands().filter(x => !x.includes(COMPUTER_CHECK_MARK)).at(-1)).toContain("omb-home start");
     expect(t.c.managed!.installed).toBe(sha("1.0.0"));
     expect(version(t.c)).toBe("1.0.0");
     expect(t.actions()).toEqual(["update_applied:idle", "update_rolled_back:self_test"]);
@@ -160,6 +160,85 @@ describe("staged home updates", () => {
     expect(t.c.managed!.installed).toBe(sha("1.0.0"));
     expect(t.actions().at(-1)).toBe("update_rolled_back:runs_failed");
     expect(t.f.audit.entries(t.c.id).find(e => e.action === "update_rolled_back")!.detail).toMatchObject({ from: "1.1.0", to: "1.0.0", rerunFree: 2 });
+  });
+
+  it("does not blame a release for runs that failed while the bot computers were down: the gate restarts and the trial goes on", async () => {
+    const t = await updating();
+    t.offer(release("1.1.0"));
+    await t.pass();
+    const at = t.f.now();
+    t.f.api.computerAnswers("healed gate");
+    Object.assign(t.f.update, { version: "1.1.0", selfTest: "passed", runs: [{ id: "a", ok: false, at: at + 1 }, { id: "b", ok: false, at: at + 2 }] });
+    t.f.power.busy = [];
+    await t.pass(); await t.pass();
+    expect(t.c.managed!.installed).toBe(sha("1.1.0"));
+    expect(t.c.managed!.update!.guard.trial).toMatchObject({ runs: [], excused: ["a", "b"] });
+    expect(t.actions()).toEqual(["update_applied:idle", "update_runs_excused:computer_unreachable"]);
+    // once the computer answers again, runs the release fails are its own
+    const later = t.f.now();
+    t.f.update.runs.push({ id: "c", ok: false, at: later + 1 }, { id: "d", ok: false, at: later + 2 });
+    await t.pass();
+    expect(t.c.managed!.installed).toBe(sha("1.0.0"));
+    expect(t.actions().at(-1)).toBe("update_rolled_back:runs_failed");
+  });
+
+  it("a run the home reports as failed for want of its computer never counts against the release", async () => {
+    const t = await updating();
+    t.offer(release("1.1.0"));
+    await t.pass();
+    const at = t.f.now();
+    Object.assign(t.f.update, { version: "1.1.0", selfTest: "passed", runs: [{ id: "a", ok: false, at: at + 1, infra: true }, { id: "b", ok: false, at: at + 2, infra: true }] });
+    t.f.power.busy = [];
+    await t.pass();
+    expect(t.c.managed!.installed).toBe(sha("1.1.0"));
+    expect(t.actions()).toEqual(["update_applied:idle", "update_runs_excused:computer_unreachable"]);
+  });
+
+  it("installs nothing on a home whose computer stays down, and installs once it answers", async () => {
+    const t = await updating();
+    t.f.api.computerAnswers("down docker");
+    t.offer(release("1.1.0"));
+    await t.pass(); await t.pass();
+    expect(t.commands().filter(x => x.includes("omb-home install") && x.includes(sha("1.1.0")))).toHaveLength(0);
+    t.f.advance(2 * 60_000);
+    await t.pass();
+    expect(t.c.managed!.installed).toBe(sha("1.1.0"));
+    // the gate is checked again right after the new package starts
+    expect(t.f.audit.entries(t.c.id).map(e => e.action)).toContain("computer_ok");
+  });
+
+  it("gives a release rolled back on runs_failed while the gates were down (2026-11-21 on) back once, with the other release of that incident", async () => {
+    const t = await updating();
+    t.f.power.busy = ["turn"];
+    await t.pass();
+    const u = t.c.managed!.update!;
+    u.guard.failed = ["0.2.26", "1.1.0"];
+    u.guard.last = { kind: "rolled_back", version: "1.1.0", at: MISBLAMED.from + 23 * 3_600_000, reason: "runs_failed" };
+    t.offer(release("1.1.0"));
+    t.f.power.busy = ["recent-activity"];
+    await t.pass();
+    expect(t.f.audit.entries(t.c.id).find(e => e.action === "update_forgiven")).toMatchObject({ reason: "computer_down_2026_11", detail: { versions: "1.1.0:0.2.26" } });
+    expect(u.guard.failed).toEqual([]);
+    expect(t.c.managed!.installed).toBe(sha("1.1.0"));
+    // never twice: the same incident marked again stays marked
+    u.guard.trial = null; u.guard.failed = ["1.1.0"];
+    await t.pass();
+    expect(u.guard.failed).toEqual(["1.1.0"]);
+    expect(t.f.audit.entries(t.c.id).filter(e => e.action === "update_forgiven")).toHaveLength(1);
+  });
+
+  it("keeps a release failed here when its rollback was a failed self-test, or its runs failed while the computer answered", async () => {
+    const t = await updating();
+    await t.pass();
+    const u = t.c.managed!.update!;
+    u.guard.failed = ["1.1.0"];
+    u.guard.last = { kind: "rolled_back", version: "1.1.0", at: MISBLAMED.from + 3_600_000, reason: "self_test" };
+    await t.pass();
+    expect(u.guard.failed).toEqual(["1.1.0"]);
+    u.guard.last = { kind: "rolled_back", version: "1.1.0", at: MISBLAMED.to + 3_600_000, reason: "runs_failed" };
+    await t.pass();
+    expect(u.guard.failed).toEqual(["1.1.0"]);
+    expect(t.f.audit.entries(t.c.id).some(e => e.action === "update_forgiven")).toBe(false);
   });
 
   it("never installs a blocked version, and rolls a running one back when it is blocked later", async () => {

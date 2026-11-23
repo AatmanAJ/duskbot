@@ -28,6 +28,7 @@ import type { RailSettings } from "./power/rails.ts";
 import type { ProviderCostProfile } from "./power/cost.ts";
 import "./state.ts";
 import { createHomeUpdates, createReleaseFile, type HomeRelease } from "./home-update.ts";
+import { createComputerHealth } from "./computer-health.ts";
 import { createPolicySource, UPDATE_POLICY_PATH, type PolicySource } from "./update-policy.ts";
 
 /** a retention notice: the plain letter, and what it is about for a richer rendering */
@@ -103,9 +104,10 @@ export function createManagedCloud(deps: ManagedCloudDeps): ManagedCloudFactory 
           deps.audit.record({ cloudId, action: "cost_ceiling_alert", actor: "reconciler", reason: key });
           deps.alert?.({ at: ctx.now(), cloudId, action: "cost_ceiling", actor: "reconciler", reason: text.slice(0, 120) });
         } });
-      const updates = createHomeUpdates({ provider, image: HOME_IMAGE, home: ctx.home, audit: deps.audit, releaseKeys, requireSigned: settings.requireSigned, now: ctx.now, save: ctx.save,
+      const computer = createComputerHealth({ provider, image: HOME_IMAGE, audit: deps.audit, ...(deps.alert ? { alert: deps.alert } : {}), now: ctx.now, save: ctx.save });
+      const updates = createHomeUpdates({ provider, image: HOME_IMAGE, home: ctx.home, audit: deps.audit, releaseKeys, requireSigned: settings.requireSigned, now: ctx.now, save: ctx.save, computer,
         releases: () => [deps.release?.() ?? null, settings.package], policy: () => deps.updatePolicy?.policy() ?? null });
-      const lifecycle: Lifecycle = createLifecycle({ ...deps, provider, settings, updates, image: HOME_IMAGE, starts, spend, sleepPolicy, costProfile: profile, rails: params.rails, home: ctx.home, now: ctx.now, save: ctx.save, stored: ctx.stored, unseal: ctx.unseal, seal: ctx.seal,
+      const lifecycle: Lifecycle = createLifecycle({ ...deps, provider, settings, updates, computer, image: HOME_IMAGE, starts, spend, sleepPolicy, costProfile: profile, rails: params.rails, home: ctx.home, now: ctx.now, save: ctx.save, stored: ctx.stored, unseal: ctx.unseal, seal: ctx.seal,
         dashboardUrl: ctx.dashboardUrl, adminOrigin: ctx.adminOrigin, removeWorkspace: ctx.removeWorkspace, clouds: ctx.clouds, entitle: ctx.entitlement, ...(ctx.linkGrant ? { linkGrant: ctx.linkGrant } : {}), releaseKeys, labelKey });
       const sweep = createSweep({ dataDir: ctx.dataDir, file: "machine-sweep.json", provider, audit: deps.audit, retentionDays: settings.retentionDays, now: ctx.now });
       const claimLimits = new Map<string, { count: number; until: number }>();

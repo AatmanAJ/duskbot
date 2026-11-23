@@ -54,7 +54,9 @@ export const idleForUpdate = (busy: readonly string[]) => !busy.some(code => UPD
 export const TRIAL_RUNS = 2;
 export const TRIAL_MS = 24 * 3_600_000;
 
-export interface UpdateTrial { to: Release; from: Release | null; at: number; selfTest: "pending" | "passed"; runs: Array<{ id: string; ok: boolean }> }
+/** `excused`: runs that failed for want of their computer (docker or its gate not answering), which the version on trial
+ * does not own: never counted for or against it */
+export interface UpdateTrial { to: Release; from: Release | null; at: number; selfTest: "pending" | "passed"; runs: Array<{ id: string; ok: boolean }>; excused?: string[] }
 export interface UpdateRecord {
   current: Release | null;
   /** what the last update replaced: the rollback target */
@@ -118,10 +120,15 @@ export function selfTested(record: UpdateRecord, ok: boolean, now: number): Verd
   return review(record, now);
 }
 
-/** a run finished on the version on trial; the same run twice counts once */
-export function sawRun(record: UpdateRecord, run: { id: string; ok: boolean }, now: number): Verdict {
+/** a run finished on the version on trial; the same run twice counts once. `infra`: it failed for want of its computer */
+export function sawRun(record: UpdateRecord, run: { id: string; ok: boolean; infra?: boolean }, now: number): Verdict {
   const trial = record.trial;
   if (!trial) return { action: "wait" };
+  if (!run.ok && run.infra) {
+    if (!trial.runs.some(r => r.id === run.id) && !trial.excused?.includes(run.id)) trial.excused = [...(trial.excused ?? []), run.id].slice(-50);
+    return review(record, now);
+  }
+  if (trial.excused?.includes(run.id)) return review(record, now);
   if (trial.runs.length < TRIAL_RUNS && !trial.runs.some(r => r.id === run.id)) trial.runs.push({ id: run.id, ok: run.ok });
   if (trial.runs.length >= TRIAL_RUNS && trial.runs.every(r => !r.ok)) return rollback(record, "runs_failed");
   return review(record, now);
@@ -154,4 +161,11 @@ export function rolledBack(record: UpdateRecord, to: Release, reason: RollbackRe
   record.trial = null;
   record.last = { kind: "rolled_back", version: bad?.version ?? to.version, at: now, reason };
   return { failedRuns };
+}
+
+/** a version marked failed here for a cause it did not own may be offered again; true when it was marked */
+export function forgive(record: UpdateRecord, version: string): boolean {
+  if (!record.failed.includes(version)) return false;
+  record.failed = record.failed.filter(v => v !== version);
+  return true;
 }
