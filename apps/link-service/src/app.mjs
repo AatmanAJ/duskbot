@@ -56,7 +56,6 @@ const LANE_BYTES = 4 * 1024 * 1024;
 // more than the posts a writer has out at once (8 over http/2), so retries landing out of order after a blip are held,
 // not refused
 const HELD_POSTS = 32;
-const GAP_MS = 15_000;
 const FRESH_GAP_MS = 300;
 // a streamed read's beat: often enough that a dead connection shows within half a minute, rare enough that thousands
 // of idle servers cost the node little (each beat is a write per open read)
@@ -94,6 +93,14 @@ export const TUNNEL_BYTES_PER_SECOND = DEFAULT_LIMITS.perTunnelBytesPerSec;
 export const TUNNEL_BURST_BYTES = DEFAULT_LIMITS.burstBytes;
 /** a post waits at most this long for its share of the relay; past it the post is refused with a retry-after */
 export const MAX_HOLD_MS = 20_000;
+/**
+ * how long later posts wait for a missing one: installed writers give a post 60 s before trying it again, after at
+ * most 5 s, and the retry may wait MAX_HOLD_MS for its share. shorter, and posts stuck on a dead connection while later
+ * ones went out on a new one arrive after their gap was skipped. a writer that gives a post up starts a new epoch
+ */
+export const GAP_MS = 60_000 + 5_000 + MAX_HOLD_MS + 5_000;
+/** the skipped stretches a queue remembers, so a post that comes after its gap was skipped is told from a retry */
+const SKIPPED_KEPT = 16;
 /** a tunnel is slowed to its fair share of the ceiling once this many bytes a second or more pass through it */
 const DEMANDING_BYTES_PER_SECOND = 64 * 1024;
 /** no tunnel's share drops below this, however many are busy (the ceiling still holds the total) */
@@ -230,13 +237,13 @@ export function publicIp(ip) {
  * queues of sealed frames, one per direction per tunnel, with long-poll waiters. never persisted. a post marked `lane`
  * (egress: a bot's handshakes) is read out ahead of what waits in the main queue, in its own order.
  */
-function frameQueue(onPush = () => {}, memory = { bytes: 0 }, now = Date.now, onLate = () => {}) {
+export function frameQueue(onPush = () => {}, memory = { bytes: 0 }, now = Date.now, onLate = () => {}) {
   const frames = [], times = [];
   const lane = [], laneTimes = [];
   let bytes = 0, laneBytes = 0, reader = 0, gap = null, reading = null;
   const sizeOf = (list) => list.reduce((sum, frame) => sum + frame.length, 0);
   const waiters = new Set();
-  const order = { epoch: null, next: 0, held: new Map(), retired: [] };
+  const order = { epoch: null, next: 0, held: new Map(), retired: [], skipped: [] };
   function unhold(at) { const list = order.held.get(at); if (!list) return; order.held.delete(at); memory.bytes -= sizeOf(list); }
   function dropHeld() { for (const at of order.held.keys()) unhold(at); }
   function drainHeld() {
@@ -251,7 +258,9 @@ function frameQueue(onPush = () => {}, memory = { bytes: 0 }, now = Date.now, on
     gap = setTimeout(() => {
       gap = null;
       if (!order.held.size) return;
-      order.next = Math.min(...order.held.keys());
+      const first = Math.min(...order.held.keys());
+      if (!order.fresh) order.skipped = [...order.skipped.slice(1 - SKIPPED_KEPT), [order.next, first]];
+      order.next = first;
       drainHeld();
       if (order.held.size) armGap();
     }, ms);
@@ -319,10 +328,15 @@ function frameQueue(onPush = () => {}, memory = { bytes: 0 }, now = Date.now, on
         order.epoch = from;
         order.next = 0;
         order.fresh = true;
+        order.skipped = [];
         dropHeld();
       }
-      // a numbered post that comes after its gap was skipped: what it carried is lost (the ends see it in their counts)
-      if (at < order.next) { onLate(at, order.next); return true; }
+      // below next: a retry of a post already queued (its answer was lost), or one that comes after its gap was
+      // skipped, whose frames are lost (the ends see it in their counts)
+      if (at < order.next) {
+        if (order.skipped.some(([from, to]) => at >= from && at < to)) onLate(at, order.next);
+        return true;
+      }
       if (at > order.next) {
         if (order.held.has(at)) return true;
         if (order.held.size >= HELD_POSTS) return false;
