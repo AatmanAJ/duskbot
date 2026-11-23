@@ -51,7 +51,7 @@ import { CloudMoveOffer } from "@/components/CloudMoveOffer";
 import { HomeLine } from "@/components/HomeLine";
 import { useTeamChats } from "@/state/team-chats";
 import { needsYouVersion, useTeamPeopleLoader } from "@/state/team-people";
-import { inboxVersion, useInboxLoader, useInboxPanel, useInboxReady } from "@/state/inbox";
+import { inboxVersion, useInboxLoader, useInboxPanel, useInboxReady, useInboxSupport } from "@/state/inbox";
 import { InboxPanel } from "@/components/inbox/InboxPanel";
 import { InboxColumn } from "@/components/inbox/InboxColumn";
 import { PlacesRail } from "@/components/PlacesRail";
@@ -105,7 +105,8 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   useTeamPeopleLoader(state.config, needsYou);
   useInboxLoader(`${inboxVersion(state.bots) ?? ""}|${needsYou}`);
   const inboxReady = useInboxReady();
-  const inboxShown = useInboxPanel().open && inboxReady;
+  const inboxSupported = useInboxSupport() !== "no";
+  const inboxShown = useInboxPanel().open && (inboxReady || inboxSupported);
   // A Switch AI pick lands once its stopped turn's chat is idle, wherever the person is by then.
   useAiSwitchKeeper({ bots: state.bots, dispatch });
   useWarmChatImages(state.bots);

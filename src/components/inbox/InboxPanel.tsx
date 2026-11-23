@@ -5,7 +5,7 @@ import type { InboxRow } from "../../../shared/inbox";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
-import { closeInbox, readInboxLine, readInboxRow, useInboxPanel, useInboxView, widenInbox } from "@/state/inbox";
+import { closeInbox, readInboxLine, readInboxRow, refreshInbox, useInboxPanel, useInboxReadFailed, useInboxSupport, useInboxView, widenInbox } from "@/state/inbox";
 import { InboxActive } from "./InboxActive";
 import { InboxReading } from "./InboxReading";
 import { InboxRowItem } from "./InboxRow";
@@ -17,6 +17,8 @@ const BAR_BUTTON = "flex size-7 shrink-0 items-center justify-center rounded-md 
 
 export function InboxPanel() {
   const view = useInboxView();
+  const readFailed = useInboxReadFailed();
+  const unsupported = useInboxSupport() === "no";
   const panel = useInboxPanel();
   const phone = useMediaQuery(PHONE_LAYOUT);
   const { run } = useInboxActions(view);
@@ -90,7 +92,9 @@ export function InboxPanel() {
                   className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-tertiary [&::-webkit-search-cancel-button]:hidden" />
               </label>
               <div role="list" data-inbox-list aria-label={t("inbox.panel.title")} className="space-y-0.5 px-1.5 pb-1.5">
-                {rows.length === 0
+                {view === null && !unsupported
+                  ? <InboxNotRead failed={readFailed} />
+                  : rows.length === 0
                   ? <p className="px-4 py-8 text-center text-[13px] text-ink-secondary">{t(query.trim() && listedRows(view).length ? "inbox.noMatch" : "inbox.empty")}</p>
                   : rows.map((row) => <InboxRowItem key={row.id} row={row} now={now} onOpen={open} onAction={run} />)}
               </div>
@@ -118,5 +122,18 @@ export function InboxPanel() {
         panel.wide ? "w-[min(640px,60vw)]" : "w-[380px]")}>
       {body}
     </aside>
+  );
+}
+
+function InboxNotRead({ failed }: { failed: boolean }) {
+  const [trying, setTrying] = useState(false);
+  if (!failed) return <p role="status" className="px-4 py-8 text-center text-[13px] text-ink-secondary">{t("inbox.loading")}</p>;
+  return (
+    <div role="alert" className="flex flex-col items-center gap-2.5 px-4 py-8 text-center">
+      <p className="m-0 text-[13px] text-ink-secondary">{t("inbox.loadFailed")}</p>
+      <button type="button" className="ui-button" disabled={trying} onClick={() => { setTrying(true); void refreshInbox().finally(() => setTrying(false)); }}>
+        {t("common.tryAgain")}
+      </button>
+    </div>
   );
 }
