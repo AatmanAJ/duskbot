@@ -53,6 +53,7 @@ export function VoiceSettings({
   const [error, setError] = useState<string | null>(null);
   const [voices, setVoices] = useState<Array<{ id: string; label: string; description?: string }>>([]);
   const [loadingVoices, setLoadingVoices] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
   const [addingVoice, setAddingVoice] = useState<PickerVoice | null>(null);
   const addGeneration = useRef(0);
   const [addError, setAddError] = useState<string | null>(null);
@@ -163,10 +164,15 @@ export function VoiceSettings({
     api(`/api/tts/voices${query ? `?${query}` : ""}`)
       .then((r: { voices?: typeof voices; error?: string }) => {
         if (!alive) return;
+        setListError(null);
         setVoices(r.voices ?? []);
         if (r.error) setError(r.error);
       })
-      .catch(() => alive && setVoices([]))
+      .catch((e: unknown) => {
+        if (!alive) return;
+        setVoices([]);
+        setListError(friendlyError(e, t("voice.listFailed")));
+      })
       .finally(() => alive && setLoadingVoices(false));
     return () => {
       alive = false;
@@ -550,6 +556,7 @@ export function VoiceSettings({
               {preparingSample ? <Loader2 size={14} className="animate-spin" /> : <Volume2 size={14} />} {t("voice.try")}
             </button>
           </div>
+          {listError && <div role="alert" className="mt-1.5 text-[12px] text-danger">{listError}</div>}
           {addError && <div role="alert" className="mt-1.5 text-[12px] text-danger">{addError}</div>}
           {!searchable && selectedDescription && (
             <div className="mt-1.5 text-[12px] leading-relaxed text-ink-secondary">{selectedDescription}</div>
