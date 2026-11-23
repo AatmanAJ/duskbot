@@ -36,7 +36,8 @@ import type { SlidePath } from "@/mobile/NavStack";
 import type { MenuBridge, NativeMenuArm, NativeMenuContent, NativeMenuEvent } from "@/mobile/native-menu";
 import { createVoiceEvents, type VoiceBridge, type VoiceEnd } from "@/lib/voice-input/bridge";
 import { registerPhoneVoice } from "@/lib/voice-input/device";
-import { attachToComposer, setNativeAttach } from "@/lib/native-attach";
+import { attachToComposer, PickProblem, setNativeAttach } from "@/lib/native-attach";
+import { FILE_MAX_BYTES } from "../../../shared/upload-limits";
 import { appLinkFromUniversal, type MobileOpenTarget } from "../../../shared/mobile-link";
 import { t } from "@/lib/i18n";
 
@@ -291,9 +292,9 @@ interface PickerSourceFrame {
 }
 /** The composer's photo library, camera and Files pickers (ios/App/App/PickerPlugin.swift). */
 const DuskPicker = registerPlugin<{
-  photos(options: { multiple: boolean; labels?: PickerLabels; source?: PickerSourceFrame }): Promise<{ files: NativeFile[] }>;
+  photos(options: { multiple: boolean; maxBytes?: number; labels?: PickerLabels; source?: PickerSourceFrame }): Promise<PickedAnswer>;
   files(options: { multiple: boolean }): Promise<{ files: NativeFile[] }>;
-  camera(options?: { labels?: PickerLabels; source?: PickerSourceFrame }): Promise<{ files: NativeFile[] }>;
+  camera(options?: { maxBytes?: number; labels?: PickerLabels; source?: PickerSourceFrame }): Promise<PickedAnswer>;
 }>("DuskPicker");
 
 function composerSourceFrame(): PickerSourceFrame | undefined {
@@ -330,6 +331,18 @@ function pickerLabels(): PickerLabels {
     photosOffBody: t("composer.attach.photosOffBody"),
     openSettings: t("mobile.onboarding.openSettings"),
   };
+}
+
+/** The photo library leaves out what it could not load (`failed`) and anything over `maxBytes` (named in `tooLarge`). */
+interface PickedAnswer { files: NativeFile[]; failed?: number; tooLarge?: string[] }
+
+/** Photos picked on the phone; a pick that left something out says so, carrying what it did get. */
+export async function pickedPhotos(answer: PickedAnswer, read?: typeof fetch): Promise<File[]> {
+  const files = await nativeFiles(answer.files, read);
+  const failed = (answer.failed ?? 0) + (answer.files.length - files.length);
+  const tooLarge = answer.tooLarge ?? [];
+  if (failed > 0 || tooLarge.length) throw new PickProblem(files, failed, tooLarge);
+  return files;
 }
 
 export async function nativeFiles(list: readonly NativeFile[], read: typeof fetch = fetch): Promise<File[]> {
@@ -1031,9 +1044,9 @@ export async function nativePlatform(): Promise<MobilePlatform> {
   }
   if (kind === "ios" && Capacitor.isPluginAvailable("DuskPicker")) {
     setNativeAttach({
-      photos: async () => nativeFiles((await DuskPicker.photos({ multiple: true, labels: pickerLabels(), source: composerSourceFrame() })).files),
+      photos: async () => pickedPhotos(await DuskPicker.photos({ multiple: true, maxBytes: FILE_MAX_BYTES, labels: pickerLabels(), source: composerSourceFrame() })),
       files: async () => nativeFiles((await DuskPicker.files({ multiple: true })).files),
-      camera: async () => nativeFiles((await DuskPicker.camera({ labels: pickerLabels(), source: composerSourceFrame() })).files),
+      camera: async () => pickedPhotos(await DuskPicker.camera({ maxBytes: FILE_MAX_BYTES, labels: pickerLabels(), source: composerSourceFrame() })),
     });
   }
   registerPhoneVoice({

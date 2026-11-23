@@ -176,7 +176,8 @@ final class MediaPickerSheetViewController: UIViewController {
     private let maxSelection: Int
     private let labels: MediaPickerLabels
     private let morphContext: MediaPickerMorphContext?
-    private let onComplete: ([[String: Any]]) -> Void
+    private let onComplete: (PickOutcome) -> Void
+    private let maxBytes: Int
 
     private var mode: Mode
     private var canReturnToPhotos: Bool
@@ -257,7 +258,8 @@ final class MediaPickerSheetViewController: UIViewController {
     private static let gridSpacing: CGFloat = 2
     private static let bottomControlCenterOffset: CGFloat = 44
 
-    init(mode: Mode, multiple: Bool, labels: MediaPickerLabels, morph: MediaPickerMorphContext? = nil, onComplete: @escaping ([[String: Any]]) -> Void) {
+    init(mode: Mode, multiple: Bool, maxBytes: Int, labels: MediaPickerLabels, morph: MediaPickerMorphContext? = nil, onComplete: @escaping (PickOutcome) -> Void) {
+        self.maxBytes = maxBytes
         self.mode = mode
         self.canReturnToPhotos = false
         self.allowMultiple = multiple
@@ -899,6 +901,10 @@ final class MediaPickerSheetViewController: UIViewController {
     }
 
     private func dismissSheet(with files: [[String: Any]]) {
+        dismissSheet(with: PickOutcome(files: files))
+    }
+
+    private func dismissSheet(with outcome: PickOutcome) {
         guard !finished else { return }
         finished = true
         morphState = .dismissing
@@ -907,7 +913,7 @@ final class MediaPickerSheetViewController: UIViewController {
         let completeDismiss = { [weak self] in
             guard let self else { return }
             self.releaseSource {
-                self.dismiss(animated: false) { self.onComplete(files) }
+                self.dismiss(animated: false) { self.onComplete(outcome) }
             }
         }
 
@@ -1310,15 +1316,16 @@ final class MediaPickerSheetViewController: UIViewController {
         addPhotosButton.configuration?.baseForegroundColor = .clear
         addSpinner.startAnimating()
 
-        var results = [[String: Any]?](repeating: nil, count: assets.count)
+        var results = [PickedItem](repeating: .failed, count: assets.count)
         let lock = NSLock()
         let group = DispatchGroup()
+        let maxBytes = self.maxBytes
 
         for (index, asset) in assets.enumerated() {
             group.enter()
-            Self.exportAsset(asset) { file in
+            Self.exportAsset(asset, maxBytes: maxBytes) { item in
                 lock.lock()
-                results[index] = file
+                results[index] = item
                 lock.unlock()
                 group.leave()
             }
@@ -1332,33 +1339,40 @@ final class MediaPickerSheetViewController: UIViewController {
             self.addPhotosButton.configuration?.baseForegroundColor = .black
             self.addSpinner.stopAnimating()
             guard !self.finished else { return }
-            let files = results.compactMap { $0 }
-            if !files.isEmpty {
-                self.dismissSheet(with: files)
-            }
+            // what could not be added is said in the chat (an error card with a way to pick again), never left silent
+            self.dismissSheet(with: PickOutcome(items: results))
         }
     }
 
-    private static func exportAsset(_ asset: PHAsset, completion: @escaping ([String: Any]?) -> Void) {
+    private static func exportAsset(_ asset: PHAsset, maxBytes: Int, completion: @escaping (PickedItem) -> Void) {
         if asset.mediaType == .video {
             let options = PHVideoRequestOptions()
             options.isNetworkAccessAllowed = true
             options.deliveryMode = .highQualityFormat
             PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, _ in
-                if let urlAsset = avAsset as? AVURLAsset, let file = PickedFiles.copy(urlAsset.url) {
-                    completion(file)
-                    return
+                if let urlAsset = avAsset as? AVURLAsset {
+                    let item = PickedFiles.pick(urlAsset.url, name: urlAsset.url.lastPathComponent, maxBytes: maxBytes)
+                    // a video over the limit as it is gets a smaller export below before it is turned away
+                    if case .file = item { completion(item); return }
                 }
                 guard let avAsset, let export = AVAssetExportSession(asset: avAsset, presetName: AVAssetExportPresetMediumQuality),
                       let dir = PickedFiles.makeTempFolder() else {
-                    completion(nil)
+                    completion(.failed)
                     return
                 }
-                let outputURL = dir.appendingPathComponent("\(assetStem(asset)).mp4")
+                let name = "\(assetStem(asset)).mp4"
+                let outputURL = dir.appendingPathComponent(name)
                 export.outputURL = outputURL
                 export.outputFileType = .mp4
                 export.exportAsynchronously {
-                    completion(export.status == .completed ? PickedFiles.describe(outputURL, type: "video/mp4") : nil)
+                    guard export.status == .completed else { completion(.failed); return }
+                    let size = (try? outputURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+                    if maxBytes > 0, size > maxBytes {
+                        try? FileManager.default.removeItem(at: dir)
+                        completion(.tooLarge(name))
+                        return
+                    }
+                    completion(.file(PickedFiles.describe(outputURL, type: "video/mp4")))
                 }
             }
             return
@@ -1369,18 +1383,18 @@ final class MediaPickerSheetViewController: UIViewController {
         options.version = .current
         options.deliveryMode = .highQualityFormat
         PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, uti, _, _ in
-            guard let data else { completion(nil); return }
+            guard let data else { completion(.failed); return }
             let stem = assetStem(asset)
             if uti == UTType.png.identifier {
-                completion(PickedFiles.write(data, name: "\(stem).png", type: "image/png"))
+                completion(PickedFiles.pick(data, name: "\(stem).png", type: "image/png", maxBytes: maxBytes))
             } else if uti == UTType.gif.identifier {
-                completion(PickedFiles.write(data, name: "\(stem).gif", type: "image/gif"))
+                completion(PickedFiles.pick(data, name: "\(stem).gif", type: "image/gif", maxBytes: maxBytes))
             } else if uti == UTType.jpeg.identifier {
-                completion(PickedFiles.write(data, name: "\(stem).jpg", type: "image/jpeg"))
+                completion(PickedFiles.pick(data, name: "\(stem).jpg", type: "image/jpeg", maxBytes: maxBytes))
             } else if let image = UIImage(data: data), let jpeg = image.jpegData(compressionQuality: 0.9) {
-                completion(PickedFiles.write(jpeg, name: "\(stem).jpg", type: "image/jpeg"))
+                completion(PickedFiles.pick(jpeg, name: "\(stem).jpg", type: "image/jpeg", maxBytes: maxBytes))
             } else {
-                completion(nil)
+                completion(.failed)
             }
         }
     }
@@ -1682,8 +1696,8 @@ extension MediaPickerSheetViewController: PHPickerViewControllerDelegate {
     func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
         picker.dismiss(animated: true) { [weak self] in
             guard let self, !self.finished, !results.isEmpty else { return }
-            PickedFiles.load(results: results) { [weak self] files in
-                self?.dismissSheet(with: files)
+            PickedFiles.load(results: results, maxBytes: self.maxBytes) { [weak self] outcome in
+                self?.dismissSheet(with: outcome)
             }
         }
     }

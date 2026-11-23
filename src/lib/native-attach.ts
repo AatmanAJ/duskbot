@@ -6,6 +6,20 @@ export interface NativeAttach {
   camera?(): Promise<File[]>;
 }
 
+/** A pick that left something out: what it did get, how many it could not load, and the names over the upload limit. */
+export class PickProblem extends Error {
+  readonly files: File[];
+  readonly failed: number;
+  readonly tooLarge: readonly string[];
+  constructor(files: File[], failed: number, tooLarge: readonly string[]) {
+    super("some picked items were left out");
+    this.name = "PickProblem";
+    this.files = files;
+    this.failed = failed;
+    this.tooLarge = tooLarge;
+  }
+}
+
 let native: NativeAttach | null = null;
 
 export function setNativeAttach(next: NativeAttach | null): void {

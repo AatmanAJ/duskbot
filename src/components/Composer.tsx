@@ -38,7 +38,7 @@ import {
 import { DEVS_CHOICE, MentionMenu, teammateChoices, type MentionChoice } from "./MentionMenu"; import { useTeammates } from "@/state/team-people"; import { hiddenFromSidebar, useViewerEmail } from "@/lib/default-bot";
 import { SlashCommandMenu } from "./SlashCommandMenu";
 import { MentionTextarea } from "./MentionTextarea";
-import { ComposerAttachments, ComposerAttachmentStrip, pathForFile } from "./ComposerAttachments"; import { ComposerFailedSends } from "./ComposerFailedSends"; import { useComposerFilePickers } from "./ComposerFilePickers";
+import { ComposerAttachments, ComposerAttachmentStrip, pathForFile } from "./ComposerAttachments"; import { ComposerFailedSends } from "./ComposerFailedSends"; import { PickProblemCard, useComposerFilePickers } from "./ComposerFilePickers";
 import { PointedChips } from "./app/PointedChips"; import { SetupRequestChip, setupRequestPlaceholder } from "./SetupOffer";
 import { takePointedChips } from "@/lib/pointed-chips";
 import { withoutCitationMarkers } from "@/lib/citations";
@@ -919,6 +919,7 @@ export const Composer = memo(function Composer({
           )}
         </div>
       )}
+      {pickers.problem && <PickProblemCard pickers={pickers} />}
       {dictation.tidying && !speechError && (
         <div role="status" data-voice-tidying="" className="pointer-events-auto mb-2 w-full px-0.5 text-[12px] leading-4 text-ink/56">
           {t("composer.voice.tidying")}
