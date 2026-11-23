@@ -112,7 +112,6 @@ export function ArchivedBotRow({
   );
 }
 
-/** Tab and Shift-Tab go round the dialog's own controls; the page behind is out of reach while it is up. */
 function keepTabInside(event: KeyboardEvent, root: HTMLElement | null) {
   if (!root || event.defaultPrevented) return;
   const controls = [...root.querySelectorAll<HTMLElement>("button:not([disabled]), a[href], input:not([disabled])")];
