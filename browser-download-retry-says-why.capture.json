@@ -1,0 +1,25 @@
+{
+  "about": "Staged in the page: the fixture has no browser download to fail, so the app's own BrowserPartLine is mounted in its failed state at the end of Pepper's transcript, and the page's fetch answers POST /api/browser-engine/install with 503, as if the download server didn't answer. Then Try again is clicked.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1280,
+  "height": 720,
+  "scale": 2,
+  "steps": [
+    {
+      "eval": "(async () => {\n  const orig = window.fetch.bind(window);\n  window.fetch = async (input, init) => {\n    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;\n    if (/\\/api\\/browser-engine\\/install/.test(url)) return new Response(JSON.stringify({ error: \"The download server didn't answer.\" }), { status: 503, headers: { 'content-type': 'application/json' } });\n    return orig(input, init);\n  };\n  const urls = performance.getEntriesByType('resource').map((e) => e.name);\n  const pick = (re) => urls.find((u) => re.test(new URL(u).pathname));\n  const [client, react, line] = await Promise.all([import(pick(/\\/deps\\/react-dom_client\\.js$/)), import(pick(/\\/deps\\/react\\.js$/)), import('/src/components/BrowserPartLine.tsx')]);\n  const createRoot = client.createRoot ?? client.default.createRoot;\n  const h = react.createElement ?? react.default.createElement;\n  const log = document.querySelector('[role=log]');\n  const rows = log.querySelector('[data-mid]')?.parentElement ?? log;\n  const host = document.createElement('div');\n  host.className = 'flex justify-start px-0 py-3';\n  host.dataset.stagedBrowserPart = '';\n  rows.append(host);\n  createRoot(host).render(h(line.BrowserPartLine, { part: { phase: 'failed', received: 0, total: 1, botIds: [] } }));\n  return true;\n})()"
+    },
+    {
+      "waitMs": 700
+    },
+    {
+      "eval": "(document.querySelector('[data-staged-browser-part] button')?.click(), true)"
+    },
+    {
+      "waitMs": 900
+    },
+    {
+      "shot": true
+    }
+  ]
+}

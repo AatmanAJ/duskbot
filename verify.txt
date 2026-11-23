@@ -1,0 +1,18 @@
+## the new test on untouched main (dbfefd93d)
+   × Retry on the bot's browser download says so when the retry itself could not start 10ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+
+## the same test on this branch (e7f1171ae)
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9209 English strings)
+
+## related tests: src/components/BrowserPartLine src/components/ChatView src/lib/browser-part
+ Test Files  24 passed (24)
+      Tests  143 passed (143)
