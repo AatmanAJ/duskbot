@@ -38,7 +38,7 @@ export const DUE_RUN_GUARD_MS = 3 * 60_000;
  *  their runs failed for want of their computer, not for the release. A cloud whose last rollback is in the window gets
  *  these versions back once, offered again once its computer answers. `to` runs past this fix's deploy: until then the
  *  old reconciler blamed releases the same way. */
-export const MISBLAMED = { from: Date.UTC(2026, 10, 21), to: Date.UTC(2026, 10, 28), versions: ["0.2.26", "0.2.27"] } as const;
+export const MISBLAMED = { from: Date.UTC(2026, 10, 21), to: Date.UTC(2026, 11, 15), versions: ["0.2.26", "0.2.27"] } as const;
 const MISBLAMED_KEY = "misblamed-2026-11";
 const SHA256 = /^[a-f0-9]{64}$/;
 

@@ -247,6 +247,18 @@ describe("staged home updates", () => {
     expect(t.f.audit.entries(t.c.id).filter(e => e.action === "update_forgiven")).toHaveLength(1);
   });
 
+  it("still forgives that incident for a cloud that slept through it and rolled back on waking in early december", async () => {
+    const t = await updating();
+    await t.pass();
+    const u = t.c.managed!.update!;
+    u.guard.failed = ["1.1.0"];
+    u.guard.last = { kind: "rolled_back", version: "1.1.0", at: Date.UTC(2026, 11, 3), reason: "runs_failed" };
+    await t.pass();
+    expect(MISBLAMED.to).toBe(Date.UTC(2026, 11, 15));
+    expect(u.guard.failed).toEqual([]);
+    expect(t.f.audit.entries(t.c.id).find(e => e.action === "update_forgiven")).toMatchObject({ reason: "computer_down_2026_11" });
+  });
+
   it("keeps a release failed here when its rollback was a failed self-test, or its runs failed while the computer answered", async () => {
     const t = await updating();
     await t.pass();
