@@ -12,6 +12,7 @@ import { openPlaceSetup, usePlaceSetupOpen } from "@/lib/place-setup";
 import { localSetupImport } from "@/lib/setup-import";
 import { api, useStore } from "@/state/store";
 import { useBotMove } from "../BringBots";
+import { trapTab } from "./trap-tab";
 import { useNotesIntake } from "../NotesWaiting";
 import { WindowDragStrip } from "../DesktopCapabilities";
 import { AccountStep } from "./AccountStep";
@@ -49,24 +50,6 @@ export { cloudBought } from "./funnel";
 /** How long the first run looks for Grok bot's bots here before it settles on what it has: the steps before the bring
  * step take longer than this, so it is never waited on. */
 export const FIRST_RUN_LOOK_MS = 30_000;
-
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-/** Tab and Shift+Tab stay inside `root`, the way a modal dialog keeps them. */
-export function trapTab(event: ReactKeyboardEvent<HTMLElement>, root: HTMLElement | null): void {
-  if (event.key !== "Tab" || !root) return;
-  const focusable = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.getClientRects().length > 0);
-  if (!focusable.length) return;
-  const first = focusable[0]!;
-  const last = focusable[focusable.length - 1]!;
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first.focus();
-  }
-}
 
 /** The first run, one calm screen at a time: the welcome, a dusk bot account, where the bots live, an AI, bots from
  * another app (only when there are some), the phone (while the phone app is offered). It ends in Dusk's chat (Dusk made the Chief of Staff where no other
