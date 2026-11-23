@@ -7,6 +7,7 @@ import { useStore, type Bot } from "@/state/store";
 import { useBotEditor } from "../../bot-settings/BotEditorContext";
 import { useManagedSkills, type ManagedSkill } from "../../bot-settings/SkillsSection";
 import { friendlyError } from "@/lib/plain-error";
+import { askConfirm } from "../../ConfirmDialog";
 
 const SKILLS_SITE = "https://skills.sh";
 
@@ -25,7 +26,7 @@ export function useSkillActions(bot: Bot) {
 
   const remove = async (skill: ManagedSkill) => {
     if (skills.working) return;
-    if (!window.confirm(t("botPanel.skills.removeConfirm", { name: skill.name }))) return;
+    if (!(await askConfirm({ title: t("botPanel.skills.removeConfirm", { name: skill.name }), confirmLabel: t("confirm.remove") }))) return;
     skills.setWorking(skill.name);
     skills.setError("");
     try {

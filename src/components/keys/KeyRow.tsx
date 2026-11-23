@@ -12,6 +12,7 @@ import { checkKey, cleanKey, looksLikeKey, saveKey } from "./key-save";
 import { FormDialog } from "../ListRows";
 import { fieldLabelCls, smallButtonCls } from "../ui/GrokDialog";
 import { friendlyError } from "@/lib/plain-error";
+import { askConfirm } from "../ConfirmDialog";
 
 /** A key field: the panel's quiet hairline box, no fill, unchanged on hover and focus (the caret marks it). */
 export const KEY_FIELD = "h-7 w-full min-w-0 rounded-lg border border-transparent bg-transparent px-2.5 font-mono text-[12px] leading-7 text-ink placeholder:font-sans placeholder:text-ink-tertiary outline-none disabled:opacity-60";
@@ -285,8 +286,11 @@ export function KeyRow({
 
   const remove = async () => {
     if (busyRef.current) return;
-    if (!window.confirm(t("keys.row.removeConfirm", { label }))) return;
     busyRef.current = true;
+    if (!(await askConfirm({ title: t("keys.row.removeTitle", { label }), body: t("keys.row.removeBody"), confirmLabel: t("keys.row.remove") }))) {
+      busyRef.current = false;
+      return;
+    }
     generation.current += 1;
     setBusy("removing");
     setProblem(null);

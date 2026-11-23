@@ -12,6 +12,7 @@ import { OrgSkillsCard } from "./OrgSkillsCard";
 import { WriteCommandCard } from "./WriteCommandCard";
 import { Select } from "../Select";
 import { friendlyError } from "@/lib/plain-error";
+import { askConfirm } from "../ConfirmDialog";
 
 export interface ManagedSkill {
   name: string;
@@ -321,7 +322,7 @@ export function SkillsSection({ bot }: { bot: Bot }) {
   const remove = async (skill: ManagedSkill) => {
     if (skill.origin === "library") {
       if (assignmentBusy.current) return;
-      if (!window.confirm(`unassign “${skill.name}” from this bot? the skill stays in the library.`)) return;
+      if (!(await askConfirm({ title: t("skills.unassignTitle", { name: skill.name }), body: t("skills.unassignBody"), confirmLabel: t("confirm.remove") }))) return;
       assignmentBusy.current = true;
       setWorking(skill.name);
       setError("");
@@ -335,7 +336,7 @@ export function SkillsSection({ bot }: { bot: Bot }) {
       }
       return;
     }
-    if (!window.confirm(`remove the learned skill “${skill.name}”?`)) return;
+    if (!(await askConfirm({ title: t("botPanel.skills.removeConfirm", { name: skill.name }), confirmLabel: t("confirm.remove") }))) return;
     setWorking(skill.name);
     setError("");
     try {

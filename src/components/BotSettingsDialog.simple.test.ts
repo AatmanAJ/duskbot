@@ -74,7 +74,7 @@ vi.mock("@/lib/memory", async (importOriginal) => ({
   saveMemoryDoc: (...args: unknown[]) => fixture.saveMemory(...args),
 }));
 // The server renderer cannot portal; the dialog's props are what these tests read.
-vi.mock("./ConfirmDialog", () => ({ ConfirmDialog: () => null }));
+vi.mock("./ConfirmDialog", () => ({ ConfirmDialog: () => null, askConfirm: async () => true }));
 vi.mock("./bot-settings/useBotSettingsDerived", () => ({ useBotSettingsDerived: () => fixture.derived }));
 vi.mock("./DesktopCapabilities", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./DesktopCapabilities")>()),
@@ -1000,12 +1000,13 @@ describe("the drill-in pages", () => {
     expect(fixture.skills.toggle).toHaveBeenCalledWith(off);
     expect(rendered.html).not.toContain("Write a command");
 
+    const settle = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
     click(find(rendered, "data-panel-action", "remove-skill:summarise"));
-    await Promise.resolve();
+    await settle();
     expect(fixture.api).toHaveBeenCalledWith("/api/bots/scout/skills/summarise", { method: "DELETE" });
-    await Promise.resolve();
     expect(fixture.skills.refresh).toHaveBeenCalled();
     click(find(rendered, "data-panel-action", "remove-skill:triage"));
+    await settle();
     expect(fixture.skills.putAssignments).toHaveBeenCalledWith("triage", true);
 
     (find(rendered, "data-panel-form", "skill-import").props.onChange as (value: string) => void)("owner/repo");
