@@ -322,6 +322,17 @@ describe("an ops alert's end", () => {
     expect(mailer.outbox[1]!.subject).toBe("back to normal: contabo disk");
     expect(mailer.outbox[1]!.text).toContain("contabo disk is back to normal: 60%.");
   });
+  it("closes a keyed outage by the id its key gives, without counting a sighting", async () => {
+    const { time, mailer, incidents } = setup();
+    const outage = { source: "ops" as const, name: "cloud cfd2d798: bot computers down", key: "computer-cfd2d798b8ce4fd1aee28dbbd-1795000000000" };
+    const id = incidents.report({ ...outage, message: "cloud cfd2d798b8ce4fd1aee28dbbd: its bot computers cannot be reached" })!;
+    await incidents.flushNew();
+    expect(incidents.idOf(outage)).toBe(id);
+    time.now += HOUR;
+    expect(await incidents.recovered(incidents.idOf(outage), "cloud cfd2d798b8ce4fd1aee28dbbd: its bot computers answer again")).toBe(true);
+    expect(mailer.outbox.map(mail => mail.subject)).toEqual(["something's wrong: cloud cfd2d798: bot computers down", "back to normal: cloud cfd2d798: bot computers down"]);
+    expect((await incidents.list({ limit: 5 }))[0]!.count).toBe(1);
+  });
   it("mails a node's second outage on the same day as its own incident, down and back", async () => {
     const { time, mailer, incidents } = setup();
     const first = incidents.report({ source: "ops", name: "link node oracle-in down", message: "no answer", key: "ops-relay-node-oracle-in-down-1794579000000" })!;
