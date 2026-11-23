@@ -15,6 +15,9 @@ export interface ImportedSoulFacts {
   topics: readonly string[];
   skills: readonly string[];
   routines: readonly string[];
+  /** Routines it ran there that were not made here (they start on an event, or their schedule couldn't be read), and the
+   * memory topic that keeps each one's trigger and steps. */
+  notSetUp?: { routines: readonly string[]; topic: string };
   /** Apps it used there, to connect again here. */
   apps: readonly string[];
   /** Facts about the person went to About me rather than its notebook. */
@@ -58,7 +61,10 @@ export function importedSoul(facts: ImportedSoulFacts, max: number): string {
   ].join("\n");
   const tools = [
     ...(facts.skills.length ? [`## Skills\nYou brought these skills: ${list(facts.skills)}. Use the one that fits the task. A skill that is switched off stays off until the person has read it and switched it on.`] : []),
-    ...(facts.routines.length ? [`## Routines\nThese came over paused: ${list(facts.routines)}. Never switch one on yourself. When asked, say what each does and when it would run, and let the person turn it on.`] : []),
+    ...(facts.routines.length || facts.notSetUp?.routines.length ? [["## Routines",
+      ...(facts.routines.length ? [`These came over paused: ${list(facts.routines)}. Never switch one on yourself. When asked, say what each does and when it would run, and let the person turn it on.`] : []),
+      ...(facts.notSetUp?.routines.length ? [`These were not set up here: ${list(facts.notSetUp.routines)}. They start on something happening, or their schedule couldn't be read; each one's trigger and steps are in ${facts.notSetUp.topic}. When asked about your routines, name these too, and offer to set each one up again with the person.`] : []),
+    ].join("\n")] : []),
     ...(facts.apps.length ? [`## Apps\nIn ${facts.from} you used ${list(facts.apps)}. Until one is connected here in apps, say so in one line and work with what you have.`] : []),
   ];
   const tail = [

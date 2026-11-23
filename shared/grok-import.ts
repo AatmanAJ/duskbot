@@ -444,7 +444,7 @@ function eventNotes(name: string, from: MoveFrom, routines: readonly GrokRoutine
     routine.instruction, "",
   ]);
   return [`# ${name}: ${from.name} routines that run on an event`, "",
-    "These start on something happening instead of a schedule, so they were not turned into routines. Set up each one again here.", "",
+    "These start on something happening instead of a schedule, so they were not turned into routines. Ask me in chat to set one up again here.", "",
     ...sections].join("\n");
 }
 
@@ -549,6 +549,7 @@ export function grokMovePlan(bot: GrokBot, options: { timeZone?: string; takenSe
     name, title: bot.title, description, instructions: soul, from: from.name,
     topics: Object.keys(seed).filter((path) => path !== "MEMORY.md"),
     skills: planned.map((skill) => skill.name), routines: routineLabels, apps: bot.apps.map((app) => app.name),
+    ...(seed[notesFile] ? { notSetUp: { routines: unscheduled.map((routine) => oneLine(routine.name) || "routine"), topic: notesFile } } : {}),
     aboutMe: memory.facts.length > 0,
   }, BOT_PROFILE_LIMITS.soul);
   const packageId = `${agentKey}-${hash.toString(16).padStart(8, "0").slice(0, 6)}`;
