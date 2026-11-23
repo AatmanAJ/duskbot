@@ -194,7 +194,7 @@ export function createCloudsService(options: CloudsServiceOptions): CloudsServic
     if (!(error instanceof PoolFullError)) console.warn(`clouds: cloud ${c.id} step failed (attempt ${c.attempts + 1}): ${cause}`);
     if (c.backend && c.status !== "provisioning") {
       c.attempts++; c.nextAttemptAt = now() + Math.min(15_000 * 2 ** Math.min(c.attempts - 1, 6), 900_000);
-      if (c.attempts === 8) console.warn(`clouds: managed cloud ${c.id} keeps failing its lifecycle step (${cause})`);
+      if (c.attempts === 8) console.warn(`clouds: ALERT cloud ${c.id}: its lifecycle step failed 8 times in a row (${cause}); it is tried again every 15 min`);
       save(c); return;
     }
     if (error instanceof PoolFullError) {

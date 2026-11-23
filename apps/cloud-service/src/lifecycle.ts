@@ -17,6 +17,7 @@ import { homeBackupKey, homeVolumeScan, skippedPath, tarWithout, type BackupStor
 import { STREAM_SKIPPED } from "./home.ts";
 import { volumeLayer } from "./bundle.ts";
 import { DAY_MS, DEFAULT_DELETE_DELAY_DAYS, DEFAULT_RETENTION_DAYS, deletionVerdict, dueNotice, prunableBackups, type Entitlement, type NoticeKind, type Verdict } from "./retention.ts";
+import { outageEntry } from "./audit.ts";
 import type { Audit, AuditActor, AuditEntry } from "./audit.ts";
 import { RetryableCloudError } from "../../dashboard/server/clouds/http.ts";
 import { homeFailure } from "../../dashboard/server/clouds/home-client.ts";
@@ -36,7 +37,8 @@ const skippedInBackup = skippedPath(STREAM_SKIPPED);
 /** how often a backup being written looks at the disk again, in bytes of tar */
 const DISK_CHECK_BYTES = 128 * 1024 ** 2;
 const ENTITLE_RETRY_MS = [2 * 60_000, 5 * 60_000, 10 * 60_000, 20 * 60_000, 30 * 60_000];
-const ENTITLE_ALERT_TRIES = 3, ENTITLE_ALERT_LEFT_MS = 6 * 3_600_000;
+const ENTITLE_ALERT_LEFT_MS = 6 * 3_600_000;
+const when = (at: number) => `${new Date(at).toISOString().slice(0, 16).replace("T", " ")} utc`;
 const MINUTE = 60_000, HOUR = 3_600_000, BACKUP_RETRY_MS = 10 * MINUTE, SETUP_TRIES = 3, RESTORE_TRIES = 3, SETUP_PATIENCE_MS = 6 * HOUR, SETUP_ERROR_RETRY_MS = 6 * HOUR;
 
 export interface ManagedSettings {
@@ -325,14 +327,23 @@ export function createLifecycle(deps: LifecycleDeps) {
       if (problem?.cause !== cause) console.warn(`managed: the entitlement push to ${c.id} failed (${cause}); tried again with a growing wait`);
       b.entitleProblem = { cause, since: problem?.since ?? now(), tries, retryAt, alerted: problem?.alerted ?? false };
       const left = c.entitledAt === undefined ? 0 : c.entitledAt + ENTITLEMENT_DEFAULT_TTL_MS - now();
-      if (!b.entitleProblem.alerted && (tries >= ENTITLE_ALERT_TRIES || left < ENTITLE_ALERT_LEFT_MS)) {
+      if (!b.entitleProblem.alerted && left < ENTITLE_ALERT_LEFT_MS) {
         b.entitleProblem.alerted = true;
-        opsAlert(c, "entitle_failing", cause, `cloud ${c.id}: its entitlement refresh keeps failing (${cause}); the home refuses its clients once the last one runs out`);
+        log(c, "entitle_failing", "reconciler", cause);
+        const text = `cloud ${c.id}: its entitlement refresh has failed ${tries} times since ${when(b.entitleProblem.since)} (${cause}). `
+          + (left > 0 ? `the home stops serving its apps in ${Math.max(1, Math.round(left / 60_000))} min unless one gets through; it is tried again every few minutes.`
+            : "the home is refusing its apps now; it is tried again every few minutes.");
+        console.log(`managed: ${text}`);
+        deps.alert?.(outageEntry(true, now(), c.id, `entitle-${c.id}-${b.entitleProblem.since}`, `cloud ${c.id.slice(0, 8)}: entitlement failing`, text));
       }
       deps.save(c);
       throw new RetryableCloudError("Cloud home refused its entitlement.");
     }
-    if (problem) console.warn(`managed: the entitlement push to ${c.id} works again after ${problem.tries} failed tries (${problem.cause})`);
+    if (problem) {
+      console.log(`managed: the entitlement push to ${c.id} works again after ${problem.tries} tries (${problem.cause})`);
+      if (problem.alerted) deps.alert?.(outageEntry(false, now(), c.id, `entitle-${c.id}-${problem.since}`, `cloud ${c.id.slice(0, 8)}: entitlement failing`,
+        `cloud ${c.id}: its entitlement refresh works again after ${problem.tries} tries; the home serves its apps.`));
+    }
     b.entitleProblem = null;
     c.entitledAt = now(); deps.save(c);
   }
@@ -437,7 +448,7 @@ export function createLifecycle(deps: LifecycleDeps) {
     log(c, "backup_skipped", "reconciler", "disk_low", { free: deps.backups.freeBytes() });
     if (diskLowSince === null) {
       diskLowSince = now();
-      opsAlert(c, "backup_disk_low", "disk_low", `managed backups: under ${Math.round(settings.minFreeBytes / 1024 ** 3)} GiB free on the backup disk, new backups are skipped until there is room`);
+      opsAlert(c, "backup_disk_low", "disk_low", `managed backups: under ${Math.round(settings.minFreeBytes / 1024 ** 3)} GiB free on the backup disk; new backups are skipped until there is room`);
     }
   }
 
@@ -590,7 +601,7 @@ export function createLifecycle(deps: LifecycleDeps) {
    *  every SETUP_ERROR_RETRY_MS while the plan pays, unless its setup script itself failed every time (the operator's call) */
   async function setupErrored(c: StoredCloud) {
     const b = state(c);
-    if (b.setupErrorAt == null) { b.setupErrorAt = now(); log(c, "setup_error", "reconciler", "paused"); console.warn(`managed: ALERT cloud ${c.id}: its first setup failed; its machine is paused and setup is tried again later`); }
+    if (b.setupErrorAt == null) { b.setupErrorAt = now(); log(c, "setup_error", "reconciler", "paused"); console.warn(`managed: cloud ${c.id}: its first setup failed; its machine is paused and setup is tried again later`); }
     if (c.serverId) { const s = await provider.machine(c.serverId); if (s && (s.state === "running" || s.state === "starting")) await provider.power(c.serverId, "off"); }
     await retiredStep(c);
     const againAt = b.setupErrorAt + SETUP_ERROR_RETRY_MS;
