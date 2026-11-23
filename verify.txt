@@ -1,0 +1,19 @@
+## the new test on untouched main (dbfefd93d)
+   × Check again on an engine with no models says when the check failed, instead of the same empty note 42ms
+   × the failed-check note goes once the engines are read again 20ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+
+## the same test on this branch (c3a7202d0)
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9209 English strings)
+
+## related tests: src/components/ModelPicker src/components/SimpleModelMenu src/lib/simple-model-menu
+ Test Files  8 passed (8)
+      Tests  157 passed (157)

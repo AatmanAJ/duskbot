@@ -1,0 +1,40 @@
+{
+  "about": "Staged in the page: the page's fetch hands the app an engine list whose models are empty (every engine lists no models) and answers the fresh engine check (/api/instances?fresh=1) and refresh-models with 503, as if the engine's app didn't answer. The picker opens from Pepper's profile, then Check again is clicked.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1280,
+  "height": 800,
+  "scale": 2,
+  "steps": [
+    {
+      "eval": "(() => {\n  const orig = window.fetch.bind(window);\n  window.fetch = async (input, init) => {\n    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;\n    if (/\\/api\\/instances\\?fresh=1/.test(url) || /refresh-models/.test(url)) {\n      return new Response(JSON.stringify({ error: \"The engine's app didn't answer.\" }), { status: 503, headers: { 'content-type': 'application/json' } });\n    }\n    const res = await orig(input, init);\n    if (/\\/api\\/instances(\\?cached|\\?|$)/.test(url) && !/fresh/.test(url)) {\n      const body = await res.clone().json().catch(() => null);\n      if (!body || !Array.isArray(body.instances)) return res;\n      for (const one of body.instances) one.models = { ...one.models, default: '', options: [] };\n      return new Response(JSON.stringify(body), { status: res.status, headers: { 'content-type': 'application/json' } });\n    }\n    return res;\n  };\n  return true;\n})()"
+    },
+    {
+      "click": "Open Pepper's profile"
+    },
+    {
+      "waitMs": 900
+    },
+    {
+      "eval": "(window.dispatchEvent(new Event('focus')), true)"
+    },
+    {
+      "waitMs": 800
+    },
+    {
+      "eval": "(document.querySelector('[data-tour=\"model\"]')?.click(), true)"
+    },
+    {
+      "waitMs": 1500
+    },
+    {
+      "eval": "(document.querySelector('[data-simple-refresh]')?.click(), true)"
+    },
+    {
+      "waitMs": 1500
+    },
+    {
+      "shot": true
+    }
+  ]
+}
