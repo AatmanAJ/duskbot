@@ -59,7 +59,7 @@ export function frameOf(body, at) {
  * the person picked another workspace on this page. `remove(id)`: the person removed the server it waits on.
  */
 export function createWorkspaceReconnect(deps) {
-  const { fetch: fetchImpl, store, window, localOrigin, localReady, active, keeps = () => true, places, choose, remove = () => false, publish = () => {},
+  const { fetch: fetchImpl, store, window, localOrigin, localReady, active, keeps = () => true, places, choose, remove = () => false, publish = () => {}, wake = async () => null,
     timers = { set: (work, ms) => setTimeout(work, ms), clear: (timer) => clearTimeout(timer) }, now = Date.now, log = () => {} } = deps;
   /** The server that isn't answering: `{ id, name, origin, attempt, nextAt, checking }`, else null. */
   let lost = null, timer = null;
@@ -115,6 +115,13 @@ export function createWorkspaceReconnect(deps) {
       if (win && !win.isDestroyed()) void Promise.resolve(win.loadURL(entry.origin)).catch(() => {});
       schedule();
       return;
+    }
+    // a sleeping dusk cloud is never woken by a look (a read): asked once per wait, then looked at quickly while it starts
+    if (look === "asleep" && !entry.wakeAsked) {
+      lost = { ...lost, wakeAsked: true, attempt: 0 };
+      log(`workspace: ${entry.name} is asleep; asking it to wake`);
+      await Promise.resolve().then(() => wake(entry)).catch(() => null);
+      if (!still()) return stop();
     }
     showPage();
     schedule();
@@ -186,7 +193,7 @@ export function createWorkspaceReconnect(deps) {
     },
     /** The person asked to look again now (the page's button, back online, the window focused). */
     retry() {
-      if (lost && !lost.checking && !lost.gone) void look();
+      if (lost && !lost.checking && !lost.gone) { lost = { ...lost, wakeAsked: false }; void look(); }
       return view();
     },
     stop,

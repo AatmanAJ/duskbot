@@ -32,7 +32,7 @@ async function fakeServer() {
   };
 }
 
-function world(remote) {
+function world(remote, { wake } = {}) {
   const w = { clock: 1_000_000, timers: [], loads: [], published: [], chosen: [], saved: {}, url: `${remote.origin}/` };
   const entry = { id: "vps", kind: "remote", name: "Garage server", origin: remote.origin };
   w.entry = entry;
@@ -50,6 +50,7 @@ function world(remote) {
     publish: (view) => w.published.push(view),
     timers: { set: (work, ms) => { const timer = { work, at: w.clock + ms }; w.timers.push(timer); return timer; }, clear: (timer) => { w.timers = w.timers.filter((entry) => entry !== timer); } },
     now: () => w.clock,
+    ...(wake ? { wake } : {}),
   });
   /** Moves the clock on and runs what is due, then lets the real fetches settle. */
   w.later = async (ms) => {
@@ -198,4 +199,29 @@ test("a dusk cloud the edge says was deleted is said once, with Remove and the o
   assert.equal(served.length, asked, "never looked at again");
   w.reconnect.remove();
   assert.deepEqual(w.removed, ["vps"]);
+});
+
+test("a dusk cloud the edge says is asleep is asked to wake once, then opens when it is up; Try now asks again", async (t) => {
+  let awake = false;
+  const server = createServer((req, res) => {
+    if (!awake) return void res.writeHead(503, { "content-type": "text/plain", "x-dusk-cloud-power": "asleep" }).end("This dusk bot is asleep. It wakes when someone uses it.");
+    res.writeHead(200, { "content-type": "application/json" }).end("{}");
+  });
+  await new Promise((done) => server.listen(0, "127.0.0.1", done));
+  t.after(() => new Promise((done) => { server.closeAllConnections?.(); server.close(() => done()); }));
+  const origin = `http://127.0.0.1:${server.address().port}`, woken = [];
+  const w = world({ origin }, { wake: async (entry) => { woken.push(entry.origin); return "waking"; } });
+  w.reconnect.lost(w.entry);
+  await w.later(RETRY_MS[0]);
+  assert.deepEqual(woken, [origin], "asked once");
+  assert.equal(w.reconnect.view().attempt, 0, "looked at quickly while it starts");
+  await w.later(RETRY_MS[0]);
+  await w.later(RETRY_MS[1]);
+  assert.deepEqual(woken, [origin], "never asked again while it starts");
+  w.reconnect.retry();
+  for (let i = 0; i < 40 && w.reconnect.view()?.checking; i++) await new Promise((done) => setTimeout(done, 10));
+  assert.equal(woken.length, 2, "Try now asks again");
+  awake = true;
+  await w.later(RETRY_MS[0]);
+  assert.equal(w.loads.at(-1), origin, "opens once it answers");
 });
