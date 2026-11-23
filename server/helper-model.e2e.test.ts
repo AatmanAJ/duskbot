@@ -237,7 +237,7 @@ posixOnly("the helper model, through the real server", () => {
     expect((await api("GET", `/api/bots/${bot.id}/memory/upkeep`)).body).toMatchObject({ enabled: true, modelSteps: true });
     await turn(bot, "Just so you know, I'm vegetarian.");
     await waitFor(() => ledger(bot.id).some((row) => row.threadId.startsWith("memory-")), "Codex's own capture call to be booked");
-    expect(ledger(bot.id).filter((row) => row.threadId.startsWith("memory-")).every((row) => row.driverKind === "codex" && row.trigger.kind === "bot")).toBe(true);
+    expect(ledger(bot.id).filter((row) => row.threadId.startsWith("memory-")).every((row) => row.driverKind === "codex" && row.trigger.kind === "upkeep" && row.trigger.job === "memory")).toBe(true);
 
     expect(await compacted(bot)).toContain(`Checkpoint written by a helper model (may be incomplete):\n${SUMMARY}`);
     await waitFor(() => ledger(bot.id).some((row) => row.trigger.job === "compaction"), "the summary call to be booked");
@@ -252,7 +252,7 @@ posixOnly("the helper model, through the real server", () => {
     await waitFor(async () => (await memory(bot.id)).includes("The person is vegetarian"), "the bot's own capture");
     await waitFor(() => ledger(bot.id).some((row) => row.threadId.startsWith("memory-")), "the capture call to be booked");
     const background = ledger(bot.id).filter((row) => row.threadId.startsWith("memory-"));
-    expect(background.every((row) => row.trigger.kind === "bot" && row.model === "claude-haiku-5-5")).toBe(true);
+    expect(background.every((row) => row.trigger.kind === "upkeep" && row.trigger.job === "memory" && row.model === "claude-haiku-5-5")).toBe(true);
     expect(ledger(bot.id).some((row) => row.trigger.kind === "helper")).toBe(false);
   }, 180_000);
 });
