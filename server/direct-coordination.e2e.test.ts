@@ -206,7 +206,7 @@ it("coordinates a lead and its specialist from ordinary chat, each in its one ch
   expect(selfThread.inputSchema.properties.bot_id).toBeUndefined();
   expect(bots.find((bot: any) => bot.id === f.lead.id).tasks).toHaveLength(1);
   expect(bots.find((bot: any) => bot.id === f.specialist.id).tasks).toHaveLength(1);
-  expect(turn.system).toContain("only an actual coordinate_bots result proves that teammate participated");
+  expect(turn.system).toContain("Only an actual coordinate_bots result proves a teammate took part");
 }), 45_000);
 
 it("shows a settled delegation and its resume in the parent thread, and notifies once, with the answer", () => fixture(async f => {
