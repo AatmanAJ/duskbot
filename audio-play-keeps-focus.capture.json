@@ -1,0 +1,38 @@
+{
+  "about": "Pressing Play on a bot's audio attachment with Enter. Staged: the fake engine cannot attach files, so the app's own MessageAttachmentGallery is mounted under Pepper's reply from the page, and the page's fetch answers the message-file request with two seconds of silent WAV. The Play button is focused from the page, then Enter is a real key press. The dashed line under the player is drawn by the capture, from document.activeElement after the key press; it is not part of the app.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1280,
+  "height": 640,
+  "scale": 2,
+  "steps": [
+    {
+      "eval": "(async () => {\n  const rate = 8000, seconds = 2, samples = rate * seconds;\n  const wav = new DataView(new ArrayBuffer(44 + samples * 2));\n  const text = (at, s) => { for (let i = 0; i < s.length; i++) wav.setUint8(at + i, s.charCodeAt(i)); };\n  text(0, 'RIFF'); wav.setUint32(4, 36 + samples * 2, true); text(8, 'WAVE'); text(12, 'fmt ');\n  wav.setUint32(16, 16, true); wav.setUint16(20, 1, true); wav.setUint16(22, 1, true); wav.setUint32(24, rate, true);\n  wav.setUint32(28, rate * 2, true); wav.setUint16(32, 2, true); wav.setUint16(34, 16, true); text(36, 'data'); wav.setUint32(40, samples * 2, true);\n  const real = window.fetch.bind(window);\n  window.fetch = (input, init) => String(input).includes('/file') && String(input).includes('/messages/')\n    ? Promise.resolve(new Response(wav.buffer.slice(0), { headers: { 'content-type': 'audio/wav' } }))\n    : real(input, init);\n  const urls = performance.getEntriesByType('resource').map((e) => e.name);\n  const pick = (re) => urls.find((u) => re.test(new URL(u).pathname));\n  const [client, react, gallery] = await Promise.all([import(pick(/\\/deps\\/react-dom_client\\.js$/)), import(pick(/\\/deps\\/react\\.js$/)), import('/src/components/AttachmentGallery.tsx')]);\n  const createRoot = client.createRoot ?? client.default.createRoot;\n  const h = react.createElement ?? react.default.createElement;\n  const log = document.querySelector('[role=log]');\n  const rows = log.querySelectorAll('[data-mid]');\n  const last = rows[rows.length - 1];\n  const host = document.createElement('div');\n  host.setAttribute('data-staged-audio', '');\n  host.style.marginTop = '8px';\n  last.after(host);\n  createRoot(host).render(h(gallery.MessageAttachmentGallery, { text: '', attachments: [{ kind: 'file', path: '/store/standup-notes.wav', name: 'Standup notes.wav' }], message: { threadId: 'staged', messageId: 'staged' } }));\n  return true;\n})()"
+    },
+    {
+      "waitMs": 600
+    },
+    {
+      "eval": "(() => { const b = document.querySelector('[data-staged-audio] button'); b.focus(); return document.activeElement === b; })()"
+    },
+    {
+      "waitMs": 300
+    },
+    {
+      "shot": "f01-play-focused",
+      "only": "after"
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "waitMs": 1200
+    },
+    {
+      "eval": "(() => {\n  const at = document.activeElement;\n  const what = !at || at === document.body ? 'nothing: focus fell to the page'\n    : at.tagName === 'AUDIO' ? 'the audio player, \u201c' + (at.getAttribute('aria-label') || '') + '\u201d'\n    : (at.getAttribute('aria-label') || at.textContent || at.tagName).trim();\n  const host = document.querySelector('[data-staged-audio]');\n  const box = document.createElement('div');\n  box.textContent = 'Keyboard focus after Enter: ' + what;\n  Object.assign(box.style, { marginTop: '10px', padding: '6px 10px', border: '1px dashed rgba(255,255,255,0.35)', borderRadius: '8px', font: '12px/16px ui-monospace, Menlo, monospace', color: 'rgba(255,255,255,0.8)', width: 'fit-content' });\n  host.after(box);\n  return true;\n})()"
+    },
+    {
+      "shot": true
+    }
+  ]
+}

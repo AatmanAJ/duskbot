@@ -1,0 +1,18 @@
+## the new test on untouched main (dbfefd93d)
+   × pressing Play on a voice memo with the keyboard leaves focus on the player, not on the page 26ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+
+## the same test on this branch (16a610167)
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9208 English strings)
+
+## related tests: src/components/AttachmentGallery src/components/AttachmentPreview src/components/ChatView
+ Test Files  28 passed (28)
+      Tests  195 passed (195)
