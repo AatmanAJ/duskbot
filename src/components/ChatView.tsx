@@ -1212,7 +1212,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   // the bot's own label stays on the line while it leaves, after the turn's end has cleared it
   const shownLabel = useRef<{ chat: string; seed: string; label?: string }>({ chat: chatKey, seed: presenceSeed });
   // a new turn starts clean; the end of this one (busySince gone) keeps it
-  if (shownLabel.current.chat !== chatKey || (busySince !== null && shownLabel.current.seed !== presenceSeed)) shownLabel.current = { chat: chatKey, seed: presenceSeed };
+  if (shownLabel.current.chat !== chatKey || ((turnBusy || busySince !== null) && shownLabel.current.seed !== presenceSeed)) shownLabel.current = { chat: chatKey, seed: presenceSeed };
   if (live.label) shownLabel.current.label = live.label;
   const turnLabel = live.label ?? shownLabel.current.label;
   const waitingOnSomeone = teammatesWorking || pendingApprovals(messages).length > 0;
