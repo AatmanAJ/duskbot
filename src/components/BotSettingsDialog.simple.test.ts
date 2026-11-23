@@ -262,7 +262,7 @@ beforeEach(() => {
   fixture.api = vi.fn(() => Promise.resolve({}));
   fixture.saveMemory = vi.fn((_bot: unknown, path: unknown, text: unknown) => Promise.resolve({ ok: true, doc: { path, text, hash: "h2", exists: true } }));
   fixture.openExternal = vi.fn(() => Promise.resolve());
-  fixture.storeState = { settingsOpen: true, botSettingsSection: "overview", botSettingsExpandAccordion: false };
+  fixture.storeState = { settingsOpen: true, botSettingsSection: "overview", botSettingsExpandAccordion: false, routinesLoadState: "ready" };
   fixture.otherServer = null;
   fixture.skills = {
     skills: [], loading: false, working: "", error: "", reviewing: null, toggle: vi.fn(() => Promise.resolve()),
