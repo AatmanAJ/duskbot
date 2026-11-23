@@ -1,0 +1,20 @@
+## the new test on untouched main (dbfefd93d)
+   × src/components/bot-panel/modals/use-skill-actions.ts asks in the app's own dialog, not window.confirm 2ms
+   × src/components/bot-settings/SkillsSection.tsx asks in the app's own dialog, not window.confirm 0ms
+   × src/components/keys/KeyRow.tsx asks in the app's own dialog, not window.confirm 0ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  3 failed (3)
+
+## the same test on this branch (6167d4e4c)
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+
+## typecheck, lint, i18n
+pnpm typecheck: ok
+pnpm lint: ok
+locale catalogs valid (16 languages, 9211 English strings)
+
+## related tests: src/components/keys src/components/bot-settings src/components/bot-panel src/components/BotSettingsDialog.simple.test.ts src/components/ConfirmDialog src/components/SkillsSection
+ Test Files  36 passed (36)
+      Tests  347 passed (347)

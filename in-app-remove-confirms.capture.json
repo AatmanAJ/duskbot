@@ -1,0 +1,64 @@
+{
+  "about": "A saved Anthropic API key (an invented placeholder, saved through PUT /api/config), then Settings > Models > API keys > AI providers > Remove. The browser's own confirm box cannot be drawn by headless Chrome, so window.confirm is replaced in the page by a stub that records the question and answers Cancel: on main the shot shows the page with no dialog of the app's (the question went to the browser's box), on this branch the app's own confirm.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1280,
+  "height": 720,
+  "scale": 2,
+  "steps": [
+    {
+      "eval": "(async () => { const r = await fetch('/api/config', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ anthropic: { key: 'sk-ant-api03-QAexampleOnly0000000000000000' } }) }); return r.status; })()"
+    },
+    {
+      "reload": true
+    },
+    {
+      "waitMs": 800
+    },
+    {
+      "click": "You"
+    },
+    {
+      "waitMs": 400
+    },
+    {
+      "click": "Settings"
+    },
+    {
+      "waitMs": 700
+    },
+    {
+      "click": "Models"
+    },
+    {
+      "waitMs": 800
+    },
+    {
+      "eval": "([...document.querySelectorAll('.settings-pane button')].find((b) => b.textContent.startsWith('API keys')).click(), true)"
+    },
+    {
+      "waitMs": 700
+    },
+    {
+      "eval": "([...document.querySelectorAll('.settings-pane button')].find((b) => b.textContent.startsWith('AI providers')).click(), true)"
+    },
+    {
+      "waitMs": 700
+    },
+    {
+      "eval": "(() => { window.__asked = []; window.confirm = (question) => { window.__asked.push(String(question)); return false; }; return true; })()"
+    },
+    {
+      "eval": "(document.querySelector('[data-key-remove]').click(), true)"
+    },
+    {
+      "waitMs": 800
+    },
+    {
+      "eval": "JSON.stringify(window.__asked)"
+    },
+    {
+      "shot": true
+    }
+  ]
+}

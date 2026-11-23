@@ -1,0 +1,1 @@
+{ "in-app-remove-confirms.before-after.png": { "crop": "402,62,688,402", "arrange": "stack", "labels": ["before: Remove opens the browser's box", "after: the app's own confirm"] } }
