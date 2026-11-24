@@ -9,6 +9,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { launchCloudSendFixture, type CloudSendFixture, type CloudTeamFixture } from "../scripts/testing/cloud-send-fixture.ts";
+import { TYPED_WHILE_ASKED_NOTE } from "./host/ask-cards.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
 
 const CLEO = { email: "cleo@acme.test", role: "owner" as const };
@@ -178,7 +179,7 @@ it("takes Cleo's own words in Ledger's chat as the answer to the card Ledger wai
   const { work, row } = await cardIn(sinceQC2, (card) => card.subtitle === QUESTION);
   const sent = await say(ledger, work, "Just the footer text, please");
   expect(sent.message, "her line is kept, under the card it answers").toMatchObject({ role: "user", text: "Just the footer text, please", replyToId: row.id });
-  await until(async () => (await messages(work)).some((line) => line.role === "bot" && line.text === "QC2-B: Done with: Just the footer text, please"));
+  await until(async () => (await messages(work)).some((line) => line.role === "bot" && line.text === `QC2-B: Done with: Just the footer text, please ${TYPED_WHILE_ASKED_NOTE}`));
   expect((await messages(work)).find((line) => line.id === row.id)!.card).toMatchObject({ answered: "answer", answeredText: "Just the footer text, please" });
   await until(async () => (await messages(inbox)).some((line) => line.text === "QC2-L-DONE: Ledger is done."));
   expect((await messages(inbox)).find((line) => line.card?.requestId === row.card!.requestId)!.card, "the copy follows").toMatchObject({ answered: "answer" });
