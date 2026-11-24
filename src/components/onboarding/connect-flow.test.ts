@@ -204,6 +204,39 @@ describe("connect flow stages", () => {
     expect(flow.state.stage).toBe("connected");
   });
 
+  it("a Claude paste wait on Windows ends by itself when the CLI's own browser tab finished the sign-in", async () => {
+    let phase = "waiting";
+    const { flow, calls } = harness([
+      [{ instanceId: "claude", driverKind: "claudeAgent", snapshot: { state: "available", authenticated: false }, authentication: { method: "paste-code" } }],
+      () => [{ instanceId: "claude", driverKind: "claudeAgent", snapshot: { state: "available", authenticated: phase === "succeeded" } }],
+    ], {
+      "POST /api/instances/claude/auth/start": () => ({ auth: { phase: "waiting", flowId: "c1", authorizationUrl: "https://claude.ai/oauth/authorize?x=1" }, sameMachine: true }),
+      "GET /api/instances/claude/auth/status": () => ({ auth: { phase } }),
+    });
+    flow.start({ tile: "claude", candidates: ["claude"] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(flow.state).toMatchObject({ stage: "waiting", kind: "paste" });
+    await vi.advanceTimersByTimeAsync(POLL_MS * 2);
+    expect(flow.state.stage).toBe("waiting");
+    phase = "succeeded";
+    await vi.advanceTimersByTimeAsync(POLL_MS * 3);
+    expect(flow.state).toEqual({ stage: "connected", reused: false });
+    expect(calls.some((call) => call.includes("/auth/complete"))).toBe(false);
+  });
+
+  it("a Claude paste wait shows the server's plain reason when the CLI's own sign-in failed", async () => {
+    const { flow } = harness([
+      [{ instanceId: "claude", driverKind: "claudeAgent", snapshot: { state: "available", authenticated: false }, authentication: { method: "paste-code" } }],
+    ], {
+      "POST /api/instances/claude/auth/start": () => ({ auth: { phase: "waiting", flowId: "c1", authorizationUrl: "https://claude.ai/oauth/authorize?x=1" }, sameMachine: true }),
+      "GET /api/instances/claude/auth/status": () => ({ auth: { phase: "failed", message: "Claude Code finished but is not signed in. Start sign-in again." } }),
+      "POST /api/instances/claude/auth/cancel": () => ({ ok: true }),
+    });
+    flow.start({ tile: "claude", candidates: ["claude"] });
+    await vi.advanceTimersByTimeAsync(POLL_MS * 2);
+    expect(flow.state).toMatchObject({ stage: "failed", at: "waiting", reason: "error", message: "Claude Code finished but is not signed in. Start sign-in again." });
+  });
+
   it("keeps the paste box with the server's reason when it turns a pasted code away, and takes another", async () => {
     let done = false;
     let tries = 0;

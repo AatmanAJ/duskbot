@@ -550,16 +550,15 @@ export class ConnectFlow {
     }
   }
 
-  /** A pasted code or address; a redirect wait also ends when the sign-in reached the CLI by itself after all. */
+  /** A pasted code or address; either wait also ends when the sign-in reached the CLI by itself after all (Claude Code on
+   * Windows opens its own localhost sign-in tab next to the paste page). */
   private async pasted(run: number, signal: AbortSignal, base: string, flowId: string, kind: "paste" | "redirect", provider: DeviceSignInProvider, target: ConnectTarget): Promise<void> {
     const polling = new AbortController();
     const stopPolling = () => polling.abort();
     signal.addEventListener("abort", stopPolling, { once: true });
     const waiting = this.state;
     try {
-      const byItself = kind === "redirect"
-        ? this.poll(run, polling.signal, base, flowId, "callback", provider, target, { relaying: false }).then(() => null)
-        : new Promise<null>(() => {});
+      const byItself = this.poll(run, polling.signal, base, flowId, kind === "redirect" ? "callback" : "paste", provider, target, { relaying: false }).then(() => null);
       byItself.catch(() => {});
       for (;;) {
         const typed = new Promise<string>((resolve, reject) => {
