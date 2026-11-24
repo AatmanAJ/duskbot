@@ -3,6 +3,7 @@ import { CREDENTIAL_TARGETS, LOGIN_CREDENTIAL } from "../../shared/credential-re
 import { EMAIL_CREDENTIAL } from "../../shared/email.ts";
 import { OPTIONS_CARD_LIMITS, WATCHER_OPTIONS_CARD_BOT_ID } from "../../shared/options-card.ts";
 import { REPLY_STYLES } from "../../shared/reply-style.ts";
+import { MAX_CATCH_UP_MINUTES } from "../../shared/routines.ts";
 import { MAUS_COLOR_NAMES } from "../../shared/wire.ts";
 import { agentToolAnnotations } from "../agent-tool-policy.ts";
 import { CHAT_CARD_TOOL_DEFINITIONS } from "./agents-chat-card-tools.ts";
@@ -160,6 +161,16 @@ const TRIGGER_FIELDS_SCHEMA = {
   clear_timeout: {
     type: "boolean",
     description: "Only for updates: set true to remove an existing safety limit. Do not combine with timeout_minutes.",
+  },
+  catch_up_minutes: {
+    type: "integer",
+    minimum: 0,
+    maximum: MAX_CATCH_UP_MINUTES,
+    description: "Repeating schedules only: how many minutes late a missed run may still start. 0 never starts late. Omit for 12 hours.",
+  },
+  clear_catch_up: {
+    type: "boolean",
+    description: "Only for updates: set true to go back to the 12-hour default. Do not combine with catch_up_minutes.",
   },
   continuity: {
     type: "boolean",
@@ -665,8 +676,9 @@ const TOOL_DEFINITIONS = [
       type: "object",
       additionalProperties: false,
       properties: {
-        action: { type: "string", enum: ["create", "update", "pause", "resume", "run_now", "email", "note"] },
+        action: { type: "string", enum: ["create", "update", "pause", "resume", "run_now", "email", "note", "fail"] },
         note: { type: "string", maxLength: 4000, description: "action=note: notes for this automation's next run." },
+        reason: { type: "string", maxLength: 200, description: "action=fail: one line saying why this run could not do its job. Only inside a run of an automation." },
         trigger_id: { type: "string", description: "Not for create: the id from trigger_info." },
         when: {
           type: "string",

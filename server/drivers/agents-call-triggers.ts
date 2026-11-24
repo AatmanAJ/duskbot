@@ -2,6 +2,7 @@
 // resume, run_now) and delete_trigger deletes. Every change applies at once (no confirmation card); the harness records
 // it on the automation's card with Pause, Edit and Undo.
 import { normalizeCronSchedule } from "../../shared/routine-schedule.ts";
+import { MAX_CATCH_UP_MINUTES } from "../../shared/routines.ts";
 import { plainTimeZone } from "../../shared/plain-time-zone.ts";
 import { plainWhen } from "../plain-time.ts";
 
@@ -20,7 +21,7 @@ const USAGE_ROUTE = "/api/internal/trigger-usage";
 const MAIL_ROUTE = "/api/internal/bot-mail";
 const APP_ONLY = ["app", "event", "account"] as const;
 const REQUEST_ROUTE = "/api/internal/trigger-requests";
-const SCHEDULE_ONLY = ["schedule", "timeout_minutes", "timeoutMinutes", "clear_timeout", "continuity", "overlap", "run_on_startup", "runOnStartup", "check", "clear_check"] as const;
+const SCHEDULE_ONLY = ["schedule", "timeout_minutes", "timeoutMinutes", "clear_timeout", "catch_up_minutes", "catchUpMinutes", "clear_catch_up", "continuity", "overlap", "run_on_startup", "runOnStartup", "check", "clear_check"] as const;
 
 function jsonRecord(value: unknown): value is Json {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -241,6 +242,21 @@ function routineFields(args: Json): { fields: Json; error?: string } {
   )) {
     return { fields, error: "timeout_minutes must be a whole number from 5 to 240. Use clear_timeout to remove a limit." };
   }
+  if (args.catch_up_minutes != null && args.catchUpMinutes != null && args.catch_up_minutes !== args.catchUpMinutes) {
+    return { fields, error: "Choose one catch_up_minutes value; catch_up_minutes and catchUpMinutes disagree." };
+  }
+  const catchUpMinutes = args.catch_up_minutes ?? args.catchUpMinutes;
+  if (catchUpMinutes != null && (
+    typeof catchUpMinutes !== "number" || !Number.isInteger(catchUpMinutes) || catchUpMinutes < 0 || catchUpMinutes > MAX_CATCH_UP_MINUTES
+  )) {
+    return { fields, error: `catch_up_minutes must be a whole number from 0 to ${MAX_CATCH_UP_MINUTES}. Use clear_catch_up to remove it.` };
+  }
+  if (args.clear_catch_up != null && typeof args.clear_catch_up !== "boolean") {
+    return { fields, error: "clear_catch_up must be true or false." };
+  }
+  if (args.clear_catch_up === true && catchUpMinutes != null) {
+    return { fields, error: "Choose catch_up_minutes or clear_catch_up, not both." };
+  }
   if (args.continuity != null && typeof args.continuity !== "boolean") {
     return { fields, error: "continuity must be true or false." };
   }
@@ -270,6 +286,8 @@ function routineFields(args: Json): { fields: Json; error?: string } {
   if (runOn != null) fields.runOn = runOn;
   if (args.clear_timeout === true) fields.timeoutMinutes = null;
   else if (timeoutMinutes != null) fields.timeoutMinutes = timeoutMinutes;
+  if (args.clear_catch_up === true) fields.catchUpMinutes = null;
+  else if (catchUpMinutes != null) fields.catchUpMinutes = catchUpMinutes;
   if (typeof args.continuity === "boolean") fields.continuity = args.continuity;
   if (args.overlap !== undefined) fields.overlap = args.overlap;
   if (typeof runOnStartup === "boolean") fields.runOnStartup = runOnStartup;
@@ -400,6 +418,11 @@ export async function callTriggerTool(name: string, args: Json, context: ToolCal
     if (typeof args.note !== "string") return { text: "trigger action=note needs note: the whole notes for this automation's next run.", isError: true };
     const { ok, body } = await context.client.apiResponse(REQUEST_ROUTE, { method: "POST", body: JSON.stringify({ action: "note", note: args.note }) });
     return ok ? { text: String(body.text ?? "Saved.") } : { text: String(body.error ?? "The note was not saved."), isError: true };
+  }
+  if (name === "trigger" && args.action === "fail") {
+    if (typeof args.reason !== "string" || !args.reason.trim()) return { text: "trigger action=fail needs reason: one line saying why this run could not do its job.", isError: true };
+    const { ok, body } = await context.client.apiResponse(REQUEST_ROUTE, { method: "POST", body: JSON.stringify({ action: "fail", reason: args.reason }) });
+    return ok ? { text: String(body.text ?? "Marked.") } : { text: String(body.error ?? "The run was not marked as failed."), isError: true };
   }
   if (name === "trigger" && args.action === "create") {
     if (args.trigger_id !== undefined && args.trigger_id !== null) return { text: "trigger_id is for a trigger that exists; leave it out to create one.", isError: true };

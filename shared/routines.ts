@@ -8,6 +8,14 @@ export interface RoutineIntervalWindow {
   end: string;
 }
 
+/** The longest catch-up window a routine may set: 7 days. */
+export const MAX_CATCH_UP_MINUTES = 10_080;
+/** A routine's run limit and late-start window, without the ones it does not set. */
+export const runMinutesOf = ({ timeoutMinutes, catchUpMinutes }: { timeoutMinutes?: number | null; catchUpMinutes?: number | null }) => ({
+  ...(timeoutMinutes == null ? {} : { timeoutMinutes }),
+  ...(catchUpMinutes == null ? {} : { catchUpMinutes }),
+});
+
 export type RoutineSchedule =
   | RoutineCronSchedule
   | LimitResetSchedule
@@ -182,6 +190,9 @@ export interface Routine extends RoutineQuietFields {
   durationMinutes: number;
   /** Optional wall-clock safety limit. Missing means the run is unlimited. */
   timeoutMinutes?: number;
+  /** Cron, daily and interval routines: how many minutes after its time a missed run may still start. 0 never starts late.
+   * Missing means 12 hours. */
+  catchUpMinutes?: number;
   overlap?: "skip" | "queue";
   /** Each run starts with the previous run's report. */
   continuity?: boolean;
@@ -278,6 +289,8 @@ export interface RoutineInput extends RoutineQuietInput {
   durationMinutes?: number;
   /** `null` explicitly removes the limit; omission preserves it on updates. */
   timeoutMinutes?: number | null;
+  /** `null` removes the window, back to the 12-hour default; omission preserves it on updates. */
+  catchUpMinutes?: number | null;
   overlap?: "skip" | "queue";
   /** Each run starts with the previous run's report. */
   continuity?: boolean;

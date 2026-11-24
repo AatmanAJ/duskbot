@@ -254,6 +254,18 @@ Adjust the account, home, and PATH if yours differ; Node 24 must be available on
 that PATH. The service runs the installed CLI directly, so a restart uses the
 same release without an npm install prompt or an implicit upgrade.
 
+### Time zone
+
+A server clock is usually UTC. A `daily` routine at 18:00, or a bot's "current
+time", then follows UTC and not your day. Pick one:
+
+- Add `Environment=DUSK_ADOPT_TIME_ZONE=1` under `[Service]`. The server then
+  tells time in the zone your app reports, and follows you when you travel.
+- Or add `Environment=TZ=Area/City` (for example `TZ=Asia/Kolkata`) to fix one
+  zone.
+
+If both are set, `TZ` wins and the app's zone is ignored.
+
 ## Update
 
 - **Paths A and C with the service above:** choose the new published version,
@@ -395,3 +407,31 @@ path in the `maus` shell before starting `serve`. After a Chrome update, copy th
 new version and update both the AppArmor profile and service environment; the
 root-owned copy is not updated by the browser installer. Keep
 `kernel.apparmor_restrict_unprivileged_userns=1`.
+
+### Ubuntu 24.04 script check sandbox
+
+On Ubuntu 24.04, read-only script checks fail with "bubblewrap is installed but
+this computer will not let it make the namespaces a script check runs in" until
+AppArmor lets `bwrap` make user namespaces. `install.sh` writes this profile for
+you. On a manual install, save it as the root-owned
+`/etc/apparmor.d/duskbot-bwrap`. Checks with `access: "full"` run outside the
+sandbox and do not need it.
+
+```text
+abi <abi/4.0>,
+include <tunables/global>
+
+profile duskbot-bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+
+  include if exists <local/duskbot-bwrap>
+}
+```
+
+Load the profile:
+
+```sh
+sudo apparmor_parser -r /etc/apparmor.d/duskbot-bwrap
+```
+
+Keep `kernel.apparmor_restrict_unprivileged_userns=1`.
