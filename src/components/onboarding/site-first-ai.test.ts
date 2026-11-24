@@ -20,4 +20,9 @@ describe("the site on starting with no AI", () => {
       expect(site(page)).not.toContain(wrong);
     }
   });
+
+  it.each(["docs/faq.md", "home.html"])("%s promises free models only from the desktop app", (page) => {
+    expect(site(page)).toContain("the desktop app");
+    expect(site(page)).not.toContain("the app comes with free models");
+  });
 });
