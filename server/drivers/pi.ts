@@ -44,6 +44,7 @@ import {
   mergeLocalInject,
 } from "./local-inject.ts";
 import { appendNative } from "./native.ts";
+import { createHiddenTurns } from "./hidden-turn-text.ts";
 import { allowsTool, parseToolScope } from "../../shared/tool-scope.ts";
 import { buildMcpServers } from "./pi-mcp-servers.ts";
 
@@ -423,7 +424,9 @@ export const PiDriver: ProviderDriver<PiConfig> = {
       if (failure) throw failure.reason;
     };
 
+    const hidden = createHiddenTurns();
     const emit = (event: RuntimeEvent) => {
+      if (hidden.take(event)) return;
       for (const l of Array.from(listeners)) l(event);
     };
     const base = (threadId: string, turnId: string) => ({
@@ -973,6 +976,7 @@ export const PiDriver: ProviderDriver<PiConfig> = {
       refreshModels,
       ...(startupModelRefresh ? { startupModelRefresh } : {}),
       snapshot,
+      generateMemoryText: (prompt, options = {}) => hidden.text(prompt, options, { send: sendTurn, stop: async (threadId) => { await active.get(threadId)?.stop(); } }),
       adapter: {
         provider: DRIVER_KIND,
         capabilities: {

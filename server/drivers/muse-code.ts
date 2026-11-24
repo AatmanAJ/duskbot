@@ -29,6 +29,7 @@ import type { EffortLevel } from "../../shared/wire.ts";
 import { promptHalves, readPromptSplitReceipt, splitSessionPrompt, writePromptSplitReceipt, type PromptSplitReceipt } from "./prompt-split.ts";
 import { turnStdioMcpServers } from "./turn-mcp.ts";
 import { museMcpConfig, museMcpToolReferences } from "./muse-mcp.ts";
+import { createHiddenTurns } from "./hidden-turn-text.ts";
 
 const DRIVER_KIND = "museCode";
 const PROVIDER_ID = "meta";
@@ -295,8 +296,10 @@ export const MuseCodeDriver: ProviderDriver<MuseConfig> = {
     let catalogLoaded = false;
     let catalogError: string | null = null;
 
+    const hidden = createHiddenTurns();
     const emit = (event: Record<string, unknown> & { type: RuntimeEvent["type"]; threadId: string }) => {
       const full = { eventId: newEventId(), provider: DRIVER_KIND, providerInstanceId: instanceId, createdAt: new Date().toISOString(), ...event } as RuntimeEvent;
+      if (hidden.take(full)) return;
       for (const listener of listeners) listener(full);
     };
 
@@ -810,6 +813,15 @@ export const MuseCodeDriver: ProviderDriver<MuseConfig> = {
       get models() { return catalog; },
       refreshModels,
       adapter,
+      generateMemoryText: (prompt, options = {}) => hidden.text(prompt, options, {
+        send: (turn) => adapter.sendTurn(turn),
+        stop: (threadId) => adapter.interruptTurn(threadId),
+        release: async (threadId) => {
+          const state = threads.get(threadId);
+          threads.delete(threadId);
+          if (state) await closeHost(state);
+        },
+      }),
       async snapshot(): Promise<ProviderSnapshot> {
         version ??= await probeVersion();
         if (version === null) {

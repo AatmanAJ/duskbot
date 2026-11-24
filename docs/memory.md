@@ -470,10 +470,15 @@ without the person's `config.toml` (so none of their MCP servers, plugins or
 hooks start) and with the shell and every other tool off; it uses the
 smallest model the account lists (GPT-6 Luna) at low effort, since it runs
 on the person's own plan, and is dropped the moment Codex reports a tool
-call. The text goes only to the provider the bot already uses. On any other
-engine (Pi and Muse Code, for now) the panel says so — under Memory upkeep
-and under Learn from group chats — and only the expiry and exact-duplicate
-steps run, unless a helper model is set.
+call. On Pi and Muse Code, which have no one-off call, each step is a hidden
+turn of its own on the bot's own model, the way Hermes Agent replays a review
+on the model the chat used: a fresh session in an empty folder, no MCP
+servers and the ask-first approval mode; on Pi every tool is switched off by
+the dusk bot extension, and on either engine the turn is stopped and dropped
+the moment it starts a tool or asks for a permission. Its events never reach
+a chat and it writes no native log. The text goes only to the provider the
+bot already uses. An engine that can make none of these calls keeps only the
+expiry and exact-duplicate steps, unless a helper model is set.
 
 ### The helper model
 
@@ -481,10 +486,10 @@ A helper model fills the gaps an engine leaves. It is one connected provider
 instance, and optionally one of its models, that writes a small background
 text a bot's own engine cannot write:
 
-- memory upkeep's steps and the automatic skill review, for an engine with no
-  quick text call at all (Pi and Muse Code, for now);
-- the summary written when a long conversation is compacted, for those
-  engines and for Codex and the ACP engines too. Their own quick call starts
+- memory upkeep's steps and the automatic skill review, for an engine that can
+  make no background call at all (every built-in engine can now);
+- the summary written when a long conversation is compacted, for Pi, Muse
+  Code, Codex and the ACP engines. Their own background call starts
   a whole agent process, so it is kept for background work and a turn never
   waits on it; without a helper they keep a summary made of excerpts.
 

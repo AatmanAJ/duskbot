@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { NATIVE_DIR } from "../config.ts";
 import { redactSecrets } from "../redact.ts";
+import { HIDDEN_TURN_PREFIX } from "./hidden-turn-text.ts";
 import { capThreadLog, currentThreadLogCap } from "../thread-log-rotation.ts";
 
 const INLINE_DATA_CHARS = 1024;
@@ -64,7 +65,7 @@ export function streamedFragment(source: string, msg: unknown): boolean {
 }
 
 export function appendNative(threadId: string, entry: { dir: "in" | "out"; source: string; msg: unknown }) {
-  if (streamedFragment(entry.source, entry.msg)) return;
+  if (streamedFragment(entry.source, entry.msg) || threadId.startsWith(HIDDEN_TURN_PREFIX)) return;
   let line: string;
   try {
     // Session setup carries agent credentials (control/comms tokens, MCP headers) and

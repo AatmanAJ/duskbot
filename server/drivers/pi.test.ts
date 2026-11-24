@@ -380,6 +380,35 @@ describe("PiDriver turns (fake CLI)", () => {
     await instance?.dispose();
   });
 
+  it("writes background text as a hidden turn with no tools, in an empty folder, on the bot's own model", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "dusk-pi-background-"));
+    const dump = join(dir, "rpc.jsonl");
+    await create(undefined, { FAKE_PI_DUMP: dump, FAKE_PI_SCOPE_READY: "1" });
+    try {
+      const usage: unknown[] = [];
+      const text = await instance.generateMemoryText!("Read the chat and answer in JSON.", {
+        fallback: { model: "openai/gpt-4o", refused: new Set(), onRefused: () => {} },
+        onUsage: (row) => usage.push(row),
+      });
+      expect(text).toBe("Hello from pi");
+      expect(usage).toEqual([{ input: 12, output: 3, model: "openai/gpt-4o" }]);
+      expect(recorder.events).toEqual([]);
+      const rows = readFileSync(dump, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+      const launch = rows.find((row) => row.argv?.includes("-e"));
+      expect(launch.mcpConfig).toMatchObject({ toolScope: { allow: [] }, askUser: false, mcpServers: {} });
+      expect(launch.cwd).toMatch(/dusk-background-text-/);
+      expect(rows.find((row) => row.prompt)?.prompt.message).toBe("Read the chat and answer in JSON.");
+    } finally {
+      await removeTempDir(dir);
+    }
+  });
+
+  it("drops a background call the moment the engine starts a tool", async () => {
+    await create("tooluse", { FAKE_PI_SCOPE_READY: "1" });
+    await expect(instance.generateMemoryText!("hi")).rejects.toThrow(/asked for a tool/);
+    expect(recorder.events).toEqual([]);
+  });
+
   it("normalizes a full turn into the canonical event sequence", async () => {
     await create();
     const { turnId } = await instance.adapter.sendTurn({
