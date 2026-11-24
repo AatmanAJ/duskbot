@@ -8021,14 +8021,7 @@ const sideReplies = createSideReplies<SideSend>({
   stop: (send) => stopThreadForPerson(send.botId, send.threadId),
   redirect: async (send, prompt) => { sideQueue(send, prompt); await restartForPerson(send.botId, send.threadId, send.trigger); },
   post: (threadId, text) => void store.appendMessage(threadId, { role: "bot", kind: "text", text, sideReply: true }), asked: (send) => { if (oneOnOne(send.threadId) === send.botId) openAsks.opened(send.threadId, send.messageId); },
-  fallback: async (send) => {
-    if (canSteerThread(send.threadId) && await sideSteer(send, send.prompt) !== "refused") {
-      personFirst.wait(send.threadId, { requeue: (note) => sideQueue(send, note ? `${send.prompt}\n\n${note}` : send.prompt) });
-      return;
-    }
-    sideQueue(send, send.prompt);
-    personFirst.wait(send.threadId, {});
-  },
+  fallback: async (send) => { sideQueue(send, send.prompt); personFirst.wait(send.threadId, {}); },
   log: (line) => console.info(line),
 });
 bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) sideReplies.onEvent(event); });
