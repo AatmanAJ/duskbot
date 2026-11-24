@@ -1,0 +1,5 @@
+before (origin/main, fallback steer):
+"Who are ustwo's two closest competitors in London?"
+
+after (this branch):
+"Who are ustwo's two closest competitors in London?\n\n[dusk bot: the person sent this while you work on their earlier ask, and it has had no reply yet. If it adds to or corrects that work, take it in; if it is a separate ask, do it as well and open each result with which ask it finishes. Keep the earlier task going unless they say to stop or drop it.]"

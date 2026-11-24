@@ -1,0 +1,12 @@
+diff --git a/server/testing/fake-claude-cli.ts b/server/testing/fake-claude-cli.ts
+index 53457e92c..b2416e9f3 100755
+--- a/server/testing/fake-claude-cli.ts
++++ b/server/testing/fake-claude-cli.ts
+@@ -1365,6 +1365,7 @@ process.stdin.on("data", (c) => {
+       else {
+         steered.push(steeredText(prompt));
+         steeredMessages.push(prompt);
++        if (process.env.FAKE_CLAUDE_STEER_LOG) appendFileSync(process.env.FAKE_CLAUDE_STEER_LOG, `${JSON.stringify(steeredText(prompt))}\n`);
+       }
+       if (process.env.FAKE_CLAUDE_STEER_RECEIVED) writeFileSync(process.env.FAKE_CLAUDE_STEER_RECEIVED, "received");
+     } else {
