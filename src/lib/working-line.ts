@@ -8,7 +8,7 @@ export const WORKING_LINE_PICKS = ["restore", "drift", "ponder", "rock", "ellips
 export type WorkingLineVariant = (typeof WORKING_LINE_PICKS)[number];
 export type WorkingLinePick = "shipped" | WorkingLineVariant;
 
-export const WORKING_LINE: WorkingLinePick = "shipped";
+export const WORKING_LINE: WorkingLinePick = "rock";
 
 /** How a version's line comes and goes, and what carries its thinking besides the mascot. */
 export type LineSpec = {
