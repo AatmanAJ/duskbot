@@ -1,0 +1,46 @@
+12.4s busy: false; edit MISSING, old question shown
+13.0s edit sent (its POST held 10 s in the page)
+13.5s edit pending, old question hidden
+13.9s server killed
+16.5s server started
+17.0s edit pending, old question hidden
+17.6s edit pending, old question shown (UNDER OLD ANSWER)
+18.2s edit pending, old question shown (UNDER OLD ANSWER)
+18.7s edit pending, old question shown (UNDER OLD ANSWER)
+19.2s edit pending, old question shown (UNDER OLD ANSWER)
+19.7s edit pending, old question shown (UNDER OLD ANSWER)
+20.2s edit pending, old question shown (UNDER OLD ANSWER)
+20.7s edit pending, old question shown (UNDER OLD ANSWER)
+21.2s edit pending, old question shown (UNDER OLD ANSWER)
+21.7s edit pending, old question shown (UNDER OLD ANSWER)
+22.3s edit pending, old question shown (UNDER OLD ANSWER)
+22.8s edit pending, old question shown (UNDER OLD ANSWER)
+23.3s edit server copy, old question hidden
+23.9s edit server copy, old question hidden
+24.4s edit server copy, old question hidden
+24.9s edit server copy, old question hidden
+25.4s edit server copy, old question hidden
+25.9s edit server copy, old question hidden
+26.4s edit server copy, old question hidden
+26.9s edit server copy, old question hidden
+27.4s edit server copy, old question hidden
+27.9s edit server copy, old question hidden
+28.4s edit server copy, old question hidden
+28.9s edit server copy, old question hidden
+29.5s edit server copy, old question hidden
+30.0s edit server copy, old question hidden
+30.5s edit server copy, old question hidden
+31.0s edit server copy, old question hidden
+31.5s edit server copy, old question hidden
+32.0s edit server copy, old question hidden
+32.5s edit server copy, old question hidden
+33.0s edit server copy, old question hidden
+33.5s edit server copy, old question hidden
+34.0s edit server copy, old question hidden
+34.5s edit server copy, old question hidden
+35.1s edit server copy, old question hidden
+35.6s edit server copy, old question hidden
+36.1s edit server copy, old question hidden
+36.6s edit server copy, old question hidden
+37.1s edit server copy, old question hidden
+37.4s server rows with the edit: 1

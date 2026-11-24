@@ -1,0 +1,46 @@
+12.2s busy: false; edit MISSING, old question shown
+12.8s edit sent (its POST held 10 s in the page)
+13.3s edit pending, old question hidden
+13.5s server killed
+15.9s server started
+16.4s edit pending, old question hidden
+17.0s edit pending, old question hidden
+17.5s edit MISSING, old question shown
+18.1s edit MISSING, old question shown
+18.6s edit MISSING, old question shown
+19.2s edit MISSING, old question shown
+19.7s edit MISSING, old question shown
+20.2s edit MISSING, old question shown
+20.7s edit MISSING, old question shown
+21.2s edit MISSING, old question shown
+21.7s edit MISSING, old question shown
+22.2s edit MISSING, old question shown
+22.7s edit MISSING, old question shown
+23.2s edit server copy, old question hidden
+23.8s edit server copy, old question hidden
+24.3s edit server copy, old question hidden
+24.8s edit server copy, old question hidden
+25.3s edit server copy, old question hidden
+25.9s edit server copy, old question hidden
+26.4s edit server copy, old question hidden
+26.9s edit server copy, old question hidden
+27.4s edit server copy, old question hidden
+27.9s edit server copy, old question hidden
+28.4s edit server copy, old question hidden
+28.9s edit server copy, old question hidden
+29.4s edit server copy, old question hidden
+29.9s edit server copy, old question hidden
+30.4s edit server copy, old question hidden
+30.9s edit server copy, old question hidden
+31.4s edit server copy, old question hidden
+31.9s edit server copy, old question hidden
+32.5s edit server copy, old question hidden
+33.0s edit server copy, old question hidden
+33.5s edit server copy, old question hidden
+34.0s edit server copy, old question hidden
+34.5s edit server copy, old question hidden
+35.0s edit server copy, old question hidden
+35.5s edit server copy, old question hidden
+36.0s edit server copy, old question hidden
+36.5s edit server copy, old question hidden
+36.8s server rows with the edit: 1
