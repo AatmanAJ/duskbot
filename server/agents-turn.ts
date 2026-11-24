@@ -9,7 +9,7 @@ import { supportsWorkspaceFiles } from "./workspace.ts";
 /** The facts of a conversation that decide its agents tools. A settings change may change them; a turn never does. */
 export interface AgentsConversation {
   threadId: string;
-  bot: NonNullable<Parameters<typeof roleToolEnv>[0]> & { id: string; computer?: string; memoryEnabled?: boolean; xResearch?: boolean };
+  bot: NonNullable<Parameters<typeof roleToolEnv>[0]> & { id: string; computer?: string; memoryEnabled?: boolean; xResearch?: boolean; readsOtherChats?: boolean };
   /** A room's thread: rooms refuse widgets, pages and a computer pick. */
   room: boolean;
   /** The bot works on its team's cloud computer, so it has no computer of its own to pick. */
@@ -50,6 +50,7 @@ export function agentsServerEnv(conversation: AgentsConversation, turn: AgentsTu
     DUSK_TURN_DEPTH: String(turn.depth),
     DUSK_SKILL_AUTHORING_ENABLED: flag(host.skillAuthoring),
     DUSK_MEMORY_ENABLED: flag(bot.memoryEnabled !== false),
+    DUSK_READS_OTHER_CHATS: flag(bot.readsOtherChats === true && !host.cloudHome && !conversation.room),
     DUSK_CLOUD_HOME: flag(host.cloudHome), DUSK_TEAM_PEOPLE: flag(host.team), DUSK_ROOM: flag(conversation.room),
     DUSK_VOICE_NOTES: flag(host.voiceNotes),
     DUSK_SLACK: flag(host.slack === true),

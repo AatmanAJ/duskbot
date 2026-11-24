@@ -43,6 +43,7 @@ export type BotPatch = Partial<
     | "composio"
     | "browser"
     | "recordBrowserSteps"
+    | "readsOtherChats"
     | "mcpServers"
     | "modelSelection"
   >

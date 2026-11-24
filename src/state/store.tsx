@@ -339,6 +339,7 @@ export interface Bot extends DefaultBotFields, Pick<WireBot, "mascotFaceColor" |
   limitMode?: WireBot["limitMode"];
   browser?: boolean;
   recordBrowserSteps?: boolean;
+  readsOtherChats?: boolean;
   memoryUpkeep?: boolean;
   cacheKeepWarm?: boolean | null;
   helperModel?: boolean;
