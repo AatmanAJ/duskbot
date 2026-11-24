@@ -1,0 +1,10 @@
+import { readFileSync } from "node:fs";
+import { grokMovePlan, parseGrokExport } from "../shared/grok-import.ts";
+const [file, url] = process.argv.slice(2);
+const [bot] = parseGrokExport(readFileSync(file!, "utf8"));
+const plan = grokMovePlan(bot!, { timeZone: "Europe/London" });
+const res = await fetch(`${url}/api/teams/import?mode=add`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(plan.document) });
+const answer = await res.json() as { bots?: Array<{ id: string; name: string }> };
+const id = answer.bots?.[0]?.id;
+for (const skill of plan.skills) if (skill.on && id) await fetch(`${url}/api/bots/${id}/skills/${encodeURIComponent(skill.folder)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: true }) });
+console.log(JSON.stringify({ status: res.status, id, skills: plan.skills }));
