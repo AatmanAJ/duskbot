@@ -32,6 +32,7 @@ export interface ClosedFileLinks {
 }
 
 export function closeUnclosedFileLinks(markdown: string): ClosedFileLinks {
+  if (!markdown.includes("](<")) return { markdown, inserted: [] };
   const matches = [...markdown.matchAll(UNCLOSED_FILE_DESTINATION)];
   if (!matches.length) return { markdown, inserted: [] };
   const literal = literalRanges(markdown);

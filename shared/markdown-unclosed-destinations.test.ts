@@ -24,6 +24,13 @@ describe("unclosed file link destinations", () => {
     ]) expect(closed(text)).toBe(text);
   });
 
+  it("leaves a long line of [ as it is, quickly", () => {
+    const brackets = "[".repeat(200_000);
+    const started = performance.now();
+    expect(closeUnclosedFileLinks(brackets)).toEqual({ markdown: brackets, inserted: [] });
+    expect(performance.now() - started).toBeLessThan(50);
+  });
+
   it("never edits code", () => {
     const text = "`[a](</w/a.md)`\n\n```\n[b](</w/b.md)\n```";
     expect(closed(text)).toBe(text);
