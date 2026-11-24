@@ -162,6 +162,13 @@ function httpsLink(value: string | null | undefined): string | null {
   } catch { return null; }
 }
 
+const INSTALL_RESUMES = 3;
+const INSTALL_RESUME_MS = 2_000;
+
+/** No answer came back at all (fetch's TypeError, a timeout): not an HTTP error and not our own abort. */
+const droppedRequest = (cause: unknown): boolean =>
+  cause instanceof TypeError || (cause instanceof DOMException && cause.name === "TimeoutError") || (cause as { status?: unknown } | null)?.status === 0;
+
 class StageEnded extends Error {
   constructor(readonly reason: FailReason, readonly detail: string | null = null, readonly waking = false) { super(reason); }
 }
@@ -375,7 +382,18 @@ export class ConnectFlow {
             this.set(installing, run);
           });
           try {
-            return await this.deps.api(`${base(installId)}/install`, { method: "POST", signal: stageSignal });
+            for (let resumed = 0; ; resumed++) {
+              try {
+                return await this.deps.api(`${base(installId)}/install`, { method: "POST", signal: stageSignal });
+              } catch (cause) {
+                // the server keeps installing when the request drops (the computer slept); asking again joins that run
+                if (stageSignal.aborted || resumed >= INSTALL_RESUMES || !droppedRequest(cause)) throw cause;
+                this.deps.trail("connect.install.resume", { tile: target.tile, instance: installId, resumed: resumed + 1 });
+                await sleep(INSTALL_RESUME_MS, stageSignal);
+                const now = await read().catch(() => null);
+                if (now && (now.reused || (now.usable ?? now.first)?.snapshot.state === "available")) return null;
+              }
+            }
           } finally {
             done.abort();
             await watching;

@@ -91,6 +91,8 @@ export function createInstanceRoutes(deps: InstanceRouteDeps): RouteHandler {
   };
   // One updater per executable: Claude instances can share an install, and two self-updates would race its files.
   const claudeUpdatesInFlight = new Set<string>();
+  // A request the client dropped (sleep, a lost connection) keeps its install running; a repeat joins the same run.
+  const installsRunning = new Map<string, number>();
   return async ({ req, res, url, path, method, auth, json, readBody }) => {
     if (method === "GET" && path === "/api/instances/hidden") {
       const hidden = Object.entries(persistableInstanceConfigs(cfg)).filter(([, entry]) => entry.hidden === true);
@@ -183,7 +185,7 @@ export function createInstanceRoutes(deps: InstanceRouteDeps): RouteHandler {
     const installing = /^\/api\/instances\/([\w.-]+)\/install$/.exec(path);
     if (method === "GET" && installing) {
       res.setHeader("cache-control", "no-store");
-      return json(res, 200, { progress: installProgress.get(installing[1]) });
+      return json(res, 200, { progress: installProgress.get(installing[1]), installing: (installsRunning.get(installing[1]) ?? 0) > 0 });
     }
 
     const authStatus = /^\/api\/instances\/([\w.-]+)\/auth\/status$/.exec(path);
@@ -219,10 +221,16 @@ export function createInstanceRoutes(deps: InstanceRouteDeps): RouteHandler {
         }
         if (action === "install") {
           let installed: Awaited<ReturnType<typeof registry.installRuntime>>;
+          installsRunning.set(instanceId, (installsRunning.get(instanceId) ?? 0) + 1);
           try {
             installed = await registry.installRuntime(instanceId, installProgress.sink(instanceId));
           } finally {
-            installProgress.clear(instanceId);
+            const left = (installsRunning.get(instanceId) ?? 1) - 1;
+            if (left > 0) installsRunning.set(instanceId, left);
+            else {
+              installsRunning.delete(instanceId);
+              installProgress.clear(instanceId);
+            }
           }
           if (!installed) return json(res, 404, { error: "This AI can't be installed automatically on this computer." });
           const usingAppCopy = installed !== true && await useAppCopy(instanceId, installed.useCli);

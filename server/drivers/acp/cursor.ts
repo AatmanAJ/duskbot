@@ -106,7 +106,12 @@ export const STATIC_CURSOR_MODELS: ModelCatalog = {
 const CURSOR_CLIENT_META = { parameterizedModelPicker: true };
 
 const SLUG = /^[a-z0-9][a-z0-9._:+-]*$/i;
-const EXEC_TIMEOUT_MS = 8_000;
+/** On Windows cursor-agent (installer 2026.11.22) starts through powershell.exe and then node.exe on a large bundle; the
+ * first start after an install, with antivirus scanning the freshly unpacked files, can take well over 8 seconds. Both
+ * windows together stay under the registry's one-minute status deadline (version, then up to two status reads). */
+export function cursorProbeTimeouts(platform: NodeJS.Platform = process.platform): { version: number; status: number } {
+  return platform === "win32" ? { version: 30_000, status: 12_000 } : { version: 8_000, status: 8_000 };
+}
 
 const nonBlank = (value: string | undefined): boolean => Boolean(value?.trim());
 
@@ -292,7 +297,7 @@ function execText(
   env: Record<string, string | undefined>,
 ): Promise<string | null> {
   return new Promise((resolve) => {
-    run(cli, args, { timeout: EXEC_TIMEOUT_MS, env: env as NodeJS.ProcessEnv }, (err, stdout) => {
+    run(cli, args, { timeout: cursorProbeTimeouts().status, env: env as NodeJS.ProcessEnv }, (err, stdout) => {
       if (err) return resolve(null);
       resolve(String(stdout ?? ""));
     });
@@ -462,6 +467,7 @@ const support = (run: typeof execCli): AcpSupport => ({
   // Other coding agents can install a generic `agent` shim; `cursor-agent` is unambiguous.
   defaultCli: "cursor-agent",
   nativeSource: "cursor.acp",
+  versionProbeTimeoutMs: cursorProbeTimeouts().version,
   loginNote: "Cursor needs you to sign in again.",
 
   deviceSignIn: CURSOR_SIGN_IN,

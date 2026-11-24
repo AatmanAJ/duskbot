@@ -8,7 +8,7 @@ import { stripVTControlCharacters } from "node:util";
 import type { EngineInstall } from "./contracts.ts";
 import { stripWorkspaceCredentialEnv } from "./config.ts";
 import { augmentedPath, findCliCandidates, resetPathCache } from "./env-path.ts";
-import { killCliTree, spawnCli } from "./procs.ts";
+import { execCli, killCliTree, spawnCli } from "./procs.ts";
 
 export interface ScriptInstaller {
   url: string;
@@ -19,6 +19,7 @@ const MAX_SCRIPT_BYTES = 1024 * 1024;
 const MAX_OUTPUT = 64 * 1024;
 const DEFAULT_TIMEOUT_MS = 10 * 60_000;
 const FETCH_TIMEOUT_MS = 60_000;
+const WARM_UP_TIMEOUT_MS = 90_000;
 
 const POSIX = /^curl(?:\s+-[A-Za-z]+)*\s+'?(https:\/\/[^\s'|]+)'?(?:\s+-[A-Za-z]+)*\s*\|\s*(bash|sh)$/;
 const WINDOWS = /^(?:irm\s+'?(https:\/\/[^\s'|)]+)'?\s*\|\s*iex|iex\s*\(\s*irm\s+'?(https:\/\/[^\s'|)]+)'?\s*\))$/i;
@@ -43,6 +44,9 @@ export interface ScriptInstallOptions {
   timeoutMs?: number;
   env?: NodeJS.ProcessEnv;
   fetchImpl?: typeof fetch;
+  /** How long the first start of the installed CLI may take (Windows only). */
+  warmUpTimeoutMs?: number;
+  platform?: NodeJS.Platform;
   /** For tests: the program that runs the saved script. */
   shellCommand?: (installer: ScriptInstaller, file: string) => { command: string; args: string[] };
 }
@@ -82,16 +86,16 @@ async function installOnce(installer: ScriptInstaller, options: ScriptInstallOpt
   const script = await fetchScript(installer.url, options.fetchImpl ?? fetch);
   const dir = mkdtempSync(join(tmpdir(), "dusk-install-"));
   const file = join(dir, installer.shell === "powershell" ? "install.ps1" : "install.sh");
+  const env: NodeJS.ProcessEnv = {
+    ...(options.env ?? process.env),
+    PATH: augmentedPath(),
+    NO_COLOR: "1",
+    CI: "1",
+    NONINTERACTIVE: "1",
+  };
+  stripWorkspaceCredentialEnv(env as Record<string, string | undefined>);
   try {
     writeFileSync(file, script, { mode: 0o700 });
-    const env: NodeJS.ProcessEnv = {
-      ...(options.env ?? process.env),
-      PATH: augmentedPath(),
-      NO_COLOR: "1",
-      CI: "1",
-      NONINTERACTIVE: "1",
-    };
-    stripWorkspaceCredentialEnv(env as Record<string, string | undefined>);
     const { command, args } = (options.shellCommand ?? defaultShell)(installer, file);
     const result = await runScript(command, args, env, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
     if (result.code !== 0) throw new Error(`The installer stopped before it finished.${tail(result.output)}`);
@@ -99,9 +103,19 @@ async function installOnce(installer: ScriptInstaller, options: ScriptInstallOpt
     rmSync(dir, { recursive: true, force: true });
   }
   resetPathCache();
-  if (options.cli && findCliCandidates(options.cli).length === 0) {
+  if (!options.cli) return;
+  if (findCliCandidates(options.cli).length === 0) {
     throw new Error(`The installer finished, but \`${options.cli}\` was not found afterwards.`);
   }
+  if ((options.platform ?? process.platform) === "win32") await warmUp(options.cli, env, options.warmUpTimeoutMs ?? WARM_UP_TIMEOUT_MS);
+}
+
+/** On Windows a freshly installed CLI's first start (antivirus scanning the new files) is the slow one; taking it here, inside
+ * the install, keeps the status read after it within its usual window. Its outcome is the status read's to report. */
+function warmUp(cli: string, env: NodeJS.ProcessEnv, timeoutMs: number): Promise<void> {
+  return new Promise((resolveWarm) => {
+    execCli(cli, ["--version"], { env: { ...env, PATH: augmentedPath() }, timeout: timeoutMs, killSignal: "SIGKILL", maxBuffer: MAX_OUTPUT }, () => resolveWarm());
+  });
 }
 
 function tail(output: string): string {

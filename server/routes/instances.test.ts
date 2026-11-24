@@ -70,7 +70,7 @@ async function serve(extra: Partial<InstanceRouteDeps> = {}) {
     await call("GET", "/api/instances");
     return fake.probes.length;
   };
-  return { sign, call, probesAfterList, base, fake };
+  return { sign, call, probesAfterList, base, fake, registry };
 }
 
 describe("engine sign-in routes", () => {
@@ -283,3 +283,21 @@ describe("hiding a provider", () => {
   });
 });
 
+
+describe("engine install route", () => {
+  it("keeps installing after the client drops its request, and says so until the install ends", async () => {
+    const { call, base, registry } = await serve();
+    let finish: () => void = () => {};
+    let runs = 0;
+    registry.installRuntime = async () => { runs++; await new Promise<void>((done) => { finish = done; }); return true; };
+    expect(await call("GET", "/api/instances/a/install")).toEqual({ progress: null, installing: false });
+    const dropped = new AbortController();
+    const first = fetch(`${base}/api/instances/a/install`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}", signal: dropped.signal }).catch(() => null);
+    await expect.poll(() => runs).toBe(1);
+    dropped.abort();
+    await first;
+    expect(await call("GET", "/api/instances/a/install")).toMatchObject({ installing: true });
+    finish();
+    await expect.poll(async () => (await call("GET", "/api/instances/a/install")).installing).toBe(false);
+  });
+});

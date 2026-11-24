@@ -288,6 +288,59 @@ describe("an AI installed by its vendor's own script (Cursor)", () => {
     expect(calls.filter((call) => call.endsWith("/install"))).toEqual(["POST /api/instances/cursor/install"]);
   });
 
+  it("asks again when the install request drops (the computer slept) and carries on into sign-in", async () => {
+    let posts = 0;
+    const { flow, seen, calls, trail } = harness([
+      [cursor({ state: "unavailable", reason: "`cursor-agent` CLI not found" })],
+      [cursor({ state: "unavailable", reason: "`cursor-agent` CLI not found" })],
+      [cursor({ state: "available", authenticated: false })],
+    ], {
+      "POST /api/instances/cursor/install": () => ++posts === 1 ? Promise.reject(new TypeError("Failed to fetch")) : { instances: [] },
+      "POST /api/instances/cursor/auth/start": () => cursorCode,
+      "GET /api/instances/cursor/auth/status": () => ({ auth: { phase: "waiting" } }),
+    });
+    flow.start(cursorTarget);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(seen).toEqual(["preparing", "installing", "opening", "waiting"]);
+    expect(calls.filter((call) => call === "POST /api/instances/cursor/install")).toHaveLength(2);
+    expect(trail.find(([ev]) => ev === "connect.install.resume")?.[1]).toMatchObject({ tile: "cursor", resumed: 1 });
+  });
+
+  it("does not install again when a dropped install finished while the computer slept", async () => {
+    const { flow, seen, calls } = harness([
+      [cursor({ state: "unavailable", reason: "`cursor-agent` CLI not found" })],
+      [cursor({ state: "available", authenticated: false })],
+    ], {
+      "POST /api/instances/cursor/install": () => Promise.reject(new TypeError("Failed to fetch")),
+      "POST /api/instances/cursor/auth/start": () => cursorCode,
+      "GET /api/instances/cursor/auth/status": () => ({ auth: { phase: "waiting" } }),
+    });
+    flow.start(cursorTarget);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(seen).toEqual(["preparing", "installing", "opening", "waiting"]);
+    expect(calls.filter((call) => call === "POST /api/instances/cursor/install")).toHaveLength(1);
+  });
+
+  it("ends at the install step with plain words after the dropped request is asked again three times", async () => {
+    const { flow, calls } = harness([[cursor({ state: "unavailable", reason: "`cursor-agent` CLI not found" })]], {
+      "POST /api/instances/cursor/install": () => Promise.reject(new TypeError("Failed to fetch")),
+    });
+    flow.start(cursorTarget);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(calls.filter((call) => call === "POST /api/instances/cursor/install")).toHaveLength(4);
+    expect(flow.state).toMatchObject({ stage: "failed", at: "installing", reason: "error" });
+  });
+
+  it("does not ask again after an install the server refused", async () => {
+    const { flow, calls } = harness([[cursor({ state: "unavailable", reason: "`cursor-agent` CLI not found" })]], {
+      "POST /api/instances/cursor/install": () => Promise.reject(Object.assign(new Error("The installer stopped before it finished."), { status: 500 })),
+    });
+    flow.start(cursorTarget);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(calls.filter((call) => call === "POST /api/instances/cursor/install")).toHaveLength(1);
+    expect(flow.state).toMatchObject({ stage: "failed", at: "installing" });
+  });
+
   it("ends a failed install at the install step, and Try again installs again", async () => {
     let fail = true;
     const { flow, calls } = harness([
