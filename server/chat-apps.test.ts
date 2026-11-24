@@ -151,6 +151,16 @@ describe("update_html", () => {
     expect(row("m1").app).toMatchObject({ title: "Renamed", rev: 2 });
   });
 
+  it("takes the bot's fallback text for the new version, and writes one from the page when none is given", () => {
+    const { call, row } = setup();
+    call({ tool: "show_html", html: PAGE, title: "Hours", fallback_text: "Q3 hours: 217.5 in all." });
+    call({ tool: "update_html", app_id: "m1", html: "<p>Q3 and October</p>", fallback_text: "Q3 and October hours: 273.5 in all." });
+    expect(row("m1").text).toBe("Q3 and October hours: 273.5 in all.");
+    call({ tool: "update_html", app_id: "m1", html: "<p>November too</p>" });
+    expect(row("m1").text).toBe("[App] Hours\nNovember too");
+    expect(call({ tool: "update_html", app_id: "m1", html: "<p>x</p>", fallback_text: 7 })).toEqual({ ok: false, status: 400, error: "fallback_text: must be a string." });
+  });
+
   it("refuses another thread's row, another bot's row, an MCP row and a row that is not an app", () => {
     const { call, rows, store } = setup();
     call({ tool: "show_html", html: PAGE, title: "Mine" }, "other-thread");

@@ -184,6 +184,14 @@ describe("the chat-app tools", () => {
     expect(JSON.parse(apiResponse.mock.lastCall![1]!.body as string)).toMatchObject({ app_id: "m9", frameless: false });
   });
 
+  it("passes fallback_text on when a page is replaced, as when it is shown", async () => {
+    const { apiResponse, context } = harness({ ok: true, status: 201, body: { messageId: "m9" } });
+    await callTool("show_html", { app_id: "m9", html: "<p>October</p>", fallback_text: "Hours with October added." }, context);
+    expect(JSON.parse(apiResponse.mock.lastCall![1]!.body as string)).toEqual({
+      tool: "update_html", app_id: "m9", html: "<p>October</p>", fallback_text: "Hours with October added.",
+    });
+  });
+
   it("says when something in the page was masked as a secret", async () => {
     const { context } = harness({ ok: true, status: 201, body: { messageId: "m9", masked: true } });
     expect((await callTool("show_html", { html: "<p>hi</p>", title: "Hi" }, context)).text).toContain("masked before it was stored");
