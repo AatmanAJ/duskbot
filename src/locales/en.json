@@ -4625,6 +4625,7 @@
   "botPanel.skills.browse": "Browse skills",
   "botPanel.skills.loadFailed": "Couldn't load this bot's skills.",
   "botPanel.skills.notLoaded": "Couldn't load",
+  "botPanel.skills.heldBack": "Off: held back for review. Switch it on to read it first.",
   "botPanel.skills.retry": "Try again",
   "botPanel.folder.private": "Private",
   "botPanel.folder.intro": "Where {name} keeps and edits files.",
