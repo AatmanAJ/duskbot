@@ -10,6 +10,7 @@ import {
   messageFileDownloadName,
   messageAttachmentName,
   messageFileRoots,
+  messageFileTargets,
   messageImageTargetAt,
   messageReferencesFile,
   listMessageFolder,
@@ -63,6 +64,13 @@ describe("message-linked files", () => {
       pinnedCwd: undefined,
       configuredCwd: "/current/project",
     })[0]).toBe("/current/project");
+  });
+
+  it("authorizes a file link whose angle-bracketed path was left unclosed, as the chat renders it", () => {
+    const text = "[Proposal.docx](</Users/priya/Hollow Oak/Proposal.docx) and `[x](</Users/priya/x.md)`";
+    expect(messageReferencesFile(text, "/Users/priya/Hollow Oak/Proposal.docx")).toBe(true);
+    expect(messageReferencesFile(text, "/Users/priya/x.md")).toBe(false);
+    expect(messageFileTargets(text)).toEqual(["/Users/priya/Hollow Oak/Proposal.docx"]);
   });
 
   it("matches Unix, Windows, and UNC links independently of the server OS", () => {

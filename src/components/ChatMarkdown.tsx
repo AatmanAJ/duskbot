@@ -15,6 +15,7 @@ import { parseFenceInfo } from "../lib/code-block";
 import { markdownImageName, markdownImageOpenUrl } from "../lib/markdown-image";
 import { repairMarkdownTables } from "../lib/markdown-tables";
 import { TRANSCRIPT_WINDOW_SIZE } from "../lib/transcript-window";
+import { closeUnclosedFileLinks, originalOffset } from "../../shared/markdown-unclosed-destinations";
 import { windowsPathDestinations } from "../../shared/markdown-windows-paths";
 import { GITHUB_REF_CLASS, isUseMyComputerUrl, UseMyComputerLink, usePageOpener, withPageOpen } from "./ChatLinks";
 import { githubRefFromProps, remarkGithubRefs } from "@/lib/github-refs";
@@ -497,8 +498,12 @@ const NORMALIZED_CACHE_MAX = TRANSCRIPT_WINDOW_SIZE * 2;
 function normalizeMessageMarkdown(text: string) {
   const cached = normalizedCache.get(text);
   if (cached) return cached;
+  const closed = closeUnclosedFileLinks(text);
   const imageOffsets = text.includes(MARKDOWN_IMAGE) ? new Map<number, number>() : undefined;
-  const source = normalizeMathDelimiters(imageOffsets ? text : repairMarkdownTables(text), imageOffsets);
+  const source = normalizeMathDelimiters(imageOffsets ? closed.markdown : repairMarkdownTables(closed.markdown), imageOffsets);
+  if (imageOffsets && closed.inserted.length) {
+    for (const [at, offset] of imageOffsets) imageOffsets.set(at, originalOffset(offset, closed.inserted));
+  }
   if (normalizedCache.size >= NORMALIZED_CACHE_MAX) {
     const first = normalizedCache.keys().next().value;
     if (first !== undefined) normalizedCache.delete(first);
