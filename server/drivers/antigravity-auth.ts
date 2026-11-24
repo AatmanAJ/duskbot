@@ -285,7 +285,9 @@ export class AntigravityAuthController {
       });
       flow.child.stdin!.write(`${validated}\n`);
       flow.child.stdin!.end();
-      await Promise.race([flow.completed, completeTimeout]);
+      await Promise.race([flow.completed.catch(() => {
+        throw new Error("Google didn't accept that code. Start sign-in again and paste the whole code from the Antigravity page.");
+      }), completeTimeout]);
       if (!(await antigravityProfileAuthenticated(flow.profile))) {
         throw new Error("Antigravity finished without saving a Google sign-in. Start sign-in again.");
       }

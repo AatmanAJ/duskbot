@@ -203,6 +203,7 @@ export const ANTIGRAVITY_MIN_ACP_VERSION = "1.5.0";
 // The Windows build unpacks its runtime into TEMP on every start, which antivirus can stretch.
 const VERSION_PROBE_MS = 60_000;
 const versionProbes = new Map<string, Promise<string | null>>();
+const warnedOld = new Set<string>();
 
 export function parseAntigravityVersion(output: string): string | null {
   return /^\s*v?(\d+\.\d+\.\d+)\b/u.exec(output)?.[1] ?? null;
@@ -242,7 +243,10 @@ export function setAntigravityVersionProbe(probe: AntigravityVersionProbe | null
 async function usableExternal(runtime: AntigravityRuntime, env: NodeJS.ProcessEnv): Promise<AntigravityRuntime | null> {
   const version = await versionProbe(runtime.executablePath, env);
   if (version && compareSemver(version, ANTIGRAVITY_MIN_ACP_VERSION) < 0) {
-    console.warn(`antigravity: skipping ${runtime.executablePath} (version ${version}, needs ${ANTIGRAVITY_MIN_ACP_VERSION} or newer for acp)`);
+    if (!warnedOld.has(runtime.executablePath)) {
+      warnedOld.add(runtime.executablePath);
+      console.warn(`antigravity: skipping ${runtime.executablePath} (version ${version}, needs ${ANTIGRAVITY_MIN_ACP_VERSION} or newer for acp)`);
+    }
     return null;
   }
   return { ...runtime, version };

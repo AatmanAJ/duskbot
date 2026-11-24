@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { removeTempDir } from "../testing/cleanup.ts";
 import { prepareAntigravityProfile } from "./antigravity-acp.ts";
 import { AntigravityAuthController, antigravitySignInFailure } from "./antigravity-auth.ts";
+import { ANTIGRAVITY_CODE_REDIRECT_URI } from "./antigravity-oauth.ts";
 import { resolveAntigravityReleaseAsset } from "./antigravity-release.ts";
 import { parseAntigravityVersion, resolveAntigravityRuntime, setAntigravityVersionProbe } from "./antigravity-runtime.ts";
 
@@ -107,6 +108,24 @@ describe("a failed Antigravity sign-in", () => {
       expect(failure?.message).toBe("The Antigravity app on this computer is too old for dusk bot. Install the current one, then sign in again.");
       expect(failure?.message).not.toMatch(/unexpected argument|Prompts are read/);
       expect(warn).toHaveBeenCalledWith(expect.stringContaining("unexpected argument"));
+    } finally {
+      await controller.cancelAndWait();
+    }
+  }, 30_000);
+
+  it("says Google didn't accept the code when the CLI fails after a paste", async () => {
+    const bin = folder();
+    const url = `https://accounts.google.com/o/oauth2/auth?response_type=code&state=fixture&redirect_uri=${encodeURIComponent(ANTIGRAVITY_CODE_REDIRECT_URI)}`;
+    const executable = script(bin, "agy-rejects", `process.stdout.write(${JSON.stringify(`Open this link:\n\n  ${url}\n`)});
+process.stdin.once("data", () => { process.stderr.write("oauth2: invalid_grant\\n"); process.exit(1); });`);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const runtime = await resolveAntigravityRuntime(executable, { PATH: process.env.PATH }, bin);
+    const profile = await prepareAntigravityProfile({ instanceId: "rejected-code", runtime, baseDir: bin });
+    const controller = new AntigravityAuthController();
+    try {
+      const flow = await controller.start(runtime, profile);
+      await expect(controller.complete(flow.flowId!, "4/0AbCdEfGhIjKlMnOp"))
+        .rejects.toThrow("Google didn't accept that code. Start sign-in again and paste the whole code from the Antigravity page.");
     } finally {
       await controller.cancelAndWait();
     }
