@@ -466,6 +466,66 @@
   .status-shimmer { animation: none; opacity: 1; }
 }
 
+/* the working line's versions (src/lib/working-line.ts): each sets how the line comes and goes over the shared sheen */
+[data-working-line] { --line-ms: calc(1ms * var(--motion-scale, 1)); }
+[data-working-line] .status-shimmer {
+  --status-shimmer-dim: color-mix(in srgb, var(--color-ink) 40%, transparent);
+  color: transparent;
+  background-image: linear-gradient(90deg, var(--status-shimmer-dim) 0%, var(--status-shimmer-dim) 25%, var(--color-ink) 60%, var(--status-shimmer-dim) 75%, var(--status-shimmer-dim) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: working-line-sheen var(--sheen-ms, 3.4s) var(--dusk-ease-heavy) infinite;
+}
+@keyframes working-line-sheen {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@keyframes working-line-rise { from { opacity: 0; transform: translateY(var(--rise, 3px)); } }
+@keyframes working-line-grow { from { opacity: 0; transform: scale(var(--from-scale, 0.9)); } }
+@keyframes working-line-blur-in { from { opacity: 0; filter: blur(4px); } }
+@keyframes working-line-blur-out { to { opacity: 0; filter: blur(3px); } }
+@keyframes working-line-fade-out { to { opacity: 0; transform: scale(0.97); } }
+@keyframes working-line-drop {
+  0% { opacity: 0; transform: translateY(-5px) scale(0.96, 1.05); }
+  55% { opacity: 1; transform: translateY(0) scale(1.06, 0.93); }
+  80% { transform: translateY(0) scale(0.98, 1.02); }
+}
+[data-working-line].turn-status-in, [data-working-line].turn-status-in .turn-status-mark, [data-working-line].turn-status-in .turn-label-slot { animation: none; }
+[data-working-line="restore"] { --sheen-ms: 3.4s; }
+[data-working-line="restore"].turn-status-in { --from-scale: 0.96; animation: working-line-grow calc(320 * var(--line-ms)) var(--dusk-ease-out) backwards; }
+[data-working-line="restore"].turn-status-in .turn-status-mark { --from-scale: 0.86; animation: working-line-grow calc(420 * var(--line-ms)) var(--dusk-ease-out) backwards; }
+[data-working-line="restore"].turn-status-in .turn-label-slot { animation: working-line-rise calc(320 * var(--line-ms)) var(--dusk-ease-out) calc(40 * var(--line-ms)) backwards; }
+[data-working-line="restore"].turn-status-out, [data-working-line="ponder"].turn-status-out, [data-working-line="rock"].turn-status-out {
+  transform-origin: 0 18px;
+  animation: working-line-fade-out calc(200 * var(--line-ms)) var(--dusk-ease-out) forwards;
+}
+[data-working-line="drift"] { --sheen-ms: 4.4s; }
+[data-working-line="drift"].turn-status-in { --rise: 4px; animation: working-line-rise calc(480 * var(--line-ms)) var(--dusk-ease-out) backwards; }
+[data-working-line="drift"].turn-status-out, [data-working-line="ellipsis"].turn-status-out { animation: working-line-blur-out calc(240 * var(--line-ms)) var(--dusk-ease-out) forwards; }
+[data-working-line="ponder"] { --sheen-ms: 3.4s; }
+[data-working-line="ponder"].turn-status-in .turn-status-mark { --from-scale: 0.88; animation: working-line-grow calc(360 * var(--line-ms)) var(--dusk-ease-out) backwards; }
+[data-working-line="ponder"].turn-status-in .turn-label-slot { animation: working-line-rise calc(360 * var(--line-ms)) var(--dusk-ease-out) calc(120 * var(--line-ms)) backwards; }
+[data-working-line="rock"] { --sheen-ms: 3s; }
+[data-working-line="rock"].turn-status-in .turn-status-mark { transform-origin: 50% 100%; animation: working-line-drop calc(520 * var(--line-ms)) var(--dusk-ease-out) backwards; }
+[data-working-line="rock"].turn-status-in .turn-label-slot { animation: working-line-rise calc(320 * var(--line-ms)) var(--dusk-ease-out) calc(80 * var(--line-ms)) backwards; }
+[data-working-line="ellipsis"] { --sheen-ms: 4s; }
+[data-working-line="ellipsis"].turn-status-in { animation: working-line-blur-in calc(440 * var(--line-ms)) var(--dusk-ease-out) backwards; }
+.working-ellipsis { display: inline-flex; margin-inline-start: -4px; color: var(--color-ink-secondary); }
+.working-ellipsis > span { animation: working-ellipsis 1.6s ease-in-out infinite; }
+.working-ellipsis > span:nth-child(2) { animation-delay: 0.2s; }
+.working-ellipsis > span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes working-ellipsis { 0%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  [data-working-line].turn-status-in, [data-working-line].turn-status-in .turn-status-mark, [data-working-line].turn-status-in .turn-label-slot { animation: chat-row-fade 200ms ease-out backwards; }
+  [data-working-line].turn-status-out { animation: dusk-fade-out 200ms ease-out forwards; }
+  [data-working-line] .status-shimmer { animation: none; color: var(--color-ink-secondary); background-image: none; }
+  .working-ellipsis > span { animation: none; opacity: 0.6; }
+}
+@media (forced-colors: active) {
+  [data-working-line] .status-shimmer { color: CanvasText; background-image: none; }
+}
+
 /* grok's 16px pane inset for the composer and the rows riding above it */
 .chat-column-dock[data-grok-inset] {
   max-width: calc(var(--chat-column-max) + 2rem);

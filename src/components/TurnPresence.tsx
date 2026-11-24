@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ChevronDown } from "../icons";
 import { cn } from "@/lib/cn";
-import { pacedMs } from "@/lib/motion-speed";
+import { LINE_SPECS, WORKING_LINE, type WorkingLinePick } from "@/lib/working-line";
 import { usePrefersReducedMotion } from "@/components/mascot-clock";
 import { phraseAt, phraseHoldMs, rotationHoldMs } from "@/lib/live-activity";
 import { quietText } from "@/lib/now-steps";
@@ -11,8 +11,7 @@ import { wordGroup } from "@/lib/working-mood";
 import type { StepQuiet } from "../../shared/turn-progress";
 
 const FADE_MS = 320;
-/** Grok's activity line leaves in 140ms. */
-export const STATUS_EXIT_MS = pacedMs(140);
+export const STATUS_EXIT_MS = LINE_SPECS[WORKING_LINE].exitMs;
 
 export function useRotatingPhrase(
   phrases: readonly string[],
@@ -236,6 +235,7 @@ export function TurnPresence({
   card,
   cardLabel,
   wordsAtOnce,
+  line = WORKING_LINE,
   className,
 }: {
   /** a mark before the words; without one the line is the words alone, from its first frame */
@@ -260,6 +260,7 @@ export function TurnPresence({
   quiet?: StepQuiet;
   card?: ReactNode;
   cardLabel?: string;
+  line?: WorkingLinePick;
   className?: string;
 }) {
   const [mounted, setMounted] = useState(visible);
@@ -286,9 +287,9 @@ export function TurnPresence({
       return;
     }
     setPhase("out");
-    const timer = setTimeout(() => setMounted(false), simple ? STATUS_EXIT_MS : 280);
+    const timer = setTimeout(() => setMounted(false), simple ? LINE_SPECS[line].exitMs : 280);
     return () => clearTimeout(timer);
-  }, [visible, answering, mounted, simple]);
+  }, [visible, answering, mounted, simple, line]);
 
   const showWorking = presencePhase === "think";
   // grok's line leaves with the words it was saying
@@ -322,6 +323,7 @@ export function TurnPresence({
   const status = simpleStatus ? (
     <span id={statusId} className="turn-label-slot flex h-[22px] min-w-0 items-center gap-x-1.5 text-[13.5px] leading-[21px]" data-turn-status>
       {step && <StepPhrase step={step} hover={hover} />}
+      {step && LINE_SPECS[line].ellipsis && <span aria-hidden="true" className="working-ellipsis"><span>.</span><span>.</span><span>.</span></span>}
       {step && quiet && <QuietPart quiet={quiet} />}
     </span>
   ) : showWorking ? (
@@ -352,6 +354,7 @@ export function TurnPresence({
   return (
     <div ref={root} className={cn("turn-presence flex min-w-0 max-w-full flex-col items-start", className)}>
       <div
+        data-working-line={line === "shipped" ? undefined : line}
         title={simple && showWorking ? [lead, detail ?? (now ? current : null), size].filter(Boolean).join(" · ") : undefined}
         className={cn(
           simple ? cn("flex h-9 min-w-0 max-w-full items-center gap-[8.5px]", marked ? "ps-2" : "ps-3") : "flex min-w-0 max-w-full items-center gap-2",
