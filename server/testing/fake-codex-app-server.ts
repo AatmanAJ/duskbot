@@ -52,6 +52,7 @@
 //   FAKE_CODEX_TEXT_REFUSE  `codex exec`: comma-separated models answered with the 400 a ChatGPT account gets for gpt-5.4-mini
 //   FAKE_CODEX_LUNA  "1": model/list also offers gpt-6-luna
 //   FAKE_CODEX_REFUSE_MODELS  comma-separated models whose turns fail as a ChatGPT account's do for a model it can't use
+// `logout` leaves <CODEX_HOME>/fake-logged-out, and `login status` then answers "Not logged in" until it is removed.
 //   FAKE_CODEX_UPDATED_FILE  while this file exists, the CLI was updated in place: --version answers codex-cli 0.162.1
 //     and model/list also offers gpt-6.1-sol
 //   FAKE_CODEX_MCP_START  "1": on thread/start, start each `-c mcp_servers.*` mount as codex-cli 0.160.1 does
@@ -97,8 +98,14 @@ if (process.argv[2] === "--version") {
   process.stdout.write(`${updated ? "codex-cli 0.162.1" : process.env.FAKE_CODEX_VERSION ?? "codex-cli 0.147.0"}\n`);
   process.exit(0);
 }
+const loggedOutMarker = process.env.CODEX_HOME ? `${process.env.CODEX_HOME}/fake-logged-out` : "";
+if (process.argv[2] === "logout") {
+  if (loggedOutMarker) writeFileSync(loggedOutMarker, "");
+  process.stderr.write("Successfully logged out\n");
+  process.exit(0);
+}
 if (process.argv[2] === "login" && process.argv[3] === "status") {
-  if (mode === "logged-out") {
+  if (mode === "logged-out" || (loggedOutMarker && existsSync(loggedOutMarker))) {
     process.stderr.write("Not logged in\n");
     process.exit(1);
   }

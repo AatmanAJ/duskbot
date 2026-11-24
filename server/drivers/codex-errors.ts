@@ -74,6 +74,9 @@ export function codexUserError(value: string, route: CodexRoute, codexErrorInfo?
   if (route === "plan" && codexAccountRefusedModel(value, route)) {
     return "This model isn't available on your ChatGPT plan, so it's now hidden from this account's model list. Pick another model.";
   }
+  if (route === "own" && codexAccountRefusedModel(value, route)) {
+    return "This ChatGPT account can't use this model in Codex, so it's now hidden from Codex's model list. Your next message will use Codex's default model.";
+  }
   if (route === "plan" && value.includes("subscription_sharing_usage_limit_exceeded")) {
     return "subscription_sharing_usage_limit_exceeded: Your ChatGPT plan usage limit was reached. Manage usage in ChatGPT Settings, or explicitly choose another provider.";
   }

@@ -58,7 +58,7 @@ import { CodexDeviceAuthController } from "./codex-device-auth.ts";
 import { codexAccountEmail, codexHome } from "./codex-identity.ts";
 import { boundedLabel, containsControlCharacter, mcpAppApprovalForm, plainRecord } from "./codex-app-approval.ts";
 import { archivedNativeCodexThread, CODEX_MISSING_CREDENTIALS, CODEX_SIGN_IN_EXPIRED, codexLimitFacts, codexNotSignedIn, CodexRpcError, codexSignInExpired, codexAccountRefusedModel, codexSignInRefused, codexErrorCode, codexUserError, missingNativeCodexThread, type CodexRoute } from "./codex-errors.ts";
-import { codexLoginCheck, codexLoginStatus, storedCodexLogin } from "./codex-login.ts";
+import { codexLoginCheck, codexLoginStatus, codexSignInIdentity, storedCodexLogin } from "./codex-login.ts";
 import { keyRejected, noteKeyAccepted, noteKeyRejected } from "../key-rejections.ts";
 import { classifyResumeFailure, mayReplay, rebuiltSessionNotice, recoveryPromptFor } from "../resume-recovery.ts";
 import { extractMcpImages } from "../mcp-tool-images.ts"; import { codexImageInputs, withoutInlineImages } from "./codex-images.ts";
@@ -364,6 +364,13 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     let planWarning: string | undefined;
     // Models OpenAI refused for Codex's own ChatGPT sign-in during this run; Codex's model/list still offers them.
     const ownRefused = new Set<string>();
+    let ownRefusedBy: string | null = null;
+    const forgetOwnRefused = (): boolean => {
+      if (!ownRefused.size) return false;
+      ownRefused.clear();
+      ownRefusedBy = null;
+      return true;
+    };
     const withoutOwnRefused = (catalog: ModelCatalog): ModelCatalog => {
       if (!ownRefused.size) return catalog;
       const options = catalog.options.filter(option => !ownRefused.has(option.id));
@@ -396,6 +403,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     const hideAccountRefusedModel = (model: string | undefined, raw: string, route: CodexRoute) => {
       if (!model || config.managed || !codexAccountRefusedModel(raw, route)) return;
       if (!planAuth) {
+        ownRefusedBy = codexSignInIdentity(storedCodexLogin(childEnv()));
         ownRefused.add(model);
         models = withoutOwnRefused(models);
         return;
@@ -403,6 +411,11 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       const options = models.options.filter(option => option.id !== model);
       models = { default: models.default === model ? options[0]?.id ?? "" : models.default, options };
       void planAuth.refuseModel(model).then(() => refreshModels(true)).catch(() => {});
+    };
+    const currentOwnRefused = (): ReadonlySet<string> => {
+      const identity = ownRefused.size ? codexSignInIdentity(storedCodexLogin(childEnv())) : null;
+      if (identity !== null && identity !== ownRefusedBy && forgetOwnRefused()) void refreshModels().catch(() => {});
+      return ownRefused;
     };
     // Codex's model list ships with the CLI: updating 0.155.1 to 0.162.1 in place adds gpt-6.1-sol.
     let modelsCliVersion: string | null = null, cliVersionSeen: string | null = null;
@@ -445,7 +458,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       cli: config.cli,
       environment: childEnv,
       signInRejected: loginRejected,
-      onAuthenticated: async () => { loginAccepted(); await refreshModels(); },
+      onAuthenticated: async () => { loginAccepted(); forgetOwnRefused(); await refreshModels(); },
     });
     const listeners = new Set<RuntimeEventListener>();
     interface Turn {
@@ -530,7 +543,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       const chatgptTurn = ownLogin &&
         decodeCodexSelection(turn.model || models.default).modelProvider === OFFICIAL_CODEX_PROVIDER;
       const route: CodexRoute = plan ? "plan" : chatgptTurn ? "own" : "other";
-      if (route === "own" && turn.model && ownRefused.has(turn.model)) {
+      if (route === "own" && turn.model && currentOwnRefused().has(turn.model)) {
         const official = (id: string) => decodeCodexSelection(id).modelProvider === OFFICIAL_CODEX_PROVIDER;
         const usable = official(models.default) ? models.default : models.options.find(option => official(option.id))?.id;
         if (usable) turn = { ...turn, model: usable };
@@ -1638,6 +1651,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     modelsCliVersion = version;
     if (previousCliVersion !== null && previousCliVersion !== version) await refreshModels();
     const authenticated = await codexLoginStatus(config.cli, env) === "signed-in";
+    currentOwnRefused();
     if (authenticated && loginRejected()) {
       return { state: "available", version, authenticated: false, reason: CODEX_SIGN_IN_EXPIRED,
         update: await codexReleaseUpdate(version, config.cli), billing: "subscription" };
@@ -1725,6 +1739,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         await appServers.closeIdle();
         await authentication.signOut();
         loginAccepted(mark);
+        if (forgetOwnRefused()) await refreshModels();
         return;
       }
       planSigningOut = true;
