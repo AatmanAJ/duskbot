@@ -9,7 +9,7 @@
 
 ## User path
 
-Open a bot's model picker or Settings → Engines.
+Open a bot's model picker or Settings → Models.
 
 ## Driving it
 
@@ -59,7 +59,7 @@ mutations. Updating an idle sibling must preserve the busy bot's process and
 subsequent events. No real provider login is required.
 
 For a renderer check, open the isolated launcher's app in a browser, dismiss
-onboarding, and go to **Settings → Engines**. Add Work and Personal, inspect
+onboarding, and go to **Settings → Models**. Add Work and Personal, inspect
 their distinct sign-in commands, and select one account per bot from the model
 picker's single Claude entry and nested Account dropdown. Choose a model to
 save the selection. Reload and revisit both bots. Confirm the account labels persist,

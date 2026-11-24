@@ -288,7 +288,7 @@ export const deepseekSupport: AcpSupport = {
   models: DEEPSEEK_MODELS,
   defaultCli: "dsh",
   nativeSource: "deepseek.acp",
-  loginNote: "DeepSeek Harness has no DeepSeek API key: paste one under Settings → Connections → Model providers, or set DEEPSEEK_API_KEY",
+  loginNote: "DeepSeek Harness has no DeepSeek API key: paste one under Settings → API keys, or set DEEPSEEK_API_KEY",
 
   install: {
     command: {

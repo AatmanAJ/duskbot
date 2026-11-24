@@ -190,7 +190,7 @@ implicitly download a new release.
 ## Connect ChatGPT from the browser
 
 A browser paired with Full access can connect an installed Codex CLI without opening a
-terminal: **Settings → Engines → Codex → Connect ChatGPT**. dusk bot starts
+terminal: **Settings → Models → ChatGPT → Connect ChatGPT**. dusk bot starts
 `codex login --device-auth` on the server and shows a one-time code. Choose
 **Open ChatGPT sign-in**, enter the code on OpenAI's page, and complete sign-in
 with your own account. dusk bot checks for completion and refreshes the model list.
@@ -322,13 +322,13 @@ permanently first (`npm install -g duskbot`): a service must not point
 at an `npx` cache that npm may prune.
 
 Engine CLIs read their logins from the service user's home: sign them in
-from Settings → Engines (below), or as that user in a terminal, before you
+from Settings → Models (below), or as that user in a terminal, before you
 rely on routines running unattended.
 
 ## Installing the engines without a terminal
 
 Engines whose installer is an npm package (Claude Code, Codex, OpenCode,
-MiniMax, pi) can be installed and updated from **Settings → Engines** when
+MiniMax, pi) can be installed and updated from **Settings → Models** when
 npm is on the server's PATH. dusk bot runs `npm install -g` as its own user into
 `<data dir>/tools/npm`, so nothing needs sudo and nothing touches a global
 prefix; that folder goes ahead of everything else on the engines' PATH, so
@@ -338,14 +338,14 @@ by a `curl | bash` script still need the command on the server.
 
 ## Provider keys, billed per token
 
-**Settings → Connections → Model providers** takes the keys a whole workspace
+**Settings → API keys → AI providers** takes the keys a whole workspace
 runs on, for people who would rather pay per token than have every user sign
 in. Keys are write-only: the page shows connected-or-not and a **Test** button
 that makes one read-only request to the provider from the server.
 
 - **Anthropic API key**: while one is saved, every Claude bot runs on it and
   Claude Code reports the real cost per turn to the usage ledger. Nobody has
-  to sign in, and Settings → Engines shows "workspace API key" instead of a
+  to sign in, and Settings → Models shows "workspace API key" instead of a
   person. Remove the key to go back to personal logins. The server's own
   `ANTHROPIC_API_KEY` environment variable is deliberately ignored; use the
   page, `config.json`, or `DUSK_ANTHROPIC_API_KEY`.
@@ -370,7 +370,7 @@ Providers added with `opencode auth login` work everywhere.
 
 ## Signing the engines in without a terminal
 
-On a hosted server, the engine CLIs sign in from Settings → Engines:
+On a hosted server, the engine CLIs sign in from Settings → Models:
 
 - **Codex**: "Connect ChatGPT" shows a one-time code to enter on OpenAI's
   device page. Once connected, Settings names the account and offers

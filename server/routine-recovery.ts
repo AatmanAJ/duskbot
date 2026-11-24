@@ -65,7 +65,7 @@ const REFUSED_KINDS = new Set(["refused", "tool_schema", "tool_count", "session_
 const OWNER_CAUSES = new Set<RoutineOwnerCause>(["signed_out", "credits", "usage_limit", "setup"]);
 
 const OWNER_ACTION: Record<Exclude<RoutineOwnerCause, "setup">, string> = {
-  signed_out: "This bot's AI is signed out. Sign in again in Settings → AI.",
+  signed_out: "This bot's AI is signed out. Sign in again in Settings → Models.",
   credits: "This bot's AI account is out of credit. Add credit with the provider, or choose another AI for this bot.",
   usage_limit: "This bot's AI reached its usage limit. Its routines work again once it resets, or choose another AI for this bot now.",
 };

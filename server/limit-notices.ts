@@ -35,12 +35,12 @@ export function limitNoticeText(facts: LimitNoticeFacts, timeZone?: string): str
     : `${what}, so ${facts.bot} waits: no other AI you have set up can take over.`;
 }
 
-/** "Claude is signed out on the Cloud. Sign in again in Settings → AI to keep using it.", and who carries on meanwhile
+/** "Claude is signed out on the Cloud. Sign in again in Settings → Models to keep using it.", and who carries on meanwhile
  * when a backup the person chose does. */
 export function signedOutNoticeText(facts: { engine: string; bot: string; backup?: string; where: string }): string {
   return facts.backup
-    ? `${facts.engine} is signed out ${facts.where}, so ${facts.bot} is using ${facts.backup} meanwhile. Sign in again in Settings → AI to keep using ${facts.engine}.`
-    : `${facts.engine} is signed out ${facts.where}. Sign in again in Settings → AI to keep using it.`;
+    ? `${facts.engine} is signed out ${facts.where}, so ${facts.bot} is using ${facts.backup} meanwhile. Sign in again in Settings → Models to keep using ${facts.engine}.`
+    : `${facts.engine} is signed out ${facts.where}. Sign in again in Settings → Models to keep using it.`;
 }
 
 export class LimitNotices {

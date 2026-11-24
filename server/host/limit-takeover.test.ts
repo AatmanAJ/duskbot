@@ -343,12 +343,12 @@ describe("an AI that is signed out", () => {
     signedOut(instance);
     expect(instance.heldAtStart(KAI, CLAUDE_ON)).toEqual({ scope: "signed-out" });
     expect(instance.backups("kai", CLAUDE_ON, "signed-out")).toEqual([on("codex", "gpt-6")]);
-    expect(instance.tell(KAI, CLAUDE_ON, { scope: "signed-out" })).toBe("Claude is signed out on the Cloud. Sign in again in Settings → AI to keep using it.");
+    expect(instance.tell(KAI, CLAUDE_ON, { scope: "signed-out" })).toBe("Claude is signed out on the Cloud. Sign in again in Settings → Models to keep using it.");
     expect(instance.tell(KAI, CLAUDE_ON, { scope: "signed-out", backup: on("codex", "gpt-6") }), "once, not once a turn").toBeNull();
     signedOut(instance);
     expect(instance.carriedOn(KAI, "t2", CLAUDE_ON, on("codex", "gpt-6"), { scope: "signed-out" }))
       .toEqual([{ name: "recovery: Claude is signed out, so Codex took over.", ok: true }]);
-    expect(told.map((entry) => entry.text)).toEqual(["Claude is signed out on the Cloud. Sign in again in Settings → AI to keep using it."]);
+    expect(told.map((entry) => entry.text)).toEqual(["Claude is signed out on the Cloud. Sign in again in Settings → Models to keep using it."]);
     expect(record.mock.calls.at(-1)![0]).toMatchObject({ threadId: "t2", why: "signed-out", resetsAt: null });
 
     instance.signedIn("claude");
@@ -357,7 +357,7 @@ describe("an AI that is signed out", () => {
     signedOut(instance);
     expect(instance.carriedOn(KAI, "t3", CLAUDE_ON, on("codex", "gpt-6"), { scope: "signed-out" }), "a new sign-out is told again").toEqual([
       { name: "recovery: Claude is signed out, so Codex took over.", ok: true },
-      { name: "notice: Claude is signed out on the Cloud, so Kai is using Codex meanwhile. Sign in again in Settings → AI to keep using Claude.", ok: true, setup: true },
+      { name: "notice: Claude is signed out on the Cloud, so Kai is using Codex meanwhile. Sign in again in Settings → Models to keep using Claude.", ok: true, setup: true },
     ]);
   });
 
