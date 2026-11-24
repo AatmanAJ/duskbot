@@ -275,7 +275,7 @@ describe("createOpenAIChatRuntime tool approvals", () => {
     expect(events.at(-1)).toMatchObject({ type: "turn.completed", ok: true });
   }, 20_000);
 
-  it("ends the turn on a failed tool call, never asks the model to run it again, and does not continue it by itself", async () => {
+  it("with corrective rounds set to 0, ends the turn on a failed tool call, never asks the model to run it again, and does not continue it by itself", async () => {
     const dir = mkdtempSync(join(tmpdir(), "dusk-chat-toolerr-")); mcpDir.push(dir);
     const script = join(dir, "fake-fail-mcp.mjs");
     writeFileSync(script, `#!/usr/bin/env node
@@ -314,7 +314,7 @@ describe("createOpenAIChatRuntime tool approvals", () => {
     instance.adapter.onEvent((event) => events.push(event));
     try {
       await instance.adapter.sendTurn({
-        threadId: "toolerr", text: "Use the tool, then answer.", approvalMode: "full",
+        threadId: "toolerr", text: "Use the tool, then answer.", approvalMode: "full", toolErrorCorrectiveRounds: 0,
         integrations: { custom: { fx: { command: script, args: [], env: {} } } },
       });
       await vi.waitFor(() => expect(events.some((event) => event.type === "turn.completed")).toBe(true), { timeout: 10_000 });
@@ -405,14 +405,20 @@ describe("createOpenAIChatRuntime tool approvals", () => {
         .toEqual({ requests: 4, corrective: 1, ok: false, stopReason: "tool_error" });
     }, 20_000);
 
-    it("shows one reply however many rounds the failure gets: an answer a round may still replace is never streamed or posted", async () => {
-      const first = 'data: {"choices":[{"index":0,"delta":{"content":"X did not open."}}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n';
+    it("shows one reply however many rounds the failure gets, and ends ok on the one that says plainly what failed", async () => {
+      const first = 'data: {"choices":[{"index":0,"delta":{"content":"All set."}}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n';
       const last = 'data: {"choices":[{"index":0,"delta":{"content":"I could not post it: X is not connected. Connect X and I will post it."}}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n';
-      expect(await run([toolCall("c1", "nope"), first, first, last], 2)).toEqual({ requests: 4, corrective: 2, ok: false, stopReason: "tool_error" });
+      expect(await run([toolCall("c1", "nope"), first, first, last], 2)).toEqual({ requests: 4, corrective: 2, ok: true, stopReason: null });
       const replies = seen.flatMap((event) => event.type === "item.completed" && event.itemType === "assistant_text" ? [event.text] : []);
       expect(replies).toEqual(["I could not post it: X is not connected. Connect X and I will post it."]);
       expect(seen.flatMap((event) => event.type === "content.delta" && event.streamKind === "assistant_text" ? [event.delta] : []).join("")).toBe(replies[0]);
-      expect(seen.find((event) => event.type === "runtime.error")).toMatchObject({ partial: true, owned: true });
+      expect(seen.find((event) => event.type === "runtime.error")).toBeUndefined();
+    }, 20_000);
+
+    it("by default gives a hosted model two rounds, and takes an answer that owns the failure at once", async () => {
+      const owned = 'data: {"choices":[{"index":0,"delta":{"content":"The tool failed, so nothing was saved."}}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n';
+      expect(await run([toolCall("c1", "nope"), answer, answer, answer])).toEqual({ requests: 4, corrective: 2, ok: false, stopReason: "tool_error" });
+      expect(await run([toolCall("c1", "nope"), owned])).toEqual({ requests: 2, corrective: 0, ok: true, stopReason: null });
     }, 20_000);
 
     it("leaves the failure card for a reply that does not say what failed", async () => {
@@ -441,9 +447,9 @@ describe("createOpenAIChatRuntime tool approvals", () => {
 
     it("without rounds, a bot that went on to run tools after a failure ends ok; one whose last calls failed does not", async () => {
       // Seen on a hosted model: 137 turns in a week ended failed for one bad query the bot had already worked around.
-      expect(await run([toolCall("c1", "nope"), toolCall("c2", "fx_write"), answer], undefined, { custom: { fx: toolServer() } }))
+      expect(await run([toolCall("c1", "nope"), toolCall("c2", "fx_write"), answer], 0, { custom: { fx: toolServer() } }))
         .toEqual({ requests: 3, corrective: 0, ok: true, stopReason: null });
-      expect(await run([toolCall("c1", "fx_write"), toolCall("c2", "nope"), answer], undefined, { custom: { fx: toolServer() } }))
+      expect(await run([toolCall("c1", "fx_write"), toolCall("c2", "nope"), answer], 0, { custom: { fx: toolServer() } }))
         .toEqual({ requests: 3, corrective: 0, ok: false, stopReason: "tool_error" });
     }, 20_000);
   });

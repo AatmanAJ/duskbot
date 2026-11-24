@@ -209,7 +209,8 @@ export interface SendTurnInput {
   botSettingsFile?: string;
   /** Per-call ceiling (ms) for this turn's MCP tools; absent is the driver's default (10 min). */
   mcpCallTimeoutMs?: number;
-  /** Times an API-model turn that answers after a failed tool call is sent back to re-run it (`loopGuard.correctiveRounds`); never after a denial. */
+  /** Times an API-model turn that answers after a failed tool call, without saying what failed, is sent back to fix it
+   * (`loopGuard.correctiveRounds`); absent is the driver's default (2); never after a denial. */
   toolErrorCorrectiveRounds?: number;
 }
 

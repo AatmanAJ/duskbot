@@ -29,7 +29,7 @@ import { createModelRoutes, ModelRouteRefused, noRouteLeft, readResponsesStream,
 import { appendNative } from "./native.ts";
 import { classifyError, interruptibleDelay, RETRY_MAX_ATTEMPTS } from "./retry.ts";
 import { carriedSteps, carriedWorkFile, chatLimitFacts, sharedCarriedWork } from "./openai-chat-carry.ts";
-import { CORRECTIVE_ROUND, LOCAL_CORRECTIVE_ROUNDS, announcesAction, ownsFailure, withoutRepeats, claimsUnmadeChange, effectfulCall, leakedReasoning, leakedToolSyntax, LeakHoldback, NUDGE_ANNOUNCED_ACTION, REASONING_AGAIN, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
+import { CORRECTIVE_ROUND, CORRECTIVE_ROUNDS, announcesAction, ownsFailure, withoutRepeats, claimsUnmadeChange, effectfulCall, leakedReasoning, leakedToolSyntax, LeakHoldback, NUDGE_ANNOUNCED_ACTION, REASONING_AGAIN, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
 import { plainFailureMessage } from "./engine-errors.ts"; import { toolFailureMessage } from "./tool-failure.ts"; import { chosenEffort, withModelEfforts, type ModelEffort } from "./api-effort.ts";
 import { refusesRequestSize, RequestTooLargeError, sizeChange, smallerResend } from "./chat-size-limit.ts";
 import { requestTooLargeMessage } from "../../shared/request-too-large.ts"; import { thrownCode } from "../../shared/usage-signals.ts"; import { failureCodeOf, inPlainWords, noReplyError, nudgeOnce, unfinishedReply } from "./openai-chat-final.ts";
@@ -591,9 +591,9 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       let failure: string | undefined, failureCode: string | undefined, limitFacts: ReturnType<typeof chatLimitFacts> = null;
       let toolFailed = false;
       let correctiveRounds = 0;
-      const correctiveMax = Math.max(turn.toolErrorCorrectiveRounds ?? 0, options.localModel ? LOCAL_CORRECTIVE_ROUNDS : 0);
-      // a text-only answer after a failed tool, while rounds to fix it remain: it is not shown; the next answer is
-      const correcting = (done: Completion) => toolFailed && !done.toolCalls.length && !denials.length && !turnEntry.ending && correctiveRounds < correctiveMax;
+      const correctiveMax = options.localModel ? Math.max(turn.toolErrorCorrectiveRounds ?? 0, CORRECTIVE_ROUNDS) : turn.toolErrorCorrectiveRounds ?? CORRECTIVE_ROUNDS;
+      // a text-only answer after a failed tool that does not say what failed, while rounds to fix it remain: it is not shown; the next answer is
+      const correcting = (done: Completion) => toolFailed && !done.toolCalls.length && !denials.length && !turnEntry.ending && correctiveRounds < correctiveMax && !ownsFailure(done.text);
       const denials: string[] = [], failedCalls: string[] = [];
       const seenCalls = new Set<string>();
       let nudges = 0, effectful = 0, toolsRan = 0, toolFailedEver = false, claimNudged = false, lastReply = "";
@@ -751,8 +751,10 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
                 messages.push(assistantReply(model, completion, reply), { role: "user", content: CORRECTIVE_ROUND });
                 continue;
               }
-              stopReason = "tool_error"; lastReply = reply;
-              throw new ChatProtocolError(toolFailureMessage(failedCalls, denials.filter((name) => name !== ASK_USER_TOOL)));
+              if (denials.length || !ownsFailure(reply)) {
+                stopReason = "tool_error"; lastReply = reply;
+                throw new ChatProtocolError(toolFailureMessage(failedCalls, denials.filter((name) => name !== ASK_USER_TOOL)));
+              }
             }
             if (options.nudgeAnnouncedAction !== false && tools.definitions.length && announcesAction(completion.text, effectful > 0)) {
               if (nudges >= MAX_ANNOUNCEMENT_NUDGES || turnEntry.ending) {

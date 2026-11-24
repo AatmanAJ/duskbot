@@ -33,9 +33,9 @@ export function loopGuardSettings(cfg: { loopGuard?: LoopGuardConfig }, env: Nod
   };
 }
 
-/** Only with the guard on, like the note and the stop. */
-export function correctiveRounds(cfg: { loopGuard?: LoopGuardConfig }, env: NodeJS.ProcessEnv = process.env): number {
-  return loopGuardSettings(cfg, env).enabled ? cfg.loopGuard?.correctiveRounds ?? 0 : 0;
+/** The person's own count, only with the guard on, like the note and the stop; undefined leaves the driver's default. */
+export function correctiveRounds(cfg: { loopGuard?: LoopGuardConfig }, env: NodeJS.ProcessEnv = process.env): number | undefined {
+  return loopGuardSettings(cfg, env).enabled ? cfg.loopGuard?.correctiveRounds : undefined;
 }
 
 type ActivityTool = { name: string; ok: false };

@@ -332,7 +332,7 @@ describe("bounded action announcement recovery", () => {
     expect(f.effects()).toEqual([]);
   });
 
-  it("marks a turn whose final reply came back after a failed step as partly done, and no other stop", async () => {
+  it("ends ok on a final reply that says which step failed, partly done on one that does not, and no other stop", async () => {
     const run = async (reply: (response: Parameters<typeof answer>[0]) => void) => {
       const f = await fixture((_body, response, round) => round === 1
         ? sse(response, [chunk({ tool_calls: [toolCall("audit_fail")] }, "tool_calls")])
@@ -341,7 +341,10 @@ describe("bounded action announcement recovery", () => {
       const completed = await f.completed();
       return { completed, errors: f.recorder.events.filter((event) => event.type === "runtime.error") };
     };
-    const done = await run((response) => answer(response, "Here is the summary; one file could not be read."));
+    const owned = await run((response) => answer(response, "Here is the summary; one file could not be read."));
+    expect(owned.completed).toMatchObject({ ok: true });
+    expect(owned.errors).toEqual([]);
+    const done = await run((response) => answer(response, "Here is the summary."));
     expect(done.completed).toMatchObject({ ok: false, stopReason: "tool_error" });
     expect(done.errors).toEqual([expect.objectContaining({ partial: true, terminal: true, message: expect.stringContaining("Stopped because the tool call") })]);
     // A reply the provider cut off is not a finished one, even after a failed step.

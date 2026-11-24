@@ -60,14 +60,15 @@ export function settingsTurnFields(cfg: AppConfig, dataDir: string, restrictsMcp
   mcpFromUserConfig: boolean;
   userSkillsDir?: string;
   mcpCallTimeoutMs: number;
-  toolErrorCorrectiveRounds: number;
+  toolErrorCorrectiveRounds?: number;
 } {
   const userSkillsDir = claudeUserSkillsEnabled(cfg) ? claudeUserSkillsDir(dataDir, home) : null;
   if (!claudeUserSkillsEnabled(cfg)) forgetClaudeUserSkillsDir(dataDir);
+  const rounds = correctiveRounds(cfg);
   return {
     mcpFromUserConfig: claudeUserMcpEnabled(cfg) && !restrictsMcp,
     ...(userSkillsDir ? { userSkillsDir } : {}),
     mcpCallTimeoutMs: mcpCallTimeoutMinutes(cfg) * 60_000,
-    toolErrorCorrectiveRounds: correctiveRounds(cfg),
+    ...(rounds === undefined ? {} : { toolErrorCorrectiveRounds: rounds }),
   };
 }

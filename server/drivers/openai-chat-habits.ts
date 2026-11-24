@@ -99,8 +99,8 @@ export function leakedToolSyntax(text: string): boolean {
 }
 
 export const CORRECTIVE_ROUND = "[dusk bot: a tool call in this turn failed (its result is marked ok:false). Re-run the failed operations with corrected inputs where possible, check the results, then give your one final answer: what worked, what did not and what the person can do about it. Do not report results you did not get.]";
-/** rounds a local model gets to fix a failed tool call before its answer stands */
-export const LOCAL_CORRECTIVE_ROUNDS = 2;
+/** rounds a model gets to fix a failed tool call, or say plainly what failed, before the turn stops on it */
+export const CORRECTIVE_ROUNDS = 2;
 
 export const REASONING_AGAIN = "[dusk bot: your last reply was your own working notes about the request, not an answer, so the person did not see it. Do the work with your tools if it needs them, then answer the person directly in plain words.]";
 
