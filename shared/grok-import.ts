@@ -444,7 +444,7 @@ function eventNotes(name: string, from: MoveFrom, routines: readonly GrokRoutine
     routine.instruction, "",
   ]);
   return [`# ${name}: ${from.name} routines that run on an event`, "",
-    "These start on something happening instead of a schedule, so they were not turned into routines. Ask me in chat to set one up again here.", "",
+    "These start on something happening instead of a schedule, so they were not turned into routines. When one comes up, offer to set it up again here with the person.", "",
     ...sections].join("\n");
 }
 
