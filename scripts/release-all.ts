@@ -6,7 +6,7 @@
 //
 //   node scripts/release-all.ts 0.2.26 [--dry-run] [--now] [--canary <cloud id,...>] [--desktop-steps 10,50,100] [--watch 30] [--skip-build]
 //   node scripts/release-all.ts status [--canary <cloud id,...>]
-//   node scripts/release-all.ts pause | resume | block <version> [--dry-run]
+//   node scripts/release-all.ts pause | resume | block <version> | unblock <version> [--dry-run]
 //
 // env (names only, never printed): DUSK_RELEASE_SIGNING_KEY (release key), DUSK_OPS_TOKEN (the account service's fleet
 // view), RELEASE_ACCOUNT_URL (https://dusk.bot), RELEASE_SSH (contabo), RELEASE_HOME_DIR (/var/lib/dusk-account-prod/home),
@@ -45,12 +45,12 @@ export function rolloutSteps(value: string | undefined, now: boolean): number[] 
 }
 
 /** the next policy: a serial past both the one served and any this tool signed, and `change` applied */
-export function nextPolicy(current: UpdatePolicy, lastSerial: number, change: { rollout?: [string, number | null]; paused?: boolean; block?: string }): UpdatePolicy {
+export function nextPolicy(current: UpdatePolicy, lastSerial: number, change: { rollout?: [string, number | null]; paused?: boolean; block?: string; unblock?: string }): UpdatePolicy {
   const rollout = { ...current.rollout };
   if (change.rollout) { const [version, share] = change.rollout; if (share === null || share >= 100) delete rollout[version]; else rollout[version] = share; }
   for (const version of Object.keys(rollout)) if (current.floor && compareVersions(version, current.floor) < 0) delete rollout[version];
   const paused = change.paused ?? current.paused ?? false;
-  return parsePolicy({ serial: Math.max(current.serial, lastSerial) + 1, floor: current.floor, blocked: change.block ? [...new Set([...current.blocked, change.block])] : current.blocked,
+  return parsePolicy({ serial: Math.max(current.serial, lastSerial) + 1, floor: current.floor, blocked: change.block ? [...new Set([...current.blocked, change.block])] : current.blocked.filter(version => version !== change.unblock),
     ...(paused ? { paused: true } : {}), ...(Object.keys(rollout).length ? { rollout } : {}) });
 }
 
@@ -296,8 +296,9 @@ async function main() {
   if (command === "pause") return r.publishPolicy(holder, { paused: true });
   if (command === "resume") return r.publishPolicy(holder, { paused: false });
   if (command === "block" && arg && SEMVER.test(arg)) return r.publishPolicy(holder, { block: arg, rollout: [arg, null] });
+  if (command === "unblock" && arg && SEMVER.test(arg)) return r.publishPolicy(holder, { unblock: arg });
   if (!command || !SEMVER.test(command)) {
-    console.error("usage: release-all.ts <x.y.z> [--dry-run] [--now] [--canary ids] [--desktop-steps 10,50,100] [--watch 30] [--skip-build] | status | pause | resume | block <x.y.z>");
+    console.error("usage: release-all.ts <x.y.z> [--dry-run] [--now] [--canary ids] [--desktop-steps 10,50,100] [--watch 30] [--skip-build] | status | pause | resume | block <x.y.z> | unblock <x.y.z>");
     process.exit(2);
   }
   const watchMs = Number(values.watch ?? 30) * 60_000;

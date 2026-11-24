@@ -33,6 +33,7 @@ describe("the release tool's decisions", () => {
     expect(widened).toEqual({ serial: 10, floor: "0.2.0", blocked: ["0.2.20"] });
     expect(nextPolicy(widened, 0, { block: "0.2.26", rollout: ["0.2.26", null] })).toEqual({ serial: 11, floor: "0.2.0", blocked: ["0.2.20", "0.2.26"] });
     expect(nextPolicy(nextPolicy(widened, 0, { paused: true }), 0, { paused: false })).toEqual({ serial: 12, floor: "0.2.0", blocked: ["0.2.20"] });
+    expect(nextPolicy({ ...widened, blocked: ["0.2.20", "0.2.26"] }, 0, { unblock: "0.2.26" })).toEqual({ serial: 11, floor: "0.2.0", blocked: ["0.2.20"] });
   });
 
   it("halts on a canary cloud that rolled the version back or a desktop error spike, and widens only after the watch", () => {

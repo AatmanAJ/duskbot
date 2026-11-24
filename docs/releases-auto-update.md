@@ -8,7 +8,7 @@ node scripts/release-all.ts 0.2.26 --dry-run                     # every step it
 node scripts/release-all.ts 0.2.26 --canary <cloud id,...>        # staged: canary first, widens on its own
 node scripts/release-all.ts 0.2.26 --now                          # everything at once, no watch
 node scripts/release-all.ts status [--canary <ids>]               # which version every kind of install runs
-node scripts/release-all.ts pause | resume | block <x.y.z>        # the kill switch
+node scripts/release-all.ts pause | resume | block <x.y.z> | unblock <x.y.z>   # the kill switch; unblock lifts a halt judged a false alarm (the policy then offers it to every desktop)
 ```
 
 Each step is recorded in `release/auto/<version>.json`; a rerun skips what is done and keeps a watch's clock, so a
