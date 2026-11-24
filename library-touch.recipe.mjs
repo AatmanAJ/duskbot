@@ -1,0 +1,24 @@
+import { writeFileSync } from "node:fs";
+const [browserWs, out, touch] = process.argv.slice(2);
+const port = new URL(browserWs).port;
+const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+const page = targets.find((t) => t.type === "page" && t.url.includes("__threads"));
+const ws = new WebSocket(page.webSocketDebuggerUrl);
+await new Promise((r) => ws.addEventListener("open", r, { once: true }));
+let id = 0; const pending = new Map();
+ws.addEventListener("message", (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } });
+const send = (method, params = {}) => new Promise((r) => { const n = ++id; pending.set(n, r); ws.send(JSON.stringify({ id: n, method, params })); });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const js = async (expression) => (await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true })).result?.result?.value;
+await send("Emulation.setDeviceMetricsOverride", { width: 1180, height: 820, deviceScaleFactor: 2, mobile: false });
+if (touch === "1") await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+await sleep(1500);
+console.log("media", await js(`JSON.stringify([matchMedia("(hover: none) and (pointer: coarse)").matches, navigator.maxTouchPoints])`));
+if (!(await js(`!!document.querySelector("[role=tab]")`))) { await js(`[...document.querySelectorAll("[aria-label]")].find((el) => /^Open .*'s profile$/.test(el.getAttribute("aria-label")))?.click()`); await sleep(1000); }
+await js(`[...document.querySelectorAll('[role=tab]')].find((el) => el.textContent.trim() === "Advanced")?.click()`); await sleep(1200);
+console.log("line", await js(`document.querySelector("[data-panel-empty=library]")?.textContent`));
+const shot = await send("Page.captureScreenshot", { format: "png" });
+writeFileSync(out, Buffer.from(shot.result.data, "base64"));
+await send("Emulation.setTouchEmulationEnabled", { enabled: false });
+await send("Emulation.clearDeviceMetricsOverride");
+ws.close();
