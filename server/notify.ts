@@ -1,11 +1,13 @@
 import type { Notification, NotifyKind } from "../shared/notification.ts";
 import { personMentionExcerpt } from "../shared/person-mention.ts";
+import { plainPreviewText } from "../src/lib/plain-preview.ts";
 import { conversationLanguage, serverLine, type ServerLineKey } from "./server-lines.ts";
 
 export type { Notification, NotifyKind } from "../shared/notification.ts";
 
-export function summarize(text: string, max = 140): string {
-  const line = text.replace(/```[\s\S]*?```/g, " ").replace(/\s+/g, " ").trim();
+export function summarize(text: string, max = 140, { markdown = false }: { markdown?: boolean } = {}): string {
+  const unfenced = text.replace(/```[\s\S]*?```/g, " ");
+  const line = (markdown ? plainPreviewText(unfenced) : unfenced).replace(/\s+/g, " ").trim();
   return line.length > max ? `${line.slice(0, max - 1).trimEnd()}…` : line;
 }
 
@@ -23,6 +25,8 @@ export function buildNoticeNotification(bot: Pick<NotifyBot, "id" | "name">, thr
   return { kind: "notice", botId: bot.id, botName: bot.name, threadId, title: bot.name, body: summarize(text, 240) };
 }
 
+
+const BOT_MARKDOWN_KINDS: ReadonlySet<NotifyKind> = new Set(["done", "mention", "question"]);
 
 const TITLE: Partial<Record<NotifyKind, ServerLineKey>> = {
   approval: "server.notify.approval",
@@ -45,7 +49,7 @@ export function buildNotification(
 ): Notification | null {
   if (bot.notifications === false) return null;
 
-  const body = summarize(detail);
+  const body = summarize(detail, 140, { markdown: BOT_MARKDOWN_KINDS.has(kind) });
   const language = conversationLanguage(threadId);
   const who = extra?.group ? serverLine(language, "server.notify.inRoom", { bot: bot.name, room: extra.group.name }) : bot.name;
   const title = kind === "secret" ? serverLine(language, "server.notify.secret", { who, label: extra?.label ?? "" })
