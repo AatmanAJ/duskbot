@@ -19,6 +19,9 @@ export const SIDEBAR_INLINE = "(min-width: 768px)";
 /** Below Tailwind's md breakpoint: the phone layout, where the sidebar is a full-screen bot list. */
 export const PHONE_LAYOUT = "(max-width: 767.98px)";
 
+/** A touch screen with no mouse or trackpad, and so most likely no keyboard. */
+export const TOUCH_ONLY = "(hover: none) and (pointer: coarse)";
+
 /** The phone layout: a narrow window, or the phone app at any width, an iPhone on its side included. */
 export function usePhoneLayout(): boolean {
   const narrow = useMediaQuery(PHONE_LAYOUT);

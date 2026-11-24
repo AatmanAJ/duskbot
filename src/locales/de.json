@@ -4490,6 +4490,7 @@
   "botPanel.routines.loadError": "Routinen konnten nicht geladen werden. Deine Routinen sind noch da, nur diese Liste kam nicht an.",
   "botPanel.routines.retry": "Erneut versuchen",
   "botPanel.library.empty": "Seiten, Dateien und Apps, die dieser Bot in dieser Unterhaltung erstellt, erscheinen hier. Für etwas aus einer früheren Unterhaltung frag {name} oder suche mit {key}.",
+  "botPanel.library.emptyNoKeyboard": "Seiten, Dateien und Apps, die dieser Bot in dieser Unterhaltung erstellt, erscheinen hier. Für etwas aus einer früheren Unterhaltung frag {name} oder suche danach.",
   "botPanel.library.today": "Heute",
   "botPanel.library.week": "Diese Woche",
   "botPanel.library.older": "Älter",
