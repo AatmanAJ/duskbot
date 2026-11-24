@@ -11,7 +11,7 @@ import { signedOutNoticeText } from "./limit-notices.ts";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const MODELS = `Settings → ${en["settings.pane.models"]}`;
-const RETIRED = /\b(?:Settings(?: →|,)|settings →) (?:Engines|AI|Model providers)\b/;
+const RETIRED = /\b(?:Settings,|[Ss]ettings →) (?:[Ee]ngines|AI|[Mm]odel providers)\b/;
 
 function sources(dir: string, keep: (name: string) => boolean): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -32,6 +32,8 @@ describe("messages that send people to sign in or set up an AI", () => {
   });
 
   it("never name a settings screen the app no longer has", () => {
+    for (const path of ["Settings → Engines", "settings → engines", "Settings, Model providers", "Settings → AI"]) expect(path).toMatch(RETIRED);
+    expect(`${MODELS} → ChatGPT`).not.toMatch(RETIRED);
     const code = (name: string) => /\.(ts|tsx|mts|mjs)$/.test(name) && !/\.test\./.test(name);
     const files = [
       ...["server", "shared", "src", "electron"].flatMap((dir) => sources(join(ROOT, dir), code)),
