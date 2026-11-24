@@ -215,15 +215,24 @@ function documentsIn(text: string): Array<Record<string, unknown>> {
   return [];
 }
 
-/** A reply's words beside its export documents, one line; "" for a file that is nothing but JSON. */
+const LEAD_IN_MAX_WORDS = 7;
+
+function noteWords(part: string): string {
+  const words = oneLine(part.replace(/```[\w-]*/g, " "));
+  return words.split(" ").filter((word) => /\p{L}/u.test(word)).length > LEAD_IN_MAX_WORDS ? words : "";
+}
+
+/** A reply's words beside its export documents, one line; "" for a file that is nothing but JSON or a short lead-in. */
 function replyWords(text: string): string {
-  let rest = text;
-  for (const object of bracedObjects(text)) {
+  const documents = bracedObjects(text).filter((object) => {
     const value = looseJson(object) ?? looseJson(object.replace(/[“”]/g, '"').replace(/[‘’]/g, "'"));
-    if (isExportDocument(value) || looksLikeBot(value)) rest = rest.replace(object, " ");
-  }
-  const words = oneLine(rest.replace(/```[\w-]*/g, " "));
-  return /\p{L}/u.test(words) ? clip(redactSecretsInText(words), SAID_MAX) : "";
+    return isExportDocument(value) || looksLikeBot(value);
+  });
+  const start = documents.length ? text.indexOf(documents[0]!) : text.length;
+  let after = text.slice(start);
+  for (const object of documents) after = after.replace(object, " ");
+  const words = [text.slice(0, start), after].map(noteWords).filter(Boolean).join(" ");
+  return words ? clip(redactSecretsInText(words), SAID_MAX) : "";
 }
 
 function readApp(app: unknown): GrokApp[] {
