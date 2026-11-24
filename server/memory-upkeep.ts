@@ -250,9 +250,10 @@ function readRaw(botId: string, relative: string): string | null {
   }
 }
 
-async function askModel(engine: UpkeepEngine, prompt: string, timeoutMs = MODEL_TIMEOUT_MS): Promise<string | null> {
+async function askModel(engine: UpkeepEngine, prompt: string, timeoutMs = MODEL_TIMEOUT_MS, stop?: AbortSignal): Promise<string | null> {
   if (!engine.generateText) return null;
   const expiry = new AbortController();
+  stop?.addEventListener("abort", () => expiry.abort(stop.reason), { once: true });
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expired = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
@@ -291,6 +292,8 @@ export const NO_TEXT_ENGINE = "This bot's engine cannot make the quick backgroun
 export interface MemoryUpkeep {
   noteTurn(botId: string, threadId: string, turn: CaptureTurn): void;
   flushThread(threadId: string): void;
+  /** A new message for the bot: its capture call in flight is dropped and its chats wait until it is free again. */
+  yieldTo(botId: string): void;
   dropBot(botId: string): void;
   forgetBot(botId: string): void;
   capture(batch: CaptureBatch): Promise<CaptureReport>;
@@ -323,6 +326,7 @@ export function createMemoryUpkeep(deps: UpkeepDeps): MemoryUpkeep {
   // Flushed chats wait here, also through a backup; one worker drains it, one capture call at a time.
   const queue: Waiting[] = [];
   let worker: Promise<void> | null = null;
+  const capturing = new Map<string, AbortController>();
 
   // The reports this process knows about: read once, written when the batch that recorded them ends,
   // so a tick over a large workspace writes once however many bots it touches. A capture's batch also
@@ -477,7 +481,7 @@ export function createMemoryUpkeep(deps: UpkeepDeps): MemoryUpkeep {
    * conversation still feeds memory, and reaches About me only if every one is the owner's own.
    */
   function attribute(candidates: readonly Candidate[], conversations: readonly CaptureBatch[], still: readonly boolean[]) {
-    const owner = conversations.map((conversation) => conversation.turns.every((turn) => turn.owner !== false));
+    const owner = conversations.map((conversation) => conversation.turns.every((turn) => turn.owner !== false && !turn.origin));
     const sizes = conversations.map((conversation) => captureSize(conversation.turns).said);
     const guess = sizes.indexOf(Math.max(...sizes));
     return candidates.flatMap((candidate) => {
@@ -493,7 +497,7 @@ export function createMemoryUpkeep(deps: UpkeepDeps): MemoryUpkeep {
   /** The facts a capture call is shown, keyed F1…: those its conversations bring to mind, from the bot's notes and About me. */
   async function knownFacts(botId: string, conversations: readonly CaptureBatch[], today: string): Promise<Array<KnownFact & { fact: FactRow }>> {
     const said = conversations
-      .flatMap((conversation) => conversation.turns.flatMap((turn) => turn.room ? turn.room.filter((line) => line.by === "person").map((line) => line.text) : [turn.person]))
+      .flatMap((conversation) => conversation.turns.flatMap((turn) => turn.origin ? [turn.bot] : turn.room ? turn.room.filter((line) => line.by === "person").map((line) => line.text) : [turn.person]))
       .join("\n")
       .slice(0, 1_500);
     if (!said.trim()) return [];
@@ -520,7 +524,8 @@ export function createMemoryUpkeep(deps: UpkeepDeps): MemoryUpkeep {
     const said = (entry: CaptureTurn) => (candidate.kind === "outcome" ? entry.bot : entry.room ? entry.room.map((line) => line.text).join("\n") : entry.person);
     const turn = conversation.turns.find((entry) => folded && foldForMatch(said(entry)).includes(folded));
     const byOther = Boolean(turn?.room) && !turn!.room!.some((line) => line.by === "person" && foldForMatch(line.text).includes(folded));
-    const source: FactSource = candidate.kind === "outcome" ? "bot-verified" : byOther ? "other-person" : "person-said";
+    const source: FactSource = turn?.origin ? (turn.origin.kind === "routine" ? "routine" : "handoff")
+      : candidate.kind === "outcome" ? "bot-verified" : byOther ? "other-person" : "person-said";
     try {
       annotateFact(owner, file, candidate.text, {
         source,
@@ -561,6 +566,8 @@ export function createMemoryUpkeep(deps: UpkeepDeps): MemoryUpkeep {
     ensureWorkspace(id);
     const today = memoryDate(now());
     const known = await knownFacts(id, conversations, today);
+    const yielded = new AbortController();
+    capturing.set(id, yielded);
     const answer = await askModel(engine, capturePrompt({
       botName: bot.name,
       conversations: conversations.map((conversation) => conversation.turns),
@@ -569,8 +576,12 @@ export function createMemoryUpkeep(deps: UpkeepDeps): MemoryUpkeep {
       topics: memoryTopicIndex(id),
       general: generalFacts(),
       known: known.map(({ fact: _fact, ...shown }) => shown),
-    }));
+    }), MODEL_TIMEOUT_MS, yielded.signal).finally(() => { if (capturing.get(id) === yielded) capturing.delete(id); });
     if (started !== generation) return { ...off, note: "upkeep stopped" };
+    if (yielded.signal.aborted) {
+      queue.unshift(...conversations.map((batch) => ({ batch })));
+      return { at, added: 0, topics: 0, aboutMe: 0, note: "deferred until the bot answers its new message" };
+    }
     if (answer === null) {
       const report = { at, added: 0, topics: 0, aboutMe: 0, note: "The capture call did not answer in time." };
       record(id, { lastCapture: report });
@@ -655,7 +666,9 @@ export function createMemoryUpkeep(deps: UpkeepDeps): MemoryUpkeep {
 
   /** The first waiting batch, with its bot's other waiting batches that fit in the same call. */
   function takeCall(): Waiting[] {
-    const first = queue.shift()!;
+    const at = queue.findIndex((entry) => !deps.busy(entry.batch.botId));
+    if (at < 0) return [];
+    const [first] = queue.splice(at, 1) as [Waiting];
     const call = [first];
     let turns = first.batch.turns.length;
     let bytes = callBytes(first.batch);
@@ -678,6 +691,7 @@ export function createMemoryUpkeep(deps: UpkeepDeps): MemoryUpkeep {
       await Promise.resolve();
       while (!cancelled(started) && queue.length) {
         const call = takeCall();
+        if (!call.length) break;
         try {
           const report = await batched(() => captureCall(call.map((entry) => entry.batch)), true);
           for (const entry of call) entry.done?.resolve(report);
@@ -693,7 +707,7 @@ export function createMemoryUpkeep(deps: UpkeepDeps): MemoryUpkeep {
   }
 
   function kick(): void {
-    if (!worker && !paused && queue.length) worker = track(work());
+    if (!worker && !paused && queue.some((entry) => !deps.busy(entry.batch.botId))) worker = track(work());
   }
 
   function enqueue(entry: Waiting): void {
@@ -1257,6 +1271,7 @@ export function createMemoryUpkeep(deps: UpkeepDeps): MemoryUpkeep {
   async function tick(): Promise<void> {
     const started = generation;
     if (cancelled(started)) return;
+    kick();
     // One batch: the state file is written once at the end however many bots this tick touches.
     await batched(async () => {
       for (const bot of deps.bots()) {
@@ -1303,6 +1318,9 @@ export function createMemoryUpkeep(deps: UpkeepDeps): MemoryUpkeep {
       buffer.add(botId, threadId, turn);
     },
     flushThread: (threadId) => buffer.flush(threadId),
+    yieldTo(botId) {
+      capturing.get(botId)?.abort();
+    },
     dropBot(botId) {
       buffer.dropBot(botId);
       dropQueued(botId);

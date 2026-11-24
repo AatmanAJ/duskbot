@@ -135,7 +135,7 @@ import { chatMessageCount, habitReminder } from "./habit-reminder.ts"; import { 
 import { createMemoryUpkeep, dreamConversations, upkeepEnabled } from "./memory-upkeep.ts";
 import { createImportDistill, importDistillFile } from "./import-distill.ts";
 import { createCacheKeepWarm, type KeepWarmStatus, type KeepWarmTarget } from "./cache-keepwarm.ts";
-import { createSkillReview, turnToolSteps } from "./skill-review.ts";
+import { createSkillReview, turnToolSteps } from "./skill-review.ts"; import { createLearningOrigins } from "./learning-origins.ts";
 import { createSideJobs, helperSelection } from "./side-jobs.ts";
 import type { CaptureTurn, RoomLine } from "./memory-capture.ts";
 import { createAboutMe } from "./about-me.ts"; import { createPersonPreference } from "./host/person-preference.ts";
@@ -5423,7 +5423,7 @@ const memoryUpkeep = createMemoryUpkeep({
     // a bot's notes may hold what a teammate told it; only where one person uses every bot are they all about that person
     promote: () => !sharedMembership(),
   } }),
-  sourceLabel: (botId, threadId) => memorySourceLabel({ room: store.groupByThread(threadId), task: store.taskByThread(teamHost.baseBotId(botId), threadId), threadId }),
+  sourceLabel: (botId, threadId) => memorySourceLabel({ room: store.groupByThread(threadId), task: store.taskByThread(teamHost.baseBotId(botId), threadId), threadId, routine: learningOrigins.routineName(threadId) }),
   mayCapture: (botId, threadId) => {
     const room = store.groupByThread(threadId);
     if (cloudGuestDriven(threadId)) return false;
@@ -5469,20 +5469,9 @@ bus.subscribe((event: RuntimeEvent) => {
   }
 });
 
-function captureTurnFor(threadId: string, turnId: string): CaptureTurn | null {
-  const path = store.activePath(threadId);
-  const replyAt = path.findLastIndex((message) => message.role === "bot" && message.kind === "text" && message.turnId === turnId);
-  if (replyAt < 0) return null;
-  const asked = path.slice(0, replyAt).findLast((message) => message.role === "user" && message.kind === "text");
-  if (!asked || asked.peerAsk) return null;
-  return {
-    person: extractTurnImages(asked.text ?? "").text,
-    bot: path[replyAt]!.text ?? "",
-    owner: !asked.sender,
-    turnId,
-    messageId: asked.id,
-  };
-}
+const learningOrigins = createLearningOrigins({ path: (threadId) => store.activePath(threadId), routineRun: (threadId) => routines?.runForThread(threadId) ?? null,
+  heartbeat: (threadId) => proactive.fence.confines(threadId), internal: (threadId) => isInternalTurn(threadId), unattended: (botId, threadId) => isUnattended(botId, threadId) });
+const captureTurnFor = (threadId: string, turnId: string): CaptureTurn | null => learningOrigins.personTurn(threadId, turnId);
 
 // Prompt-cache keep-warm (server/cache-keepwarm.ts; design from Cache Tax,
 // MIT, Karan Bansal): an idle Claude thread with a big context gets one
@@ -5622,11 +5611,9 @@ bus.subscribe((event: RuntimeEvent) => {
       return;
     }
     const bot = store.botByThread(event.threadId);
-    if (!bot || !upkeepEnabled(bot) || isInternalTurn(event.threadId)
-      || isUnattended(bot.id, event.threadId) || routines?.runForThread(event.threadId)) return;
-    if (CLOUD_PERSONAL && !cloudOwnerOnlyThread(event.threadId)) return;
-    const turn = captureTurnFor(event.threadId, event.turnId);
-    if (turn) memoryUpkeep.noteTurn(teamHost.layer(bot.id, event.threadId), event.threadId, teamHost.ownTurn(event.threadId) ? { ...turn, owner: true } : turn);
+    if (!bot || !upkeepEnabled(bot) || (CLOUD_PERSONAL && !cloudOwnerOnlyThread(event.threadId))) return;
+    const turn = learningOrigins.captureTurn(bot.id, event.threadId, event.turnId);
+    if (turn) memoryUpkeep.noteTurn(teamHost.layer(bot.id, event.threadId), event.threadId, teamHost.ownTurn(event.threadId) && !turn.origin ? { ...turn, owner: true } : turn);
   } catch (error) {
     console.warn(`memory upkeep: could not queue a turn for capture: ${(error as Error).message}`);
   }
@@ -5643,7 +5630,7 @@ const skillReview = createSkillReview({
   transcript: (botId, threadId) => {
     const owned = connectorThread(botId, threadId);
     if (!owned || cloudGuestDriven(threadId)) return null;
-    return { messages: store.activePath(threadId), room: Boolean(owned.group) };
+    return { messages: store.activePath(threadId), room: Boolean(owned.group), routine: learningOrigins.routineName(threadId) };
   },
   skills: (botId) => skillLearning.reviewSkills(botId),
   currentSha: (botId, name) => listSkills(botId).find((skill) => skill.name === name)?.sha256 ?? skillsHost.sharedSha(botId, name),
@@ -5663,6 +5650,7 @@ const skillReview = createSkillReview({
 
 bus.subscribe((event: RuntimeEvent) => {
   if (shouldIgnoreProviderEvent(event)) return;
+  if (event.type === "turn.started") { const starter = store.botByThread(event.threadId)?.id ?? groupSpeakers.get(event.threadId)?.botId; if (starter) { skillReview.yieldTo(starter); memoryUpkeep.yieldTo(teamHost.layer(starter, event.threadId)); } return; }
   if (event.type !== "turn.completed" || !event.turnId) return;
   try {
     const messages = store.activePath(event.threadId);
@@ -5670,7 +5658,7 @@ bus.subscribe((event: RuntimeEvent) => {
     const room = store.groupByThread(event.threadId);
     const bot = room ? (reply?.from ? store.bot(reply.from.botId) : undefined) : store.botByThread(event.threadId);
     if (!bot) return; rememberComputerTurn(bot.id, messages, event.turnId);
-    const counts = event.ok && Boolean(reply?.text?.trim()) && !isInternalTurn(event.threadId) && !isUnattended(bot.id, event.threadId) && !routines?.runForThread(event.threadId)
+    const counts = event.ok && Boolean(reply?.text?.trim()) && learningOrigins.countsForSkills(event.threadId)
       && !(CLOUD_HOME && !cloudOwnerOnlyThread(event.threadId)) && registry.get(bot.modelSelection.instanceId)?.adapter.capabilities.agentsMcp === true;
     if (counts) skillReview.noteTurn(bot.id, event.threadId, turnToolSteps(messages, event.turnId, bot.id, Boolean(room)));
     skillReview.botSettled(bot.id);

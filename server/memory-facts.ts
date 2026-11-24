@@ -18,7 +18,8 @@ import { isArchiveTopic, isMemorySeed, listMemoryTopics, memoryDate, readMemoryT
 
 export type FactStatus = "active" | "superseded" | "merged" | "expired" | "suppressed";
 /** Where a fact came from. Only `typed` and `person-said` may describe the person in always-loaded memory. */
-export type FactSource = "typed" | "person-said" | "bot-verified" | "other-person" | "tool" | "web" | "other-bot" | "import" | "legacy";
+/** "routine" and "handoff": an outcome the bot verified in a turn a routine or another bot opened, never the person's words. */
+export type FactSource = "typed" | "person-said" | "bot-verified" | "routine" | "handoff" | "other-person" | "tool" | "web" | "other-bot" | "import" | "legacy";
 export type FactTrust = "high" | "medium" | "low";
 export const ABOUT_FILE = "about-me";
 /** Lines that left About me: replaced or merged ones are history, ones trimmed for size still hold. */
@@ -51,7 +52,7 @@ export interface FactRow {
 
 export function trustOf(source: FactSource): FactTrust {
   if (source === "typed" || source === "person-said") return "high";
-  if (source === "bot-verified" || source === "other-person" || source === "import" || source === "legacy") return "medium";
+  if (source === "bot-verified" || source === "routine" || source === "handoff" || source === "other-person" || source === "import" || source === "legacy") return "medium";
   return "low";
 }
 

@@ -357,9 +357,10 @@ off. It keeps the notes in shape without the bot having to decide to:
     one with a header (`title`, `aliases`: the other words someone would ask
     with), so recall finds it later.
   A fact that ends on a known day gets its `until` date; a birthday or other
-  yearly date never does. Turns started by another bot or by the harness,
-  routine runs and failed turns are never read; rooms only with **Learn from
-  group chats** (below).
+  yearly date never does. Harness turns, failed turns, the day watch and
+  other proactive check-ins are never read; rooms only with **Learn from
+  group chats** (below). A routine run or a hand-off from another bot is
+  read only under the rules in *Learning in the background* below.
 - **Learning from group chats.** The **Learn from group chats** switch under
   Memory upkeep (`features.roomMemoryCapture`, one switch for every bot,
   off by default) lets a member bot's room turns feed its capture the same
@@ -554,6 +555,44 @@ count toward the monthly spend limit and stop at it. Each is its own row in
 **Settings → Usage → History**, for the bot it wrote for, with the helper's
 engine and model: group by **Person** to see them together as *Helper
 model*, which is also what the CSV's `triggered_by` column says.
+
+## Learning in the background
+
+The idea comes from Hermes Agent's background review: after the reply, never
+during it, the bot looks back at the conversation and saves what it learned,
+so the person never has to say "remember this".
+
+- **Memory**: the capture step above, after two quiet minutes or six turns.
+- **Skills**: the skill review (`server/skill-review.ts`), once a chat has
+  gathered `features.skillReviewSteps` (10 by default) successful tool steps,
+  counted across turns, not within one; a skill change in the chat resets
+  the count. It reads the conversation and the bot's learned skills and makes
+  at most one change: patch the skill used here, else one for the same kind
+  of work, else create one named for the kind of work. Its changes are
+  applied by code, as the bot's own `skill_manage` would.
+- **Same model.** The skill review runs on the model the bot chats with, not
+  a quick one, where the engine's background call takes a model (Claude, the
+  API engines, Pi and Muse Code); Codex and the ACP engines keep their own
+  background model. Every built-in engine can run both steps (Pi and Muse
+  Code through a hidden turn, above). The review prompt keeps its
+  instructions, which never change, ahead of the bot's name, the
+  conversation and the skills, so a provider's prompt cache can reuse them.
+- **A new message wins.** When a turn starts for the bot, a skill review or
+  capture call in flight for it is dropped; nothing is lost: the review runs
+  again once the bot is free, and the capture's turns wait in the queue until
+  then (or the next ten-minute check).
+- **Routines and other bots.** A routine run's and a hand-off's tool steps
+  count toward the skill review, and the review sees the instruction as the
+  routine's or the other bot's, never as the person's. Memory capture reads a
+  routine run or a hand-off (`learning-origins.ts`) only when the turn used a
+  tool that worked, never a test run, a quiet "nothing new" run or the day
+  watch, and a routine at most once every six hours however often it runs.
+  Such a turn has no words of the person in it, so only an outcome the bot
+  verified is kept: its quoted evidence must be in the bot's reply and not in
+  the instruction it ran on (a routine's last report, recalled notes), and it
+  never reaches About me. Each fact records where it came from: the entry is
+  sourced `from routine "Price watch"` (or the chat), and the fact store's
+  `source` is `routine` or `handoff` (medium trust), set by code.
 
 ## Remember and forget, in chat
 

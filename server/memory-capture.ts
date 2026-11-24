@@ -67,6 +67,15 @@ export interface CaptureTurn {
   /** The person's message this turn answered, so a fact can point back to the words it came from. */
   messageId?: string;
   room?: RoomLine[];
+  /** A turn no person opened: a routine run, or another bot handing the bot work. `asked` is the instruction it ran on,
+   * never the Person's words, so only an outcome the bot verified may come from it. */
+  origin?: TurnOrigin;
+}
+
+export interface TurnOrigin {
+  kind: "routine" | "bot";
+  name: string;
+  asked: string;
 }
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -87,9 +96,12 @@ export function capturePrompt(input: { botName: string; turns?: readonly Capture
     line.by === "person" ? `Person: ${clip(line.text)}`
     : line.by === "other" ? `${clip(line.name).slice(0, 40)} (another person): ${clip(line.text)}`
     : `${clip(line.name).slice(0, 40)} (another bot): ${clip(line.text)}`;
+  const opened = (origin: TurnOrigin) => origin.kind === "routine"
+    ? `Routine ${JSON.stringify(clip(origin.name).slice(0, 60))} (a saved automation's instruction, not the Person): ${clip(origin.asked)}`
+    : `${clip(origin.name).slice(0, 40)} (another bot, handing over work): ${clip(origin.asked)}`;
   const transcript = (turns: readonly CaptureTurn[]) => turns
     .flatMap((turn) => [
-      ...(turn.room ? turn.room.filter((line) => line.text.trim()).map(said) : [turn.person.trim() ? `Person: ${clip(turn.person)}` : ""]),
+      ...(turn.origin ? [opened(turn.origin)] : turn.room ? turn.room.filter((line) => line.text.trim()).map(said) : [turn.person.trim() ? `Person: ${clip(turn.person)}` : ""]),
       turn.bot.trim() ? `${input.botName}: ${clip(turn.bot)}` : "",
     ])
     .filter(Boolean)
@@ -101,6 +113,7 @@ export function capturePrompt(input: { botName: string; turns?: readonly Capture
     ? conversations.map((turns, i) => `Conversation ${i + 1}${isRoom(turns) ? " (group chat)" : ""}:\n${transcript(turns) || "(nothing)"}`).join("\n\n")
     : transcript(conversations[0] ?? []);
   const room = conversations.some(isRoom);
+  const unopened = conversations.some((turns) => turns.some((turn) => turn.origin));
   const limit = captureItemLimit(conversations.length);
   const notebook = input.notebook.trim() ? input.notebook.trim().slice(-NOTEBOOK_MAX) : "(empty)";
   const known = (input.known ?? []).map((fact) => `${fact.key} (${fact.where}${fact.date ? `, ${fact.date}` : ""}) ${clip(fact.text).slice(0, 300)}`).join("\n");
@@ -131,6 +144,7 @@ export function capturePrompt(input: { botName: string; turns?: readonly Capture
       "- From a line marked (another person): only facts about the shared work (a project, a client, a deadline) and decisions that person made for it, said in their name. Never a fact about the Person from their words, and never aboutUser.",
       `- From a line marked (another bot): only an outcome that bot verified (it shows what was checked or done) or a decision the Person agreed to. Never its suggestions, plans, guesses, opinions or claims that something was done without evidence, and never what it says about the Person: that is a claim, not the Person's words.`,
     ] : []),
+    ...(unopened ? [`- A turn opened by a Routine or by another bot has no words of the Person in it. From it keep only an outcome ${input.botName} verified (what it found, checked or did, with the result), never what the instruction or the other bot says, never a fact about the Person, never aboutUser, and nothing that only repeats an earlier report.`] : []),
     `- Judge the Person's words yourself. What ${input.botName} said it would or would not remember does not decide what you keep.`,
     "- aboutUser is true only for a durable fact about the Person themselves that any of their assistants should know: their name, where they live, their work, a diet or health need, how they like to be answered, and the people close to them with how to reach them. A project's details, a task or a decision about one piece of work is never aboutUser.",
     "- Small talk, the weather, a one-off question or task, a code or password pasted for a moment, and anything only true today are never worth keeping.",
@@ -165,7 +179,7 @@ const byteLength = (texts: readonly string[]) => UTF8.encode(texts.map(clip).fil
 /** UTF-8 bytes, as the prompt clips them, of what was said to the bot (a room's every line) and of its replies. */
 export function captureSize(turns: readonly CaptureTurn[]): { said: number; replied: number } {
   return {
-    said: byteLength(turns.flatMap((turn) => (turn.room ? turn.room.map((line) => line.text) : [turn.person]))),
+    said: byteLength(turns.flatMap((turn) => (turn.origin ? [turn.origin.asked] : turn.room ? turn.room.map((line) => line.text) : [turn.person]))),
     replied: byteLength(turns.map((turn) => turn.bot)),
   };
 }
@@ -266,8 +280,10 @@ function statedIn(said: string, evidence: string): boolean {
  * (`aboutMe`), only the Person's own words count. Decisions and outcomes may rest on the bot's verified words. */
 export function statedInConversation(candidate: Candidate, turns: readonly CaptureTurn[], aboutMe: boolean): boolean {
   if (!candidate.evidence) return false;
-  if (candidate.kind === "outcome") return !aboutMe && turns.some((turn) => foldForMatch(turn.bot).includes(foldForMatch(candidate.evidence!).replace(/[\s.!]+$/, "")));
-  const said = turns.flatMap((turn) => turn.room
+  const quote = foldForMatch(candidate.evidence).replace(/[\s.!]+$/, "");
+  // a reply that only repeats its instruction (a routine's last report, recalled notes) verifies nothing
+  if (candidate.kind === "outcome") return !aboutMe && turns.some((turn) => foldForMatch(turn.bot).includes(quote) && !(turn.origin && foldForMatch(turn.origin.asked).includes(quote)));
+  const said = turns.filter((turn) => !turn.origin).flatMap((turn) => turn.room
     ? turn.room.filter((line) => line.by === "person" || (!aboutMe && line.by === "other")).map((line) => line.text)
     : [turn.person]);
   return said.some((text) => statedIn(text, candidate.evidence!));

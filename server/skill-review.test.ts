@@ -102,7 +102,12 @@ describe("the review prompt", () => {
     expect(prompt).toContain("imported-tool (the person's own or imported, read-only)");
     expect(prompt).toContain("huge-skill (learned by you, too long to show: do not update)");
     expect(prompt).toContain("at most 1 change");
-    expect(prompt).toContain("even when Scout also noted it in memory");
+    expect(prompt).toContain("even when the assistant also noted it in memory");
+    // the instructions come before anything that changes between bots or reviews, so a provider's prompt cache can reuse them
+    const other = skillReviewPrompt({ botName: "Juno", transcript: "Person: hi", skills: [] });
+    const head = prompt.slice(0, prompt.indexOf("The assistant is named"));
+    expect(head.length).toBeGreaterThan(4_000);
+    expect(other.startsWith(head)).toBe(true);
     expect(prompt).toContain('<skill name="weekly-report">');
     expect(prompt).not.toContain('<skill name="huge-skill">');
     expect(prompt).toContain("## When to Use");

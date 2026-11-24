@@ -367,6 +367,18 @@ describe("what a helper call is booked as", () => {
     expect(state.booked[0]).toMatchObject({ row: { input: 0, output: 0, costUsd: null }, tokensReported: false });
   });
 
+  it("runs the skill review on the model the bot chats with, not a quick one", async () => {
+    const { jobs, state, openrouter } = setup({ modelAllowed: (selection) => selection.model !== "banned" });
+    const models = { default: "big-1", options: [{ id: "big-1", label: "Big" }, { id: "mini-1", label: "Mini" }] };
+    state.instances.set("openrouter", { ...state.instances.get("openrouter")!, models });
+    state.bots.set("openrouter", { ...bot("openrouter", "openrouter"), modelSelection: { instanceId: "openrouter", model: "big-1" } });
+    await jobs.text("skill-review", "openrouter")!.generateText("p");
+    expect(openrouter.calls.at(-1)?.options?.model).toBe("big-1");
+    state.bots.set("openrouter", { ...bot("openrouter", "openrouter"), modelSelection: { instanceId: "openrouter", model: "banned" } });
+    await jobs.text("skill-review", "openrouter")!.generateText("p");
+    expect(openrouter.calls.at(-1)?.options?.model).toBeUndefined();
+  });
+
   it("books the bot's own background calls as its upkeep, with the job named, and leaves its own summary unbooked", async () => {
     const { jobs, state } = setup();
     await jobs.text("memory", "claude")!.generateText("p");

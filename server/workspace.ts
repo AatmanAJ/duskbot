@@ -412,9 +412,10 @@ export function correctionSource(source: string): string {
   return plain ? `${plain}, corrected` : "";
 }
 
-export function memorySourceLabel(from: { room?: { name: string }; task?: { title: string }; threadId: string }): string {
+export function memorySourceLabel(from: { room?: { name: string }; task?: { title: string }; threadId: string; routine?: string }): string {
   const short = (name: string) => JSON.stringify(name.length > SOURCE_NAME_MAX ? `${name.slice(0, SOURCE_NAME_MAX)}…` : name);
   if (from.room) return `room ${short(from.room.name)}`;
+  if (from.routine) return `routine ${short(from.routine)}`;
   if (from.task?.title) return `chat ${short(from.task.title)}`;
   return `thread ${from.threadId}`;
 }
