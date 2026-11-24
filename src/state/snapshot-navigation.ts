@@ -1,3 +1,4 @@
+import { optimisticMessageId } from "./optimistic-send";
 import type { Bot, Group, Message } from "./store";
 import { reconcileTranscript } from "./transcript-cache";
 
@@ -88,7 +89,10 @@ export function heldTranscript<T extends Bot | Group>(previous: T | undefined, i
   if (loaded) {
     if (!held) return { ...incoming, transcriptLoaded: true, transcriptStale: undefined };
     const kept = reconcileTranscript(held.messages, new Set(held.messages), incoming.messages, Boolean(incoming.hasMore), held.hasMore);
-    const leaf = "modelSelection" in incoming && "modelSelection" in held ? leafAfterSnapshot(kept.messages, held.activeLeafId, incoming.activeLeafId) : undefined;
+    const leaves = "modelSelection" in incoming && "modelSelection" in held ? { held: held.activeLeafId, incoming: incoming.activeLeafId } : null;
+    const following = leaves && pendingSendFollows(kept.messages, leaves.held, leaves.incoming);
+    if (following) return { ...incoming, ...kept, messages: following, activeLeafId: leaves.held, transcriptLoaded: true, transcriptStale: undefined };
+    const leaf = leaves ? leafAfterSnapshot(kept.messages, leaves.held, leaves.incoming) : undefined;
     return { ...incoming, ...kept, ...(leaf !== undefined ? { activeLeafId: leaf } : {}), transcriptLoaded: true, transcriptStale: undefined };
   }
   if (!held) return { ...incoming, transcriptLoaded: false, transcriptStale: undefined };
@@ -106,6 +110,24 @@ function leafAfterSnapshot(messages: readonly Message[], held: string | null | u
   if (!byId.has(held)) return incoming;
   for (let at = byId.get(held)?.parentId; at; at = byId.get(at)?.parentId) if (at === incoming) return held;
   return incoming;
+}
+
+const pendingSend = (message: Message | undefined): boolean => Boolean(message?.sendId) && message!.id === optimisticMessageId(message!.sendId!);
+
+/** A send still on its way is the held leaf while the server's leaf moved on down the same branch (rows a restart or a
+ * resumed turn added under the send's parent): the transcript with the send moved under that leaf, so it stays on
+ * screen, as the leaf, until its server copy replaces it. Null when the server's leaf is on another branch. */
+export function pendingSendFollows(messages: readonly Message[], held: string | null | undefined, incoming: string | null | undefined): Message[] | null {
+  if (!held || !incoming || held === incoming) return null;
+  const byId = new Map(messages.map((message) => [message.id, message]));
+  let first = byId.get(held);
+  if (!first || !pendingSend(first)) return null;
+  while (first.parentId && pendingSend(byId.get(first.parentId))) first = byId.get(first.parentId)!;
+  const base = first.parentId ?? null, target = byId.get(incoming);
+  if (!target || pendingSend(target)) return null;
+  for (let at = target.parentId ?? null; at !== base; at = byId.get(at)?.parentId ?? null) if (!at) return null;
+  const moved = first;
+  return messages.map((message) => (message === moved ? { ...message, parentId: incoming } : message));
 }
 
 const NO_MESSAGES: Message[] = [];

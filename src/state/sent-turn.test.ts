@@ -16,7 +16,7 @@ function sendWith(answer: () => Promise<Response>, bot: Bot = idle) {
   vi.useFakeTimers();
   initialState.bots = [bot];
   vi.stubGlobal("fetch", vi.fn<typeof fetch>((path) => path === SEND ? answer() : Promise.resolve(response({}))));
-  vi.stubGlobal("window", {});
+  vi.stubGlobal("window", new EventTarget());
   let dispatch!: Dispatch<Action>;
   function Capture() { dispatch = useStore().dispatch; return null; }
   renderToStaticMarkup(createElement(StoreProvider, null, createElement(Capture)));

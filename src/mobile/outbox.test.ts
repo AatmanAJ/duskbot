@@ -118,7 +118,7 @@ describe("the store with an outbox", () => {
   function mount(request: typeof fetch) {
     vi.useFakeTimers();
     vi.stubGlobal("fetch", request);
-    vi.stubGlobal("window", {});
+    vi.stubGlobal("window", new EventTarget());
     let dispatch!: Dispatch<Action>;
     function Capture() { dispatch = useStore().dispatch; return null; }
     renderToStaticMarkup(createElement(StoreProvider, null, createElement(Capture)));

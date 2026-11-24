@@ -200,6 +200,19 @@ describe("a phone's send on a dead connection", () => {
     expect(sendAnswerLost(new SendAttemptCutError())).toBe(true);
   });
 
+  it("ends a desktop's retry wait when the live stream opens again, so a send typed while the server was down goes out as it comes back", async () => {
+    vi.useFakeTimers();
+    const post = vi.fn().mockRejectedValueOnce(new TypeError("Load failed")).mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockRejectedValueOnce(new TypeError("Load failed")).mockResolvedValueOnce(body);
+    const result = sendReconciled(post, () => false, undefined, delivery);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(post).toHaveBeenCalledTimes(3);
+    reopen();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(post).toHaveBeenCalledTimes(4);
+    await expect(result).resolves.toEqual({ body });
+  });
+
   it("leaves a desktop's slow send alone: no limit is installed there", async () => {
     vi.useFakeTimers();
     const post = vi.fn(() => new Promise((resolve) => setTimeout(() => resolve(body), 120_000)));

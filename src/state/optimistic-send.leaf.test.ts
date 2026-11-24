@@ -65,3 +65,41 @@ describe("a snapshot that left before a send and lands after it", () => {
     expect(state.bots[0]!.activeLeafId).toBe("c");
   });
 });
+
+describe("a snapshot after the server moved on down the send's branch", () => {
+  // seen after a restart: a follow-up typed while the server was down stayed "Sending…", then the reconnect's snapshot
+  // named the restart's own row as the leaf, and the follow-up left the screen until its server copy landed
+  const resumed: Message = { id: "c", role: "bot", kind: "activity", at: 3, parentId: "b", tool: { name: "Resuming after a restart", ok: true } };
+  const copy: Message = { id: "u1", role: "user", kind: "text", text: "next", at: 4, parentId: "c", sendId: "s1" };
+  const ids = (state: ReturnType<typeof reducer>) => visibleMessages(state.bots[0]!).map((message) => message.id);
+  const sentThen = () => reducer({ ...initialState, bots: [bot("b")], selectedId: "bot" }, { type: "send", botId: "bot", threadId: "thread", text: "next", sendId: "s1" });
+
+  it("keeps the send on screen under the server's new leaf from a hydrate, and its server copy takes its place", () => {
+    let state = reducer(sentThen(), { type: "hydrate", bots: [{ ...bot("c"), messages: [...rows, resumed] }], groups: [], computerControl: {}, loadedThreads: ["thread"] });
+    expect(ids(state)).toEqual(["a", "b", "c", "optimistic-s1"]);
+    state = reducer(state, { type: "messageAdded", threadId: "thread", message: copy });
+    expect(ids(state)).toEqual(["a", "b", "c", "u1"]);
+  });
+
+  it("keeps the send on screen under the server's new leaf from a stale chat's snapshot", () => {
+    const sent = sentThen();
+    const stale = { ...sent, bots: sent.bots.map((candidate) => ({ ...candidate, transcriptStale: true })) };
+    const state = reducer(stale, {
+      type: "transcriptSnapshot", threadId: "thread", messages: [...rows, resumed], hasMore: false, activeLeafId: "c",
+      generation: stale.transcriptGeneration.thread ?? 0, heldAtStart: stale.bots[0]!.messages, leafAtStart: "optimistic-s1",
+    });
+    expect(ids(state)).toEqual(["a", "b", "c", "optimistic-s1"]);
+  });
+
+  it("keeps two sends in the order they were typed", () => {
+    let state = reducer(sentThen(), { type: "send", botId: "bot", threadId: "thread", text: "and this", sendId: "s2" });
+    state = reducer(state, { type: "hydrate", bots: [{ ...bot("c"), messages: [...rows, resumed] }], groups: [], computerControl: {}, loadedThreads: ["thread"] });
+    expect(ids(state)).toEqual(["a", "b", "c", "optimistic-s1", "optimistic-s2"]);
+  });
+
+  it("still takes the server's leaf when it is on another branch", () => {
+    const other: Message = { id: "d", role: "bot", kind: "text", text: "another answer", at: 3, parentId: "a" };
+    const state = reducer(sentThen(), { type: "hydrate", bots: [{ ...bot("d"), messages: [...rows, other] }], groups: [], computerControl: {}, loadedThreads: ["thread"] });
+    expect(state.bots[0]!.activeLeafId).toBe("d");
+  });
+});
