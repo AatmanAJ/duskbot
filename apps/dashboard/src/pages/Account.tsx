@@ -8,6 +8,7 @@ import type { IdentityProvider, NotificationPrefs } from "../data/contracts";
 import { useSession } from "../data/session";
 import { api, ApiError } from "../lib/api";
 import { ANDROID_APP_URL, API_DOCS, IOS_APP_URL, PHONE_APP } from "../lib/usage";
+import { siteUrl } from "../lib/site";
 import { ago } from "../lib/format";
 import { setTheme, useTheme, type ThemePref } from "../lib/theme";
 import { Field, Modal, Switch } from "../ui/controls";
@@ -168,7 +169,7 @@ function DataSharing() {
   return (
     <section className="mt-10" aria-labelledby="data-sharing-title">
       <SectionTitle id="data-sharing-title">privacy</SectionTitle>
-      {state ? <div className="flex items-center gap-4 rounded-[14px] py-3"><div className="min-w-0 flex-1"><label htmlFor="sharing-improve" className="text-14 text-ink">{label}</label><p className="mt-0.5 text-13 text-ink-3">share anonymous usage info, like which features you use and where things get stuck. we never see your messages or files, and names are removed.</p></div><Switch id="sharing-improve" label={label} checked={!state.optOut} onChange={(on) => void save(on)} /></div>
+      {state ? <div className="flex items-center gap-4 rounded-[14px] py-3"><div className="min-w-0 flex-1"><label htmlFor="sharing-improve" className="text-14 text-ink">{label}</label><p className="mt-0.5 text-13 text-ink-3">shares usage counts and crash reports. now and then your own ai also reads a few recent messages where your bots run and writes a short note on how a session went, using a little of your ai plan.</p><p className="mt-1 text-13 text-ink-3">your messages never come to us: names, emails and links are removed from a note before it's sent, and notes are kept 90 days. turning this off stops all of it. <a href={siteUrl("/privacy#what-we-collect-in-short")} target="_blank" rel="noreferrer" className="text-link">what's shared</a></p></div><Switch id="sharing-improve" label={label} checked={!state.optOut} onChange={(on) => void save(on)} /></div>
         : !error && <Skeleton className="h-16 !rounded-card" />}
       {error && <p role="alert" className="mt-2 text-13 text-bad">{error}</p>}
     </section>

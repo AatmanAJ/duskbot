@@ -8,6 +8,7 @@ export const FEEDBACK_URL = "https://discord.gg/9Wb8MEpXRs";
 export const RELEASES_URL = `${SITE_URL}/changelog`;
 export const CLOUD_PLAN_URL = "https://dusk.bot/dashboard/cloud";
 export const LICENSE_URL = `${SITE_URL}/license`;
+export const PRIVACY_SUMMARY_URL = `${SITE_URL}/privacy#what-we-collect-in-short`;
 export const THIRD_PARTY_NOTICES_URL = "/third-party-notices.txt";
 
 export function appVersion(): string {

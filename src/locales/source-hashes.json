@@ -3322,7 +3322,7 @@
       "funnel.making.retry": "d8b8392e2c542950ca64867168e4ef87d4ad606882d5898f826b51c6d553988f",
       "funnel.making.here": "6f47457110cc4505cdaa66fca043f9d44b2628f0983728bf2e5c2ed1b916b815",
       "funnel.making.openFailed": "6e6fb56b02c391fc031a8bc6b90668865724d1bc704e8b30f1e0f67f734bd2ff",
-      "helperIntro.improve": "189ed7df3ba99d0e948efa2ab0aebac349c0a2ba2658225be35962b0592d0730",
+      "helperIntro.improve": "64e4192152b26f0ad017d39b70b9f69cce6a5f1ef33ccc0bae159858730b3e28",
       "onboarding.shell.noBots": "33534a334fa97b9a45fec2768fbef4b01b0144ae1ec8f63cf9f4241dba1c9017",
       "onboarding.hint.approval": "9eb8b152928a171642bd88d19b314681fdec0429adb57d6e48a971092304e8c6",
       "onboarding.hint.connector": "701d3e8365586fbdbecf4d85b85ab4f0be7843402b0eee919078a93a75cfbe48",
@@ -8944,8 +8944,8 @@
       "mobile.desktopOnly.done": "5ad3dbd1242a4cea217e8b68a9fd2c8187f2c337258279193f6d9a31a9f1a69c",
       "mobile.account.legal": "1765a20c4f8b9ef7cfc84340b74a053c0e7f9cfebf25e454f792a6f5a1a0c919",
       "settings.dataSharing.title": "54a57c3147c49f33de5898b87084ad2b14c4ab308f762454bf92aca907478ad5",
-      "settings.dataSharing.improve": "fb7aecc2a3e2998ae2d1c7c69017c56a2c3af7ed28fe3db592167e248c4245c4",
-      "settings.dataSharing.improveHint": "bc1ce829d9e2ae2b7e739e9c355459027e23b16666c49889f8044553361fe8a9",
+      "settings.dataSharing.improve": "6d6f7fc8599c0488a14ba7b77c37b9d9b5fb79aacf6e10ad41cfff3e4c8c97a6",
+      "settings.dataSharing.improveHint": "84560a1dbf3da124d42e5dbd69aa1700e2e8fe7f70f4911254cf80545dce5808",
       "settings.dataSharing.error": "680c88ccf5d4c9fe60c44c3a541c39e5aa80c9d6e76377c886e7c00a1421dc0d",
       "settings.dataSharing.unavailable": "54cd1c468ce16232013bc49bcb9b92fe634d9b269481a76f73a96f8ac6a7364f",
       "settings.docs.you": "08b041935798fbf6fd6ff51099ffedb140a475889986d14f5559ff8e7fc571dd",
@@ -9896,7 +9896,9 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "settings.dataSharing.improveNote": "ba07fea090372578bae2547da816cb9afbd8fce2827f8f4874349e78d6d718bf",
+      "settings.dataSharing.whatsShared": "8ff4d52e95859d28b284cb9063cf5b640fec13ada3e3d3a0e817be314d205775"
     },
     "es": {
       "updates.updated": "da0fcccdc519425a9c333fda0838bbdd50d67fb0266194753bd1044abd0ecbb4",
@@ -13229,7 +13231,7 @@
       "funnel.making.retry": "d8b8392e2c542950ca64867168e4ef87d4ad606882d5898f826b51c6d553988f",
       "funnel.making.here": "6f47457110cc4505cdaa66fca043f9d44b2628f0983728bf2e5c2ed1b916b815",
       "funnel.making.openFailed": "6e6fb56b02c391fc031a8bc6b90668865724d1bc704e8b30f1e0f67f734bd2ff",
-      "helperIntro.improve": "189ed7df3ba99d0e948efa2ab0aebac349c0a2ba2658225be35962b0592d0730",
+      "helperIntro.improve": "64e4192152b26f0ad017d39b70b9f69cce6a5f1ef33ccc0bae159858730b3e28",
       "onboarding.shell.noBots": "33534a334fa97b9a45fec2768fbef4b01b0144ae1ec8f63cf9f4241dba1c9017",
       "onboarding.hint.approval": "9eb8b152928a171642bd88d19b314681fdec0429adb57d6e48a971092304e8c6",
       "onboarding.hint.connector": "701d3e8365586fbdbecf4d85b85ab4f0be7843402b0eee919078a93a75cfbe48",
@@ -18877,8 +18879,8 @@
       "mobile.desktopOnly.done": "5ad3dbd1242a4cea217e8b68a9fd2c8187f2c337258279193f6d9a31a9f1a69c",
       "mobile.account.legal": "1765a20c4f8b9ef7cfc84340b74a053c0e7f9cfebf25e454f792a6f5a1a0c919",
       "settings.dataSharing.title": "54a57c3147c49f33de5898b87084ad2b14c4ab308f762454bf92aca907478ad5",
-      "settings.dataSharing.improve": "fb7aecc2a3e2998ae2d1c7c69017c56a2c3af7ed28fe3db592167e248c4245c4",
-      "settings.dataSharing.improveHint": "bc1ce829d9e2ae2b7e739e9c355459027e23b16666c49889f8044553361fe8a9",
+      "settings.dataSharing.improve": "6d6f7fc8599c0488a14ba7b77c37b9d9b5fb79aacf6e10ad41cfff3e4c8c97a6",
+      "settings.dataSharing.improveHint": "84560a1dbf3da124d42e5dbd69aa1700e2e8fe7f70f4911254cf80545dce5808",
       "settings.dataSharing.error": "680c88ccf5d4c9fe60c44c3a541c39e5aa80c9d6e76377c886e7c00a1421dc0d",
       "settings.dataSharing.unavailable": "54cd1c468ce16232013bc49bcb9b92fe634d9b269481a76f73a96f8ac6a7364f",
       "settings.docs.you": "08b041935798fbf6fd6ff51099ffedb140a475889986d14f5559ff8e7fc571dd",
@@ -19772,7 +19774,9 @@
       "botPanel.backupModel": "34e99052201de509a6189de64ef6b6f35dc7f95f7c78722a8807376dc47b15e4",
       "botPanel.backupModel.automatic": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
-      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346"
+      "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
+      "settings.dataSharing.improveNote": "ba07fea090372578bae2547da816cb9afbd8fce2827f8f4874349e78d6d718bf",
+      "settings.dataSharing.whatsShared": "8ff4d52e95859d28b284cb9063cf5b640fec13ada3e3d3a0e817be314d205775"
     },
     "fr": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
