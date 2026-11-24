@@ -10,7 +10,7 @@ import type { Action } from "@/state/store";
 import { NOTES_FORMAT } from "../../shared/assistant-notes";
 import { GrokImportError } from "../../shared/grok-import";
 import {
-  bringOfferedNotesIn, copyNotesPrompt, dismissNotesOffer, importNotes, notesOffer, looksLikeNotes, notesErrorLine, notesInFiles, notesOutcomeLine, notesWaiting, notesWatch, REMIND_AFTER_MS, scheduleNotesReminder, stopWaiting,
+  aboutMeSaver, bringOfferedNotesIn, copyNotesPrompt, dismissNotesOffer, importNotes, notesOffer, looksLikeNotes, notesErrorLine, notesInFiles, notesOutcomeLine, notesWaiting, notesWatch, REMIND_AFTER_MS, scheduleNotesReminder, stopWaiting,
   takeNotesFromDownloads, WATCH_FOR_MS,
 } from "./assistant-notes";
 
@@ -77,6 +77,19 @@ describe("waiting for notes from another AI", () => {
     stopWaiting();
     vi.advanceTimersByTime(REMIND_AFTER_MS);
     expect(show).not.toHaveBeenCalled();
+  });
+});
+
+describe("facts the moved bots knew about the person", () => {
+  it("read as one list in About me, however many bots from one app knew them", async () => {
+    f.api.mockImplementation(async (_path: string, init?: { body?: string }) => ({ profile: JSON.parse(init!.body!).profile }));
+    const save = aboutMeSaver({ aboutMe: "I run a studio.", team: false, dispatch: vi.fn() });
+    await save(["Name: Priya Lennox", "Time zone: Europe/London"], "Grok Bot");
+    await save(["Name: Priya Lennox", "Wants briefs under 600 words"], "Grok Bot");
+    await save(["Prefers UK spelling"], "Grok Bot");
+    const about = JSON.parse(f.api.mock.calls.at(-1)![1].body).profile.aboutMe as string;
+    expect(about.split("\n\n"), "the person's own words, then one list").toHaveLength(2);
+    expect(about.match(/learned by Grok Bot/g)).toHaveLength(4);
   });
 });
 
