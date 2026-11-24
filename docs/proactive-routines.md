@@ -185,7 +185,7 @@ schedule and posts what it prints as the bot's reply. No AI turn runs.
 ## Not in v1
 
 - More than one account per app.
-- Phone push when the app is closed (there is no caller of the push relay yet).
+- Phone push on Android while the public relay has no FCM keys (see docs/phone-push.md).
 - Quiet hours.
 - A sweep of old run conversations.
 - A run against a real Google account: the Composio slugs and answer shapes

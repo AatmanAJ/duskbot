@@ -837,6 +837,12 @@ pair --phone android --public-url https://your-domain`, since a scripted run
 never reaches the question the interactive command asks. Nothing extra to install, and the phone becomes a
 session like any other.
 
+Push to a closed app goes through the public relay at `link.dusk.bot` unless the
+server has APNs or FCM keys of its own. Today that relay sends to iPhones only:
+an Android phone paired with a self-hosted server gets notifications only while
+the app is open, and the server log says so once. Details and what fixes it:
+[`docs/phone-push.md`](phone-push.md#what-a-self-hosted-server-does-today).
+
 Older way, still supported, and only useful on a LAN or a tailnet: run the
 companion sidecar next to the harness and pair by its own QR. It advertises
 on your private networks (Tailscale-aware) and issues its own per-device

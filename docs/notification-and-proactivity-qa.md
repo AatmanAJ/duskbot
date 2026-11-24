@@ -25,9 +25,10 @@ or approval included, and every open app's badge drops them at once.
 
 Desktop notifications are suppressed while the window already has focus. The
 iOS app can present live or replayed notifications while it is running and uses
-the same bot/task target when the notification is tapped. Waking a terminated
-iOS app still requires a future APNs relay; local network or VPN connectivity
-alone cannot provide closed-app delivery.
+the same bot/task target when the notification is tapped. A closed iOS app is
+reached by APNs, from the workspace's own keys or the push relay; Android needs
+FCM keys on one of them, which the public relay does not have yet
+(docs/phone-push.md, "What a self-hosted server does today").
 
 ## Automated coverage
 

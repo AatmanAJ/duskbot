@@ -23,7 +23,8 @@ conversation on screen, which shows nothing. Pushes already in Notification Cent
 conversation opens, when a read arrives from another device while the app is open, and each time the app comes back.
 A phone that stays locked keeps a push read elsewhere until the app next opens.
 
-The desktop app on a Mac never posts system notifications; its dock, island and unread dots carry them.
+The desktop app posts its own system banners from the main process (`electron/desktop-notifications.mjs`), except while
+its window has focus; the dock, island and unread dots carry the rest.
 
 The code is in `server/mobile/presence.ts` (where each phone is), `server/mobile/link.ts` (the grace and wiring) and
 `server/mobile/push.ts` (sending).
@@ -39,7 +40,43 @@ APNs and FCM accept pushes only from whoever holds the app's keys. A workspace s
 The relay is `POST /v1/push` on the link service (`apps/link-service/src/push-relay.mjs`). It sees the device token, APNs or
 FCM, the bot's name and the ids a tap opens (notification, bot, conversation, room). It never gets a notification's
 title or any message text, keeps nothing, and logs no token. Apple and Google see the same: the lock screen shows the
-bot's name and "New message". It allows 20 pushes a minute per device token and 240 per address.
+bot's name and "New message". It allows 60 pushes a minute per device token and 600 per address.
+
+A relay sends only for the services it holds keys for; `GET /v1/push` lists them. When it answers a push with
+`not_configured`, the workspace logs once (`mobile push: the push relay at ... has no FCM keys, so Android phones get
+notifications only while the app is open`), stops sending that service to it, and asks again after 30 minutes. A
+phone's push registration (`PUT /api/mobile/push`) answers `delivering: false` once that is known.
+
+## What a self-hosted server does today
+
+Checked on 2026-11-25:
+
+- `https://link.dusk.bot/v1/push` answers `{"services":["apns"]}`: the public relay holds APNs keys and no FCM service
+  account.
+- `apps/mobile/android/app/google-services.json` is not in the repo, so the Android build skips the Google services plugin
+  and an Android build has no Firebase project to get a push token from.
+- So a self-hosted server with no `DUSK_APNS_*` and no `DUSK_FCM_SERVICE_ACCOUNT_FILE` of its own:
+  - iPhone: pushes go through the public relay and arrive, as long as the token's environment matches (a TestFlight or
+    App Store build; an Xcode build gives a sandbox token, see below).
+  - Android: no push. The relay refuses FCM; the server logs it once and stops trying for 30 minutes at a time.
+    Notifications show only while the app is open.
+- A server with its own keys never uses the relay for that service.
+
+## What the owner has to do
+
+Code cannot fix these; they need the developer accounts:
+
+1. Firebase: create (or pick) a Firebase project, add the Android app `bot.dusk.mobile`, and put its
+   `google-services.json` into the Android build (`apps/mobile/android/app/`, git-ignored; ship it through the release
+   build's secrets, not the repo). Rebuild and release the Android app.
+2. FCM on the public relay: in that project, Service accounts, generate a private key and set
+   `DUSK_FCM_SERVICE_ACCOUNT_FILE` on the link service host (`chmod 600`), then restart it. `GET /v1/push` should then
+   list `fcm`. Without this every self-hosted Android phone stays without push, even after step 1.
+3. APNs on the relay: keep `DUSK_APNS_*` there for `bot.dusk.mobile`. The relay picks the sandbox or production APNs host
+   from the token's environment, so a test from an Xcode build needs a development web build (below) or TestFlight.
+4. A self-hosted person who wants no relay at all sets their own `DUSK_APNS_*` / `DUSK_FCM_SERVICE_ACCOUNT_FILE`, which
+   only works with an app they sign themselves (APNs and FCM accept pushes only from the app's own keys), and
+   `DUSK_PUSH_RELAY=off`.
 
 ## Setup you have to do
 
@@ -80,4 +117,5 @@ token sandbox only when its web part was built in development mode, so for a pus
 3. The phone should get "{bot name}: New message" within a few seconds; tapping it opens that conversation.
 
 If nothing arrives, the workspace log says `mobile push: no APNs or FCM credentials and no push relay on this server`
-when it has neither, and `GET /v1/push` on the relay lists what the relay can send.
+when it has neither, or `mobile push: the push relay at ... has no FCM keys` (or APNs) when the relay lacks that
+service, and `GET /v1/push` on the relay lists what the relay can send.
