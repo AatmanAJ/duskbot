@@ -1,0 +1,92 @@
+{
+  "title": "Watch #deploys every 15 min on weekdays, flag a failure, then stop when told",
+  "world": "developer",
+  "tags": [
+    "routine",
+    "proactive",
+    "stop"
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Have the assistant keep an eye on #deploys every 15 minutes on weekdays during work hours and ping Arjun here if a deploy fails or rolls back.",
+        "opener": "watch #deploys every 15 min, weekdays work hours only. ping me here if a deploy fails or gets rolled back",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "inject": {
+        "slack": {
+          "channels": {
+            "deploys": {
+              "messages": [
+                {
+                  "user": "deploybot",
+                  "text": "api v2.31.1 deploy to production FAILED (sha 3f9a7c1): health check /healthz returned 503. Auto rollback to v2.31.0 complete.",
+                  "at": "@0m"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "label": "failed"
+    },
+    {
+      "advance": "+30m"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      },
+      "label": "noticed"
+    },
+    {
+      "chat": {
+        "goal": "Tell the assistant to stop watching deploys, Wei set up PagerDuty for it.",
+        "opener": "ok you can stop watching deploys, wei set up pagerduty for that",
+        "maxTurns": 2,
+        "label": "stop"
+      }
+    },
+    {
+      "advance": "+2h"
+    },
+    {
+      "settle": {
+        "seconds": 60
+      },
+      "label": "afterstop"
+    }
+  ],
+  "checks": [
+    {
+      "label": "failure flagged",
+      "proactive": {
+        "after": "noticed",
+        "match": "fail|roll(ed)? ?back|2\\.31\\.1"
+      },
+      "min": 1
+    },
+    {
+      "label": "watcher no longer on",
+      "routine": {
+        "where": {
+          "prompt": "deploy",
+          "enabled": "true"
+        }
+      },
+      "max": 0
+    },
+    {
+      "label": "quiet after stop",
+      "proactive": {
+        "after": "afterstop",
+        "match": "deploy"
+      },
+      "max": 0
+    }
+  ],
+  "judge": "Kiran sets a 15-minute weekday work-hours watcher, flags the v2.31.1 failure and rollback within the half hour, and when told to stop actually turns the watcher off (not just says so) and confirms in one line."
+}

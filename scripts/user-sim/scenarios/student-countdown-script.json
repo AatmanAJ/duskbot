@@ -1,0 +1,54 @@
+{
+  "title": "Plain countdown every weekday morning, no AI needed",
+  "world": "student",
+  "tags": [
+    "routine",
+    "script-only"
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Set up a plain countdown every weekday at 8am: 'X days until the dissertation proposal deadline (15 Jan)'. It doesn't need the AI, a simple script is fine, you don't want to burn credits on it.",
+        "opener": "can you post a countdown every weekday at 8am like 'X days until the proposal deadline (15 Jan)'? doesn't need you to think, just a simple script is fine, don't want it using up credits",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "advance": "+1d 08:05"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      },
+      "label": "morning"
+    }
+  ],
+  "checks": [
+    {
+      "label": "script-only routine",
+      "routine": {
+        "where": {
+          "probe.kind": "script"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "it ran",
+      "routine": {
+        "ran": true
+      },
+      "min": 1
+    },
+    {
+      "label": "countdown posted",
+      "proactive": {
+        "after": "morning",
+        "match": "\\d+ days?"
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Pip makes a weekday 8am routine whose script prints the day count with no AI turn, explains it in one line, and Tuesday's countdown shows a correct-looking number of days to 15 January."
+}

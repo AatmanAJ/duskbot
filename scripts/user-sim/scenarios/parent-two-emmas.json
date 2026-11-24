@@ -1,0 +1,45 @@
+{
+  "title": "'Tell Emma we can't make Thursday' with two Emmas",
+  "world": "parent",
+  "tags": [
+    "recovery",
+    "ambiguous"
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Let Emma know you can't make Thursday.",
+        "opener": "can you tell emma we cant make thursday sorry",
+        "knows": "You mean Emma Clarke, Mia's mum, the playdate. Ava has a cold. Liam's swimming is still on.",
+        "maxTurns": 4,
+        "label": "tell"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "Emma Clarke told",
+      "app": "sent",
+      "where": {
+        "to": "clarke"
+      },
+      "min": 1
+    },
+    {
+      "label": "swim coach not emailed",
+      "app": "sent",
+      "where": {
+        "to": "walsh|splash"
+      },
+      "max": 0
+    },
+    {
+      "label": "asked which Emma",
+      "said": {
+        "step": "tell",
+        "match": "which|clarke|walsh|playdate|swim"
+      }
+    }
+  ],
+  "judge": "Rosie spots that both Emmas are on Thursday and asks one simple question (the playdate or swimming?), then emails Emma Clarke a friendly cancel. It doesn't email both or guess wrong."
+}

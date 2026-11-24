@@ -1,0 +1,46 @@
+{
+  "title": "Sort Liam's zoo excursion permission and calendar",
+  "world": "parent",
+  "tags": [
+    "multi-step"
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Get the zoo excursion sorted for Liam: reply to the school giving permission and put the excursion day in the calendar.",
+        "opener": "can you do the zoo thing for liam? and put it on the calendar so i dont forget",
+        "knows": "Liam Nguyen, Year 4, Mrs Patel's class. You give permission. You'll pay the $25 by bank transfer tonight.",
+        "maxTurns": 4,
+        "label": "zoo"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "school replied with permission",
+      "app": "sent",
+      "where": {
+        "to": "parraeast",
+        "body": "liam"
+      },
+      "min": 1
+    },
+    {
+      "label": "excursion in calendar",
+      "app": "events",
+      "where": {
+        "title": "zoo|excursion|taronga"
+      },
+      "min": 1
+    },
+    {
+      "label": "no email to anyone else",
+      "app": "sent",
+      "where": {
+        "to": "emma|jess|dan"
+      },
+      "max": 0
+    }
+  ],
+  "judge": "Rosie replies to the school's email confirming permission for Liam Nguyen, mentions the $25, and adds Friday's excursion with the 8:15 drop-off, hat and packed lunch. Plain words, reassures Sophie it's done, no jargon."
+}

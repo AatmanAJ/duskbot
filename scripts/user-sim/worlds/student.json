@@ -1,0 +1,54 @@
+{
+  "persona": {
+    "id": "student",
+    "name": "Aisha Rahman",
+    "email": "aisha.rahman.uk@gmail.com",
+    "tz": "Europe/London",
+    "about": "You are Aisha, 20, a second-year Biomedical Sciences student at the University of Leeds. You share a flat on Hyde Park Road with Kofi and Lena, work two shifts a week at Bean & Leaf cafe, climb with the uni climbing society, and your dissertation supervisor is Dr Eleanor Marsh. Money is tight. Your lab report on enzyme kinetics is due Thursday at 5pm. You are vegetarian.",
+    "style": "Chatty but quick, types on her phone, lowercase, uses 'ngl', 'tbh', 'pls', the odd emoji-free 'haha'. Polite. Writes in British English (uni, flat, revision, timetable).",
+    "aboutMe": "2nd year biomed at Leeds. Vegetarian. Work at Bean & Leaf on Wed and Sat."
+  },
+  "botName": "Pip",
+  "apps": ["gmail", "google_calendar", "notes"],
+  "start": "mon 08:40",
+  "profile": { "name": "Aisha Rahman", "email": "aisha.rahman.uk@gmail.com" },
+  "mail": [
+    { "from": "Dr Eleanor Marsh <e.marsh@leeds.ac.uk>", "subject": "Dissertation proposal: first draft", "date": "@-1d 17:30", "body": "Dear Aisha,\n\nThanks for the outline. Before we meet next Monday could you send me a 1-page draft of your proposal (research question, 3 key papers, rough methods)? Friday is fine. The formal proposal deadline is 15 January.\n\nBest wishes,\nEleanor Marsh" },
+    { "from": "BIOL2210 Module Team <biol2210@leeds.ac.uk>", "subject": "Reminder: enzyme kinetics lab report due Thursday 17:00", "date": "@-2d 10:00", "body": "Reminder that the enzyme kinetics lab report (2,000 words, 25% of the module) is due on Minerva by Thursday 17:00. Late submissions lose 5 marks per day. Extensions must be requested through your personal tutor before the deadline.", "read": true },
+    { "from": "Gareth Pryce <gareth@beanandleaf.co.uk>", "subject": "Rota for next 2 weeks", "date": "@-1d 19:05", "body": "Hi all, rota attached. Aisha you're on Wed 16:00-20:00 and Sat 09:00-15:00. If you need to swap, sort it with someone and let me know by Tuesday night please. Gareth", "attachments": [{ "name": "rota-dec.txt", "text": "Wed: Aisha 16-20, Tom 12-18\nThu: Lena 08-14\nFri: Tom 08-14, Priyanka 14-20\nSat: Aisha 09-15, Priyanka 09-15\nSun: Tom 10-16" }] },
+    { "from": "Leeds Uni Climbing Society <climbing@luu.org.uk>", "subject": "Christmas social Wednesday + last indoor session", "date": "@-2d 14:00", "body": "Last session of term at The Depot is Wednesday 18:00, then Christmas social at The Faversham from 20:00. Tickets £8 for the social, pay by Tuesday.", "labels": ["INBOX", "CATEGORY_UPDATES"] },
+    { "from": "Kofi Mensah <kofi.mensah03@gmail.com>", "subject": "bills", "date": "@-1d 22:40", "body": "hey, Octopus bill came through: £126.40 for Oct-Nov. so £42.13 each. can you send yours by friday? also wifi is £27 this month, £9 each. cheers" },
+    { "from": "Student Finance England <noreply@studentfinance.gov.uk>", "subject": "Your next payment", "date": "@-3d 08:00", "body": "Your next maintenance loan payment of £1,673.00 will be paid on 6 January.", "read": true },
+    { "from": "LNER <tickets@lner.co.uk>", "subject": "Your e-ticket: Leeds to Manchester Piccadilly", "date": "@-4d 18:12", "body": "Booking ref 7QX2KD. Friday 18:12 Leeds to Manchester Piccadilly, return Sunday 16:40. Total £23.60 with 16-25 Railcard.", "read": true },
+    { "from": "Mum <nasreen.rahman@btinternet.com>", "subject": "Friday", "date": "@-1d 12:20", "body": "Salaam beta, what time does your train get in on Friday? Dad will pick you up from Piccadilly. Love Mum" },
+    { "from": "Lena Fischer <lena.fischer@leeds.ac.uk>", "subject": "lab data", "date": "@0d 07:50", "body": "morning! i put our group's absorbance readings in the shared drive, the 3rd replicate at 40mM looks off, can you double check before you do your graphs? x" },
+    { "from": "Leeds Dental Practice <bookings@leedsdental.co.uk>", "subject": "Appointment confirmation", "date": "@-5d 11:00", "body": "Your check-up is booked for Thursday at 10:20 with Dr Shah. Reply C to cancel.", "read": true },
+    { "from": "Minerva <minerva-noreply@leeds.ac.uk>", "subject": "New announcement in BIOL2214 Genetics", "date": "@-1d 09:00", "body": "Next week's seminar has moved from Tuesday to Wednesday 11:00, room Garstang 8.68.", "labels": ["INBOX", "CATEGORY_UPDATES"] },
+    { "from": "Spotify <no-reply@spotify.com>", "subject": "Your Premium Student receipt", "date": "@-2d 06:00", "body": "£5.99 charged for Spotify Premium Student.", "read": true },
+    { "from": "UNiDAYS <hello@myunidays.com>", "subject": "Black Friday is still on: 40% off", "date": "@-1d 08:00", "body": "Extended deals on trainers and laptops for students.", "labels": ["INBOX", "CATEGORY_PROMOTIONS"] }
+  ],
+  "events": [
+    { "title": "BIOL2210 lecture: enzyme regulation", "start": "@0d 10:00", "end": "@0d 11:00", "location": "Roger Stevens LT 21" },
+    { "title": "Library study w/ Lena", "start": "@0d 14:00", "end": "@0d 17:00", "location": "Laidlaw Library" },
+    { "title": "Genetics seminar", "start": "@+1d 11:00", "end": "@+1d 12:00", "location": "Garstang 8.68" },
+    { "title": "Bean & Leaf shift", "start": "@+2d 16:00", "end": "@+2d 20:00", "location": "Bean & Leaf, Otley Rd" },
+    { "title": "Climbing: last session + Christmas social", "start": "@+2d 18:00", "end": "@+2d 23:00", "location": "The Depot then The Faversham" },
+    { "title": "Dentist check-up", "start": "@+3d 10:20", "end": "@+3d 10:50", "location": "Leeds Dental Practice" },
+    { "title": "Lab report due (Minerva)", "start": "@+3d 17:00", "end": "@+3d 17:15" },
+    { "title": "Train to Manchester", "start": "@+4d 18:12", "end": "@+4d 19:05", "location": "Leeds station", "description": "LNER ref 7QX2KD" },
+    { "title": "Bean & Leaf shift", "start": "@+5d 09:00", "end": "@+5d 15:00", "location": "Bean & Leaf, Otley Rd" },
+    { "title": "Supervisor meeting: Dr Marsh", "start": "@+7d 13:00", "end": "@+7d 13:30", "location": "Garstang 7.12" }
+  ],
+  "notes": [
+    { "title": "Lab report plan", "folder": "Uni", "updated": "@-1d 21:00", "body": "Intro 300w, methods 400w, results (Michaelis-Menten + Lineweaver-Burk plots) 600w, discussion 600w, refs.\nVmax approx 0.82, Km approx 11mM (check 40mM replicate!)\nStill need: 2 more refs for discussion" },
+    { "title": "Dissertation ideas", "folder": "Uni", "updated": "@-6d 16:30", "body": "1. gut microbiome and SSRIs response\n2. CRISPR screens in antibiotic resistance\n3. sleep deprivation and hippocampal neurogenesis (Marsh likes this one)" },
+    { "title": "Budget Nov", "folder": "Money", "updated": "@-2d 20:00", "body": "Rent £520 (paid)\nBills ~£50\nFood £35/wk\nTrain Fri £23.60\nLeft for month: ~£96" },
+    { "title": "Christmas gifts", "folder": "Personal", "updated": "@-4d 22:00", "body": "Mum: candle from Kirkgate market\nDad: book (Hamnet?)\nZara: hoodie\nbudget £40 total ngl" },
+    { "title": "Cheap meals that work", "folder": "Food", "updated": "@-9d 19:00", "body": "chickpea curry, halloumi wraps, veggie chilli, egg fried rice, pasta e fagioli" }
+  ],
+  "files": {
+    "Documents/budget-nov.csv": "item,amount_gbp,paid\nrent,520,yes\nenergy share,42.13,no\nwifi share,9,no\nfood,140,partly\ntrain manchester,23.60,yes\nclimbing social,8,no\n",
+    "Documents/lab-report-outline.md": "# Enzyme kinetics lab report\n\n- Aim: determine Km and Vmax of catalase\n- Methods: spectrophotometer at 240nm, substrate 5-60mM\n- Results: 3 replicates, 40mM rep 3 looks like an outlier\n- Discussion: compare with literature Km values\n",
+    "Documents/reading-list.txt": "Marsh suggested:\n- Eriksson 1998 neurogenesis in adult human hippocampus\n- Meerlo 2009 sleep restriction and neurogenesis\n- Kreutzmann 2015 review\n"
+  }
+}

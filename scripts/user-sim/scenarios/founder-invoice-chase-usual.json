@@ -1,0 +1,85 @@
+{
+  "title": "Learn Daniel's invoice chase style, then do it again days later from 'the usual'",
+  "world": "founder",
+  "tags": [
+    "teach",
+    "memory",
+    "multi-step"
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Have the overdue Halvorsen invoice INV-2031 chased now, and make sure the assistant learns how Daniel wants invoice chases done from now on.",
+        "opener": "chase halvorsen on INV-2031. and fyi this is how i want invoice chases done every time: subject 'Quick nudge: INV-xxxx', 3 lines max, friendly, say the amount + how many days overdue + the pay link, cc hana, sign off 'Best, Daniel'",
+        "knows": "Ingrid Halvorsen is the contact. The amount is $8,400, 21 days overdue, link https://pay.loomware.co/i/INV-2031.",
+        "maxTurns": 4,
+        "label": "teach"
+      }
+    },
+    {
+      "advance": "+2d 09:10"
+    },
+    {
+      "inject": {
+        "mail": [
+          {
+            "from": "Hana Kobayashi <hana@loomware.co>",
+            "subject": "Ruiz Produce INV-2040 overdue",
+            "date": "@-5m",
+            "body": "Daniel, Ruiz Produce hasn't paid INV-2040: $3,000, now 10 days overdue. Contact is Joaquín Ruiz, joaquin@ruizproduce.com. Pay link https://pay.loomware.co/i/INV-2040. Hana"
+          }
+        ]
+      }
+    },
+    {
+      "chat": {
+        "goal": "Get the Ruiz Produce invoice chased the usual way, without explaining the format again.",
+        "opener": "do the usual invoice chase for ruiz pls",
+        "maxTurns": 3,
+        "label": "usual"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "Halvorsen chased",
+      "app": "sent",
+      "where": {
+        "to": "ingrid",
+        "subject": "nudge"
+      },
+      "min": 1
+    },
+    {
+      "label": "Ruiz chased in the taught format",
+      "app": "sent",
+      "where": {
+        "to": "joaquin",
+        "subject": "nudge.*2040|2040.*nudge"
+      },
+      "min": 1,
+      "recall": true
+    },
+    {
+      "label": "Hana cc'd on the Ruiz chase",
+      "app": "sent",
+      "where": {
+        "to": "joaquin",
+        "cc": "hana"
+      },
+      "min": 1,
+      "recall": true
+    },
+    {
+      "label": "Ruiz chase has the pay link",
+      "app": "sent",
+      "where": {
+        "to": "joaquin",
+        "body": "pay\\.loomware\\.co/i/INV-2040"
+      },
+      "min": 1,
+      "recall": true
+    }
+  ],
+  "judge": "The second chase follows the taught format exactly (subject, 3 lines, amount, days overdue, link, cc Hana, 'Best, Daniel') without asking Daniel to repeat it. Both emails actually go out and the replies stay brief."
+}

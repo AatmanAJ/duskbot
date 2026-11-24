@@ -1,0 +1,75 @@
+{
+  "title": "Reminder in 4 hours, then moved to 5pm by replying to it",
+  "world": "student",
+  "tags": [
+    "reply-context",
+    "proactive",
+    "timing"
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Ask for a reminder in 4 hours to email Dr Marsh about the proposal draft.",
+        "opener": "remind me in 4 hours to email dr marsh about my proposal draft",
+        "maxTurns": 2,
+        "label": "ask"
+      }
+    },
+    {
+      "chat": {
+        "goal": "Replying to Pip's confirmation, move that reminder to 5pm today because you're in labs until then.",
+        "opener": "actually make this one 5pm, i'm in labs till then",
+        "maxTurns": 2,
+        "thread": "same",
+        "replyTo": "marsh|remind",
+        "label": "move"
+      }
+    },
+    {
+      "advance": "+0d 13:30"
+    },
+    {
+      "settle": {
+        "seconds": 60
+      },
+      "label": "midday"
+    },
+    {
+      "advance": "+0d 17:10"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      },
+      "label": "fired"
+    }
+  ],
+  "checks": [
+    {
+      "label": "reminder fires after 5pm",
+      "proactive": {
+        "after": "fired",
+        "match": "marsh|proposal"
+      },
+      "min": 1
+    },
+    {
+      "label": "reminder set up",
+      "routine": {
+        "where": {
+          "prompt": "marsh|proposal"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "did not email Marsh itself",
+      "app": "sent",
+      "where": {
+        "to": "marsh"
+      },
+      "max": 0
+    }
+  ],
+  "judge": "Pip understands 'this one' is the Dr Marsh reminder, moves it to 5pm today (not tomorrow, not 12:40 as well), and the nudge arrives just after 5. It doesn't email Dr Marsh on Aisha's behalf."
+}

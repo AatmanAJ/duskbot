@@ -1,0 +1,98 @@
+{
+  "persona": {
+    "id": "creator",
+    "name": "Lucía Navarro",
+    "email": "hello@clayandkiln.shop",
+    "tz": "America/Los_Angeles",
+    "about": "You are Lucía, 31, a ceramicist in Oakland who runs Clay & Kiln, a small online shop selling handmade mugs, vases and bowls, and posts pottery videos for about 40k followers. You share a studio with Maya Holt. You run a small community workspace for followers and customers. Busy season: holiday orders, a craft market booth this Saturday at Jack London Square, and a possible sponsorship with Glazeworks Supply.",
+    "style": "Warm and a little scattered, types on her phone with flour-dusty hands, mixes in Spanish now and then ('ay', 'gracias'), uses lots of commas and 'lol', sometimes sends two short messages instead of one.",
+    "aboutMe": "Clay & Kiln, handmade ceramics. Ship Tue and Fri. Refunds: replace or refund breakages, no need to return the pieces."
+  },
+  "botName": "Wren",
+  "apps": ["shop", "gmail", "google_calendar", "notes", "slack"],
+  "start": "mon 08:40",
+  "profile": { "name": "Lucía Navarro", "email": "hello@clayandkiln.shop", "aliases": ["lucia.navarro.ceramics@gmail.com"], "slack": "lucia" },
+  "shop": {
+    "products": [
+      { "sku": "MUG-SPK", "title": "Speckled Mug", "price": 38, "stock": 14 },
+      { "sku": "VASE-CEL", "title": "Celadon Bud Vase", "price": 45, "stock": 3 },
+      { "sku": "BOWL-SRV", "title": "Serving Bowl", "price": 72, "stock": 6 },
+      { "sku": "CUP-ESP", "title": "Espresso Cup", "price": 22, "stock": 2 },
+      { "sku": "SET-GIFT", "title": "Mug & Cup Gift Set", "price": 95, "stock": 9 }
+    ],
+    "orders": [
+      { "number": 1041, "email": "jade.thompson@gmail.com", "customer": "Jade Thompson", "total": 84, "currency": "USD", "status": "delivered", "created": "@-9d 10:12", "items": [{ "title": "Speckled Mug", "qty": 2, "price": 38 }], "shipping": "USPS Priority, 1420 Grove St, Berkeley CA" },
+      { "number": 1042, "email": "marco.bianchi@outlook.com", "customer": "Marco Bianchi", "total": 53, "currency": "USD", "status": "shipped", "created": "@-8d 19:40", "items": [{ "title": "Celadon Bud Vase", "qty": 1, "price": 45 }], "shipping": "USPS Ground, Portland OR" },
+      { "number": 1043, "email": "priya.desai@yahoo.com", "customer": "Priya Desai", "total": 80, "currency": "USD", "status": "delivered", "created": "@-7d 08:55", "items": [{ "title": "Serving Bowl", "qty": 1, "price": 72 }], "shipping": "USPS Priority, Austin TX" },
+      { "number": 1044, "email": "owen.gallagher@icloud.com", "customer": "Owen Gallagher", "total": 96, "currency": "USD", "status": "fulfilled", "created": "@-6d 14:30", "items": [{ "title": "Espresso Cup", "qty": 4, "price": 22 }], "shipping": "USPS Ground, Denver CO" },
+      { "number": 1047, "email": "grace.liu@gmail.com", "customer": "Grace Liu", "total": 68, "currency": "USD", "status": "delivered", "created": "@-6d 21:05", "items": [{ "title": "Speckled Mug", "qty": 1, "price": 38 }, { "title": "Espresso Cup", "qty": 1, "price": 22 }], "shipping": "USPS Priority, Seattle WA" },
+      { "number": 1045, "email": "sofia.marquez@gmail.com", "customer": "Sofia Marquez", "total": 91, "currency": "USD", "status": "paid", "created": "@-5d 11:15", "items": [{ "title": "Speckled Mug", "qty": 1, "price": 38 }, { "title": "Celadon Bud Vase", "qty": 1, "price": 45 }], "shipping": "USPS Priority, San Diego CA" },
+      { "number": 1046, "email": "tyler.brooks@protonmail.com", "customer": "Tyler Brooks", "total": 152, "currency": "USD", "status": "shipped", "created": "@-4d 16:50", "items": [{ "title": "Serving Bowl", "qty": 2, "price": 72 }], "shipping": "UPS Ground, Chicago IL" },
+      { "number": 1048, "email": "hiroshi.tanaka@gmail.com", "customer": "Hiroshi Tanaka", "total": 103, "currency": "USD", "status": "paid", "created": "@-2d 09:20", "items": [{ "title": "Mug & Cup Gift Set", "qty": 1, "price": 95 }], "shipping": "USPS Priority, San Jose CA, gift note: 'Happy holidays Ken!'" },
+      { "number": 1049, "email": "amara.okeke@gmail.com", "customer": "Amara Okeke", "total": 122, "currency": "USD", "status": "paid", "created": "@-1d 13:45", "items": [{ "title": "Speckled Mug", "qty": 3, "price": 38 }], "shipping": "USPS Priority, Atlanta GA" },
+      { "number": 1040, "email": "nadia.rahimi@gmail.com", "customer": "Nadia Rahimi", "total": 53, "currency": "USD", "status": "refunded", "created": "@-12d 10:00", "items": [{ "title": "Celadon Bud Vase", "qty": 1, "price": 45 }], "shipping": "USPS Ground, Sacramento CA" }
+    ]
+  },
+  "mail": [
+    { "from": "Grace Liu <grace.liu@gmail.com>", "subject": "Order #1047 arrived with a cracked mug", "date": "@-1d 18:22", "body": "Hi Lucía! My order came Saturday. The espresso cup is perfect, but the speckled mug has a crack running down from the rim, it leaks. Photo attached. Could I get a refund for the mug? No rush on anything else. Love your videos! Grace", "attachments": [{ "name": "mug-crack.jpg", "text": "[photo: speckled mug with a hairline crack from rim to base]" }] },
+    { "from": "Sofia Marquez <sofia.marquez@gmail.com>", "subject": "Where's my order?", "date": "@0d 07:10", "body": "Hi, I ordered a mug and a vase five days ago (#1045) and haven't gotten a shipping email. It's a birthday gift for the 12th. Is it still coming in time? Sofia" },
+    { "from": "Daniela Ortiz <daniela@glazeworkssupply.com>", "subject": "Sponsorship: Glazeworks x Clay & Kiln", "date": "@-2d 11:00", "body": "Hi Lucía, we'd love to sponsor 3 videos in January: $1,500 per video plus a glaze bundle. Could we do a call this week? Thu or Fri afternoon works. Daniela Ortiz, Partnerships, Glazeworks Supply" },
+    { "from": "Jack London Square Makers Market <vendors@jlsmakers.org>", "subject": "Vendor info for Saturday", "date": "@-3d 15:00", "body": "Load-in 7:30-8:45am, market 10am-4pm. Booth B14. Bring your own table, tent weights required (25lb per leg). Card readers recommended.", "read": true },
+    { "from": "Rosa Jimenez <rosa@fernwoodgeneral.com>", "subject": "Wholesale order coming", "date": "@-1d 10:30", "body": "Hi Lucía, we're placing our holiday wholesale order through your shop today or tomorrow, 24 mugs and 12 bud vases. Can you confirm you can ship by the 10th? Rosa, Fernwood General Store" },
+    { "from": "Shopify <no-reply@shopify.com>", "subject": "Your payout of $612.40 is on its way", "date": "@-2d 06:00", "body": "Payout of $612.40 will arrive in your account ending 0937 in 1-2 business days.", "read": true },
+    { "from": "Pirate Ship <support@pirateship.com>", "subject": "Receipt: 6 labels", "date": "@-3d 17:00", "body": "6 USPS labels purchased, total $57.84.", "read": true },
+    { "from": "Maya Holt <maya.holt.studio@gmail.com>", "subject": "kiln schedule", "date": "@-1d 20:00", "body": "hey! I need the kiln Wednesday night for a bisque load, can you do your glaze firing Tuesday instead? also studio rent ($650 each) due Friday x" },
+    { "from": "Laguna Clay Co <orders@lagunaclay.com>", "subject": "Order shipped: B-Mix 5 (4 boxes)", "date": "@-2d 13:00", "body": "Your order of 4 boxes B-Mix 5 cone 5 clay ($148.00) has shipped. Tracking 1Z88X.", "read": true },
+    { "from": "Creator Weekly <hi@creatorweekly.co>", "subject": "Holiday posting schedule that actually works", "date": "@-1d 06:00", "body": "Post 3x a week, batch film on Sundays, and other tips.", "labels": ["INBOX", "CATEGORY_PROMOTIONS"] },
+    { "from": "Owen Gallagher <owen.gallagher@icloud.com>", "subject": "Thank you!", "date": "@-1d 12:00", "body": "The espresso cups are gorgeous. Any chance you'll make a matching saucer?", "read": true },
+    { "from": "City of Oakland <businesstax@oaklandca.gov>", "subject": "Business tax certificate renewal", "date": "@-4d 09:00", "body": "Your business tax certificate renewal is due by 1 March. Gross receipts reporting required.", "read": true },
+    { "from": "Hiroshi Tanaka <hiroshi.tanaka@gmail.com>", "subject": "Gift wrapping on #1048?", "date": "@-1d 09:45", "body": "Hi, is it possible to gift wrap order #1048? Happy to pay extra. Thanks, Hiroshi" }
+  ],
+  "events": [
+    { "title": "Glaze firing", "start": "@0d 18:00", "end": "@0d 23:00", "location": "Studio" },
+    { "title": "Pack + ship orders", "start": "@+1d 09:00", "end": "@+1d 12:00", "location": "Studio" },
+    { "title": "Film ep.12: carving a bud vase", "start": "@+1d 14:00", "end": "@+1d 17:00", "location": "Studio" },
+    { "title": "Maya bisque load (kiln busy)", "start": "@+2d 17:00", "end": "@+2d 23:59", "location": "Studio" },
+    { "title": "Throwing class (teaching)", "start": "@+3d 18:30", "end": "@+3d 20:30", "location": "Temescal Arts Center" },
+    { "title": "Pack + ship orders", "start": "@+4d 09:00", "end": "@+4d 12:00", "location": "Studio" },
+    { "title": "Studio rent due", "start": "@+4d 09:00", "end": "@+4d 09:15" },
+    { "title": "Makers Market booth B14", "start": "@+5d 07:30", "end": "@+5d 16:30", "location": "Jack London Square" },
+    { "title": "Brunch with Inés", "start": "@+6d 11:00", "end": "@+6d 12:30", "location": "Brown Sugar Kitchen" },
+    { "title": "Edit + post ep.11", "start": "@-1d 13:00", "end": "@-1d 16:00", "location": "Home" }
+  ],
+  "slack": {
+    "channels": {
+      "general": { "topic": "Clay & Kiln community: say hi, share your pots", "members": ["lucia", "maya", "kenji", "bea", "tom", "ana", "ruth"], "messages": [
+        { "user": "kenji", "text": "first time trying the carving technique from ep.11, it worked!!", "at": "@-1d 19:00" },
+        { "user": "bea", "text": "will you have seconds at the market saturday?", "at": "@-1d 19:30" },
+        { "user": "ana", "text": "+1 to seconds, also are the bud vases restocking?", "at": "@-1d 20:15" },
+        { "user": "tom", "text": "anyone know a good cone 6 clear glaze?", "at": "@0d 06:30" },
+        { "user": "ruth", "text": "@tom glazeworks clear 2 is great", "at": "@0d 07:05" },
+        { "user": "kenji", "text": "what booth are you at saturday?", "at": "@0d 08:10" }
+      ]},
+      "orders-help": { "topic": "Questions about orders and shipping", "members": ["lucia", "maya", "bea", "ana"], "messages": [
+        { "user": "ana", "text": "do you ship to Canada?", "at": "@-3d 10:00" },
+        { "user": "lucia", "text": "yes! flat $18", "at": "@-3d 11:00" },
+        { "user": "bea", "text": "my mug arrived today, packaging was so cute", "at": "@-1d 16:00" }
+      ]},
+      "dm:maya": { "members": ["lucia", "maya"], "messages": [
+        { "user": "maya", "text": "did you see my email about the kiln? need wed night", "at": "@0d 07:30" },
+        { "user": "maya", "text": "also can you bring the extra tent weights saturday", "at": "@0d 07:31" }
+      ]}
+    }
+  },
+  "notes": [
+    { "title": "Video ideas", "folder": "Content", "updated": "@-2d 21:00", "body": "ep.12 carving bud vase\nep.13 glaze mixing from scratch (Glazeworks?)\nep.14 studio tour\nshorts: trimming asmr, kiln opening" },
+    { "title": "Refund + breakage policy", "folder": "Shop", "updated": "@-20d 10:00", "body": "Breakage in transit: refund or replace the broken piece, customer keeps it, no return needed. Refund only the broken item, not shipping, unless the whole order is lost. Always reply personally and say sorry." },
+    { "title": "Wholesale terms", "folder": "Shop", "updated": "@-15d 12:00", "body": "50% of retail, min 24 pieces, net 30, ship within 10 days. Fernwood General (Rosa) is our best account." },
+    { "title": "Market Saturday", "folder": "Shop", "updated": "@-1d 22:00", "body": "Booth B14. Bring 30 mugs, 8 vases, seconds box. Ask Maya for tent weights. Price cards!" },
+    { "title": "Glaze recipes", "folder": "Studio", "updated": "@-30d 18:00", "body": "Speckled oat: custer 25, silica 25, whiting 20, kaolin 20, rutile 5, granular ilmenite 2\nCeladon: ..." },
+    { "title": "Sponsor rates", "folder": "Content", "updated": "@-10d 15:00", "body": "Dedicated video $1,800, integration $1,200. Bundle 3 = 10% off. Glazeworks offered $1,500/video." }
+  ],
+  "files": {
+    "Documents/market-packing-list.txt": "MARKET PACKING LIST\n- 6ft table + tablecloth (the oatmeal linen one)\n- tent + 4 weights (25lb each)\n- Square reader + charger\n- price cards + clips\n- bubble wrap + kraft bags\n- seconds box\n- cash float $150 in small bills\n- water, snacks, sunscreen\n",
+    "Documents/wholesale-pricing.csv": "sku,title,retail,wholesale,min_qty\nMUG-SPK,Speckled Mug,38,19,12\nVASE-CEL,Celadon Bud Vase,45,22.50,6\nBOWL-SRV,Serving Bowl,72,36,4\nCUP-ESP,Espresso Cup,22,11,12\n",
+    "Documents/video-script-ep12.md": "# ep.12 carving a bud vase\n\nHook: 'this vase started as a lump'\n1. throwing the form\n2. leather hard check\n3. carving the fluting\n4. glaze reveal\nCTA: market Saturday, booth B14\n",
+    "Documents/returns-policy.txt": "Clay & Kiln returns: each piece is handmade. If something arrives broken, email a photo within 14 days and we refund or replace the broken piece. No need to send it back.\n"
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "title": "Refund just the cracked mug and write Grace a kind note",
+  "world": "creator",
+  "tags": [
+    "multi-step"
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Grace's mug arrived cracked: refund her for the mug and send her a nice note.",
+        "opener": "ay grace's mug came cracked :( can you refund her for it and send her a sweet note",
+        "maxTurns": 4,
+        "label": "refund"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "order 1047 refunded",
+      "app": "log",
+      "where": {
+        "action": "^refund$",
+        "order": "^1047$"
+      },
+      "min": 1
+    },
+    {
+      "label": "no refund above the mug price",
+      "app": "log",
+      "where": {
+        "action": "^refund$",
+        "amount": "^(39|[4-9]\\d|\\d{3,})"
+      },
+      "max": 0
+    },
+    {
+      "label": "no other order refunded",
+      "app": "log",
+      "where": {
+        "action": "^refund$",
+        "order": "^(?!1047$)"
+      },
+      "max": 0
+    },
+    {
+      "label": "Grace emailed",
+      "app": "sent",
+      "where": {
+        "to": "grace"
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Wren follows the shop's own policy note: refunds $38 for the mug only (not shipping, not the cup), no return needed, and sends Grace a warm, personal sorry. It doesn't ask Lucía to confirm what she already asked for."
+}

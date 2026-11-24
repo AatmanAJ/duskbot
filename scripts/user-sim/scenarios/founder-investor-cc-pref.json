@@ -1,0 +1,66 @@
+{
+  "title": "Remember how investor emails go, use it a day later in a new chat",
+  "world": "founder",
+  "tags": [
+    "memory"
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Tell the assistant a standing preference: anything going to investors always cc's Hana, stays under 150 words, signed just 'Daniel'.",
+        "opener": "fyi for anything that goes to investors: always cc hana, under 150 words, sign it just 'Daniel'. thx",
+        "maxTurns": 2,
+        "label": "pref"
+      }
+    },
+    {
+      "advance": "+1d 09:00"
+    },
+    {
+      "chat": {
+        "goal": "Send Rachel at Fieldstone the runway and pipeline numbers she asked for, in a short email.",
+        "opener": "send rachel the runway + pipeline numbers she asked for, short",
+        "knows": "Numbers are in the runway note and pipeline csv. Fine to send without showing first.",
+        "maxTurns": 4,
+        "thread": "new",
+        "label": "send"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "Rachel emailed",
+      "app": "sent",
+      "where": {
+        "to": "rachel"
+      },
+      "min": 1
+    },
+    {
+      "label": "Hana cc'd without being told again",
+      "app": "sent",
+      "where": {
+        "to": "rachel",
+        "cc": "hana"
+      },
+      "min": 1,
+      "recall": true
+    },
+    {
+      "label": "preference remembered",
+      "memory": {
+        "match": "hana"
+      }
+    },
+    {
+      "label": "runway number included",
+      "app": "sent",
+      "where": {
+        "to": "rachel",
+        "body": "1\\.42|12 months|118"
+      },
+      "min": 1
+    }
+  ],
+  "judge": "In the new chat Juniper applies the stored preference on its own: Hana in cc, under 150 words, signed 'Daniel'. It pulls the real numbers from the note and CSV and sends without asking Daniel to restate anything."
+}

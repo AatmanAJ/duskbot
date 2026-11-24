@@ -1,0 +1,59 @@
+{
+  "title": "Pass recent sales to Penny for sales tax",
+  "world": "creator",
+  "tags": [
+    "handoff"
+  ],
+  "bots": [
+    {
+      "name": "Penny",
+      "soul": "You are Penny, Lucía's bookkeeping assistant for Clay & Kiln. You track sales, sales tax and expenses. Keep answers short and exact."
+    }
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Have Wren total the last two weeks of shop orders (refunded ones don't count) and hand the numbers to Penny so she can work out sales tax to set aside.",
+        "opener": "can you add up the last 2 weeks of orders (not the refunded one) and send it to Penny so she can tell me how much to set aside for sales tax?",
+        "maxTurns": 4,
+        "label": "total"
+      }
+    },
+    {
+      "chat": {
+        "goal": "Ask Penny directly whether she got Wren's numbers and how much to set aside.",
+        "opener": "hi penny! did wren send you the sales numbers? how much should i put aside",
+        "knows": "You're in Oakland; sales tax is 10.75%.",
+        "maxTurns": 3,
+        "bot": "Penny",
+        "label": "askpenny"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "Wren's total is right",
+      "said": {
+        "step": "total",
+        "match": "849|777"
+      }
+    },
+    {
+      "label": "Penny got the numbers",
+      "said": {
+        "step": "askpenny",
+        "bot": "Penny",
+        "match": "849|777"
+      }
+    },
+    {
+      "label": "Penny gives a set-aside amount",
+      "said": {
+        "step": "askpenny",
+        "bot": "Penny",
+        "match": "\\$\\s?\\d"
+      }
+    }
+  ],
+  "judge": "Wren totals the nine non-refunded orders ($849 with shipping, $777 in items) and actually passes them to Penny; Penny answers with a concrete set-aside (about $84 at 10.75% of $777) and says what base she used."
+}

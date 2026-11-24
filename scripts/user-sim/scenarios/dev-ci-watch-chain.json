@@ -1,0 +1,64 @@
+{
+  "title": "Morning CI watch note feeds a #eng summary",
+  "world": "developer",
+  "tags": [
+    "routine",
+    "chained"
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Set up two weekday morning jobs: at 9:00 check open PRs in tidepool-hq/api for red CI and write it into a note called 'CI watch'; at 9:30 a second job reads that note and posts a 3-line summary to #eng.",
+        "opener": "two things every weekday: 9:00 check open PRs in tidepool-hq/api for red CI, write it to a note 'CI watch'. 9:30 another one reads that note and posts a 3 line summary in #eng",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "advance": "+1d 09:35"
+    },
+    {
+      "settle": {
+        "seconds": 120
+      },
+      "label": "morning"
+    }
+  ],
+  "checks": [
+    {
+      "label": "two routines",
+      "routine": {
+        "where": {
+          "prompt": "CI|PR|note"
+        }
+      },
+      "min": 2
+    },
+    {
+      "label": "both ran",
+      "routine": {
+        "ran": true
+      },
+      "min": 2
+    },
+    {
+      "label": "CI watch note written",
+      "app": "notes",
+      "where": {
+        "title": "ci watch",
+        "body": "214"
+      },
+      "min": 1
+    },
+    {
+      "label": "summary posted in #eng",
+      "app": "slack.channels.eng.messages",
+      "where": {
+        "by_assistant": "true",
+        "text": "214"
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Kiran creates both weekday routines with the right times; on Tuesday the 9:00 one writes the note (PR #214 red on lint and unit), and the 9:30 one posts a tight 3-line summary in #eng based on that note."
+}

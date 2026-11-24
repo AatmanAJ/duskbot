@@ -1,0 +1,61 @@
+{
+  "title": "Weekday morning brief at 7:45",
+  "world": "founder",
+  "tags": [
+    "routine"
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Set up a short brief every weekday at 7:45am: today's meetings with any clashes, urgent emails, and deals that need a nudge.",
+        "opener": "can you send me a short brief every weekday 7:45am? todays meetings (flag clashes), anything urgent in email, deals that need a nudge. keep it tight",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "advance": "+1d 07:50"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      },
+      "label": "brief"
+    }
+  ],
+  "checks": [
+    {
+      "label": "routine exists",
+      "routine": {
+        "where": {
+          "schedule.type": "daily|cron"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "routine ran",
+      "routine": {
+        "ran": true
+      },
+      "min": 1
+    },
+    {
+      "label": "brief arrived on its own",
+      "proactive": {
+        "after": "brief",
+        "match": "rachel|board prep|cedar|brightpath"
+      },
+      "min": 1
+    },
+    {
+      "label": "brief flags the clash",
+      "proactive": {
+        "after": "brief",
+        "match": "clash|overlap|conflict|double.?booked"
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Juniper sets a weekday-only 7:45 routine without a pile of questions. Tuesday's brief arrives on time, is short, names the Brightpath kickoff, flags that the board prep with Rachel overlaps the Cedar & Pine demo, and mentions the Halvorsen invoice or Northwind deal."
+}

@@ -1,0 +1,50 @@
+{
+  "title": "Triage inbox and draft replies, send nothing",
+  "world": "student",
+  "tags": [
+    "multi-step"
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Have Pip go through the inbox, say what matters, and draft (not send) replies to the ones that need one.",
+        "opener": "can you go through my inbox and draft replies to whatever needs one? don't send anything, i'll check them",
+        "knows": "Dr Marsh: you'll send the 1-page draft by Friday. Gareth: you want to swap Wednesday's shift because of the climbing social, ask if Tom can take it. Mum: train gets into Piccadilly at 19:05 Friday. Kofi: you'll send the £51.13 by Friday.",
+        "maxTurns": 5,
+        "label": "triage"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "draft to Dr Marsh",
+      "app": "drafts",
+      "where": {
+        "to": "marsh"
+      },
+      "min": 1
+    },
+    {
+      "label": "draft to Gareth about the shift",
+      "app": "drafts",
+      "where": {
+        "to": "gareth"
+      },
+      "min": 1
+    },
+    {
+      "label": "draft to Mum",
+      "app": "drafts",
+      "where": {
+        "to": "nasreen"
+      },
+      "min": 1
+    },
+    {
+      "label": "nothing sent",
+      "app": "sent",
+      "max": 0
+    }
+  ],
+  "judge": "Pip pulls out what matters (lab report Thursday, Marsh's Friday ask, the Wednesday shift vs climbing social clash, Mum's question, Kofi's bill), drafts short replies in Aisha's voice and sends nothing. It skips newsletters and receipts without fuss."
+}

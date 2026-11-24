@@ -1,0 +1,72 @@
+{
+  "title": "Learn Arjun's PR review checklist, apply it to the next PR",
+  "world": "developer",
+  "tags": [
+    "teach",
+    "memory"
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Have #215 reviewed and teach the assistant how Arjun reviews PRs, so next time he can just say 'the usual'.",
+        "opener": "review #215. how i review, for every PR from now on: 1) migrations reversible (down file exists) 2) new code has specs 3) no console.log 4) CHANGELOG entry. post it as one PR comment, a checkbox per item, one-line verdict on top. don't approve, just comment",
+        "maxTurns": 3,
+        "label": "teach"
+      }
+    },
+    {
+      "advance": "+1d 10:00"
+    },
+    {
+      "chat": {
+        "goal": "Get #217 reviewed the usual way without repeating the checklist.",
+        "opener": "do the usual review on #217",
+        "maxTurns": 3,
+        "thread": "new",
+        "label": "usual"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "215 reviewed",
+      "app": "log",
+      "where": {
+        "action": "^gh_comment$",
+        "number": "^215$"
+      },
+      "min": 1
+    },
+    {
+      "label": "217 review has checklist items",
+      "app": "github.repos.0.pulls",
+      "where": {
+        "number": "^217$",
+        "comments": "changelog"
+      },
+      "min": 1,
+      "recall": true
+    },
+    {
+      "label": "217 review uses checkboxes",
+      "app": "github.repos.0.pulls",
+      "where": {
+        "number": "^217$",
+        "comments": "\\[[ xX]\\]"
+      },
+      "min": 1,
+      "recall": true
+    },
+    {
+      "label": "217 migration flagged",
+      "app": "github.repos.0.pulls",
+      "where": {
+        "number": "^217$",
+        "comments": "revers|down"
+      },
+      "min": 1,
+      "recall": true
+    }
+  ],
+  "judge": "The #217 comment follows the taught format: a verdict line, then four checkboxes, flagging that 0043_report_exports.sql has no down migration and there's no CHANGELOG entry. Kiran doesn't ask Arjun to restate the checklist and doesn't approve."
+}
