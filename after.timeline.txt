@@ -1,0 +1,47 @@
+12.1s busy: true
+12.2s server killed
+26.3s follow-up typed
+27.8s bubble: pending
+44.4s bubble before restart: pending
+45.7s server started
+46.2s bubble: pending
+46.8s bubble: pending
+47.3s bubble: pending
+47.8s bubble: pending
+48.3s bubble: pending
+48.8s bubble: pending
+49.3s bubble: pending
+49.8s bubble: pending
+50.3s bubble: pending
+50.8s bubble: pending
+51.4s bubble: pending
+51.9s bubble: pending
+52.4s bubble: server copy
+53.0s bubble: server copy
+53.5s bubble: server copy
+54.0s bubble: server copy
+54.6s bubble: server copy
+55.1s bubble: server copy
+55.6s bubble: server copy
+56.1s bubble: server copy
+56.7s bubble: server copy
+57.2s bubble: server copy
+57.7s bubble: server copy
+58.2s bubble: server copy
+58.7s bubble: server copy
+59.2s bubble: server copy
+59.7s bubble: server copy
+60.2s bubble: server copy
+60.7s bubble: server copy
+61.2s bubble: server copy
+61.8s bubble: server copy
+62.3s bubble: server copy
+62.8s bubble: server copy
+63.3s bubble: server copy
+63.8s bubble: server copy
+64.3s bubble: server copy
+64.8s bubble: server copy
+65.3s bubble: server copy
+65.8s bubble: server copy
+66.3s bubble: server copy
+66.7s server rows with the follow-up: 1
