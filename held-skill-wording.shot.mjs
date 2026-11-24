@@ -1,0 +1,17 @@
+import { writeFileSync } from "node:fs";
+const [browserWs, out, clickSelector] = process.argv.slice(2);
+const port = new URL(browserWs).port;
+const page = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find((t) => t.type === "page" && t.url.includes("__threads"));
+const ws = new WebSocket(page.webSocketDebuggerUrl);
+await new Promise((r) => ws.addEventListener("open", r, { once: true }));
+let id = 0; const pending = new Map();
+ws.addEventListener("message", (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } });
+const send = (method, params = {}) => new Promise((r) => { const n = ++id; pending.set(n, r); ws.send(JSON.stringify({ id: n, method, params })); });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 820, deviceScaleFactor: 2, mobile: false });
+if (clickSelector) await send("Runtime.evaluate", { expression: `document.querySelector(${JSON.stringify(clickSelector)})?.click()` });
+await sleep(1500);
+const shot = await send("Page.captureScreenshot", { format: "png" });
+writeFileSync(out, Buffer.from(shot.result.data, "base64"));
+await send("Emulation.clearDeviceMetricsOverride");
+ws.close();
