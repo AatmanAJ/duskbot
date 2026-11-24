@@ -1,0 +1,17 @@
+{
+  "about": "A fresh setup with no voice service: the bot reply's Message actions menu, opened from its more button.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1100,
+  "height": 620,
+  "scale": 2,
+  "script": [{ "text": "The Q3 summary is ready: 14 clients, 312 hours, £48,200 billed." }],
+  "steps": [
+    { "type": { "name": "Message Pepper", "text": "Total the Q3 hours by client" } },
+    { "press": "Enter" },
+    { "settle": 60 },
+    { "eval": "const rows = [...document.querySelectorAll('[data-mid]')].filter((row) => row.textContent.includes('Q3 summary is ready')); const more = rows.at(-1).querySelector('button[aria-haspopup=menu]'); more.click();" },
+    { "waitMs": 600 },
+    { "shot": true }
+  ]
+}
