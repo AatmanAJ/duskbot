@@ -8,7 +8,7 @@
 import type { RuntimeEvent } from "../contracts.ts";
 import { effectfulCall } from "../drivers/openai-chat-habits.ts";
 import { DELIVERABLE_TOOL, deliverableCheckNote } from "./deliverable-check.ts";
-import { claimsDone, openChecklist, promisesFollowUp, ranTool, readBackWrite, schedulesWork, stopGateNote, type TurnForAsks } from "../turn-stop-gates.ts";
+import { claimsDone, openChecklist, promisesFollowUp, ranTool, readBackWrite, schedulesCall, schedulesWork, stopGateNote, type TurnForAsks } from "../turn-stop-gates.ts";
 
 export const MAX_CONTINUES = 2;
 export const MAX_PLAN_CONTINUES = 6;
@@ -172,7 +172,8 @@ export function createFinishGuard(deps: FinishGuardDeps) {
         const tool = ranTool(event.title ?? "", event.input);
         if (HANDS_OFF.test(tool)) turn.handedOff = true;
         if (DELIVERABLE_TOOL.test(tool)) turn.made = true;
-        if (schedulesWork(tool)) turn.scheduled = true;
+        if (schedulesCall(event.title ?? "", event.input)) turn.scheduled = true;
+        else if (schedulesWork(tool)) turn.unread = null;
         else if (!NATIVE_LOOKUP.test(tool.toLowerCase()) && effectfulCall(tool.toLowerCase(), "{}")) {
           turn.effectful += 1;
           turn.unread = readBackWrite(tool) ? tool : null;

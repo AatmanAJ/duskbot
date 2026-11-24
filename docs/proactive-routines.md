@@ -182,6 +182,25 @@ schedule and posts what it prints as the bot's reply. No AI turn runs.
   On My Cloud the arrived watch pauses My Cloud's own. The move freeze pauses the watch like any routine, so two
   homes never watch the same inbox. Dusk never moves into a team.
 
+## Intentions become automations when they are said
+
+"Remind me...", "check back on this tomorrow" and "tell me when X happens" are set up in the same turn, never kept as
+words the bot hopes to remember (prospective recall fades with context length; facts do not). The trigger part of the
+system prompt (`TRIGGER_PROMPT`, `server/system-prompt.ts`) maps them: a reminder is a once schedule or `wait_until`
+kind=time, a check back is `wait_until` kind=time with `follow_up`, a "tell me when" is `wait_until` when a plain check
+can see it, else a trigger whose instructions pause it once it has told the person. Caps, from OpenClaw's anti-nag
+defaults: at most 3 nags about one thing, at most one a day, and a watch for something that may never happen ends
+within 90 days (a wait ends on its own after its hours).
+
+A reply that promises or claims a follow-up with nothing behind it is sent back, on every engine: the chat loop's
+stop gate (`TurnGates`) inside the turn, and the finish guard's carry-on turn for engines that own their loop. The
+detector (`promisesFollowUp`, `server/turn-stop-gates.ts`) hears "I'll remind you", "I'll check on it tomorrow",
+"I'll send you the summary in 2 hours", "I've set a reminder", "Reminder set for 9", "I'll keep you posted" and the
+German and Spanish forms, and leaves offers, questions, past tense and quoted or code text alone. Only a call that
+sets something up counts as scheduled (`schedulesCall`): `wait_until`, `background_job` or a `trigger` create,
+update, resume or run, never a pause, note, fail or listing. The carry-on note tells the bot to set it up now, or
+say in one line that it can't follow up by itself.
+
 ## Not in v1
 
 - More than one account per app.

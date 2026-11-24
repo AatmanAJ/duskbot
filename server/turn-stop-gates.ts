@@ -15,12 +15,20 @@ export const MAX_STOP_GATES = 2;
 const sentences = (text: string) => text.split(/\n+|(?<=[.!?])\s+/).map((part) => part.trim()).filter(Boolean);
 
 const PROMISE = /\b(?:i['’]ll|i will|i['’]m going to|i am going to)\s+(?:also\s+|then\s+)?(?:keep an eye on|keep watching|keep checking|keep tabs on|watch (?:for|it|this|that|the)|monitor|check (?:back|again|in)\b|follow up|ping you|message you|text you|email you|let you know (?:when|once|if|as soon as|the moment)|remind you|report back|get back to you|circle back|update you (?:when|once|if|as soon as))/i;
-const STARTED = /\b(?:i['’]ve|i have)\s+(?:started|set up|kicked off|scheduled)\s+(?:a |an |the )?(?:background (?:job|task)|reminder|watch|monitor|timer|check-in)\b/i;
-const OFFER = /\b(?:if you(?:['’]d)? (?:want|like)|want me to|would you like|should i|shall i|just say|let me know if|happy to)\b/i;
+const STARTED = /\b(?:i['’]ve|i have|i)\s+(?:started|set up|set|kicked off|scheduled|created|added)\s+(?:a |an |the |your |you a )?(?:background (?:job|task)|reminder|watch|monitor|timer|check-in|follow-up|alarm)\b|^(?:ok(?:ay)?[,.!]?\s+|done[,.!]?\s+)?(?:a |the |your )?reminder(?:'s| is)? (?:set|scheduled|on)\b/i;
+// the bot's own later work named with a time: "I'll send you the summary tomorrow", "I'll check on it at 5"
+const LATER_DEED = /\b(?:i['’]ll|i will|i['’]m going to|i am going to)\s+(?:also\s+|then\s+)?(?:check|look|ping|nudge|remind|message|text|email|send you|tell you|update you|write to you|come back|get back|follow up|keep you posted|let you know)\b[^.!?]{0,80}?\b(?:tomorrow|tonight|later(?: today| this week)?|this (?:afternoon|evening)|next (?:week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|on (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in (?:a few|an?|\d+|one|two|three|five|ten|twenty|thirty) (?:min(?:ute)?s?|hours?|days?|weeks?)|at \d{1,2}(?::\d{2})?\s*(?:am|pm)?|every (?:day|morning|week))\b/i;
+const KEEP_POSTED = /\b(?:i['’]ll|i will)\s+(?:keep you posted|nudge you|come back to (?:this|it|you)|be in touch)\b/i;
+// German and Spanish, the app's other languages
+const ELSEWHERE = /\b(?:ich (?:erinnere dich|melde mich (?:morgen|später|wieder|bei dir|sobald|wenn))|ich sag(?:e)? dir bescheid,? (?:wenn|sobald)|ich habe (?:dir )?eine erinnerung (?:gestellt|eingerichtet)|te (?:lo )?recordar[ée]|te recuerdo (?:mañana|luego|más tarde|en)|te aviso (?:cuando|si|en cuanto|mañana)|te escribo (?:mañana|luego|más tarde)|(?:he|ya) (?:puesto|creado|programado) (?:un |el )?recordatorio)/iu;
+const OFFER = /\b(?:if you(?:['’]d)? (?:want|like)|want me to|would you like|should i|shall i|just say|let me know if|happy to|si quieres|wenn du willst|möchtest du)\b/iu;
+// quoted words and code are something the reply shows, not something it says it will do
+const QUOTED = /```[\s\S]*?```|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”|«[^»\n]*»|„[^“\n]*“/g;
 
-/** The reply promises to do something later (watch, remind, report back) or says it started that. */
+/** The reply promises to do something later (watch, remind, report back) or says it set that up. */
 export function promisesFollowUp(text: string): boolean {
-  return sentences(text).some((sentence) => !sentence.endsWith("?") && !OFFER.test(sentence) && (PROMISE.test(sentence) || STARTED.test(sentence)));
+  return sentences(text.replace(QUOTED, " ")).some((sentence) => !sentence.endsWith("?") && !OFFER.test(sentence)
+    && (PROMISE.test(sentence) || STARTED.test(sentence) || LATER_DEED.test(sentence) || KEEP_POSTED.test(sentence) || ELSEWHERE.test(sentence)));
 }
 
 // a tool that makes the bot act later: a wait, a trigger, a routine, a background job, a reminder
@@ -36,6 +44,20 @@ export function ranTool(name: string, rawArgs?: string): string {
 }
 
 export const schedulesWork = (tool: string): boolean => SCHEDULES.test(tool) && !/(?:^|_)(?:delete|cancel|list|remove)_/i.test(tool);
+
+// trigger calls that set nothing up for later: stopping, reading or noting on an automation
+const NOT_SCHEDULING = new Set(["pause", "delete", "fail", "note", "email", "list", "events", "usage"]);
+
+/** A call that sets up later work: a scheduling tool, unless its action only stops or reads an automation. */
+export function schedulesCall(name: string, rawArgs?: string): boolean {
+  const tool = ranTool(name, rawArgs);
+  if (!schedulesWork(tool)) return false;
+  let args: unknown;
+  try { args = rawArgs ? JSON.parse(rawArgs) : undefined; } catch { return true; }
+  const record = args && typeof args === "object" ? args as Record<string, unknown> : {};
+  const inner = tool !== name && record.arguments && typeof record.arguments === "object" ? record.arguments as Record<string, unknown> : record;
+  return !(typeof inner.action === "string" && NOT_SCHEDULING.has(inner.action));
+}
 
 // dusk bot's own change tools: their answer is the app's record of what applied or waits on a card, so there is
 // nothing for a later call to read back
@@ -197,7 +219,8 @@ export class TurnGates {
     if (!effectfulCall(name, rawArgs)) { this.unconfirmed = null; this.unread = null; return; }
     this.effectful += 1;
     const tool = ranTool(name, rawArgs);
-    if (schedulesWork(tool)) { this.scheduled = true; return; }
+    if (schedulesCall(name, rawArgs)) { this.scheduled = true; return; }
+    if (schedulesWork(tool)) return;
     const readable = !selfConfirming(tool) && this.lookupFor(tool);
     this.unconfirmed = bareAck(text) && readable ? title : null;
     this.unread = readable && !isOutboundTool(tool) ? title : null;
