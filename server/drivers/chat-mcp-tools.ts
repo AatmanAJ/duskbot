@@ -88,6 +88,13 @@ function object(value: unknown): value is Record<string, unknown> {
 function aborted(): Error { return new Error("MCP operation cancelled"); }
 class McpRequestRefused extends Error {}
 
+// The server's own error text never reaches the model: it may hold a credential.
+const CALL_REFUSED = "The tool's server answered this call with an error and returned no result. Check the arguments against the tool's schema and try again, or do it another way.";
+const serverStoppedNow = (server: string, why: string) =>
+  `${why}. The ${server} tool server was stopped, so its tools can't be used again in this reply. This call may or may not have taken effect: check its state before repeating it, or do it another way.`;
+const serverStoppedEarlier = (server: string) =>
+  `The ${server} tool server stopped after an earlier failed call in this reply, so this tool can't be used until the next message. Do it another way, or tell the person what is left.`;
+
 /** A chat-runtime bot's tools never get the operator's control-plane secrets; the entry's own env is applied last. */
 export function chatMcpEnvironment(serverEnv: Record<string, string>, source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...source, PATH: augmentedPath() };
@@ -533,6 +540,7 @@ export async function mountChatTools(integrations: SendTurnInput["integrations"]
   }
   if (servers.length > 32) throw new Error("MCP server count exceeds the 32-server limit");
   const clients: McpPeer[] = [];
+  const retired = new Set<McpPeer>();
   const skipped: SkippedChatMcpServer[] = [];
   const trimmed: TrimmedChatMcpServer[] = [];
   const started = new Map<string, McpPeer>();
@@ -542,7 +550,8 @@ export async function mountChatTools(integrations: SendTurnInput["integrations"]
     if (closing) return closing;
     closed = true;
     signal.removeEventListener("abort", cancel);
-    closing = Promise.allSettled(clients.map((client) => client.close())).then((results) => {
+    // a server stopped after a failed call already told the model its outcome is uncertain
+    closing = Promise.allSettled(clients.map((client) => retired.has(client) ? client.close().catch(() => {}) : client.close())).then((results) => {
       if (results.some((result) => result.status === "rejected")) throw new ChatToolSessionError("MCP server shutdown could not be confirmed; execution outcome may be uncertain");
     });
     return closing;
@@ -722,9 +731,11 @@ export async function mountChatTools(integrations: SendTurnInput["integrations"]
     const tool = registered.get(name);
     return tool ? viewOf(tool, args, name) : { title: name, input: args, ask: true };
   };
+  const stoppedServers = new Set<string>();
   const run = async (tool: RegisteredTool, args: Record<string, unknown>, callSignal: AbortSignal): Promise<ChatToolResult> => {
+    if (stoppedServers.has(tool.server)) return { ok: false, text: serverStoppedEarlier(tool.server) };
     try {
-      const result = await tool.client.call("tools/call", { name: tool.name, arguments: args }, AbortSignal.any([signal, callSignal]), callTimeoutMs);
+      const result = await tool.client.call("tools/call", { name: tool.name, arguments: args }, AbortSignal.any([signal, callSignal]), callTimeoutMs, true);
       if (signal.aborted || callSignal.aborted) throw aborted();
       if (!object(result) || !Array.isArray(result.content) || (result.isError !== undefined && typeof result.isError !== "boolean")) throw new Error("MCP tool returned an invalid result; execution outcome may be uncertain");
       observers.get(tool.server)?.returned({ name: tool.name, arguments: args }, result);
@@ -742,8 +753,15 @@ export async function mountChatTools(integrations: SendTurnInput["integrations"]
       return { text: await savedOrBounded(parts.join("\n") || (images.length ? "Screenshot captured." : "(empty result)"), chatToolName(tool.server, tool.name), resultFolder, scrub), ok: result.isError !== true && unsupported === 0,
         ...(images.length ? { images } : {}) };
     } catch (error) {
-      await close();
-      throw new ChatToolSessionError(error instanceof Error ? error.message : "MCP transport failed; execution outcome may be uncertain");
+      if (signal.aborted || callSignal.aborted || closed) {
+        await close();
+        throw new ChatToolSessionError(error instanceof Error ? error.message : "MCP transport failed; execution outcome may be uncertain", { cause: error });
+      }
+      if (error instanceof McpRequestRefused) return { ok: false, text: CALL_REFUSED };
+      stoppedServers.add(tool.server);
+      retired.add(tool.client);
+      await tool.client.close().catch((closing: unknown) => console.warn(`chat-mcp: ${tool.server}: ${closing instanceof Error ? closing.message : String(closing)}`));
+      return { ok: false, text: serverStoppedNow(tool.server, error instanceof Error ? error.message : "MCP transport failed; execution outcome may be uncertain") };
     }
   };
   const answer = (result: DirectoryResult): ChatToolResult => ({ text: boundedText(result.content.map((part) => part.text).join("\n")), ok: result.isError !== true });

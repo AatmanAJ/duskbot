@@ -336,24 +336,42 @@ describe("Chat MCP session", () => {
     expect(alive(f.read().pid)).toBe(false);
   });
 
-  it("rejects untrusted transport error text without leaking it", async () => {
-    const f = fixture(`if (message.method === "tools/call") { send({jsonrpc:"2.0",id:message.id,error:{code:-1,message:"secret-fixture-key"}}); continue; }`);
+  it("answers a call the server refused as a failed result without its error text, and keeps the server for the next call", async () => {
+    const f = fixture(`if (message.method === "tools/call" && message.params.arguments.value === "test") { send({jsonrpc:"2.0",id:message.id,error:{code:-1,message:"secret-fixture-key"}}); continue; }`);
     const session = await f.mount();
-    const result = await session.execute("audit_write", { value: "test" }, f.controller.signal).catch((error: Error) => error);
-    expect(result).toBeInstanceOf(ChatToolSessionError);
-    expect(String(result)).toContain("MCP request failed");
-    expect(String(result)).not.toContain("secret-fixture-key");
-    expect(alive(f.read().pid)).toBe(false);
+    const result = await session.execute("audit_write", { value: "test" }, f.controller.signal);
+    expect(result.ok).toBe(false);
+    expect(result.text).toContain("answered this call with an error");
+    expect(result.text).not.toContain("secret-fixture-key");
+    expect(alive(f.read().pid)).toBe(true);
+    await expect(session.execute("audit_write", { value: "valid" }, f.controller.signal)).resolves.toMatchObject({ ok: true });
+    await session.close();
   });
 
-  it("rejects malformed tool content instead of accepting an empty successful result", async () => {
+  it("answers malformed tool content as a failed call, stops only that server, and fails its later calls at once", async () => {
     const f = fixture(`if (message.method === "tools/call") { reply(message,{content:[{type:"text",text:42}]}); continue; }`);
     const session = await f.mount();
-    const pending = session.execute("audit_write", {value:"test"}, f.controller.signal);
-    await expect(pending).rejects.toBeInstanceOf(ChatToolSessionError);
-    await expect(pending).rejects.toThrow("invalid content");
-    expect(alive(f.read().pid)).toBe(false);
-    expect(() => session.validate("audit_write", {value:"test"})).toThrow(ChatToolSessionError);
+    const result = await session.execute("audit_write", {value:"test"}, f.controller.signal);
+    expect(result).toMatchObject({ ok: false });
+    expect(result.text).toContain("invalid content");
+    expect(result.text).toContain("may or may not have taken effect");
+    await vi.waitFor(() => expect(alive(f.read().pid)).toBe(false));
+    expect(() => session.validate("audit_write", {value:"test"})).not.toThrow();
+    const again = await session.execute("audit_write", {value:"test"}, f.controller.signal);
+    expect(again).toMatchObject({ ok: false });
+    expect(again.text).toContain("stopped after an earlier failed call");
+    expect(f.read().calls.filter((call) => call.method === "tools/call")).toHaveLength(1);
+    await expect(session.close()).resolves.toBeUndefined();
+  });
+
+  it("answers a call that timed out as a failed call instead of ending the session", async () => {
+    const f = fixture(`if (message.method === "tools/call") continue;`);
+    const session = await mountChatTools({ custom: { audit: f.server } }, f.controller.signal, false, undefined, 200);
+    sessions.push(session);
+    const result = await session.execute("audit_write", {value:"test"}, f.controller.signal);
+    expect(result).toMatchObject({ ok: false });
+    expect(result.text).toContain("timed out");
+    await session.close();
   });
 
   it("keeps schema errors recoverable without dispatching or closing the transport", async () => {
@@ -1091,13 +1109,13 @@ describe("Chat MCP schema validation", () => {
   it("keeps a bounded frame limit for image-enabled custom servers", async () => {
     const f = fixture('if(message.method === "tools/call") { process.stdout.write("x".repeat(32*1024*1024+1)); continue; }');
     const session = await f.mount(true);
-    await expect(session.execute("audit_write", { value: "large" }, f.controller.signal)).rejects.toThrow(/frame|limit/i);
+    expect(await session.execute("audit_write", { value: "large" }, f.controller.signal)).toMatchObject({ ok: false, text: expect.stringMatching(/frame|limit/i) });
   });
 
   it("rejects malformed image results without claiming execution success", async () => {
     const f = fixture('if(message.method === "tools/call") { reply(message,{content:[{type:"image",mimeType:"image/png",data:"not-base64"}]}); continue; }');
     const session = await f.mount(true);
-    await expect(session.execute("audit_write", { value: "screenshot" }, f.controller.signal)).rejects.toThrow("Invalid or oversized MCP image");
+    expect(await session.execute("audit_write", { value: "screenshot" }, f.controller.signal)).toMatchObject({ ok: false, text: expect.stringMatching(/Invalid or oversized MCP image/) });
   });
   it.each([
     { type: "object", properties: { value: { type: "string", minLength: 2 } }, required: ["value"] },
@@ -1210,7 +1228,7 @@ describe("Chat MCP schema validation", () => {
     const f = fixture(delayed);
     const short = await mountChatTools({ custom: { audit: f.server } }, f.controller.signal, false, undefined, 100);
     sessions.push(short);
-    await expect(short.execute("audit_write", { value: "x" }, f.controller.signal)).rejects.toThrow("MCP request timed out");
+    expect(await short.execute("audit_write", { value: "x" }, f.controller.signal)).toMatchObject({ ok: false, text: expect.stringMatching(/MCP request timed out/) });
     await expect(f.read().calls.filter((call) => call.method === "tools/call")).toHaveLength(1);
 
     const long = await mountChatTools({ custom: { audit: f.server } }, f.controller.signal, false, undefined, 5_000);

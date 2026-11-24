@@ -90,6 +90,10 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
       reply(request.id, { isError: true, content: [{ type: "text", text: "Synthetic tool failed before writing." }] });
       return;
     }
+    if (name === "broken") {
+      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, error: { code: -32000, message: "fixture transport refusal" } }) + "\\n");
+      return;
+    }
     if (name === "wait") await new Promise((resolve) => setTimeout(resolve, 30_000));
     if (!["write", "wait"].includes(name)) {
       appendFileSync(join(directory, "effects.ndjson"), JSON.stringify({ name, ...args }) + "\\n");
@@ -299,6 +303,22 @@ describe("bounded action announcement recovery", () => {
     expect(await f.completed()).toMatchObject({ ok: false });
     expect(f.requests).toHaveLength(2);
     expect(f.effects()).toEqual([]);
+  });
+
+  it("feeds a call its tool server refused back to the model, which goes on with the server's other tools", async () => {
+    const f = await fixture((_body, response, round) => round === 1
+      ? sse(response, [chunk({ tool_calls: [toolCall("audit_broken", '{"name":"x","value":"y"}', "call_broken")] }, "tool_calls")])
+      : round === 2 ? sse(response, [chunk({ tool_calls: [toolCall()] }, "tool_calls")])
+      : answer(response, "Stored the receipt another way."));
+    process.env.FIXTURE_EXTRA_TOOLS = "broken";
+    try {
+      await f.start({ approvalMode: "full" });
+      expect(await f.completed()).toMatchObject({ ok: true });
+    } finally { delete process.env.FIXTURE_EXTRA_TOOLS; }
+    const fed = f.requests[1]!.messages.find((message) => message.tool_call_id === "call_broken");
+    expect(JSON.parse(String(fed?.content))).toMatchObject({ ok: false });
+    expect(String(fed?.content)).not.toContain("fixture transport refusal");
+    expect(f.effects()).toEqual([{ name: "receipt", value: "done" }]);
   });
 
   it("does not use an announcement to bypass a failed operation", async () => {
