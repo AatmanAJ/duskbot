@@ -9,13 +9,15 @@ const PROMPT = "This is a connection check. Reply with the single word OK.";
 const TIMEOUT_MS = 90_000;
 const SIGNED_OUT = /not logged in|please run \/login|\blogin required\b|not signed in|sign in again|invalid api key|invalid_api_key|\b401\b|unauthori[sz]ed/i;
 
-/** What a failed check says: the provider's own refusal in plain words, a sign-in to make again, or its own short text. */
+/** What a failed check says: the provider's own refusal in plain words, a sign-in to make again, or one plain sentence;
+ * the engine's raw text goes to the log only. */
 export function engineCheckError(name: string, message: string): string {
   if (SIGNED_OUT.test(message)) return `${name} isn't signed in on this computer anymore. Sign in again, then check again.`;
   const plain = engineFailureMessage(name, message);
   if (plain) return plain;
   const said = redactSecretsInText(message.replace(/\s+/g, " ").trim()).slice(0, 300);
-  return said ? `${name} couldn't answer: ${said}` : `${name} didn't answer. Check again in a minute.`;
+  if (said) console.warn(`engine check: ${name} failed: ${said}`);
+  return `${name} didn't answer. Check again in a minute.`;
 }
 
 const running = new Map<string, Promise<EngineCheck>>();

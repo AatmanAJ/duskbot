@@ -27,7 +27,7 @@ import {
 import { readSessionReport } from "./session-reports.ts";
 import { pickSessionModel, SessionModelControls, type AcpModelSelection } from "./session-model-controls.ts";
 import { acpVariantOption } from "./config-options.ts";
-import { advertisedVariant, coolFreeRung, FREE_POOL_LIMIT, FREE_PROBE_MS, FREE_PROBE_PROMPT, freeFailure, freeLadder, probeFreeLadder, warmFreeModel, warmFreeRung, type FreeFailure, type FreeRung } from "./free-ladder.ts";
+import { advertisedVariant, coolFreeRung, FREE_POOL_LIMIT, FREE_PROBE_MS, FREE_PROBE_PROMPT, freeFailure, freeLadder, freeOneShot, probeFreeLadder, warmFreeModel, warmFreeRung, type FreeFailure, type FreeRung } from "./free-ladder.ts";
 import { trail } from "../../trail.ts";
 import { versionFromProbe } from "./version-probe.ts"; import { engineHomes } from "../../engine-homes/engine-homes.ts";
 
@@ -1755,7 +1755,11 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
 
     /** Memory upkeep's one-shot: a fresh process and session, no MCP servers, an empty folder, and
      * every tool, file or permission request refused. */
-      const generateMemoryText = (prompt: string, options: TextGenerationOptions = {}): Promise<string> => oneShotText(prompt, options);
+      const generateMemoryText = (prompt: string, options: TextGenerationOptions = {}): Promise<string> => {
+        const asked = catalog.models.default, order = asked && support.selectModel ? support.freeModelOrder?.(asked, childEnv(), catalog.models) : null;
+        return asked && order ? freeOneShot(freeLadder({ model: asked }, order, catalog.models), (rung) => oneShotText(prompt, options, rung), options.signal, support.displayName)
+          : oneShotText(prompt, options);
+      };
       // `rung`: run on this model and lighter setting rather than the session's default (the free probe)
       const oneShotText = async (prompt: string, options: TextGenerationOptions, rung?: FreeRung): Promise<string> => {
         if (startupModelRefresh) await startupModelRefresh;

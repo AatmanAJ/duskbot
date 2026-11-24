@@ -1529,6 +1529,34 @@ describe("OpenCode free model that never answers, or answers nothing", () => {
     expect(trailed).toEqual(expect.arrayContaining([expect.objectContaining({ ev: "free_model.switch", reason: "busy" })]));
   }, 20_000);
 
+  it("checks the free models on a named free model and hands a provider sign-in refusal to the next one", async () => {
+    const scratch = mkdtempSync(join(tmpdir(), "dusk-opencode-check-"));
+    resetOpenCodeModelCache();
+    const driver = createOpenCodeDriver(async () => catalog("opencode/big-pickle", "opencode/grok-code", "opencode/minimax"));
+    const instance = await driver.create({
+      instanceId: "opencode-check",
+      displayName: "OpenCode",
+      environment: { HOME: scratch, USERPROFILE: scratch, XDG_DATA_HOME: join(scratch, "data"), ...noKeys,
+        FAKE_ACP_MODELS: "opencode/minimax,opencode/big-pickle,opencode/grok-code", FAKE_ACP_TEXT_REPLY: "OK",
+        // opencode 1.19's ACP answer to a ProviderAuthError
+        FAKE_ACP_REJECT_MODELS: JSON.stringify({ "opencode/big-pickle": "Authentication required: provider authentication required" }),
+        FAKE_ACP_DUMP: join(scratch, "dump") },
+      enabled: true,
+      config: { cli: FAKE_CLI, fullAuto: false },
+    });
+    try {
+      const call = instance.generateText ?? instance.generateMemoryText;
+      await expect(call!.call(instance, "Reply with the single word OK.")).resolves.toBe("OK");
+      const tried = readFileSync(join(scratch, "dump.models.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
+      expect(tried).toEqual(["opencode/big-pickle", "opencode/grok-code"]);
+      expect(trailed).toEqual(expect.arrayContaining([expect.objectContaining({ ev: "free_model.one_shot_failed", model: "opencode/big-pickle" })]));
+    } finally {
+      await instance.dispose();
+      await removeTempDir(scratch);
+      resetOpenCodeModelCache();
+    }
+  }, 30_000);
+
   it("runs the next rung at its lighter setting where the model offers one", async () => {
     const effort = [{ id: "low", label: "Low" }, { id: "high", label: "High" }];
     const models: ModelCatalog = { default: "opencode/big-pickle", options: [
