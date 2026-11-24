@@ -6,6 +6,7 @@
 // replaced, closes, so nothing stale waits on the person.
 import { formatQuestionAnswers, isPersistentQuestionCard } from "../../shared/ask-question.ts";
 import { liveCardKind } from "../../shared/live-approval.ts";
+import { splitTranscriptAttachments } from "../../src/lib/composer-attachments.ts";
 import { personWait } from "../../shared/person-wait.ts";
 import { allowsTool, type ToolIdentity } from "../../shared/tool-scope.ts";
 import type { OptionCardData } from "../../shared/wire.ts";
@@ -56,6 +57,11 @@ export function answerableInWords(card: OptionCardData | undefined): card is Opt
   const questions = card!.questionRequest?.questions;
   return !questions || (questions.length === 1 && !questions[0]!.multiSelect && questions[0]!.custom !== false);
 }
+
+const carriesAttachments = (text: string): boolean => {
+  const { images, files } = splitTranscriptAttachments(text);
+  return images.length > 0 || files.length > 0;
+};
 
 const typedAnswer = (card: OptionCardData, text: string): string => {
   const questions = card.questionRequest?.questions;
@@ -258,11 +264,12 @@ export function createAskCards(deps: AskCardsDeps) {
     return true;
   }
 
-  /** A person's line answers an inbox copy it replies to, or, in work a teammate handed on, the question card the bot's
-   * turn waits on, as a tap would; null leaves the line to be sent (steered or queued) as usual. */
+  /** A person's line answers an inbox copy it replies to, or the question card the bot's turn in that conversation waits
+   * on, as a tap would; a line carrying an attachment is not an answer. Null leaves the line to be sent (steered or
+   * queued) as usual. */
   async function typed(auth: RequestAuth, threadId: string, text: string, target: Message | undefined,
     line: { sendId?: string; sender?: Message["sender"] }): Promise<{ status: number; message?: Message; error?: string } | null> {
-    if (store.groupByThread(threadId) || isStopCommand(text)) return null;
+    if (store.groupByThread(threadId) || isStopCommand(text) || carriesAttachments(text)) return null;
     const asked = target
       ? answerableInWords(target.card) ? target : undefined
       : store.messagesFor(threadId).findLast((message) => answerableInWords(message.card) && deps.live(threadId, message.card!.requestId!));

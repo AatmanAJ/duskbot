@@ -382,6 +382,13 @@ describe("a typed line answers a question card", () => {
     expect(result).toMatchObject({ status: 202, message: { role: "user", text: "Take the second one", replyToId: asked.id, sendId: "send-3" } });
   });
 
+  it("leaves a line with an attachment to the usual send, even while a question waits", async () => {
+    const w = world({ live: ["req-1"] });
+    question(w, "chat");
+    expect(await w.cards.typed(AUTH, "chat", 'see this\n\n<attached-image path="/a/b.png" name="b.png" />', undefined, {})).toBeNull();
+    expect(w.answers).toEqual([]);
+  });
+
   it("leaves a line in the person's own chat to the usual send once no turn waits on its question", async () => {
     const w = world();
     const asked = question(w, "chat");

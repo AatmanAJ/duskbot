@@ -140,11 +140,12 @@ posixOnly("mid-turn steering e2e", () => {
           acp: { driver: "grokAgent", environment: { FAKE_ACP_MODE: "hang" }, config: { cli: FAKE_ACP, fullAuto: true } },
           // codex parks its turn on an unanswered question; turn/steer folds new input into that live turn without ending it.
           codex: { driver: "codex", environment: { FAKE_CODEX_MODE: "question", FAKE_CODEX_ASK_HOLD: "1" }, config: { cli: FAKE_CODEX } },
+          // a codex turn parked on an unanswered approval: a typed line is not its answer, so it is steered
+          codexBusy: { driver: "codex", environment: { FAKE_CODEX_MODE: "approval" }, config: { cli: FAKE_CODEX } },
           codexRace: {
             driver: "codex",
             environment: {
-              FAKE_CODEX_MODE: "question",
-              FAKE_CODEX_ASK_HOLD: "1",
+              FAKE_CODEX_MODE: "approval",
               FAKE_CODEX_STEER_ERROR_FILE: codexSteerGate,
             },
             config: { cli: FAKE_CODEX },
@@ -860,17 +861,18 @@ posixOnly("mid-turn steering e2e", () => {
   it("a codex message during a live turn is steered into it via turn/steer, and Stop never reports SIGTERM", async () => {
     const created = (await api("POST", "/api/bots")).body.bot;
     const instances = (await api("GET", "/api/instances")).body.instances;
-    const codexInstance = instances.find((i: any) => i.instanceId === "codex");
+    const codexInstance = instances.find((i: any) => i.instanceId === "codexBusy");
     expect(codexInstance.capabilities.queueing).toBe(true);
     await api("PATCH", `/api/bots/${created.id}`, {
-      modelSelection: { instanceId: "codex", model: codexInstance.models.default },
+      modelSelection: { instanceId: "codexBusy", model: codexInstance.models.default },
+      approvalMode: "ask",
     });
 
     expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "first codex turn" })).status).toBe(202);
     await waitFor(async () => (await getBot(created.id)).busy === true, "the codex turn to start");
     await waitFor(
       async () => (await getBot(created.id)).messages.some((m: any) => m.card),
-      "the codex question card",
+      "the codex approval card",
     );
 
     const second = await api("POST", `/api/bots/${created.id}/messages`, { text: "and also this" });
@@ -899,13 +901,13 @@ posixOnly("mid-turn steering e2e", () => {
     const created = (await api("POST", "/api/bots")).body.bot;
     const instances = (await api("GET", "/api/instances")).body.instances;
     const model = instances.find((i: any) => i.instanceId === "codexRace").models.default;
-    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "codexRace", model } });
+    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "codexRace", model }, approvalMode: "ask" });
 
     expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "first gated turn" })).status).toBe(202);
     await waitFor(async () => (await getBot(created.id)).busy === true, "the gated turn to start");
     await waitFor(
       async () => (await getBot(created.id)).messages.some((m: any) => m.card),
-      "the gated question card",
+      "the gated approval card",
     );
 
     // the gate file makes the live steer lose: the words queue instead
