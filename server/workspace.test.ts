@@ -657,12 +657,11 @@ describe("workspace", () => {
 
   it("routes facts, procedures and short-lived notes to the right place, in both write modes", () => {
     for (const prompt of [memorySystemPrompt(BOT), memorySystemPrompt(BOT, { managedWrites: true })]) {
-      expect(prompt).toContain("MEMORY.md is for facts that hold in every session");
-      expect(prompt).toContain("Write each one as a plain statement of fact, never as an instruction to yourself: an imperative is read back as a directive next session.");
-      expect(prompt).toContain("A procedure for one kind of task belongs in a memory/<topic>.md file or a skill, not here.");
-      expect(prompt).toContain("Anything that will be stale within a week belongs in the conversation, not in memory.");
-      expect(prompt).toContain("A fact that holds only from or until a day (an exam this weekend, a trip next week) says so in the entry");
-      expect(prompt).toContain("is hidden from you once that day has passed");
+      expect(prompt).toContain("MEMORY.md holds facts true in every session");
+      expect(prompt).toContain("Write each as a plain fact, never an instruction to yourself: an imperative is read back as a directive.");
+      expect(prompt).toContain("How they want one kind of work done (its steps, format and their corrections to it) goes into that work's skill, not here.");
+      expect(prompt).toContain("What will be stale within a week stays in the conversation.");
+      expect(prompt).toContain("A fact that holds only from or until a day says so in the entry, and is hidden once that day passes.");
       expect(prompt).toContain(`pointers to files in ${JSON.stringify(join(workspaceDir(BOT), "memory"))}`);
       expect(prompt).not.toContain("<topicDir>");
     }

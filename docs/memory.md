@@ -562,6 +562,13 @@ The idea comes from Hermes Agent's background review: after the reply, never
 during it, the bot looks back at the conversation and saves what it learned,
 so the person never has to say "remember this".
 
+- **Skills first.** The bot is told, as Hermes Agent tells its own, that how
+  the person wants one kind of work done (its steps, format, and their
+  corrections to it) goes into the skill for that work, where it loads only
+  when that work comes up; `MEMORY.md` holds facts true in every session,
+  written as plain facts, never as instructions to itself. A learned skill
+  that misled the bot is fixed before it finishes; a skill the person wrote
+  or imported changes only when they ask.
 - **Memory**: the capture step above, after two quiet minutes or six turns.
 - **Skills**: the skill review (`server/skill-review.ts`), once a chat has
   gathered `features.skillReviewSteps` (10 by default) successful tool steps,

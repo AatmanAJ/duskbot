@@ -1796,12 +1796,17 @@
               "resume",
               "run_now",
               "email",
-              "note"
+              "note",
+              "fail"
             ]
           },
           "note": {
             "type": "string",
             "description": "action=note: notes for this automation's next run."
+          },
+          "reason": {
+            "type": "string",
+            "description": "action=fail: one line saying why this run could not do its job. Only inside a run of an automation."
           },
           "trigger_id": {
             "type": "string",
@@ -1962,6 +1967,15 @@
             "type": "boolean",
             "description": "Only for updates: set true to remove an existing safety limit. Do not combine with timeout_minutes."
           },
+          "catch_up_minutes": {
+            "type": "integer",
+            "maximum": 10080,
+            "description": "Repeating schedules only: how many minutes late a missed run may still start. 0 never starts late. Omit for 12 hours."
+          },
+          "clear_catch_up": {
+            "type": "boolean",
+            "description": "Only for updates: set true to go back to the 12-hour default. Do not combine with catch_up_minutes."
+          },
           "continuity": {
             "type": "boolean",
             "description": "Schedules only: give each run the last completed run's report, so it can say what is new since last time. Default true on create; false makes each run start fresh."
@@ -2000,7 +2014,21 @@
               },
               "command": {
                 "type": "string",
-                "description": "script: one shell command. Same output as last time = nothing new; last line {\"wakeAgent\":false} = skip, true = run."
+                "description": "script: one shell command. Without post, the same output as last time = nothing new; last line {\"wakeAgent\":false} = skip, true = run."
+              },
+              "post": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "description": "script only: true posts what the script prints as your reply with no AI turn (for \"run this script on a schedule and post what it prints\"). Empty output stays quiet."
+              },
+              "access": {
+                "type": "string",
+                "enum": [
+                  "full"
+                ],
+                "description": "script only: full runs it outside the read-only fence, so it can write files (for \"it needs to write files\"). Always asks the person on a card."
               }
             },
             "required": [
@@ -2426,7 +2454,7 @@
     },
     {
       "name": "skill_manage",
-      "description": "Submit a new or updated reusable SKILL.md. Never update unless the user explicitly asked to revise that named skill. If the result is pending, a create stays inactive and an update leaves the current version unchanged. Read the result: it applies immediately at every access level, and the person sees it with an Undo where possible. If applied, continue the work without another confirmation. Only a pending result (a Cloud conversation its owner did not drive) means ending the turn to wait for the owner. Never claim success without an applied result; report failures honestly. This does not elevate another bot's execution permissions.",
+      "description": "Submit a new or updated reusable SKILL.md for one kind of work. Update a learned skill when the person corrected how that work is done, asked you to revise it, or it misled you; never update one the person wrote or imported unless they asked for that named skill. If the result is pending, a create stays inactive and an update leaves the current version unchanged. Read the result: it applies immediately at every access level, and the person sees it with an Undo where possible. If applied, continue the work without another confirmation. Only a pending result (a Cloud conversation its owner did not drive) means ending the turn to wait for the owner. Never claim success without an applied result; report failures honestly. This does not elevate another bot's execution permissions.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
