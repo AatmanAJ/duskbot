@@ -1,0 +1,31 @@
+{
+  "about": "A bot whose AI is signed out (run with FAKE_CLAUDE_MODE=not-logged-in): the sidebar row carries the server's sign-in notice, naming the settings pane to go to. The row's preview is set to wrap (CSS only) so the whole sentence shows; its words are the server's own.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1100,
+  "height": 560,
+  "scale": 2,
+  "steps": [
+    {
+      "type": {
+        "name": "Message Pepper",
+        "text": "hello"
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "waitFor": "document.body.innerText.includes('Sign in again in Settings')"
+    },
+    {
+      "eval": "for (const el of document.querySelectorAll('[aria-label=\"Bots and navigation\"] *')) { if (el.children.length === 0 && el.textContent.includes('Sign in again in Settings')) { let node = el; for (let i = 0; i < 6 && node; i++, node = node.parentElement) { node.style.whiteSpace = 'normal'; node.style.overflow = 'visible'; node.style.textOverflow = 'clip'; node.style.webkitLineClamp = 'unset'; node.style.height = 'auto'; node.style.maxHeight = 'none'; node.style.minHeight = '0'; } } }"
+    },
+    {
+      "waitMs": 500
+    },
+    {
+      "shot": true
+    }
+  ]
+}

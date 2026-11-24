@@ -1,0 +1,31 @@
+{
+  "about": "Settings as the app opens it: the pane that holds sign-ins and AI providers is called Models on the rail.",
+  "entry": "threads",
+  "color": "orange",
+  "width": 1100,
+  "height": 640,
+  "scale": 2,
+  "steps": [
+    {
+      "click": "You"
+    },
+    {
+      "waitMs": 500
+    },
+    {
+      "click": "Settings"
+    },
+    {
+      "waitMs": 1200
+    },
+    {
+      "click": "Models"
+    },
+    {
+      "waitMs": 1200
+    },
+    {
+      "shot": true
+    }
+  ]
+}
