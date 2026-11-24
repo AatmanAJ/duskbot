@@ -1,5 +1,5 @@
 // A routine's probe check (Routine.probe): plain code reads one public page (or part of it), feed, price or script output
-// before any AI turn. The same
+// before any AI turn. A posting script (`post`) is not compared: what it prints is each run's reply. Otherwise the same
 // reading as last time is nothing new and wakes no model; a change becomes one run, and the reading is kept only once
 // that run's answer is, so a run that fails sees the change again. A read that fails is a failed check, never "nothing
 // new", and says so once per streak. State is a hash or a price and a few item ids per routine (routine-probes.json).
@@ -11,7 +11,7 @@ import type { RoutineProbe } from "../shared/routines.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { clean, recordsBlock, recordsText } from "./records-block.ts";
 import type { Routine, RoutineCheckResult, RoutineChecks, RoutineRun } from "./routines.ts";
-import { wakeAsked, type ScriptResult } from "./routine-script.ts";
+import { SCRIPT_OUTPUT_MAX, wakeAsked, type ScriptResult } from "./routine-script.ts";
 import { fetchPublicPage, pageText, type PublicPage } from "./wait-probes.ts";
 
 export const PROBES_FILE = "routine-probes.json";
@@ -127,6 +127,12 @@ export function scriptReading(output: string): ProbeReading {
   return { value: sha(text), text, ...(wakeAsked(text) === true ? { wake: true as const } : {}) };
 }
 
+/** What a posting script's output says to the person: its words without a last {"wakeAgent": true} line; empty is quiet. */
+export function scriptPost(output: string): string {
+  const text = output.trim().slice(0, SCRIPT_OUTPUT_MAX);
+  return wakeAsked(text) === true ? text.split(/\r?\n/).slice(0, -1).join("\n").trim() : text;
+}
+
 /** Where a probe reads from, as kept: a page with its selector, or a script by its command's hash. */
 export const probeSource = (probe: RoutineProbe) =>
   probe.kind === "script" ? `script:${sha(probe.command ?? "")}` : probe.selector ? `${probe.url} ${probe.selector}` : probe.url;
@@ -152,7 +158,7 @@ export interface RoutineProbesDeps {
   now?: () => number;
   fetch?: (url: string) => Promise<PublicPage>;
   /** Runs a script check's command; absent, script checks fail with NO_SCRIPTS. */
-  script?: (routine: Routine, command: string) => Promise<ScriptResult>;
+  script?: (routine: Routine, command: string, dryRun: boolean) => Promise<ScriptResult>;
   /** Once per streak, at its STUCK_AFTER-th failed read: the person hears it, so a probe that cannot read never looks
    * quiet for long. */
   failed?(routine: Routine, sentence: string, count: number): void;
@@ -176,10 +182,10 @@ export function createRoutineProbes(deps: RoutineProbesDeps) {
   const host = (url: string) => { try { return new URL(url).hostname; } catch { return url; } };
   const where = (probe: RoutineProbe) => probe.kind === "script" ? "its script" : host(probe.url);
 
-  async function read(routine: Routine, probe: RoutineProbe): Promise<ProbeReading | { error: string } | { asleep: true }> {
+  async function read(routine: Routine, probe: RoutineProbe, dryRun: boolean): Promise<ProbeReading | { error: string } | { asleep: true }> {
     if (probe.kind === "script") {
       if (!deps.script) return { error: NO_SCRIPTS };
-      const result = await deps.script(routine, probe.command ?? "");
+      const result = await deps.script(routine, probe.command ?? "", dryRun);
       if (!result.ok) return { error: result.error };
       return wakeAsked(result.output) === false ? { asleep: true } : scriptReading(result.output);
     }
@@ -219,7 +225,16 @@ export function createRoutineProbes(deps: RoutineProbesDeps) {
       // a run already holds a change: it is that run's to answer
       if (kept?.pending && Object.keys(kept.pending).length) return { held: true };
       if (!context.manual && kept?.retryAt !== undefined && now() < kept.retryAt) return { held: true, ...(kept.trouble ? { trouble: kept.trouble } : {}) };
-      const reading = await read(routine, probe);
+      const reading = await read(routine, probe, context.dryRun === true);
+      if (probe.kind === "script" && probe.post) {
+        const post = "error" in reading ? { error: reading.error } : "asleep" in reading ? "" : scriptPost(reading.text!);
+        kept ??= state[routine.id] = { url: from, kind: probe.kind, value: "", at: now() };
+        if (!post) { kept.at = now(); save(); return {}; }
+        const key = `${KEY_PREFIX}${randomUUID()}`;
+        kept.pending = { [key]: { at: now(), value: "" } };
+        save();
+        return { run: { key, prompt: routine.prompt, post } };
+      }
       if ("error" in reading) {
         const sentence = `Couldn't check ${where(probe)}: ${reading.error}`;
         kept ??= state[routine.id] = { url: from, kind: probe.kind, value: "", at: now() };
