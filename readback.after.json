@@ -1,0 +1,27 @@
+{
+ "line": "Your bots now know 28 things about you. Also brought in 4 bots and 5 paused routines.",
+ "fenNote": "# Fen: what it wrote beside its Grok Bot export\n\nWhen it wrote the export that moved it here, it added this, word for word. Anything it says it left out did not come over.\n\n> Here's my full setup. I've left out the API key for the Companies House app as you asked. I couldn't read the schedule of one routine (\"Quarterly market scan\") so I left it out.\n",
+ "fenSoulKnow": "\n- MEMORY.md is your notebook: what you remembered in Grok Bot. Read it before you start and keep it current.\n- What you knew about the person is in their about me, which every bot reads. Keep facts about them there, not in your notebook.\n- memory/grok-bot-export-note.md has what you wrote beside your export, such as what you couldn't bring. Tell the person what didn't come over when they ask what came, or when the work needs it, and offer to set it up again with them.",
+ "bots": [
+  [
+   "0fc0c24f-2782-4e2b-8298-b948d6e4d8cc",
+   "Pip"
+  ],
+  [
+   "976bf24c-6370-48d1-a4f8-306066586b20",
+   "Juniper"
+  ],
+  [
+   "d4fec016-42df-4b67-87df-ce00cd442cff",
+   "Fen"
+  ],
+  [
+   "eac53597-f8a3-4ce7-8257-2a3ab3f2906f",
+   "Ada"
+  ],
+  [
+   "14ab31c6-49ab-421f-9e8b-08f6bf61962e",
+   "Fixture Starter"
+  ]
+ ]
+}

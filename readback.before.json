@@ -1,0 +1,27 @@
+{
+ "line": "Your bots now know 28 things about you. Also brought in 4 bots and 5 paused routines.",
+ "fenNote": "",
+ "fenSoulKnow": "\n- MEMORY.md is your notebook: what you remembered in Grok Bot. Read it before you start and keep it current.\n- What you knew about the person is in their about me, which every bot reads. Keep facts about them there, not in your notebook.",
+ "bots": [
+  [
+   "65ef1bac-68b8-499c-b99b-bdd6c7de1cc2",
+   "Pip"
+  ],
+  [
+   "3e06576c-002b-4d4b-8b38-f3bb1e01af54",
+   "Juniper"
+  ],
+  [
+   "29cbe42f-002f-4202-adc3-fc9a6c8356b3",
+   "Fen"
+  ],
+  [
+   "26950cc6-d6e4-4c54-b001-5351f20bcf04",
+   "Ada"
+  ],
+  [
+   "6c37a99f-361a-4ade-9a22-f62d2c636d12",
+   "Fixture Starter"
+  ]
+ ]
+}
