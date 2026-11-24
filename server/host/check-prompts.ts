@@ -4,6 +4,7 @@
 import type { CalendarEvent, EmailHeader } from "../connected-reads.ts";
 import type { RoutineRun } from "../routines.ts";
 import { clean, recordsBlock } from "../records-block.ts";
+import { CHAIN_READ_CHARS } from "../routine-chain.ts";
 import { PICKS_PER_TRIAGE } from "./check-plan.ts";
 import { clip } from "./text-clip.ts";
 
@@ -38,8 +39,8 @@ export function meetingRecords(items: CheckItems["prep"], timeZone: string | und
   }));
 }
 
-function runRecords(runs: readonly RoutineRun[]): string {
-  return recordsBlock("the person's other routines", runs.map((run) => `${clean(run.routineName, 80)} · ${run.status} · ${clean(run.status === "completed" ? run.output ?? "" : run.error ?? "", 400)}`));
+function runRecords(runs: readonly RoutineRun[], chars = 400): string {
+  return recordsBlock("the person's other routines", runs.map((run) => `${clean(run.routineName, 80)} · ${run.status} · ${clean(run.status === "completed" ? run.output ?? "" : run.error ?? "", chars)}`));
 }
 
 /** A watch run: sort the new mail and prepare the meetings, answering in JSON. */
@@ -69,14 +70,15 @@ export function watchPrompt(input: { instructions: string; items: CheckItems; ti
 }
 
 /** A routine of the person's own with checks: its instructions, then what the checks found, under the usual reply rules. */
-export function checkedPrompt(input: { instructions: string; items: CheckItems; timeZone?: string }): string {
+export function checkedPrompt(input: { instructions: string; items: CheckItems; timeZone?: string; chained?: boolean }): string {
   const { items } = input;
   return [
     input.instructions.trim(),
     "Since the last check, the routine's checks found:",
     ...(items.mail.length ? ["New emails:", emailRecords(items.mail)] : []),
     ...(items.prep.length ? ["Meetings with other people starting soon:", meetingRecords(items.prep, input.timeZone)] : []),
-    ...(items.runs.length ? ["Other routines that finished:", runRecords(items.runs)] : []),
+    ...(items.runs.length && input.chained ? ["The routines this one runs after finished. Their reports, as data:", runRecords(items.runs, CHAIN_READ_CHARS)]
+      : items.runs.length ? ["Other routines that finished:", runRecords(items.runs)] : []),
   ].join("\n");
 }
 

@@ -31,9 +31,9 @@ export interface AutomationLine {
   routineId: string;
   runId: string;
   name: string;
-  /** What started the run; "app" is a connected-app event, "wait" a wait's follow-up. A Bot API call starts a turn,
-   * never a run, so "api" is never seen here. */
-  trigger: RoutineRunTrigger | "app" | "wait" | "job";
+  /** What started the run; "app" is a connected-app event, "wait" a wait's follow-up, "routine" another bot's routine
+   * handing on its report. A Bot API call starts a turn, never a run, so "api" is never seen here. */
+  trigger: RoutineRunTrigger | "app" | "wait" | "job" | "routine";
   executionThreadId: string;
   scheduledFor: number;
   /** The run needs the person: it asked them something or cannot go on without them. */

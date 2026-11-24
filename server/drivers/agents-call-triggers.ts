@@ -21,7 +21,7 @@ const USAGE_ROUTE = "/api/internal/trigger-usage";
 const MAIL_ROUTE = "/api/internal/bot-mail";
 const APP_ONLY = ["app", "event", "account"] as const;
 const REQUEST_ROUTE = "/api/internal/trigger-requests";
-const SCHEDULE_ONLY = ["schedule", "timeout_minutes", "timeoutMinutes", "clear_timeout", "catch_up_minutes", "catchUpMinutes", "clear_catch_up", "continuity", "overlap", "run_on_startup", "runOnStartup", "check", "clear_check"] as const;
+const SCHEDULE_ONLY = ["schedule", "timeout_minutes", "timeoutMinutes", "clear_timeout", "catch_up_minutes", "catchUpMinutes", "clear_catch_up", "continuity", "overlap", "run_on_startup", "runOnStartup", "check", "clear_check", "read_from", "after", "hand_to", "clear_chain"] as const;
 
 function jsonRecord(value: unknown): value is Json {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -294,7 +294,35 @@ function routineFields(args: Json): { fields: Json; error?: string } {
   const check = routineCheck(args.check, args.clear_check);
   if (check.error) return { fields, error: check.error };
   if (check.probe !== undefined) fields.probe = check.probe;
+  const chain = routineChain(args);
+  if (chain.error) return { fields, error: chain.error };
+  if (chain.chain !== undefined) fields.chain = chain.chain;
   return { fields };
+}
+
+/** read_from, after and hand_to as the routine keeps them (its chain), replacing its links; null when clear_chain removes them. */
+function routineChain(args: Json): { chain?: Json | null; error?: string } {
+  const given = ["read_from", "after", "hand_to"].filter((key) => args[key] !== undefined && args[key] !== null);
+  if (args.clear_chain != null && typeof args.clear_chain !== "boolean") return { error: "clear_chain must be true or false." };
+  if (args.clear_chain === true) return given.length ? { error: "Choose read_from, after and hand_to, or clear_chain, not both." } : { chain: null };
+  if (!given.length) return {};
+  const list = (value: unknown, name: string): string[] | string | undefined => {
+    if (value == null) return undefined;
+    const items = typeof value === "string" ? [value] : value;
+    return Array.isArray(items) && items.every((id) => typeof id === "string" && id.trim()) ? items.map((id: string) => id.trim()) : `${name} must be a list of trigger ids from trigger_info.`;
+  };
+  const readFrom = list(args.read_from, "read_from"), after = list(args.after, "after");
+  if (typeof readFrom === "string") return { error: readFrom };
+  if (typeof after === "string") return { error: after };
+  let handTo: Json | undefined;
+  if (args.hand_to != null) {
+    const hand = args.hand_to;
+    if (!jsonRecord(hand)) return { error: 'hand_to must be {"bot_id": "..."} or {"room_id": "..."}.' };
+    const botId = typeof hand.bot_id === "string" ? hand.bot_id.trim() : "", roomId = typeof hand.room_id === "string" ? hand.room_id.trim() : "";
+    if (Boolean(botId) === Boolean(roomId)) return { error: "hand_to names one bot_id (from list_bots) or one room_id (from list_room_targets)." };
+    handTo = botId ? { botId } : { groupId: roomId };
+  }
+  return { chain: { ...(readFrom?.length ? { readFrom } : {}), ...(after?.length ? { after } : {}), ...(handTo ? { handTo } : {}) } };
 }
 
 /** check as the routine keeps it (its probe); null when clear_check removes it. */
@@ -563,6 +591,8 @@ async function createTrigger(args: Json, forBotId: string | undefined, context: 
   }
   const label = `the ${when === "webhook" ? "webhook" : "schedule"} trigger “${String(fields.name)}”`;
   if (when === "schedule") {
+    // a routine that runs after others still checks once a day, so a report missed while dusk bot was off is caught
+    if (!fields.schedule && jsonRecord(fields.chain) && Array.isArray(fields.chain.after)) fields.schedule = normalizeScheduleInput({ schedule: { type: "interval", every_minutes: 1_440 } }).schedule;
     if (!fields.schedule) return { text: "A schedule trigger needs schedule.", isError: true };
     if (fields.eventTypes) return { text: "webhook_event_types applies only to when=webhook.", isError: true };
     const { eventTypes: _unused, ...asked } = fields;

@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto"; import { shapeNewRoutine } from "./routine-shape.ts"; import { duplicateOf, duplicateRefusal, guardAgainst, jitter } from "./routine-bot-guard.ts"; const withJitter = (changes: RoutineRequestChanges, current: Routine): RoutineRequestChanges => (changes.schedule ? { ...changes, schedule: jitter(changes.schedule, changes.name ?? current.name, changes.instructions ?? current.prompt) } : changes); import { cleanProbe } from "./routine-quiet.ts"; import { serverLine } from "./server-lines.ts"; import { plainCronWhen } from "./routine-cron-words.ts";
+import { createHash } from "node:crypto"; import { shapeNewRoutine } from "./routine-shape.ts"; import { duplicateOf, duplicateRefusal, guardAgainst, jitter } from "./routine-bot-guard.ts"; const withJitter = (changes: RoutineRequestChanges, current: Routine): RoutineRequestChanges => (changes.schedule ? { ...changes, schedule: jitter(changes.schedule, changes.name ?? current.name, changes.instructions ?? current.prompt) } : changes); import { cleanProbe } from "./routine-quiet.ts";
+import { cleanChain } from "./routine-chain.ts"; import { serverLine } from "./server-lines.ts"; import { plainCronWhen } from "./routine-cron-words.ts";
 import { isDeepStrictEqual } from "node:util";
 
 import { cronScheduleLabel } from "../shared/cron-label.ts";
@@ -354,6 +355,7 @@ function normalizeScheduleChanges(
     ...(schedule.endsAt === null ? { endsAt: null } : {}),
   };
 }
+const requestChain = (value: unknown) => { try { return cleanChain(value) ?? {}; } catch (error) { throw new RoutineRequestError(error instanceof Error ? error.message : String(error)); } };
 const requestProbe = (value: unknown) => { try { return cleanProbe(value)!; } catch (error) { throw new RoutineRequestError(error instanceof Error ? error.message : String(error)); } };
 function normalizeDefinition(input: RoutineToolDefinitionInput, now: number, ownEngine?: string): RoutineRequestDefinition {
   return {
@@ -366,6 +368,7 @@ function normalizeDefinition(input: RoutineToolDefinitionInput, now: number, own
     ...(input.continuity === true ? { continuity: true } : {}),
     ...(input.overlap === "queue" ? { overlap: "queue" as const } : {}),
     ...(input.runOnStartup === true ? { runOnStartup: true } : {}), ...(input.probe ? { probe: requestProbe(input.probe) } : {}),
+    ...(input.chain ? { chain: requestChain(input.chain) } : {}),
   };
 }
 
@@ -381,6 +384,7 @@ function normalizeChanges(input: RoutineToolChangesInput, now: number, ownEngine
   if (input.continuity !== undefined) changes.continuity = input.continuity === true;
   if (input.overlap !== undefined) changes.overlap = input.overlap;
   if (input.runOnStartup !== undefined) changes.runOnStartup = input.runOnStartup === true; if (input.probe !== undefined) changes.probe = input.probe === null ? null : requestProbe(input.probe);
+  if (input.chain !== undefined) changes.chain = input.chain === null ? null : requestChain(input.chain);
   return changes;
 }
 
@@ -622,10 +626,10 @@ function effectiveDefinition(operation: RoutineRequestOperation, manager: Routin
     ...runMinutesOf(existing),
     ...(existing.continuity ? { continuity: true } : {}),
     ...(existing.overlap ? { overlap: existing.overlap } : {}),
-    ...(existing.runOnStartup ? { runOnStartup: true } : {}), ...(existing.probe ? { probe: existing.probe } : {}),
+    ...(existing.runOnStartup ? { runOnStartup: true } : {}), ...(existing.probe ? { probe: existing.probe } : {}), ...(existing.chain ? { chain: existing.chain } : {}),
   };
   if (operation.action !== "update") return base;
-  const { schedule, timeoutMinutes, catchUpMinutes, probe, ...changes } = operation.changes;
+  const { schedule, timeoutMinutes, catchUpMinutes, probe, chain, ...changes } = operation.changes;
   const merged: RoutineRequestDefinition = {
     ...base,
     ...changes,
@@ -635,8 +639,18 @@ function effectiveDefinition(operation: RoutineRequestOperation, manager: Routin
   else if (timeoutMinutes !== undefined) merged.timeoutMinutes = timeoutMinutes;
   if (catchUpMinutes === null) delete merged.catchUpMinutes; else if (catchUpMinutes !== undefined) merged.catchUpMinutes = catchUpMinutes;
   if (probe === null) delete merged.probe; else if (probe !== undefined) merged.probe = probe;
+  if (chain === null) delete merged.chain; else if (chain !== undefined) merged.chain = chain;
   if (runsOnce(merged.schedule)) delete merged.runOnStartup;
   return merged;
+}
+
+function chainLines(chain: RoutineRequestDefinition["chain"], manager: RoutineManager): string[] {
+  const name = (id: string) => redactSecretsInText(manager.listRoutines().find((routine) => routine.id === id)?.name ?? "a removed automation");
+  return [
+    ...(chain?.readFrom?.length ? [`Reads from: ${chain.readFrom.map(name).join(", ")}`] : []),
+    ...(chain?.after?.length ? [`Runs after: ${chain.after.map(name).join(", ")}`] : []),
+    ...(chain?.handTo ? ["Hands each report on to another " + ("botId" in chain.handTo ? "bot" : "room")] : []),
+  ];
 }
 
 function cardCopy(
@@ -701,6 +715,7 @@ function cardCopy(
       `Name: ${name}`,
       ...(forBot ? [`For: @${redactSecretsInText(forBot.name)}, each run uses that bot's AI and permissions`] : []),
       `Schedule: ${when}`,
+      ...chainLines(definition.chain, manager),
       `Next run: ${nextDescription}`,
       ...(definition.schedule.type === "cron" && nextRunAt !== null && operation.action !== "run_now"
         ? [`Next 3 runs (${plainTimeZone(scheduleTimeZone)}): ${nextCronRuns(definition.schedule, now, 3).map((at) => formatInstant(at, scheduleTimeZone)).join(" · ")}`]
@@ -737,7 +752,7 @@ function inputFromDefinition(definition: RoutineRequestDefinition, botId: string
     ...runMinutesOf(definition),
     ...(definition.continuity ? { continuity: true } : {}),
     ...(definition.overlap === "queue" ? { overlap: "queue" as const } : {}),
-    ...(definition.runOnStartup ? { runOnStartup: true } : {}), ...(definition.probe ? { probe: definition.probe } : {}),
+    ...(definition.runOnStartup ? { runOnStartup: true } : {}), ...(definition.probe ? { probe: definition.probe } : {}), ...(definition.chain ? { chain: definition.chain } : {}),
   };
 }
 
@@ -757,6 +772,7 @@ function updateFromChanges(
   if (changes.continuity !== undefined) patch.continuity = changes.continuity;
   if (changes.overlap !== undefined) patch.overlap = changes.overlap;
   if (changes.runOnStartup !== undefined) patch.runOnStartup = changes.runOnStartup; if (changes.probe !== undefined) patch.probe = changes.probe;
+  if (changes.chain !== undefined) patch.chain = changes.chain;
   return patch;
 }
 
@@ -830,7 +846,7 @@ function revalidateOperation(operation: RoutineRequestOperation, manager: Routin
         || routine.timeoutMinutes !== definition.timeoutMinutes || routine.catchUpMinutes !== definition.catchUpMinutes
         || Boolean(routine.continuity) !== Boolean(definition.continuity)
         || (routine.overlap ?? "skip") !== (definition.overlap ?? "skip")
-        || Boolean(routine.runOnStartup) !== Boolean(definition.runOnStartup) || !isDeepStrictEqual(routine.probe ?? null, definition.probe ?? null)
+        || Boolean(routine.runOnStartup) !== Boolean(definition.runOnStartup) || !isDeepStrictEqual(routine.probe ?? null, definition.probe ?? null) || !isDeepStrictEqual(routine.chain ?? null, definition.chain ?? null)
         || (routine.attachments?.length ?? 0) > 0) return false;
       if (schedule.type === "limit_reset" || routine.schedule.type === "limit_reset") {
         return schedule.type === routine.schedule.type && isDeepStrictEqual(requestSchedule(schedule), requestSchedule(routine.schedule));
@@ -915,7 +931,7 @@ function routineSnapshot(routine: Routine): RoutineRequestSnapshot | undefined {
     ...runMinutesOf(routine),
     ...(routine.continuity ? { continuity: true } : {}),
     ...(routine.overlap === "queue" ? { overlap: "queue" as const } : {}),
-    ...(routine.runOnStartup ? { runOnStartup: true } : {}), ...(routine.probe ? { probe: routine.probe } : {}),
+    ...(routine.runOnStartup ? { runOnStartup: true } : {}), ...(routine.probe ? { probe: routine.probe } : {}), ...(routine.chain ? { chain: routine.chain } : {}),
     enabled: routine.enabled,
     ...(routine.target === "room-goal" ? { target: "room-goal" as const } : {}),
     ...(routine.groupId ? { groupId: routine.groupId } : {}),
@@ -937,7 +953,7 @@ function restorePatch(before: RoutineRequestSnapshot, now: number): Partial<Rout
     timeoutMinutes: before.timeoutMinutes ?? null, catchUpMinutes: before.catchUpMinutes ?? null,
     continuity: before.continuity === true,
     overlap: before.overlap ?? "skip",
-    runOnStartup: before.runOnStartup === true, probe: before.probe ?? null,
+    runOnStartup: before.runOnStartup === true, probe: before.probe ?? null, chain: before.chain ?? null,
   };
 }
 
@@ -1169,7 +1185,7 @@ export class RoutineRequestService {
             ...runMinutesOf(before),
             ...(before.continuity ? { continuity: true } : {}),
             ...(before.overlap === "queue" ? { overlap: "queue" as const } : {}),
-            ...(before.runOnStartup ? { runOnStartup: true } : {}),
+            ...(before.runOnStartup ? { runOnStartup: true } : {}), ...(before.chain ? { chain: before.chain } : {}),
             ...(before.resultsThreadId ? { resultsThreadId: before.resultsThreadId } : {}),
           }).id;
           break;

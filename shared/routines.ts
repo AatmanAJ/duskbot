@@ -97,6 +97,24 @@ export interface RoutineProbe {
   access?: "full";
 }
 
+/** The most routines a routine reads from or runs after. */
+export const MAX_CHAIN_LINKS = 5;
+/** How many routine-to-routine or routine-to-bot steps one chain may take before it stops: the run that would be one
+ * more starts nothing. */
+export const MAX_CHAIN_HOPS = 4;
+
+/** How a routine works with other routines and bots (Hermes Agent's `context_from` and `bot-chat` delivery). */
+export interface RoutineChain {
+  /** Routines of this bot (or of bots it may set up) whose latest report each run reads first. */
+  readFrom?: string[];
+  /** Routines whose finished runs start this one: its `runs` check, limited to them. A run that said nothing new starts
+   * nothing. */
+  after?: string[];
+  /** Each report also goes to another bot, whose chat gets it as a new turn, or into a room as a post that starts no
+   * turn. */
+  handTo?: { botId: string } | { groupId: string };
+}
+
 /** `around`: the run may move up to ROUTINE_AROUND_MS either way, so a Cloud home can fold it into a wake it has
  * anyway. Missing means its exact time. */
 export type RoutineTiming = "around";
@@ -201,6 +219,7 @@ export interface Routine extends RoutineQuietFields {
   checks?: RoutineCheck[];
   access?: RoutineAccess;
   deliver?: RoutineDelivery;
+  chain?: RoutineChain;
   /** When its checks last read everything and found nothing for the AI. */
   checkedAt?: number;
   /** A plain sentence while its checks cannot read an app, so a failed read never looks like nothing new. */
@@ -246,8 +265,9 @@ export interface RoutineRun {
   /** A test: outbound actions are refused and become drafts in its reply. */
   dryRun?: true;
   triggerSource?: RoutineRunTrigger;
-  /** "app": a connected-app event started it; "wait": a wait's follow-up did. triggerSource is then "webhook" (an outside event). */
-  eventSource?: "app" | "wait" | "job";
+  /** "app": a connected-app event started it; "wait": a wait's follow-up did; "routine": another bot's routine handed it
+   * its report (RoutineChain.handTo). triggerSource is then "webhook" (an outside event). */
+  eventSource?: "app" | "wait" | "job" | "routine";
   webhookId?: string;
   deliveryId?: string;
   /** Room task created for a team-goal run. */
@@ -273,6 +293,8 @@ export interface RoutineRun {
   deliver?: RoutineDelivery;
   /** The items its routine's checks handed this run, so they are kept or released once it ends. */
   checkKey?: string;
+  /** How many routine or bot steps down a chain this run is (RoutineChain); missing means it started one. */
+  chainHops?: number;
   createdAt: number;
   seenAt?: number;
 }
@@ -299,6 +321,8 @@ export interface RoutineInput extends RoutineQuietInput {
   checks?: RoutineCheck[] | null;
   access?: RoutineAccess | null;
   deliver?: RoutineDelivery | null;
+  /** `null` removes every link on updates; omission preserves them. */
+  chain?: RoutineChain | null;
   attachments?: RoutineContextAttachment[];
   /** Omission preserves routing; null resets it to the bot's main thread. */
   resultsThreadId?: string | null;

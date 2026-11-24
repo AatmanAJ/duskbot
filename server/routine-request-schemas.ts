@@ -71,6 +71,12 @@ const probeSchema = z.object({
   post: z.literal(true).optional(),
   access: z.literal("full").optional(),
 }).strict();
+const chainIds = z.array(z.string().min(1).max(128)).min(1).max(5);
+const chainSchema = z.object({
+  readFrom: chainIds.optional(),
+  after: chainIds.optional(),
+  handTo: z.union([z.object({ botId: z.string().min(1).max(128) }).strict(), z.object({ groupId: z.string().min(1).max(128) }).strict()]).optional(),
+}).strict();
 
 export const routineToolDefinitionSchema = z.object({
   name: z.string().max(80),
@@ -84,12 +90,13 @@ export const routineToolDefinitionSchema = z.object({
   overlap: z.enum(["skip", "queue"]).optional(),
   runOnStartup: z.boolean().optional(),
   probe: probeSchema.optional(),
+  chain: chainSchema.optional(),
 }).strict();
 
 export const routineToolChangesSchema = routineToolDefinitionSchema
-  .omit({ timeoutMinutes: true, catchUpMinutes: true, probe: true })
+  .omit({ timeoutMinutes: true, catchUpMinutes: true, probe: true, chain: true })
   .partial()
-  .extend({ timeoutMinutes: z.number().nullable().optional(), catchUpMinutes: z.number().nullable().optional(), probe: probeSchema.nullable().optional() })
+  .extend({ timeoutMinutes: z.number().nullable().optional(), catchUpMinutes: z.number().nullable().optional(), probe: probeSchema.nullable().optional(), chain: chainSchema.nullable().optional() })
   .strict()
   .refine(
   (changes) => Object.values(changes).some((value) => value !== undefined),
@@ -215,15 +222,17 @@ export const storedDefinitionSchema = z.object({
   overlap: z.enum(["skip", "queue"]).optional(),
   runOnStartup: z.boolean().optional(),
   probe: probeSchema.optional(),
+  chain: chainSchema.optional(),
 }).strict();
 export const storedChangesSchema = storedDefinitionSchema
-  .omit({ schedule: true, timeoutMinutes: true, catchUpMinutes: true, probe: true })
+  .omit({ schedule: true, timeoutMinutes: true, catchUpMinutes: true, probe: true, chain: true })
   .partial()
   .extend({
     schedule: storedScheduleChangesSchema.optional(),
     timeoutMinutes: z.number().int().min(5).max(240).nullable().optional(),
     catchUpMinutes: z.number().int().min(0).max(MAX_CATCH_UP_MINUTES).nullable().optional(),
     probe: probeSchema.nullable().optional(),
+    chain: chainSchema.nullable().optional(),
   })
   .strict()
   .refine(

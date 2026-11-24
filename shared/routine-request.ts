@@ -6,7 +6,7 @@
 
 import type { LimitResetRepeat } from "./limit-reset.ts";
 import type { RoutineCronSchedule } from "./routine-schedule.ts";
-import type { RoutineProbe } from "./routines.ts";
+import type { RoutineChain, RoutineProbe } from "./routines.ts";
 
 export type RoutineRequestRunOn = "maus" | "cloud";
 
@@ -66,13 +66,17 @@ export interface RoutineRequestDefinition {
   runOnStartup?: boolean;
   /** A plain check before each run: the bot runs only when it found something new. */
   probe?: RoutineProbe;
+  /** Other routines it reads from or runs after, and the bot or room its reports also go to. */
+  chain?: RoutineChain;
 }
 
 export type RoutineRequestChanges =
-  & Omit<Partial<RoutineRequestDefinition>, "schedule" | "timeoutMinutes" | "catchUpMinutes" | "probe">
+  & Omit<Partial<RoutineRequestDefinition>, "schedule" | "timeoutMinutes" | "catchUpMinutes" | "probe" | "chain">
   & {
     /** `null` removes the check. */
     probe?: RoutineProbe | null;
+    /** `null` removes every link; a chain replaces all of them. */
+    chain?: RoutineChain | null;
     schedule?: RoutineRequestScheduleChanges;
     /** `null` removes an existing safety cap. */
     timeoutMinutes?: number | null;

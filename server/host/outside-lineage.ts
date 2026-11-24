@@ -138,8 +138,8 @@ export function createOutsideLineage(deps: OutsideLineageDeps) {
   function settle(runs: readonly RoutineRun[], eventChat: (run: RoutineRun) => string | undefined): void {
     for (const run of runs) {
       if (run.triggerSource !== "webhook" || !run.threadId) continue;
-      // Off a Cloud a wait's follow-up runs in the person's own chat.
-      if (deps.home || run.eventSource !== "wait") mark(run.threadId);
+      // Off a Cloud a wait's follow-up, and a report another routine handed on, runs in the person's own chat.
+      if (deps.home || (run.eventSource !== "wait" && run.eventSource !== "routine")) mark(run.threadId);
       const chat = eventChat(run);
       if (chat) mark(chat);
     }

@@ -1,6 +1,7 @@
 // A routine as a person, a bot or an import asked for it, checked and cleaned before RoutineManager keeps it.
 import { runsOnce } from "../shared/limit-reset.ts";
 import { cleanAttachments, cleanCatchUpMinutes, cleanTimeoutMinutes } from "./routine-attachments.ts";
+import { cleanChain } from "./routine-chain.ts";
 import { loadChecks } from "./routine-load.ts";
 import { cleanProbe, cleanTiming } from "./routine-quiet.ts";
 import { cleanSchedule } from "./routine-schedules.ts";
@@ -50,8 +51,13 @@ function cleanInput(input: RoutineInput, after: number): CleanRoutine {
   }
   const schedule = cleanSchedule(input.schedule, after);
   const probe = cleanProbe(input.probe);
-  // a probe is its own check: giving one turns it on, removing one turns it off
-  const named = Array.isArray(input.checks) ? input.checks.filter((check) => check !== "probe") : input.checks;
+  const chain = cleanChain(input.chain);
+  if (chain?.after && probe) throw new Error("A routine that runs after others cannot also have a page, feed, price or script check; give that check to the routine it runs after");
+  if (chain?.handTo && input.deliver === "brief") throw new Error("A routine that reports to the brief cannot hand its reports to another bot or room too");
+  if (chain && target !== "bot") throw new Error("Only a bot routine can read from, run after or hand to others");
+  // a probe is its own check: giving one turns it on, removing one turns it off; `after` is the runs check
+  const listed = Array.isArray(input.checks) ? input.checks.filter((check) => check !== "probe") : input.checks;
+  const named = chain?.after && !listed?.includes("runs") ? [...(listed ?? []), "runs" as const] : listed;
   const asked = probe ? [...(named ?? []), "probe"] : named?.length ? named : null;
   const checks = asked == null ? undefined : loadChecks(asked);
   if (asked != null && (!checks || checks.length !== new Set(asked).size)) throw new Error("Choose checks from calendar, mail and runs");
@@ -80,6 +86,7 @@ function cleanInput(input: RoutineInput, after: number): CleanRoutine {
     ...(checks ? { checks } : {}),
     ...(input.access === "read-and-draft" ? { access: "read-and-draft" as const } : {}),
     ...(input.deliver === "brief" ? { deliver: "brief" as const } : {}),
+    ...(chain ? { chain } : {}),
     ...(probe ? { probe } : {}),
     ...(cleanTiming(input.timing, schedule, checks) ? { timing: "around" as const } : {}),
   };

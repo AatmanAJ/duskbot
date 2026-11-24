@@ -13,6 +13,7 @@ import type { Routine, RoutineCheckResult, RoutineChecks, RoutineRun } from "../
 import {
   clashes, emailSince, fingerprint, keepNewest, LOOKAHEAD_MS, mergeMeetings, nextMeetingDue, planMail, planMeetings, pruneMeetings, type MeetingRecord,
 } from "./check-plan.ts";
+import { afterRuns, nextHop } from "../routine-chain.ts";
 import { checkedPrompt, watchPrompt, type CheckItems } from "./check-prompts.ts";
 import type { InboxTriage } from "./inbox-triage.ts";
 import { isQuiet, localMinute, type QuietHours } from "./proactive-prefs.ts";
@@ -323,7 +324,8 @@ export function createRoutineChecks(deps: RoutineChecksDeps): RoutineChecks & {
 
     if (checks.includes("runs")) {
       const since = entry.runsCursor ?? routine.createdAt;
-      const finished = deps.runs().filter((run) => run.routineId !== routine.id && run.finishedAt !== undefined && run.finishedAt > since && ["completed", "failed", "missed"].includes(run.status));
+      const finished = routine.chain?.after?.length ? afterRuns(routine, deps.runs(), since)
+        : deps.runs().filter((run) => run.routineId !== routine.id && run.finishedAt !== undefined && run.finishedAt > since && ["completed", "failed", "missed"].includes(run.status));
       if (brief) {
         report.runs = finished;
         entry.runsCursor = at;
@@ -345,7 +347,8 @@ export function createRoutineChecks(deps: RoutineChecksDeps): RoutineChecks & {
         key,
         prompt: brief
           ? watchPrompt({ instructions: routine.prompt, items, timeZone: deps.timeZone(), dismissedFrom: deps.dismissedFrom() })
-          : checkedPrompt({ instructions: routine.prompt, items, timeZone: deps.timeZone() }),
+          : checkedPrompt({ instructions: routine.prompt, items, timeZone: deps.timeZone(), chained: Boolean(routine.chain?.after?.length) }),
+        ...(items.runs.length && routine.chain?.after?.length ? { hops: nextHop(items.runs) } : {}),
       };
     }
     if (proactive !== undefined && (wakeAt === undefined || proactive < wakeAt)) {
