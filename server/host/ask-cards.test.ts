@@ -374,8 +374,16 @@ describe("a typed line answers a question card", () => {
     expect(fixed.answers).toEqual([]);
   });
 
-  it("leaves a line in a chat no teammate handed on to be steered or queued, even while its question card waits", async () => {
+  it("answers the card a bot's turn waits on in the person's own chat with it, as the composer says it will", async () => {
     const w = world({ live: ["req-1"] });
+    const asked = question(w, "chat");
+    const result = await w.cards.typed(AUTH, "chat", "Take the second one", undefined, { sendId: "send-3" });
+    expect(w.answers).toEqual([{ threadId: "chat", requestId: "req-1", message: "Take the second one" }]);
+    expect(result).toMatchObject({ status: 202, message: { role: "user", text: "Take the second one", replyToId: asked.id, sendId: "send-3" } });
+  });
+
+  it("leaves a line in the person's own chat to the usual send once no turn waits on its question", async () => {
+    const w = world();
     const asked = question(w, "chat");
     expect(await w.cards.typed(AUTH, "chat", "Take the second one", undefined, {})).toBeNull();
     expect(await w.cards.typed(AUTH, "chat", "Take the second one", asked, {})).toBeNull();

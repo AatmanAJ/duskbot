@@ -263,15 +263,13 @@ export function createAskCards(deps: AskCardsDeps) {
   async function typed(auth: RequestAuth, threadId: string, text: string, target: Message | undefined,
     line: { sendId?: string; sender?: Message["sender"] }): Promise<{ status: number; message?: Message; error?: string } | null> {
     if (store.groupByThread(threadId) || isStopCommand(text)) return null;
-    const delegator = delegatorOf(threadId);
-    const handedOn = Boolean(delegator && delegator.threadId !== threadId);
     const asked = target
       ? answerableInWords(target.card) ? target : undefined
-      : handedOn ? store.messagesFor(threadId).findLast((message) => answerableInWords(message.card) && deps.live(threadId, message.card!.requestId!)) : undefined;
+      : store.messagesFor(threadId).findLast((message) => answerableInWords(message.card) && deps.live(threadId, message.card!.requestId!));
     if (!asked?.card?.requestId) return null;
     const requestId = asked.card.requestId;
     const origin = deps.answeredIn(threadId, requestId);
-    if (origin === threadId && !(handedOn && deps.live(threadId, requestId))) return null;
+    if (origin === threadId && !deps.live(threadId, requestId)) return null;
     const again = line.sendId ? store.messagesFor(threadId).find((message) => message.sendId === line.sendId) : undefined;
     if (again) return { status: 202, message: again };
     const answered = await deps.answerCard({ auth, threadId, requestId, behavior: "answer", message: typedAnswer(asked.card, text) });
