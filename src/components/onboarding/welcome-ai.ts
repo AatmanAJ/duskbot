@@ -12,8 +12,9 @@ const keyOf = (instance: InstanceInfo) => `${instance.instanceId}\n${aiSignInKey
 const runs = (instance: InstanceInfo) =>
   engineReady(instance) && Boolean(instance.models.default.trim() || instance.models.options.some((option) => option.id.trim()));
 
-/** How long the first run waits on an AI's test message before it shows the cards instead. */
-export const WELCOME_CHECK_MS = 20_000;
+/** How long the first run waits on an AI's test message before it shows the cards instead: past the server's own 90 s
+ * check, so a slow cold start (Claude Code on Windows) is answered by the server, never cut off here. */
+export const WELCOME_CHECK_MS = 100_000;
 
 /** A check that ran out of time is an AI that didn't answer (the cards, with Check again); any other failure to ask trusts it. */
 export function checkFailed(error: unknown): Known {
