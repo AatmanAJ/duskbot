@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initialState, reducer, visibleMessages, type Bot, type Message } from "./store";
 
 const rows: Message[] = [
@@ -66,13 +66,13 @@ describe("a snapshot that left before a send and lands after it", () => {
   });
 });
 
-describe("a snapshot after the server moved on down the send's branch", () => {
-  // seen after a restart: a follow-up typed while the server was down stayed "Sending…", then the reconnect's snapshot
-  // named the restart's own row as the leaf, and the follow-up left the screen until its server copy landed
-  const resumed: Message = { id: "c", role: "bot", kind: "activity", at: 3, parentId: "b", tool: { name: "Resuming after a restart", ok: true } };
-  const copy: Message = { id: "u1", role: "user", kind: "text", text: "next", at: 4, parentId: "c", sendId: "s1" };
+describe("a follow-up typed while the server was down, then a reconnect snapshot whose leaf is a restart row under the follow-up's parent", () => {
+  const resumed: Message = { id: "c", role: "bot", kind: "activity", at: 4, parentId: "b", tool: { name: "Resuming after a restart", ok: true } };
+  const copy: Message = { id: "u1", role: "user", kind: "text", text: "next", at: 5, parentId: "c", sendId: "s1" };
   const ids = (state: ReturnType<typeof reducer>) => visibleMessages(state.bots[0]!).map((message) => message.id);
   const sentThen = () => reducer({ ...initialState, bots: [bot("b")], selectedId: "bot" }, { type: "send", botId: "bot", threadId: "thread", text: "next", sendId: "s1" });
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(3); });
+  afterEach(() => { vi.useRealTimers(); });
 
   it("keeps the send on screen under the server's new leaf from a hydrate, and its server copy takes its place", () => {
     let state = reducer(sentThen(), { type: "hydrate", bots: [{ ...bot("c"), messages: [...rows, resumed] }], groups: [], computerControl: {}, loadedThreads: ["thread"] });
@@ -98,8 +98,28 @@ describe("a snapshot after the server moved on down the send's branch", () => {
   });
 
   it("still takes the server's leaf when it is on another branch", () => {
-    const other: Message = { id: "d", role: "bot", kind: "text", text: "another answer", at: 3, parentId: "a" };
+    const other: Message = { id: "d", role: "bot", kind: "text", text: "another answer", at: 4, parentId: "a" };
     const state = reducer(sentThen(), { type: "hydrate", bots: [{ ...bot("d"), messages: [...rows, other] }], groups: [], computerControl: {}, loadedThreads: ["thread"] });
     expect(state.bots[0]!.activeLeafId).toBe("d");
+  });
+});
+
+describe("an edit or Try again of the last message, then a snapshot still naming the old answer as the leaf", () => {
+  const asked: Message = { id: "c", role: "user", kind: "text", text: "question", at: 3, parentId: "b" };
+  const answered: Message = { id: "d", role: "bot", kind: "text", text: "old answer", at: 4, parentId: "c" };
+  const thread = [...rows, asked, answered];
+  const ids = (state: ReturnType<typeof reducer>) => visibleMessages(state.bots[0]!).map((message) => message.id);
+  const edited = (text: string) => reducer({ ...initialState, bots: [{ ...bot("d"), messages: thread }], selectedId: "bot" }, {
+    type: "editMessage", botId: "bot", threadId: "thread", messageId: "c", text, sendId: "s1",
+  });
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(10); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it.each([["an edit", "a better question"], ["Try again", "question"]])("never draws %s under the old answer, and leaves it on its own branch", (_, text) => {
+    let state = edited(text);
+    expect(ids(state)).toEqual(["a", "b", "optimistic-s1"]);
+    state = reducer(state, { type: "hydrate", bots: [{ ...bot("d"), messages: thread }], groups: [], computerControl: {}, loadedThreads: ["thread"] });
+    expect(ids(state)).not.toContain("optimistic-s1");
+    expect(state.bots[0]!.messages.find((message) => message.id === "optimistic-s1")?.parentId).toBe("b");
   });
 });

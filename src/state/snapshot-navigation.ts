@@ -114,9 +114,10 @@ function leafAfterSnapshot(messages: readonly Message[], held: string | null | u
 
 const pendingSend = (message: Message | undefined): boolean => Boolean(message?.sendId) && message!.id === optimisticMessageId(message!.sendId!);
 
-/** A send still on its way is the held leaf while the server's leaf moved on down the same branch (rows a restart or a
- * resumed turn added under the send's parent): the transcript with the send moved under that leaf, so it stays on
- * screen, as the leaf, until its server copy replaces it. Null when the server's leaf is on another branch. */
+/** A send still on its way is the held leaf while the server's leaf moved on down the same branch with rows written
+ * after the send (a restart or a resumed turn): the transcript with the send moved under that leaf, so it stays on
+ * screen, as the leaf, until its server copy replaces it. Null when the server's leaf is on another branch, or when a
+ * row between them is older than the send, as the old answer below an edit or a Try again is. */
 export function pendingSendFollows(messages: readonly Message[], held: string | null | undefined, incoming: string | null | undefined): Message[] | null {
   if (!held || !incoming || held === incoming) return null;
   const byId = new Map(messages.map((message) => [message.id, message]));
@@ -125,7 +126,11 @@ export function pendingSendFollows(messages: readonly Message[], held: string | 
   while (first.parentId && pendingSend(byId.get(first.parentId))) first = byId.get(first.parentId)!;
   const base = first.parentId ?? null, target = byId.get(incoming);
   if (!target || pendingSend(target)) return null;
-  for (let at = target.parentId ?? null; at !== base; at = byId.get(at)?.parentId ?? null) if (!at) return null;
+  for (let id: string | null = incoming; id !== base;) {
+    const row: Message | undefined = id ? byId.get(id) : undefined;
+    if (!row || row.at < first.at) return null;
+    id = row.parentId ?? null;
+  }
   const moved = first;
   return messages.map((message) => (message === moved ? { ...message, parentId: incoming } : message));
 }
