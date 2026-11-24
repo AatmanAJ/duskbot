@@ -651,7 +651,7 @@ import { createMcpServerRoutes } from "./routes/mcp-servers.ts";
 import { teamAdminSummary } from "./cloud-team-admin.ts";
 import { createSetupImportRoutes } from "./routes/setup-import.ts";
 import { createComputerRoutes } from "./routes/computers.ts";
-import { browserNeedsAutoInstall, createStatusRoutes, startBrowserEngineInstall } from "./routes/status.ts"; import { createBrowserChat } from "./host/browser-chat.ts"; import { createBrowserPartHost } from "./host/browser-part.ts"; import { createMyChromeSwitch } from "./host/my-chrome-switch.ts"; import { sealedFixture, throwawayWorkspace } from "./env-path.ts"; import { browserEngineKind } from "./browser/config.ts"; import { createDashboardRoutes } from "./routes/dashboard.ts"; import { createDashboardCollector } from "./dashboard-report.ts"; import { createDashboardReporter } from "./dashboard-reporter.ts"; import { createPulseSampler } from "./dashboard-pulse.ts"; import { memoryFiles } from "./cloud-send-memory.ts"; import { createFrustrationWatch, createUsageOutbox, digestPrompt, hashId, sessionPrompt, summaryPrompt, turnRecord } from "./usage-signals.ts"; import { DIGEST_MAX, SESSION_NOTE_MAX, cleanUsageDigest, engineFamily, failureReason, runEvery, runTrigger, scrubSummary } from "../shared/usage-signals.ts"; import { attachmentKind, cleanSignal, sizeBucket } from "../shared/product-signals.ts"; import { createUsageSignalsSwitch } from "./usage-signals-switch.ts"; import { createConfusionWatch, createExperienceOutbox, downloadFailReason } from "./experience.ts"; import { createDashboardCommands } from "./dashboard-commands.ts"; import { createCompanionEndpointsBridge, type CompanionEndpointsRequest } from "./companion-endpoints.ts"; import { connectedInApp, dashboardApps } from "./dashboard-apps.ts"; import { connectCallback } from "../shared/dashboard-protocol.ts"; import { createAppSignIns } from "./app-sign-ins.ts";
+import { browserNeedsAutoInstall, createStatusRoutes, startBrowserEngineInstall } from "./routes/status.ts"; import { createBrowserChat } from "./host/browser-chat.ts"; import { createBrowserPartHost } from "./host/browser-part.ts"; import { createMyChromeSwitch } from "./host/my-chrome-switch.ts"; import { sealedFixture, throwawayWorkspace } from "./env-path.ts"; import { browserEngineKind } from "./browser/config.ts"; import { createDashboardRoutes } from "./routes/dashboard.ts"; import { createDashboardCollector } from "./dashboard-report.ts"; import { createDashboardReporter } from "./dashboard-reporter.ts"; import { createPulseSampler } from "./dashboard-pulse.ts"; import { memoryFiles } from "./cloud-send-memory.ts"; import { createFrustrationWatch, createUsageOutbox, digestChats, digestPrompt, hashId, sessionPrompt, summaryPrompt, turnRecord } from "./usage-signals.ts"; import { DIGEST_MAX, SESSION_NOTE_MAX, cleanUsageDigest, engineFamily, failureReason, runEvery, runTrigger, scrubSummary } from "../shared/usage-signals.ts"; import { attachmentKind, cleanSignal, sizeBucket } from "../shared/product-signals.ts"; import { createUsageSignalsSwitch } from "./usage-signals-switch.ts"; import { createConfusionWatch, createExperienceOutbox, downloadFailReason } from "./experience.ts"; import { createDashboardCommands } from "./dashboard-commands.ts"; import { createCompanionEndpointsBridge, type CompanionEndpointsRequest } from "./companion-endpoints.ts"; import { connectedInApp, dashboardApps } from "./dashboard-apps.ts"; import { connectCallback } from "../shared/dashboard-protocol.ts"; import { createAppSignIns } from "./app-sign-ins.ts";
 import { findAntigravityLeftovers, removeAntigravityLeftovers } from "./drivers/antigravity-temp.ts";
 import { createLiveRoutes } from "./routes/live.ts";
 import { createNotificationRoutes } from "./routes/notifications.ts";
@@ -7040,13 +7040,13 @@ function maybeUsageDigest(botId: string): void {
   digestRunning = true;
   frustration.digestSent();
   const threads = store.bots.flatMap((bot) => [bot.threadId, ...(bot.tasks ?? []).map((task) => task.threadId)].filter((id): id is string => typeof id === "string"))
-    .map((threadId) => ({ threadId, messages: store.messagesTail(threadId, 6).messages }))
-    .map((chat) => ({ at: Math.max(0, ...chat.messages.map((message) => message.at ?? 0)), lines: chat.messages.filter((message) => message.kind === "text" && typeof message.text === "string" && message.text.trim()).map((message) => ({ role: message.role, text: message.text! })) }))
-    .filter((chat) => chat.lines.length).sort((a, b) => b.at - a.at).slice(0, 12);
+    .map((threadId) => ({ messages: store.messagesTail(threadId, 6).messages }));
+  const chats = digestChats(threads);
+  if (!chats.length) { digestRunning = false; return; }
   const recent = frustration.recent();
-  void writer.generateText(digestPrompt(threads, { ...recent, ...usageOutbox.mix() }), { timeoutMs: 90_000 })
+  void writer.generateText(digestPrompt(chats, { ...recent, ...usageOutbox.mix() }), { timeoutMs: 90_000 })
     .then((text) => {
-      const summary = scrubSummary(text, DIGEST_MAX, { sources: threads.flatMap((chat) => chat.lines.map((line) => line.text)), avoid: noteAvoid() });
+      const summary = scrubSummary(text, DIGEST_MAX, { sources: chats.flatMap((chat) => chat.lines.map((line) => line.text)), avoid: noteAvoid() });
       if (summary) usageOutbox.digest(cleanUsageDigest({ id: randomBytes(12).toString("base64url"), at: Date.now(), turns: recent.turns, days: recent.days, summary }));
     }, () => {}).finally(() => { digestRunning = false; });
 }

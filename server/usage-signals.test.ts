@@ -10,7 +10,7 @@ import {
 import { parseWorkspaceReport } from "../shared/dashboard-protocol.ts";
 import { toolFailureMessage } from "./drivers/tool-failure.ts";
 import {
-  BIG_PER_DAY, BIG_SESSION_TURNS, SESSION_GAP_MS, MIN_WORKSPACE_TURNS, createFrustrationWatch, sessionPrompt, summaryPrompt, createUsageOutbox, digestPrompt, isCorrective, isShouting, isSwearing, sameRequest, turnRecord, weeklyAllowance, type FrustrationTurn,
+  BIG_PER_DAY, BIG_SESSION_TURNS, SESSION_GAP_MS, MIN_WORKSPACE_TURNS, createFrustrationWatch, sessionPrompt, summaryPrompt, createUsageOutbox, digestChats, digestPrompt, isCorrective, isShouting, isSwearing, sameRequest, turnRecord, weeklyAllowance, type FrustrationTurn,
 } from "./usage-signals.ts";
 
 const NOW = Date.now();
@@ -391,6 +391,18 @@ describe("frustration watch", () => {
     watch.digestSent();
     expect(watch.digestDue()).toBe(false);
     expect(digestPrompt([{ lines: [{ role: "user", text: "hi" }] }], { turns: 40, days: 4, categories: ["email"], tools: ["app"] })).toContain("at most 90 words");
+  });
+
+  it("a digest reads only chats the person wrote in, newest first, so new bots' hellos never read as a greeting loop", () => {
+    const hello = (name: string) => ({ role: "bot" as const, kind: "text", text: `hi, i'm ${name}, your new helper. what should we start with?` });
+    const chats = digestChats([
+      { messages: [{ ...hello("Nova"), at: 50 }] },
+      { messages: [{ ...hello("Quill"), at: 60 }] },
+      { messages: [{ role: "user", kind: "text", text: "sort my inbox", at: 10 }, { role: "bot", kind: "activity", text: "gmail", at: 11 }, { role: "bot", kind: "text", text: "done, 12 archived", at: 12 }] },
+      { messages: [{ role: "user", kind: "text", text: "draft the post", at: 30 }, { role: "bot", kind: "text", text: " ", at: 31 }] },
+    ]);
+    expect(chats.map((chat) => chat.lines.map((line) => line.text))).toEqual([["draft the post"], ["sort my inbox", "done, 12 archived"]]);
+    expect(digestChats(Array.from({ length: 20 }, (_, i) => ({ messages: [{ role: "user" as const, kind: "text", text: `ask ${i}`, at: i }] })))).toHaveLength(12);
   });
 
   it("a digest passes only when scrubbed, with its fixed keys", () => {
