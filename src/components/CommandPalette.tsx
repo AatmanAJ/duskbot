@@ -22,7 +22,7 @@ import { desktopMotion } from "@/lib/desktop-motion";
 import { usePaletteExits } from "./palette-exits";
 import { pacedMs } from "@/lib/motion-speed";
 import { openSettings } from "@/lib/open-settings";
-import { settingsCommands } from "./palette-commands";
+import { botPageCommands, settingsCommands } from "./palette-commands";
 
 const FORMER_PLACE_WORD = "workspace";
 
@@ -176,6 +176,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
     { id: "theme-system", name: t("palette.theme", { theme: t("settings.language.system") }), detail: appearance, also: t("palette.also.theme"), icon: "display", run: () => applySkinChoice("system") },
     { id: "theme-dark", name: t("palette.theme", { theme: t("settings.theme.dark") }), detail: appearance, also: t("palette.also.theme"), icon: "moon", run: () => applySkinChoice(THEME_SKINS.dark) },
     { id: "theme-light", name: t("palette.theme", { theme: t("settings.theme.light") }), detail: appearance, also: t("palette.also.theme"), icon: "sun", run: () => applySkinChoice(THEME_SKINS.light) },
+    ...(currentBot ? botPageCommands(currentBot.name).map(({ page, ...command }): Command => ({ ...command, run: () => openBotSettingsPage(dispatch, currentBot.id, page) })) : []),
   ];
   // With nothing typed: the bots, those with news first, then grok's short list; the rest wait for a query.
   const shownCommands = q ? ranked(commands, (command) => (command.also ? `${command.name} ${command.also}` : command.name), q) : commands.filter((command) => IDLE_COMMANDS.has(command.id));
