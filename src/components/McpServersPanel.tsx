@@ -329,6 +329,12 @@ export function McpServersPanel({ embedded = false, rows = false, hostedCards, h
       setNotice({ key: "mcp.switchedOnByTest", params: { name: server.name } });
       return;
     }
+    if (!server.enabled && !server.runsOn) {
+      setNotice(null);
+      const result = await connect(server.name);
+      if (result?.auth === "required" && mounted.current) await signIn(server);
+      return;
+    }
     setBusy(`toggle:${server.name}`);
     loadGeneration.current += 1;
     setError(null);
