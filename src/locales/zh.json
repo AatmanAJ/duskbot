@@ -3411,7 +3411,7 @@
   "botPanel.tab.library": "资料库",
   "botPanel.routines.empty": "例行任务是这个机器人按计划执行的重复性任务。在聊天中让它设置一个即可。",
   "botPanel.routines.add": "添加例行任务",
-  "botPanel.library.empty": "这个机器人创建的页面、文件和应用会显示在这里",
+  "botPanel.library.empty": "这个机器人在本次对话中创建的页面、文件和应用会显示在这里。要找之前对话里的，可以问 {name} 或按 {key} 搜索。",
   "botPanel.library.pages": "页面",
   "botPanel.library.apps": "应用",
   "botPanel.library.files": "文件",

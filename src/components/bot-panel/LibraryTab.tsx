@@ -9,6 +9,7 @@ import { useLocalFileSave } from "../AttachmentPreview";
 import { recentChangedFiles, sharedFileReferences } from "../ComputerFilesPane";
 import { Icon } from "../Icon";
 import { chipNameAction, useFilePreview } from "../HtmlFilePreview";
+import { shortcutInText } from "../ShortcutHint";
 import { FileKindIcon } from "./FileKindIcon";
 import type { SimplePageId } from "./page-registry";
 import { Card, LabelAction, PanelEmpty } from "./rows";
@@ -44,6 +45,8 @@ export function libraryItems(bot: Bot, messages: readonly Message[] = visibleMes
   const unshared = recentChangedFiles(bot).filter((path) => !references.has(path));
   return { pages, apps, shared, unshared };
 }
+
+const emptyLine = (bot: Bot) => t("botPanel.library.empty", { name: bot.name, key: shortcutInText("command-palette") ?? "" });
 
 const fileName = (path: string) => path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
 
@@ -221,7 +224,7 @@ export function LibraryPage({ bot }: { bot: Bot }) {
   if (entries.length === 0) {
     return (
       <div data-panel-library="">
-        <PanelEmpty data-panel-empty="library">{t("botPanel.library.empty")}</PanelEmpty>
+        <PanelEmpty data-panel-empty="library">{emptyLine(bot)}</PanelEmpty>
       </div>
     );
   }
@@ -248,7 +251,7 @@ export function LibrarySection({ bot, onOpen, quietWhenEmpty = false }: { bot: B
     if (quietWhenEmpty) return null;
     return (
       <section data-panel-card="library">
-        <PanelEmpty data-panel-empty="library">{t("botPanel.library.empty")}</PanelEmpty>
+        <PanelEmpty data-panel-empty="library">{emptyLine(bot)}</PanelEmpty>
       </section>
     );
   }

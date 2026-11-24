@@ -4474,7 +4474,7 @@
   "botPanel.routines.loading": "Cargando rutinas…",
   "botPanel.routines.loadError": "No se pudieron cargar las rutinas. Tus rutinas siguen ahí; solo no llegó esta lista.",
   "botPanel.routines.retry": "Reintentar",
-  "botPanel.library.empty": "Las páginas, los archivos y las apps que crea este bot aparecen aquí",
+  "botPanel.library.empty": "Las páginas, los archivos y las apps que crea este bot en esta conversación aparecen aquí. Para algo de una conversación anterior, pregunta a {name} o busca con {key}.",
   "botPanel.library.today": "Hoy",
   "botPanel.library.week": "Esta semana",
   "botPanel.library.older": "Anteriores",
