@@ -19,6 +19,8 @@ export interface ImportedSoulFacts {
   apps: readonly string[];
   /** Facts about the person went to About me rather than its notebook. */
   aboutMe?: boolean;
+  /** The memory topic quoting what it wrote beside its export, such as what it couldn't bring. */
+  exportNote?: string;
 }
 
 const MAX_LISTED = 12;
@@ -55,6 +57,7 @@ export function importedSoul(facts: ImportedSoulFacts, max: number): string {
     `- MEMORY.md is your notebook: what you remembered in ${facts.from}. Read it before you start and keep it current.`,
     ...(facts.topics.length ? [`- Topics: ${list(facts.topics)}. Open one when the work touches it.`] : []),
     ...(facts.aboutMe ? ["- What you knew about the person is in their about me, which every bot reads. Keep facts about them there, not in your notebook."] : []),
+    ...(facts.exportNote ? [`- ${facts.exportNote} has what you wrote beside your export, such as what you couldn't bring. Tell the person what didn't come over when they ask what came, or when the work needs it, and offer to set it up again with them.`] : []),
   ].join("\n");
   const tools = [
     ...(facts.skills.length ? [`## Skills\nYou brought these skills: ${list(facts.skills)}. Use the one that fits the task. A skill that is switched off stays off until the person has read it and switched it on.`] : []),
