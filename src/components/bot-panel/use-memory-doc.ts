@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { fetchMemoryDoc, fetchMemoryOverview, MEMORY_INDEX, type MemoryDoc } from "@/lib/memory";
+import { fetchMemoryDoc, fetchMemoryNotes, MEMORY_INDEX, type MemoryDoc } from "@/lib/memory";
 import { useStore, type Bot } from "@/state/store";
 import { isArchiveTopic } from "../../../shared/memory-topics";
 
@@ -15,7 +15,8 @@ export interface MemoryNotesState {
 }
 
 async function readDocs(botId: string, mine: boolean): Promise<MemoryDoc[]> {
-  const overview = await fetchMemoryOverview(botId, mine);
+  const overview = await fetchMemoryNotes(botId, mine);
+  if (overview.notes) return overview.notes;
   const topics = (overview.topics ?? []).filter((topic) => !isArchiveTopic(topic.path.slice("memory/".length)));
   return Promise.all([MEMORY_INDEX, ...topics.map((topic) => topic.path)].map((path) => fetchMemoryDoc(botId, path, mine)));
 }

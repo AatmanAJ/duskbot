@@ -16,12 +16,14 @@ const { MemoryPage } = await import("./pages");
 const bot = { id: "ada", threadId: "t1", name: "Ada", title: "", description: "", notifications: true, color: "green", unread: false, messages: [],
   modelSelection: { instanceId: "x", model: "x" } } as unknown as Bot;
 const files: Record<string, string> = {};
+let serverHasNotes = true;
 const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 let host: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
   for (const key of Object.keys(files)) delete files[key];
+  serverHasNotes = true;
   Object.assign(files, {
     "MEMORY.md": "# Notes\n\n- ~~Kestrel Health renews on 15 January 2027.~~ · superseded 2026-11-23\n"
       + "- 2026-11-20 · from chat · ~~Northwind's contact is Tomasz Wilk.~~ · superseded 2026-11-23\n- Stand-up is Monday 09:30.\n",
@@ -31,14 +33,16 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async (input: string, init?: RequestInit) => {
     const url = new URL(input, "http://x");
     if (url.pathname.includes("/memory/mine")) return reply(403, { error: "not a team" });
+    const doc = (path: string) => ({ path, text: files[path] ?? "", hash: `h${(files[path] ?? "").length}`, exists: path in files });
     if (url.pathname.endsWith("/memory")) {
-      return reply(200, { topics: Object.keys(files).filter((file) => file.startsWith("memory/")).map((path) => ({ path, name: path.slice(7) })), logs: [] });
+      const topics = Object.keys(files).filter((file) => file.startsWith("memory/")).map((path) => ({ path, name: path.slice(7) }));
+      const notes = ["MEMORY.md", ...topics.filter((topic) => topic.name !== "archive.md").map((topic) => topic.path)].map(doc);
+      return reply(200, { topics, logs: [], ...(serverHasNotes && url.searchParams.has("notes") ? { notes } : {}) });
     }
     const body = init?.body ? JSON.parse(String(init.body)) as { path: string; text: string } : null;
     const path = body?.path ?? url.searchParams.get("path") ?? "MEMORY.md";
     if (init?.method === "PUT" && body) files[path] = body.text;
-    const text = files[path] ?? "";
-    return reply(200, { path, text, hash: `h${text.length}`, exists: path in files, overview: {} });
+    return reply(200, { ...doc(path), overview: {} });
   }));
   host = document.createElement("div");
   document.body.append(host);
@@ -74,4 +78,27 @@ it("forgets a note in a topic file from that file, leaving the rest", async () =
   expect(files["memory/kestrel-health.md"]).not.toContain("1 February");
   expect(files["memory/kestrel-health.md"]).toContain("title: kestrel health");
   expect(files["MEMORY.md"]).toContain("Stand-up is Monday 09:30.");
+});
+
+it("reads a bot's 40 topic files in one request as it opens and as a turn starts and ends", async () => {
+  for (let i = 1; i <= 40; i += 1) files[`memory/client-${i}.md`] = `---\ntitle: client ${i}\n---\n\n- Client ${i} pays on the 1st.\n`;
+  const requests = vi.mocked(fetch);
+  await act(async () => root.render(createElement(MemoryPage, { bot, derived: {} as never })));
+  await settle();
+  expect(host.querySelectorAll("[data-memory-topic]")).toHaveLength(41);
+  const opened = requests.mock.calls.length;
+  expect(opened).toBe(1);
+  await act(async () => root.render(createElement(MemoryPage, { bot: { ...bot, busy: true }, derived: {} as never })));
+  await settle();
+  await act(async () => root.render(createElement(MemoryPage, { bot: { ...bot, busy: false }, derived: {} as never })));
+  await settle();
+  expect(requests.mock.calls.length - opened).toBe(2);
+});
+
+it("still lists topic notes from a server that sends the overview without them", async () => {
+  serverHasNotes = false;
+  await act(async () => root.render(createElement(MemoryPage, { bot, derived: {} as never })));
+  await settle();
+  expect([...host.querySelectorAll("[data-memory-note]")].some((note) => note.textContent?.includes("renews on 1 February 2027"))).toBe(true);
+  expect(host.textContent).not.toContain("Park Row");
 });
