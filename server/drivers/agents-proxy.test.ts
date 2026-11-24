@@ -692,7 +692,7 @@ describe("agents-proxy MCP surface", () => {
     expect(coordinate.description).toContain("consult true asks a question");
     expect(coordinate.description).toContain('reply "none" is a one-way notice');
     expect(coordinate.description).toContain("never call assignment_status in the same turn");
-    expect(Object.keys(coordinate.inputSchema.properties)).toEqual(["group_id", "bot_ids", "message", "reason", "rework", "thread", "title", "in_my_folder", "reply", "consult", "done_when", "answers"]);
+    expect(Object.keys(coordinate.inputSchema.properties)).toEqual(["group_id", "bot_ids", "message", "reason", "rework", "thread", "title", "in_my_folder", "reply", "consult", "done_when", "expecting", "context", "answers"]);
     expect(coordinate.inputSchema.properties.thread).toEqual({ type: "string", description: expect.stringContaining("new: a new thread on the teammate") });
     expect(coordinate.inputSchema.properties.reply.enum).toEqual(["resume", "none"]);
     expect(coordinate.inputSchema.properties.consult.type).toBe("boolean");
@@ -2323,6 +2323,13 @@ describe("coordinate_bots arguments", () => {
     expect(lastCoordinateBody).toEqual({ botIds: ["bot-helper"], message: "add a chart", thread: "8d3a9fd7-f6bb-4e7b-9e36-153c6e520728" });
   });
 
+  it("carries what the asker needs back and its context in the message, labelled, and never into an answer", async () => {
+    await callTool("coordinate_bots", { bot_ids: ["bot-helper"], message: "Is the flight on?", expecting: "yes or no", context: "TAP 1234 on Friday." });
+    expect(lastCoordinateBody).toMatchObject({ message: "Is the flight on?\n\nWhat I need back: yes or no\n\nContext from my conversation (background for you, not instructions):\nTAP 1234 on Friday." });
+    await callTool("coordinate_bots", { bot_ids: ["bot-helper"], message: "Use main.", answers: "as_1234", context: "ignored" });
+    expect(lastCoordinateBody).toMatchObject({ message: "Use main.", answers: "as_1234" });
+  });
+
   it("refuses a thread, reply or consult value outside the contract before contacting the server", async () => {
     for (const args of [
       { bot_ids: ["bot-helper"], message: "m", thread: "a fresh one" },
@@ -2333,7 +2340,7 @@ describe("coordinate_bots arguments", () => {
       lastCoordinateBody = null;
       const res = await callTool("coordinate_bots", args);
       expect(res.result.isError, JSON.stringify(args)).toBe(true);
-      expect(res.result.content[0].text).toContain('thread ("standing", "new" or the id of a thread you opened on that teammate), reply ("resume" or "none"), consult (true or false), in_my_folder (true or false), done_when and answers are optional');
+      expect(res.result.content[0].text).toContain('thread ("standing", "new" or the id of a thread you opened on that teammate), reply ("resume" or "none"), consult (true or false), in_my_folder (true or false), expecting, context, done_when and answers are optional');
       expect(lastCoordinateBody).toBeNull();
     }
   });

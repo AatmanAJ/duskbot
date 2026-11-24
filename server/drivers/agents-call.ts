@@ -1,5 +1,6 @@
 // Runs one agents tool: check arguments, call the harness, render the model's text. Stateless;
 // per-turn limits are the harness's, since one proxy can serve many turns of a warm engine.
+import { peerBrief } from "../peer-brief.ts";
 import { RUNS_NOTHING_NOTE } from "../bot-reach.ts";
 import { agentsCallMember, resolveAgentsCall } from "../../shared/agents-tool-names.ts";
 import { CREDENTIAL_TARGETS, isCredentialTargetId, LOGIN_CREDENTIAL } from "../../shared/credential-request.ts";
@@ -303,15 +304,15 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
       && (canonical.thread === undefined || (typeof canonical.thread === "string" && /^[\w-]{1,128}$/.test(canonical.thread)))
       && (canonical.reply === undefined || canonical.reply === "resume" || canonical.reply === "none")
       && optional("consult", "boolean") && optional("in_my_folder", "boolean")
-      && optional("done_when", "string") && optional("reason", "string") && optional("title", "string") && optional("answers", "string");
+      && optional("done_when", "string") && optional("expecting", "string") && optional("context", "string") && optional("reason", "string") && optional("title", "string") && optional("answers", "string");
     if (!usable) {
       return {
-        text: `coordinate_bots takes snake_case arguments: bot_ids (an array of 1-4 teammate ids) and message are required; group_id, reason, rework, title, thread ("standing", "new" or the id of a thread you opened on that teammate), reply ("resume" or "none"), consult (true or false), in_my_folder (true or false), done_when and answers are optional. Received: ${Object.keys(args).join(", ") || "none"}.`,
+        text: `coordinate_bots takes snake_case arguments: bot_ids (an array of 1-4 teammate ids) and message are required; group_id, reason, rework, title, thread ("standing", "new" or the id of a thread you opened on that teammate), reply ("resume" or "none"), consult (true or false), in_my_folder (true or false), expecting, context, done_when and answers are optional. Received: ${Object.keys(args).join(", ") || "none"}.`,
         isError: true,
       };
     }
     const r = await api("/api/internal/coordinate-bots", { method: "POST", body: JSON.stringify({
-      groupId: canonical.group_id, botIds: ids, message: canonical.message,
+      groupId: canonical.group_id, botIds: ids, message: canonical.answers === undefined ? peerBrief(canonical.message as string, canonical) : canonical.message,
       reason: typeof canonical.reason === "string" && canonical.reason.trim() ? canonical.reason.trim() : undefined,
       rework: canonical.rework,
       thread: canonical.thread, reply: canonical.reply,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RuntimeEvent } from "../contracts.ts";
 import type { Message } from "../store.ts";
-import { createStreamedReply } from "./streamed-reply.ts";
+import { createStreamedReply, runsNotice } from "./streamed-reply.ts";
 
 const THREAD = "thread";
 
@@ -107,5 +107,15 @@ describe("what of a streaming reply reaches the chat", () => {
     landed.replies.saidAtStop(THREAD, "One two");
     expect(landed.replies.keptAtTurnEnd(THREAD, "turn")).toBe("");
     expect(landed.patched).toEqual([{ id: "bubble", patch: { text: "One two" } }]);
+  });
+});
+
+describe("runsNotice", () => {
+  it("is true only while a notice runs in that thread", () => {
+    const nodes = [{ threadId: "th_1", status: "running", mode: "notify" }, { threadId: "th_2", status: "running", mode: "work" }, { threadId: "th_3", status: "completed", mode: "notify" }];
+    expect(runsNotice(nodes, "th_1")).toBe(true);
+    expect(runsNotice(nodes, "th_2")).toBe(false);
+    expect(runsNotice(nodes, "th_3")).toBe(false);
+    expect(runsNotice(nodes, "th_9")).toBe(false);
   });
 });
