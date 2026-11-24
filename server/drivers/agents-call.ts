@@ -212,6 +212,10 @@ function recallSpeaker(hit: Json): string {
 }
 
 /** Local time: every other date the bot sees (since/until, the brief, daily logs) is local. */
+function conversationLink(title: string, threadId: string): string {
+  return `[#${title.replace(/[[\]\\]/g, "\\$&")}](duskbot://thread/${encodeURIComponent(threadId)})`;
+}
+
 function recallWhen(at: unknown, dateOnly: boolean): string {
   if (typeof at !== "number" || !Number.isFinite(at)) return "";
   const said = new Date(at);
@@ -836,13 +840,17 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
         : typeof hit.room === "string" && hit.room
           ? `room "${hit.room}"${typeof hit.task === "string" && hit.task ? `, ${task}` : ""}`
           : hit.crossed ? `${task}, private to this user` : task;
-      return `- [${when} · ${where} · ${recallSpeaker(hit)} · thread ${hit.threadId} · message ${hit.messageId}] ${hit.snippet}`;
+      const link = !hit.current && !hit.room && !hit.crossed && typeof hit.task === "string" && hit.task && typeof hit.threadId === "string"
+        ? ` · link ${conversationLink(hit.task, hit.threadId)}`
+        : "";
+      return `- [${when} · ${where} · ${recallSpeaker(hit)} · thread ${hit.threadId} · message ${hit.messageId}${link}] ${hit.snippet}`;
     });
     const crossed = hits.some((hit) => hit.crossed === true);
     return {
       text:
         `${memoryBlock}${hits.length} ${q ? "matching " : ""}message${hits.length === 1 ? "" : "s"} from your earlier conversations (${q ? "best match first" : "newest first"}):\n${lines.join("\n")}\n\n` +
-        "These are your own past notes. If one of them is the message you need, call session_search with its thread_id and message_id for the full text rather than searching again. Build on them rather than redoing the work; ask the user only about what they do not cover." +
+        "These are your own past notes. If one of them is the message you need, call session_search with its thread_id and message_id for the full text rather than searching again. Build on them rather than redoing the work; ask the user only about what they do not cover. " +
+        "To point the person to the conversation where something is (a page, a file, an answer), copy that hit's link into your reply exactly as it is: the person can click it." +
         (crossed
           ? " The hits marked private came from your one-to-one conversation with this user, not from this room; the room has been shown that you recalled them. Use them, and say where something came from if anyone asks."
           : ""),
