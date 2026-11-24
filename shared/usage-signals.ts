@@ -563,6 +563,8 @@ export const NOTE_WORDS: ReadonlySet<string> = new Set([
   "cloud", "web", "website", "site", "page", "tab", "link", "search", "routine", "routines", "memory", "skill", "skills", "task", "tasks", "email", "emails",
   "message", "messages", "post", "posts", "reply", "draft", "file", "files", "folder", "note", "notes", "account", "settings", "room", "team",
 ]);
+/** small words inside a bot's name ("A to Zed", "The Closer") that every note also uses as plain words */
+const NAME_FILLERS: ReadonlySet<string> = new Set(["a", "an", "the", "to", "of", "and", "or", "for", "in", "on", "at", "by", "with", "my", "your", "our", "me", "it", "is", "de", "la", "le", "el", "y"]);
 const words = (text: string) => text.toLowerCase().normalize("NFKC").split(/[^\p{L}\p{N}']+/u).filter(Boolean);
 /** a word run this long shared with the chat means the note copied the person's words */
 export const COPIED_RUN = 6;
@@ -600,7 +602,7 @@ export function scrubSummary(raw: unknown, max = SUMMARY_MAX, options: { sources
   if (original.length < 12 || NOT_A_NOTE.test(original) || ECHOED_PROMPT.test(original)) return null;
   const sources = options.sources ?? [];
   if (sources.length && copies(original, sources)) return null;
-  const botNames = new Set((options.avoid ?? []).flatMap(words).filter(word => !NOTE_WORDS.has(word)));
+  const botNames = new Set((options.avoid ?? []).flatMap(words).filter(word => !NOTE_WORDS.has(word) && !NAME_FILLERS.has(word)));
   const avoid = new Set([...chatAvoidWords(sources)].filter(word => !NOTE_WORDS.has(word) && !botNames.has(word)));
   let text = original.replace(/[\p{L}\p{N}'-]+/gu, (word: string) => botNames.has(word.toLowerCase().replace(/'s$/, "")) ? "bot" : word).replace(EMAIL, " ").replace(URL_LIKE, " ").replace(HANDLE, " ").replace(QUOTED, " ").replace(PATH, " ").replace(FILE, " ").replace(LONG, " ")
     .replace(NUMBER_RUN, " ").replace(DIGITS, (token: string) => COUNT.test(token) ? token : " ");

@@ -190,6 +190,10 @@ describe("anonymous notes", () => {
     expect(scrubSummary("the user asked the Radar bot to check prices; the Radar could not open the site.", SUMMARY_MAX, { avoid: ["Radar"] })).toBe("the user asked the bot to check prices; the bot could not open the site.");
     expect(scrubSummary(note, SUMMARY_MAX)).toBe(note);
   });
+  it("leaves the small words of a bot's name, like a, to and the, where the note uses them", () => {
+    expect(scrubSummary("the user wanted the bot to find a way to make a large sum of money fast, but the Zed kept repeating advice.", SUMMARY_MAX, { avoid: ["A to Zed", "The Closer"] }))
+      .toBe("the user wanted the bot to find a way to make a large sum of money fast, but the bot kept repeating advice.");
+  });
   it("is stable, so a scrubbed note passes the account service's check unchanged", () => {
     const once = scrubSummary("Connecting Gmail took 3 tries, then the session went smoothly with the browser and calendar.", SESSION_NOTE_MAX)!;
     expect(scrubSummary(once, SESSION_NOTE_MAX)).toBe(once);
