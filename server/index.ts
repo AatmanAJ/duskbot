@@ -2932,7 +2932,7 @@ function packageImportDeps(selection: ModelSelection): PackageImportDeps {
     routines: routines!,
     skills: { install: installSkill, setEnabled: setSkillEnabled, installOrg: installOrgSkill },
     memory: { writeIndex: writeMemoryFile, writeTopic: writeMemoryTopic },
-    mcp: { servers: () => cfg.mcpServers ?? {}, refusal: mcpPolicyRefusal, persist: persistMcpServers },
+    mcp: { servers: () => cfg.mcpServers ?? {}, refusal: mcpPolicyRefusal, persist: (next) => persistMcpServers(next, "for-their-own-bots") },
     images: {
       save: (bytes, mime) => {
         const avatarUrl = botAvatarUrlFromStoredPath(saveImage(Buffer.from(bytes), mime).path);
@@ -13037,8 +13037,8 @@ function teamAdminHost() {
   };
 }
 
-function persistMcpServers(next: Record<string, unknown>): void {
-  const joins = sharedServerJoins(cfg.mcpServers, next, store.bots); saveConfig({ mcpServers: next });
+function persistMcpServers(next: Record<string, unknown>, newServers: "join-every-bot" | "for-their-own-bots" = "join-every-bot"): void {
+  const joins = newServers === "join-every-bot" ? sharedServerJoins(cfg.mcpServers, next, store.bots) : []; saveConfig({ mcpServers: next });
   cfg.mcpServers = next; for (const join of joins) store.patchBot(join.botId, { mcpServers: join.mcpServers });
 }
 
