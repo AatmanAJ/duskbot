@@ -40,17 +40,30 @@ describe("the release tool's decisions", () => {
     const base = { version: "0.2.26", canary: ["c1", "c2"], startedAt: 0, watchMs: 30 * MIN, maxWaitMs: 120 * MIN };
     expect(judge(fleetOf({ canary: [cloud("c1", "0.2.25", { rolledBack: "0.2.26" }), cloud("c2", "0.2.26")] }), { ...base, now: MIN }).verdict).toBe("halt");
     expect(judge(fleetOf({ canary: [cloud("c1", "0.2.26", { stuck: true })] }), { ...base, now: MIN }).verdict).toBe("halt");
-    const spike = [{ version: "0.2.26", installs: 40, errors: 60 }, { version: "0.2.25", installs: 400, errors: 80 }];
+    const spike = [{ version: "0.2.26", installs: 40, errors: 60, errorInstalls: 12 }, { version: "0.2.25", installs: 400, errors: 80, errorInstalls: 30 }];
     expect(judge(fleetOf({ desktops: spike }), { ...base, canary: [], now: MIN })).toMatchObject({ verdict: "halt" });
-    const calm = [{ version: "0.2.26", installs: 40, errors: 10 }, { version: "0.2.25", installs: 400, errors: 80 }];
+    const calm = [{ version: "0.2.26", installs: 40, errors: 10, errorInstalls: 4 }, { version: "0.2.25", installs: 400, errors: 80, errorInstalls: 30 }];
     const through = [cloud("c1", "0.2.26", { trial: "passed" }), cloud("c2", "0.2.25")];
     expect(judge(fleetOf({ desktops: calm, canary: through }), { ...base, now: 10 * MIN }).verdict).toBe("wait");
     expect(judge(fleetOf({ desktops: calm, canary: through }), { ...base, now: 31 * MIN }).verdict).toBe("healthy");
     // few installs say nothing yet about errors
-    expect(judge(fleetOf({ desktops: [{ version: "0.2.26", installs: 3, errors: 30 }], canary: through }), { ...base, now: 31 * MIN }).verdict).toBe("healthy");
+    expect(judge(fleetOf({ desktops: [{ version: "0.2.26", installs: 3, errors: 30, errorInstalls: 3 }], canary: through }), { ...base, now: 31 * MIN }).verdict).toBe("healthy");
     const pending = [cloud("c1", "0.2.26", { trial: "pending" }), cloud("c2", "0.2.25")];
     expect(judge(fleetOf({ canary: pending }), { ...base, now: 31 * MIN }).verdict).toBe("wait");
     expect(judge(fleetOf({ canary: pending }), { ...base, now: 121 * MIN }).verdict).toBe("timeout");
+  });
+
+  it("reads errors from one or two installs against a version before that sent none as those installs, not a spread", () => {
+    const base = { version: "0.2.29", canary: [], startedAt: 0, now: MIN, watchMs: 30 * MIN, maxWaitMs: 120 * MIN };
+    const quiet = { version: "0.2.28", installs: 300, errors: 0, errorInstalls: 0 };
+    expect(judge(fleetOf({ desktops: [{ version: "0.2.29", installs: 25, errors: 12, errorInstalls: 2 }, quiet] }), base).verdict).toBe("wait");
+    expect(judge(fleetOf({ desktops: [{ version: "0.2.29", installs: 25, errors: 12, errorInstalls: 2 }] }), base).verdict).toBe("wait");
+    expect(judge(fleetOf({ desktops: [{ version: "0.2.29", installs: 25, errors: 12, errorInstalls: 3 }, quiet] }), base)).toMatchObject({ verdict: "halt" });
+    const noisy = { version: "0.2.28", installs: 300, errors: 3, errorInstalls: 3 };
+    expect(judge(fleetOf({ desktops: [{ version: "0.2.29", installs: 25, errors: 12, errorInstalls: 2 }, noisy] }), base)).toMatchObject({ verdict: "halt" });
+    // a fleet view from before errorInstalls was counted judges by the ratio alone
+    const { errorInstalls: _, ...older } = { version: "0.2.29", installs: 25, errors: 12, errorInstalls: 2 };
+    expect(judge(fleetOf({ desktops: [older as never, quiet] }), base)).toMatchObject({ verdict: "halt" });
   });
 });
 

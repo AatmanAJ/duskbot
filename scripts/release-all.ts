@@ -57,7 +57,8 @@ export function nextPolicy(current: UpdatePolicy, lastSerial: number, change: { 
 export interface Judgement { verdict: "healthy" | "wait" | "halt" | "timeout"; why: string }
 /**
  * the canary's health: halt at the first canary cloud that rolled `version` back or got stuck, or when desktops on
- * `version` send errors at `errorRatio` times the rate of the version before (once `minInstalls` run it); healthy once
+ * `version` send errors at `errorRatio` times the rate of the version before (once `minInstalls` run it, and never for
+ * errors from at most two installs against a version before that sent none); healthy once
  * `watchMs` went by with at least one canary cloud through its self-test on it (or no canary clouds), else a timeout
  * after `maxWaitMs`
  */
@@ -67,7 +68,9 @@ export function judge(fleet: Pick<FleetAnswer, "desktops" | "clouds">, o: { vers
   const rows = fleet.desktops.versions, mine = rows.find(r => r.version === o.version);
   const before = rows.filter(r => compareVersions(r.version, o.version) < 0 && r.installs > 0).sort((a, b) => compareVersions(b.version, a.version))[0];
   const rate = (r: { installs: number; errors: number }) => r.errors / Math.max(1, r.installs);
-  if (mine && mine.installs >= (o.minInstalls ?? 20) && rate(mine) > (o.errorRatio ?? 3) * Math.max(before ? rate(before) : 0, 0.05)) {
+  const baseline = before ? rate(before) : 0;
+  const few = baseline === 0 && mine?.errorInstalls !== undefined && mine.errorInstalls <= 2;
+  if (mine && !few && mine.installs >= (o.minInstalls ?? 20) && rate(mine) > (o.errorRatio ?? 3) * Math.max(baseline, 0.05)) {
     return { verdict: "halt", why: `desktops on ${o.version} send ${rate(mine).toFixed(2)} errors per install${before ? ` against ${rate(before).toFixed(2)} on ${before.version}` : ""}` };
   }
   const through = fleet.clouds.canary.filter(c => c.version === o.version && c.trial !== "pending").length;
