@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { PEER_MESSAGE_MAX, peerBrief } from "./peer-brief.ts";
+import { AWAITED_SENT_NOTE, PEER_MESSAGE_MAX, peerBrief } from "./peer-brief.ts";
 
 describe("peerBrief", () => {
   it("leaves a plain message as it is", () => {
@@ -22,5 +22,12 @@ describe("peerBrief", () => {
 
   it("ignores fields that are not text", () => {
     expect(peerBrief("Hi", { expecting: 3, context: { a: 1 } })).toBe("Hi");
+  });
+});
+
+describe("AWAITED_SENT_NOTE", () => {
+  it("keeps a requester from answering before the reply comes back", () => {
+    expect(AWAITED_SENT_NOTE).toContain("Nothing has come back yet: do not answer the question yourself, guess, or say what they found.");
+    expect(AWAITED_SENT_NOTE).toContain("then end your turn");
   });
 });

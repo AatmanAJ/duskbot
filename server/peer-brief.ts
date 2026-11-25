@@ -1,6 +1,11 @@
 // What a teammate reads of an ask: the message, then what the asker needs back and the asker's own context, each
 // labelled, inside the coordinate route's message limit.
 export const PEER_MESSAGE_MAX = 4_000;
+
+/** What a requester is told once its awaited asks are sent: an engine that keeps talking answers twice, first with a
+ * guess (or an invented "they said") and again when the real reply resumes it. */
+export const AWAITED_SENT_NOTE = "Sent. Nothing has come back yet: do not answer the question yourself, guess, or say what they found. " +
+  "Say in one short line who you asked, then end your turn. Their replies resume you automatically; do not poll or wait.";
 const EXPECTING_MAX = 300;
 /** Below this, a clipped context says too little to help and is left out. */
 const CONTEXT_MIN = 120;

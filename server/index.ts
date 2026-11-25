@@ -84,6 +84,7 @@ import { RoomTurnDeadline, RoomTurnStallRegistry, effectiveRoomTurnTimeoutMinute
 import { roomTurnEnd, type RoomClaimEnd } from "./room-turn-end.ts";
 import { applyHoldDirective, classifyHoldDirective, heldMemberLine, rememberHeldMessage, stopWordPlacement } from "./room-holds.ts";
 import { createPersonStop } from "./host/person-stop.ts"; import { createTurnOrder } from "./host/turn-order.ts"; import { createQueuedNotes, createWaitWords } from "./host/wait-words.ts"; import { settleParkedFiles, type ParkedTurnAttachment } from "./host/turn-attachments.ts"; import type { DirectSendInput, DirectSendReceipt } from "./direct-send.ts";
+import { AWAITED_SENT_NOTE } from "./peer-brief.ts";
 import { crossReadRefusal, crossReadThreads } from "./cross-bot-read.ts";
 import { finishedWithoutSummaryLine, isPassText, ROOM_SUMMARY_REASK, roomTurnNarrationIds, roomTurnReply } from "./room-reply.ts"; import { createStreamedReply, runsNotice } from "./host/streamed-reply.ts"; import { answeredAboveNote, cleanBotVoice, mentionCueNote, roomTalkRules, roomTurnVoiceNote } from "./group-voice.ts"; import { asksFor, MentionChain } from "./room-mention-chain.ts"; import { teammatesNote, workInProgressNote, type InHand } from "./room-team-context.ts"; import { createRoomEarlier, ROOM_EARLIER_LABEL } from "./host/room-earlier.ts"; import { replyBubbles } from "./reply-bubbles.ts";
 import { pickComputer } from "./computer-selection.ts";
@@ -15139,7 +15140,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
           ? "Sent one way. Nothing comes back and nothing resumes you; continue your turn."
           : reply === "poll"
             ? "Handed to the coordinator. Read each result with assignment_status (id: a receipt's requestId, or rootId for the whole call), long-polling with wait_ms."
-            : "End your turn after sending all work. These actual teammates will reply and resume you automatically. Do not poll or wait.";
+            : AWAITED_SENT_NOTE;
         return { status: sent ? 200 : 409, body: { receipts, ...(sent ? { message: lead ? `${lead} ${message}` : message } : { error: refused.join("; ") }),
           ...(EXTERNAL && sent ? { rootId: generation } : {}) } };
       };
