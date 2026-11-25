@@ -9104,6 +9104,7 @@
   "settings.dataSharing.improveAsk": "Desactivado hasta que lo actives.",
   "settings.dataSharing.notes": "Resúmenes de sesión",
   "settings.dataSharing.notesHint": "Comparte resúmenes anónimos de cómo fueron las sesiones, para que veamos qué mejorar. Se quitan nombres, correos y enlaces, y los resúmenes no se vinculan a tu cuenta.",
+  "settings.dataSharing.notesDeletes": "Si lo desactivas, también se borran los resúmenes ya compartidos.",
   "settings.dataSharing.notesNeedsImprove": "Activa el interruptor de arriba para usar esto.",
   "settings.dataSharing.shared": "Ver lo que se ha compartido",
   "settings.dataSharing.sharedHint": "Ve todo lo compartido desde este dispositivo en los últimos 30 días y bórralo si quieres.",

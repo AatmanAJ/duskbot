@@ -17,8 +17,8 @@ export function DataSharingRows() {
     <>
       <SettingRow icon="chart" title={t("settings.dataSharing.improve")} subtitle={<>
         {t("settings.dataSharing.improveHint")}{" "}
-        <button type="button" onClick={() => void openExternalLink(PRIVACY_SUMMARY_URL)}
-          className="rounded-sm text-ink-secondary underline underline-offset-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
+        <button type="button" role="link" data-privacy-link="" onClick={() => void openExternalLink(PRIVACY_SUMMARY_URL)}
+          className="rounded-sm text-current no-underline underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
           {t("settings.dataSharing.whatsShared")}
         </button>
         {signals.askUsage && <span className="block">{t("settings.dataSharing.improveAsk")}</span>}
@@ -28,7 +28,7 @@ export function DataSharingRows() {
       </SettingRow>
       <SettingRow icon="bubble" title={t("settings.dataSharing.notes")} subtitle={<>
         {t("settings.dataSharing.notesHint")}
-        {!counts && <span className="mt-1 block">{t("settings.dataSharing.notesNeedsImprove")}</span>}
+        <span className="mt-1 block">{t(counts ? "settings.dataSharing.notesDeletes" : "settings.dataSharing.notesNeedsImprove")}</span>
       </>}>
         <Switch checked={notes} disabled={!counts} data-session-notes="" aria-label={t("settings.dataSharing.notes")} onClick={() => void set({ notes: !notes })} />
       </SettingRow>

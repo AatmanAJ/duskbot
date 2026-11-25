@@ -64,6 +64,8 @@ describe("Settings > Privacy", () => {
     await render(DataSharingRows);
     expect($("[data-help-improve]")!.getAttribute("aria-checked")).toBe("true");
     expect($("[data-session-notes]")!.getAttribute("aria-checked")).toBe("false");
+    expect(host.textContent).toContain("Turning this off also deletes summaries already shared.");
+    expect($("[data-privacy-link]")!.getAttribute("role")).toBe("link");
     await click("[data-session-notes]");
     expect(puts()).toEqual([{ notes: true }]);
     expect($("[data-session-notes]")!.getAttribute("aria-checked")).toBe("true");
@@ -76,6 +78,7 @@ describe("Settings > Privacy", () => {
     await render(DataSharingRows);
     expect($("[data-session-notes]")!.getAttribute("aria-checked")).toBe("false");
     expect($("[data-session-notes]")!.disabled).toBe(true);
+    expect(host.textContent).not.toContain("Turning this off also deletes summaries already shared.");
   });
 
   it("where a yes is needed, usage sharing reads off until turned on", async () => {

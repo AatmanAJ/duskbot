@@ -9964,7 +9964,8 @@
       "settings.dataSharing.event.devs_report": "150d4f5abda38ff9380204cc6e2f17daefef6e9fd6344e46fbabd8818104bb7c",
       "settings.dataSharing.event.created": "361297dbc4dcb7c19d9f166eb7e2a64206ed789d611ecda0ca4767f5af343a00",
       "settings.dataSharing.event.file_made": "ae3976c946b2506cde9f94ed25431df5129532cc2ebee64c0e98fde3993d828f",
-      "settings.dataSharing.event.browser_download_failed": "67ce42499be4b3f10a3273eca47a3aac44c67a3b40609c0c9bf772de5a88425f"
+      "settings.dataSharing.event.browser_download_failed": "67ce42499be4b3f10a3273eca47a3aac44c67a3b40609c0c9bf772de5a88425f",
+      "settings.dataSharing.notesDeletes": "b03387974da41de2461338de9b9badf3cecdc8003cfbeba89933d5fbdffa19f1"
     },
     "es": {
       "updates.updated": "da0fcccdc519425a9c333fda0838bbdd50d67fb0266194753bd1044abd0ecbb4",
@@ -19908,7 +19909,8 @@
       "settings.dataSharing.event.devs_report": "150d4f5abda38ff9380204cc6e2f17daefef6e9fd6344e46fbabd8818104bb7c",
       "settings.dataSharing.event.created": "361297dbc4dcb7c19d9f166eb7e2a64206ed789d611ecda0ca4767f5af343a00",
       "settings.dataSharing.event.file_made": "ae3976c946b2506cde9f94ed25431df5129532cc2ebee64c0e98fde3993d828f",
-      "settings.dataSharing.event.browser_download_failed": "67ce42499be4b3f10a3273eca47a3aac44c67a3b40609c0c9bf772de5a88425f"
+      "settings.dataSharing.event.browser_download_failed": "67ce42499be4b3f10a3273eca47a3aac44c67a3b40609c0c9bf772de5a88425f",
+      "settings.dataSharing.notesDeletes": "b03387974da41de2461338de9b9badf3cecdc8003cfbeba89933d5fbdffa19f1"
     },
     "fr": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
