@@ -169,8 +169,11 @@ Tracking: **No**. Every type below is **linked to the person**, used for **App F
 | User Content: Photos or Videos | when the bot runs on our servers and the person attaches a photo | the attached photo |
 | User Content: Other User Content | when the bot runs on our servers (a hosted computer or the review demo bot) | messages and files sent to that bot |
 
-Not collected: location, contacts, audio (dictation runs through Apple's speech recognition),
-browsing or search history, purchases, financial, health, usage data, diagnostics.
+Not collected: location, contacts, audio, browsing or search history, purchases, financial, health, usage data,
+diagnostics. Audio is not collected in Apple's sense (kept longer than it takes to serve the request live): dictation
+runs through Apple's speech recognition, and a voice call's audio is heard live, in memory, by the computer running the
+bot or by the voice provider connected there; no dusk bot code writes it anywhere. What the person said reaches the
+chat as text, which Other User Content above covers.
 
 Two switches that would change these answers, both off in the store build today:
 
@@ -317,7 +320,7 @@ the connection returns, a local network connection to the person's own computer 
 
 NOTES
 - Purchases: the app sells nothing and shows no prices, plans or links to buy. dusk cloud is set up on the website.
-- Camera: only for the pairing code and photos the person attaches. Microphone: only for dictation and voice notes.
+- Camera: only for the pairing code and photos the person attaches. Microphone: only for dictation, voice notes and voice calls.
   Local network: only to reach the person's own computer.
 - AI: replies come from the AI provider connected on the computer running the bots. The app asks before sending.
 - Chats are private to the person; there is no public or person-to-person content.
@@ -390,15 +393,18 @@ requires: https://dusk.bot/delete-account, which works without the app installed
 | Device or other IDs | yes (push token; ML Kit, see below) | no | App functionality; Analytics (ML Kit) | no |
 | Messages: Other in-app messages | yes, when the bot runs on our servers | no | App functionality | yes |
 | App info and performance: Diagnostics | yes (ML Kit, see below) | no | Analytics | no |
-| Audio: Voice or sound recordings | yes, during a voice call with a bot on our servers | no | App functionality | yes |
+| Audio: Voice or sound recordings | yes, during a voice call with a bot on our servers; processed ephemerally | no | App functionality | yes |
 
 Microphone: asked for the first time the person taps the microphone in the composer or starts a call, never at
-launch. Dictation runs through the phone's own speech recognizer (offline where the phone has the language), and the
-words land in the composer; the app keeps no recording. In a voice call the audio streams live to the computer running
-the bot, which hands it to the voice provider connected there; it reaches our servers only when that computer is a dusk
-cloud one, hence the Audio row. Mark it processed ephemerally only after checking the hosted call path stores no audio
-(not checked for this note). A voice service the person sets up in Settings (their own key) is a choice they make and
-goes straight to that service.
+launch. Dictation runs through the phone's own speech recognizer (offline first, online when the phone lacks the
+language pack), and only the words land in the composer. In a voice call the audio streams live either to the computer
+running the bot, whose own recognizer hears it in memory, or (a Live call) over WebRTC straight to the voice provider
+connected there (OpenAI or Azure OpenAI), with the server only setting the session up and dropping the audio events it
+mirrors. Checked in code 2026-11-25: `server/local-voice`, `server/live-call*.ts` and `/api/tts/transcribe` keep audio in
+memory only and write none to disk or the database; what was said is saved as chat text. It reaches our servers only
+when that computer is a dusk cloud one, hence the Audio row, which can be marked **processed ephemerally**. The voice
+provider's own retention (for example OpenAI's API abuse-monitoring logs) is its policy, not ours. A voice service the
+person sets up on the phone (their own key) goes straight to that service.
 
 The Android QR scanner is Google's ML Kit (bundled `com.google.mlkit:barcode-scanning` plus
 `play-services-code-scanner`), which sends usage and diagnostics to Google. Check its current disclosure at
@@ -434,15 +440,13 @@ allows both, but drop the apps shot if a reviewer cites impersonation or tradema
   call's microphone) is in the manifest. The first dictation asks through `DuskSpeech.requestPermissions()`; if the
   person says no, the composer shows one line: "Allow microphone access for dusk bot in your phone's settings, then try
   again."
-- Cleartext http: still allowed in `network_security_config.xml`'s base config, with dusk.bot pinned to HTTPS. Pairing
-  with a computer on the same Wi-Fi dials `http://<its IPv4 address>:<port>` (`apps/companion/src/endpoints.ts`, kind
-  `lan`), any non-loopback IPv4 the computer has, through native `HttpURLConnection` (CapacitorHttp and DuskStream), so
-  the network security config decides. It cannot be narrowed to private addresses: a `<domain>` matches a name exactly
-  or by suffix, and an IP's network part is on the left, so there is no way to write 10.0.0.0/8 or 192.168.0.0/16.
-  Tailnet (`*.ts.net`) and Bonjour (`*.local`) routes are names and could be listed; the IPv4 routes cannot. iOS allows
-  the same through ATS, which exempts IP literals. Play accepts a base cleartext config (it is a lint and pre-launch
-  report note, not a policy rejection); blocking it by default would need a socket-level HTTP client for the Wi-Fi
-  route. Pairing through the encrypted link or https is unaffected either way.
+- Cleartext http: allowed in `network_security_config.xml`'s base config (dusk.bot pinned to HTTPS), because Wi-Fi
+  pairing dials `http://<the computer's IPv4>:<port>` (`apps/companion/src/endpoints.ts`, kind `lan`) and a `<domain>`
+  matches only a name exactly or by suffix, so no private range can be written. The app scopes it instead: on Android
+  every fetch goes through `guardCleartext` (`src/mobile/cleartext.ts`), which refuses plain http to anything but an IP
+  address, a `.local` or `.ts.net` name, or localhost. Play accepts a base cleartext config (a lint and pre-launch report
+  note); the guard keeps the app from sending cleartext anywhere public. Pairing through the encrypted link or https is
+  unaffected.
 - Push: FCM is set up (Messages channel above).
 
 ## Review risks and where they are handled
