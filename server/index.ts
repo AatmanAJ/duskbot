@@ -5473,7 +5473,7 @@ bus.subscribe((event: RuntimeEvent) => {
 });
 
 const learningOrigins = createLearningOrigins({ path: (threadId) => store.activePath(threadId), routineRun: (threadId) => routines?.runForThread(threadId) ?? null,
-  heartbeat: (threadId) => proactive.fence.confines(threadId), internal: (threadId) => isInternalTurn(threadId), unattended: (botId, threadId) => isUnattended(botId, threadId) });
+  heartbeat: (threadId) => proactive.fence.confines(threadId), internal: (threadId) => isInternalTurn(threadId), apiThread: (threadId) => botApiThread(threadId), unattended: (botId, threadId) => isUnattended(botId, threadId) });
 const captureTurnFor = (threadId: string, turnId: string): CaptureTurn | null => learningOrigins.personTurn(threadId, turnId);
 
 // Prompt-cache keep-warm (server/cache-keepwarm.ts; design from Cache Tax,

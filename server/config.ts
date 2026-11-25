@@ -644,7 +644,7 @@ export function autoRecallEnabled(cfg: AppConfig): boolean {
 }
 
 export function roomMemoryCaptureEnabled(cfg: AppConfig): boolean {
-  return cfg.features?.roomMemoryCapture === true;
+  return cfg.features?.roomMemoryCapture !== false;
 }
 
 export const DEFAULT_CAPTURE_QUIET_MS = 2 * 60_000;

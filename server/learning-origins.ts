@@ -9,10 +9,12 @@ type PathMessage = Pick<WireMessage, "id" | "role" | "kind" | "text" | "turnId" 
 
 export interface LearningOriginsDeps {
   path: (threadId: string) => readonly PathMessage[];
-  routineRun: (threadId: string) => { routineId: string; routineName: string; dryRun?: true } | null;
+  routineRun: (threadId: string) => { routineId: string; routineName: string; dryRun?: true; triggerSource?: string } | null;
   /** The day watch and other proactive check-ins: they read and report, never teach. */
   heartbeat: (threadId: string) => boolean;
   internal: (threadId: string) => boolean;
+  /** A conversation through the bot's API: no person's chat, only outside words. */
+  apiThread: (threadId: string) => boolean;
   unattended: (botId: string, threadId: string) => boolean;
   now?: () => number;
 }
@@ -44,13 +46,13 @@ export function createLearningOrigins(deps: LearningOriginsDeps): LearningOrigin
 
   return {
     captureTurn(botId, threadId, turnId) {
-      if (deps.internal(threadId) || deps.heartbeat(threadId)) return null;
+      if (!this.countsForSkills(threadId)) return null;
       const turn = read(threadId, turnId);
       if (!turn || turn.reply.quietRun) return null;
       const { reply, asked, verified } = turn;
       const run = deps.routineRun(threadId);
       if (run) {
-        if (run.dryRun || !verified) return null;
+        if (!verified) return null;
         const last = lastRoutineCapture.get(run.routineId);
         if (last !== undefined && now() - last < ROUTINE_CAPTURE_GAP_MS) return null;
         lastRoutineCapture.set(run.routineId, now());
@@ -71,7 +73,9 @@ export function createLearningOrigins(deps: LearningOriginsDeps): LearningOrigin
       return { person: extractTurnImages(turn.asked.text ?? "").text, bot: turn.reply.text ?? "", owner: !turn.asked.sender, turnId, messageId: turn.asked.id };
     },
     countsForSkills(threadId) {
-      return !deps.internal(threadId) && !deps.heartbeat(threadId) && !deps.routineRun(threadId)?.dryRun;
+      // a run an outside event started (a webhook, an app event) carries outside words: they never teach a skill or a fact
+      const run = deps.routineRun(threadId);
+      return !deps.internal(threadId) && !deps.heartbeat(threadId) && !deps.apiThread(threadId) && !run?.dryRun && run?.triggerSource !== "webhook";
     },
     routineName(threadId) {
       return deps.routineRun(threadId)?.routineName;

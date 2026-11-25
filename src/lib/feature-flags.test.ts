@@ -82,9 +82,9 @@ describe("experimental feature flags", () => {
   });
 
   it("keeps Learn from group chats off until it is switched on", () => {
-    expect(roomMemoryCaptureEnabled(null)).toBe(false);
-    expect(roomMemoryCaptureEnabled({ features: {} })).toBe(false);
-    expect(roomMemoryCaptureEnabled({ features: { roomMemoryCapture: true } })).toBe(true);
+    expect(roomMemoryCaptureEnabled(null)).toBe(true);
+    expect(roomMemoryCaptureEnabled({ features: {} })).toBe(true);
+    expect(roomMemoryCaptureEnabled({ features: { roomMemoryCapture: false } })).toBe(false);
   });
 
   it("offers sharing learned skills only with the skills library, asking by default", () => {

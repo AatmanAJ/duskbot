@@ -5,13 +5,14 @@ import { capturePrompt, statedInConversation, type CaptureTurn } from "./memory-
 
 type Message = ReturnType<LearningOriginsDeps["path"]>[number];
 
-function setup(threads: Record<string, Message[]>, options: { routine?: string; dryRun?: boolean; heartbeat?: string; unattended?: boolean } = {}) {
+function setup(threads: Record<string, Message[]>, options: { routine?: string; dryRun?: boolean; webhook?: boolean; heartbeat?: string; unattended?: boolean; api?: string } = {}) {
   let clock = 1_000_000;
   const origins = createLearningOrigins({
     path: (threadId) => threads[threadId] ?? [],
-    routineRun: (threadId) => threadId === options.routine ? { routineId: "r1", routineName: "Price watch", ...(options.dryRun ? { dryRun: true as const } : {}) } : null,
+    routineRun: (threadId) => threadId === options.routine ? { routineId: "r1", routineName: "Price watch", ...(options.dryRun ? { dryRun: true as const } : {}), ...(options.webhook ? { triggerSource: "webhook" } : {}) } : null,
     heartbeat: (threadId) => threadId === options.heartbeat,
     internal: (threadId) => threadId === "internal",
+    apiThread: (threadId) => threadId === options.api,
     unattended: () => options.unattended === true,
     now: () => clock,
   });
@@ -39,6 +40,10 @@ describe("which turns feed memory and skills", () => {
     expect(setup({ r: [ask("Check"), reply("1", "Nothing new.")] }, { routine: "r" }).origins.captureTurn("b", "r", "1")).toBeNull();
     expect(setup({ r: [ask("Check"), tool("1"), reply("1", "NOTHING NEW", { quietRun: true })] }, { routine: "r" }).origins.captureTurn("b", "r", "1")).toBeNull();
     expect(setup({ r: run }, { routine: "r", dryRun: true }).origins.captureTurn("b", "r", "1")).toBeNull();
+    // a webhook's or app event's run carries outside words: it teaches neither memory nor skills
+    expect(setup({ r: run }, { routine: "r", webhook: true }).origins.captureTurn("b", "r", "1")).toBeNull();
+    expect(setup({ r: run }, { routine: "r", webhook: true }).origins.countsForSkills("r")).toBe(false);
+    expect(setup({ a: run }, { api: "a" }).origins.countsForSkills("a")).toBe(false);
   });
 
   it("never reads the day watch, harness turns or a turn nobody opened", () => {

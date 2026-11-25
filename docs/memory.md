@@ -363,7 +363,7 @@ off. It keeps the notes in shape without the bot having to decide to:
   read only under the rules in *Learning in the background* below.
 - **Learning from group chats.** The **Learn from group chats** switch under
   Memory upkeep (`features.roomMemoryCapture`, one switch for every bot,
-  off by default) lets a member bot's room turns feed its capture the same
+  on by default; switching it off keeps rooms out) lets a member bot's room turns feed its capture the same
   way, batched per bot and room. What the bot read since it last spoke
   there is read with its reply, under room rules: the person's own lines
   count as theirs; another person's lines give only facts about the shared
@@ -602,8 +602,9 @@ so the person never has to say "remember this".
   count toward the skill review, and the review sees the instruction as the
   routine's or the other bot's, never as the person's. Memory capture reads a
   routine run or a hand-off (`learning-origins.ts`) only when the turn used a
-  tool that worked, never a test run, a quiet "nothing new" run or the day
-  watch, and a routine at most once every six hours however often it runs.
+  tool that worked, never a test run, a quiet "nothing new" run, the day
+  watch, a run a webhook or app event started or a bot API conversation
+  (outside words, which feed neither memory nor the skill review), and a routine at most once every six hours however often it runs.
   Such a turn has no words of the person in it, so only an outcome the bot
   verified is kept: its quoted evidence must be in the bot's reply and not in
   the instruction it ran on (a routine's last report, recalled notes), and it

@@ -41,9 +41,7 @@ it("captures a member bot's room turn into its memory, sourced to the room, once
     const { bot: lead } = await api<{ bot: WireBot }>("/api/bots", "POST", { name: "Lead" });
     const { bot: helper } = await api<{ bot: WireBot }>("/api/bots", "POST", { name: "Helper" });
     await api("/api/config", "PUT", { memory: { captureQuietMs: 1_000 } });
-    expect((await api<{ features?: { roomMemoryCapture?: boolean } }>("/api/config")).features?.roomMemoryCapture).toBe(false);
-    const config = await api<{ features?: { roomMemoryCapture?: boolean } }>("/api/config", "PATCH", { features: { roomMemoryCapture: true } });
-    expect(config.features?.roomMemoryCapture).toBe(true);
+    expect((await api<{ features?: { roomMemoryCapture?: boolean } }>("/api/config")).features?.roomMemoryCapture).toBe(true);
 
     const { group } = await api<{ group: { id: string } }>("/api/groups", "POST", {
       name: "Garden room", memberIds: [lead.id, helper.id],
