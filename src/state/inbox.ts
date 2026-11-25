@@ -33,13 +33,17 @@ export const useInboxView = (): InboxView | null => useSyncExternalStore(list.su
 const hasList = () => list.get() !== null;
 export const useInboxReady = (): boolean => useSyncExternalStore(list.subscribe, hasList, hasList);
 
+const failed = store(false);
+/** The last read of the list failed; the panel says so while it has no list to show. */
+export const useInboxReadFailed = (): boolean => useSyncExternalStore(failed.subscribe, failed.get, failed.get);
+
 export type InboxSupport = "unknown" | "yes" | "no";
 const support = store<InboxSupport>("unknown");
 export const useInboxSupport = (): InboxSupport => useSyncExternalStore(support.subscribe, support.get, support.get);
 /** Tests and previews say what the server does. */
 export const setInboxSupport = support.set;
 /** Tests and previews show a list of their own. */
-export const setInboxView = (view: InboxView | null): void => { list.set(view); support.set(view ? "yes" : "unknown"); };
+export const setInboxView = (view: InboxView | null): void => { list.set(view); support.set(view ? "yes" : "unknown"); failed.set(false); };
 
 let reading: Promise<void> | null = null;
 let readAgain = false;
@@ -52,9 +56,10 @@ export function refreshInbox(): Promise<void> {
         readAgain = false;
         const view = await api<InboxView>("/api/inbox", { background: true }).catch((error: unknown) => {
           if ((error as { status?: number }).status === 404) { list.set(null); support.set("no"); }
+          else failed.set(true);
           return null;
         });
-        if (view && Array.isArray(view.rows)) { list.set(view); support.set("yes"); }
+        if (view && Array.isArray(view.rows)) { list.set(view); support.set("yes"); failed.set(false); }
       } while (readAgain);
     } finally {
       reading = null;

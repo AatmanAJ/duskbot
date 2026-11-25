@@ -2024,6 +2024,8 @@
   "sidebar.people.invite": "Invite someone",
   "inbox.panel.title": "Inbox",
   "inbox.empty": "Nothing for you yet.",
+  "inbox.loading": "Reading your inbox…",
+  "inbox.loadFailed": "Couldn't read your inbox just now.",
   "inbox.workingFor": "{name}, working for {other}",
   "inbox.askedBy": "{name}, asked by {who}",
   "inbox.askedBySomeone": "{name}, asked by someone else",
