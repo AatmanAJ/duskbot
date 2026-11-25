@@ -20,7 +20,7 @@ vi.mock("./AskCard", async (original) => ({ ...await original<typeof import("./A
 type Node = ReactElement<Record<string, unknown> & { children?: ReactNode }>;
 const nodes = (value: ReactNode): Node[] => Children.toArray(value).flatMap((child) => (isValidElement(child) ? [child as Node, ...nodes((child as Node).props.children)] : []));
 
-const greeting: Message = { id: "g1", role: "bot", kind: "text", at: 1, text: "Hi, I'm Ava. What would you like me to do?", setupOffer: true } as Message;
+const greeting: Message = { id: "g1", role: "bot", kind: "text", at: 1, text: "Hi, I'm Ava. What's on your plate?", setupOffer: true } as Message;
 const bot = (extra: Partial<Bot> = {}): Bot => ({ id: "b1", threadId: "t1", name: "Ava", title: "", description: "", soul: "",
   modelSelection: { instanceId: "claude", model: "claude-sonnet-5" }, tasks: [{ threadId: "t1", title: "new thread", createdAt: 1 }], ...extra }) as Bot;
 const CANNED: Message = { id: "m2", role: "bot", kind: "text", at: 2, text: "Great. Tell me what you'd like help with." } as Message;

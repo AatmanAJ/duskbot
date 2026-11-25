@@ -5,10 +5,10 @@ type Greeting = (name: string, person?: string) => string;
 
 /** The first bot's seeded line is created by the server before the UI exists. */
 const GREETINGS: { en: Greeting } & Record<string, Greeting> = {
-  en: (name, person) => `Hi${person ? ` ${person}` : ""}, I'm ${name}. What would you like me to do?`,
-  es: (name, person) => `Hola${person ? ` ${person}` : ""}, soy ${name}. ¿Qué te gustaría que hiciera?`,
-  "pt-br": (name, person) => `Oi${person ? ` ${person}` : ""}, eu sou ${name}. O que você gostaria que eu fizesse?`,
-  ko: (name, person) => `안녕하세요${person ? `, ${person}님` : ""}. 저는 ${name}입니다. 무엇을 도와드릴까요?`,
+  en: (name, person) => `Hi${person ? ` ${person}` : ""}, I'm ${name}. What's on your plate?`,
+  es: (name, person) => `Hola${person ? ` ${person}` : ""}, soy ${name}. ¿Qué tienes entre manos?`,
+  "pt-br": (name, person) => `Oi${person ? ` ${person}` : ""}, eu sou ${name}. O que tem pra hoje?`,
+  ko: (name, person) => `안녕하세요${person ? `, ${person}님` : ""}. 저는 ${name}입니다. 오늘 뭐부터 할까요?`,
 };
 
 /** What the bot says the moment Set me up is pressed: no model is asked, so it is written here. */

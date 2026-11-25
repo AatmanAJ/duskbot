@@ -16,7 +16,7 @@ const FIXED = ["Research and digging into topics", "Keeping an eye on things for
   "Bookings, shopping and errands", "Data, spreadsheets and reports"];
 const PERSONAL = ["Sort my receipts", "Check my unpaid invoices", "Draft a payment reminder", "Find a missing expense", "Remind me of tax deadlines"];
 const greeting = (extra: Partial<Message> = {}): Message => ({ id: "g1", role: "bot", kind: "text", at: Date.now(),
-  text: "Hi, I'm Ava. What would you like me to do?", setupOffer: true, setupChoices: FIXED, ...extra }) as Message;
+  text: "Hi, I'm Ava. What's on your plate?", setupOffer: true, setupChoices: FIXED, ...extra }) as Message;
 
 let root: Root | null = null;
 let container: HTMLElement;

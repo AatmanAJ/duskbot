@@ -363,7 +363,7 @@ describe("what a beat may promise", () => {
   });
   it("acks every work ask, a correction and a watch setup included", () => {
     const ack = beatPrompt("ack", input);
-    expect(ack).toContain("Reply exactly SKIP only if the message is a greeting, thanks or small talk");
+    expect(ack).toContain("Reply exactly SKIP only if the message is a greeting, thanks, small talk or the person venting or sharing how they feel");
     expect(ack).toContain("a correction or a change (\"wait, it's in Rust\") gets one naming the change");
     expect(ack).not.toContain("outside what");
     expect(ack).not.toMatch(/name the goal instead[^.]*or reply SKIP/);

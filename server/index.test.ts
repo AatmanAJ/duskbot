@@ -605,7 +605,7 @@ beforeAll(async () => {
         parentId: null,
         role: "bot",
         kind: "text",
-        text: "Hi, I'm Seeded fixture bot. What would you like me to do?",
+        text: "Hi, I'm Seeded fixture bot. What's on your plate?",
       }],
     }),
   );
@@ -2824,7 +2824,7 @@ describe("harness HTTP API", () => {
   it("searches transcripts and exports a conversation", async () => {
     const bot = (await api("POST", "/api/bots")).body.bot;
     // every new bot opens with a seeded greeting, a known searchable string
-    const hits = await api("GET", "/api/search?q=what%20would%20you%20like");
+    const hits = await api("GET", "/api/search?q=on%20your%20plate");
     expect(hits.status).toBe(200);
     const hit = hits.body.hits.find((h: { botId?: string }) => h.botId === bot.id);
     expect(hit).toMatchObject({
@@ -2834,8 +2834,8 @@ describe("harness HTTP API", () => {
       kind: "text",
       onActivePath: true,
     });
-    expect(hit.snippet.toLowerCase()).toContain("what would you like");
-    expect(hit.snippet.slice(hit.matchStart, hit.matchStart + hit.matchLength).toLowerCase()).toBe("what would you like");
+    expect(hit.snippet.toLowerCase()).toContain("on your plate");
+    expect(hit.snippet.slice(hit.matchStart, hit.matchStart + hit.matchLength).toLowerCase()).toBe("on your plate");
     expect((await api("GET", "/api/search?q=")).body.hits).toEqual([]);
     const scoped = await api("GET", `/api/search?q=what%20would%20you%20like&threadId=${bot.threadId}`);
     expect(scoped.status).toBe(200);
@@ -2847,7 +2847,7 @@ describe("harness HTTP API", () => {
     expect(markdown.headers.get("content-type")).toContain("text/markdown");
     expect(markdown.headers.get("content-disposition")).toContain("attachment");
     const text = await markdown.text();
-    expect(text).toContain("What would you like");
+    expect(text).toContain("What's on your plate");
 
     const asJson = await api("GET", `/api/threads/${bot.threadId}/export?format=json`);
     expect(asJson.status).toBe(200);
@@ -7075,7 +7075,7 @@ describe("harness HTTP API", () => {
     try {
       expect(bot.messages).toHaveLength(1);
       expect(bot.messages[0]).toMatchObject({ role: "bot", kind: "text" });
-      expect(bot.messages[0].text).toBe("Hi, I'm Fresh. What would you like me to do?");
+      expect(bot.messages[0].text).toBe("Hi, I'm Fresh. What's on your plate?");
       expect(bot.messages.some((m: { kind: string }) => m.kind === "options")).toBe(false);
     } finally {
       await api("DELETE", `/api/bots/${bot.id}`);
@@ -7101,7 +7101,7 @@ describe("harness HTTP API", () => {
       await stream.until((frame) => frame.kind === "hello");
       const bot = (await api("POST", "/api/bots", { name: "Sorrel", useDefaults: false, settings: { color: "purple", mascotBody: "star" } })).body.bot;
       id = bot.id;
-      expect(bot.messages[0].text).toBe("Hi Milind, I'm Sorrel. What would you like me to do?");
+      expect(bot.messages[0].text).toBe("Hi Milind, I'm Sorrel. What's on your plate?");
       const announced = await stream.until((frame) => frame.kind === "bot" && frame.bot?.id === id);
       // "star" is the old name of the starry body
       expect(announced.bot).toMatchObject({ color: "purple", mascotBody: "starry" });
@@ -8467,7 +8467,7 @@ describe("harness HTTP API", () => {
     it("answers the press at once with the bot's own line and no model, and keeps the waiting mark on the server", async () => {
       const bot = await blankBot("Press");
       try {
-        expect(bot.messages[0]).toMatchObject({ role: "bot", kind: "text", text: "Hi, I'm Press. What would you like me to do?", setupOffer: true });
+        expect(bot.messages[0]).toMatchObject({ role: "bot", kind: "text", text: "Hi, I'm Press. What's on your plate?", setupOffer: true });
         rmSync(fakeClaudeDump, { force: true });
         const pressed = await api("POST", `/api/bots/${bot.id}/setup-request`, { threadId: bot.threadId });
         expect(pressed.status).toBe(200);

@@ -35,7 +35,7 @@ beforeEach(() => {
 describe("the Set me up offer", () => {
   it("is open on a blank bot's greeting until the bot is given a role, in no other conversation", () => {
     const s = setup();
-    expect(openSetupOffer(s.store, s.bot.id, s.threadId)?.text).toBe("Hi, I'm Ava. What would you like me to do?");
+    expect(openSetupOffer(s.store, s.bot.id, s.threadId)?.text).toBe("Hi, I'm Ava. What's on your plate?");
     const other = s.store.createTask(s.bot.id, "Another chat", false)!;
     expect(openSetupOffer(s.store, s.bot.id, other.threadId)).toBeNull();
     s.store.patchBot(s.bot.id, { description: "Files bugs." });

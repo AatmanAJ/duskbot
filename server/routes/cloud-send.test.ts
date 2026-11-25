@@ -17,8 +17,8 @@ async function bots(route: ReturnType<typeof createCloudSendRoutes>): Promise<st
 
 describe("GET /api/cloud-send", () => {
   it("leaves out a starter that holds only its own greeting, and keeps a bot that was renamed, written to, or arrived without one", async () => {
-    expect(await bots(handler([{ role: "bot", text: "Hi, I'm Yuki. What would you like me to do?" }]))).toEqual([]);
-    expect(await bots(handler([{ role: "bot", text: "Hi, I'm Pearl. What would you like me to do?" }]))).toEqual(["Yuki"]);
+    expect(await bots(handler([{ role: "bot", text: "Hi, I'm Yuki. What's on your plate?" }]))).toEqual([]);
+    expect(await bots(handler([{ role: "bot", text: "Hi, I'm Pearl. What's on your plate?" }]))).toEqual(["Yuki"]);
     expect(await bots(handler([{ role: "bot", text: "Hi, I'm Yuki." }, { role: "user", text: "hello" }]))).toEqual(["Yuki"]);
     expect(await bots(handler([]))).toEqual(["Yuki"]);
     expect(await bots(handler([{ role: "bot", text: "Hi, I'm Yuki." }], true))).toEqual(["Yuki"]);
