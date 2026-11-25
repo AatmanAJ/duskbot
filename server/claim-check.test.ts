@@ -10,6 +10,7 @@ describe("claimedDeeds", () => {
     ["Set up. Starting at 8:45 I'll check receipts@ every five minutes.", ["setup"]],
     ["Sent the refund note to Grace.", ["send"]],
     ["I've booked the dentist for Thursday at 10.", ["schedule"]],
+    ["I've created a reminder for 2:15.", ["schedule"]],
   ])("hears %s", (text, deeds) => {
     expect(claimedDeeds(text)).toEqual(deeds);
   });
@@ -54,6 +55,10 @@ describe("TurnGates: claims", () => {
     saved.mount(["notes_create", "notes_search"]);
     saved.ran("notes_create", "{}", true, '{"id":"n1","title":"Acme"}');
     expect(saved.gate("Your Acme notes are ready for the 3:00 PM call.")).toBeNull();
+    const reminded = new TurnGates();
+    reminded.mount(["notes_create", "trigger"]);
+    reminded.ran("trigger", '{"action":"create"}', true, '{"id":"r1"}');
+    expect(reminded.gate("Your Acme notes are ready for the 3:00 PM call.")).toContain("save it where they keep such things");
   });
 
   it("does not let an unrelated change back a 'sent' claim", () => {

@@ -9,7 +9,7 @@ type Evidence = Deed | "browser" | "shell" | "other";
 const BACKED_BY: Record<Deed, readonly Evidence[]> = {
   send: ["send", "browser"],
   schedule: ["schedule", "browser"],
-  save: ["save", "schedule", "browser", "shell"],
+  save: ["save", "browser", "shell"],
   remove: ["remove", "browser", "shell"],
   setup: ["schedule", "save", "remove", "browser", "shell", "other"],
 };
@@ -28,6 +28,8 @@ const READY = /\b(?:notes?|doc(?:ument)?s?|files?|sheets?|spreadsheets?|pages?)\
 const NOT_A_CLAIM = /\b(?:not|never|no|nothing|haven['’]?t|hasn['’]?t|didn['’]?t|wasn['’]?t|weren['’]?t|isn['’]?t|couldn['’]?t|can['’]?t|cannot|won['’]?t|wouldn['’]?t|would|will|could|should|can|shall|might|ready to|about to|want me|if you|once you|when you|after you|before|draft(?:ed|s)?|earlier|yesterday|last (?:week|time|night)|already (?:been|was))\b|\?/i;
 /** "Sent you the summary above" is this chat's own reply, not an outside send. */
 const TO_THIS_CHAT = /\b(?:sent|messaged|shared|posted|replied)\s+(?:to\s+)?you\b|\b(?:above|below|here)\b/i;
+/** "Created a reminder" is scheduling, not saving. */
+const LATER_WORK = /\b(?:reminders?|routines?|automations?|triggers?|watch(?:er)?|alerts?|check-?ins?|schedules?)\b/i;
 const QUOTED = /```[\s\S]*?```|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”|^>.*$/gm;
 
 const sentences = (text: string) => text.replace(QUOTED, " ").split(/(?<=[.!?])\s+|\n+/).map((part) => part.trim()).filter(Boolean);
@@ -39,7 +41,7 @@ export function claimedDeeds(text: string): Deed[] {
     if (NOT_A_CLAIM.test(sentence)) continue;
     for (const [deed, verbs] of Object.entries(VERBS) as Array<[Deed, string]>) {
       if (deed === "send" && TO_THIS_CHAT.test(sentence)) continue;
-      if (new RegExp(`${SUBJECT}(?:done[,:]?\\s+)?(?:${verbs})\\b|${PASSIVE}(?:${verbs})\\b`, "i").test(sentence)) found.add(deed);
+      if (new RegExp(`${SUBJECT}(?:done[,:]?\\s+)?(?:${verbs})\\b|${PASSIVE}(?:${verbs})\\b`, "i").test(sentence)) found.add(deed === "save" && LATER_WORK.test(sentence) ? "schedule" : deed);
     }
     if (new RegExp(SETUP, "i").test(sentence)) found.add("setup");
     if (READY.test(sentence)) found.add("save");
