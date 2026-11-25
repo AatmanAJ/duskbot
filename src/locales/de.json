@@ -9132,7 +9132,7 @@
   "settings.dataSharing.unavailable": "Einstellungen zur Datenfreigabe sind hier nicht verfügbar.",
   "settings.dataSharing.improveAsk": "Aus, bis du es einschaltest.",
   "settings.dataSharing.notes": "Sitzungszusammenfassungen",
-  "settings.dataSharing.notesHint": "Teile anonyme Zusammenfassungen, wie Sitzungen liefen, damit wir sehen, was wir verbessern können. Persönliche und identifizierende Angaben wie Namen, E-Mail-Adressen und Links werden entfernt, und Zusammenfassungen sind nicht mit deinem Konto verknüpft.",
+  "settings.dataSharing.notesHint": "Teile anonyme Zusammenfassungen, wie Sitzungen liefen, damit wir sehen, was wir verbessern können. Persönliche und identifizierende Angaben wie Namen, E-Mail-Adressen und Links werden entfernt. Zusammenfassungen sind nicht mit deinem Konto verknüpft.",
   "settings.dataSharing.notesDeletes": "Schaltest du das aus, werden auch bereits geteilte Zusammenfassungen gelöscht.",
   "settings.dataSharing.notesNeedsImprove": "Schalte dafür den Schalter darüber ein.",
   "settings.dataSharing.shared": "Ansehen, was geteilt wurde",
