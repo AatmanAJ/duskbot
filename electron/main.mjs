@@ -3726,7 +3726,7 @@ function startAppUpdates(notice) {
   const bundle = path.resolve(path.dirname(app.getPath("exe")), "..", "..");
   appUpdateMode = "self";
   appUpdater = createAppUpdater({ current: app.getVersion(), arch: process.arch, dir: updateDir, signed: () => developerIdSigned(bundle), blocked: async () => updatePlace(bundle),
-    installer: squirrelInstaller({ autoUpdater }), quiet: () => quietNow(signals), fallback: notice, log: slog, onState: tellAppUpdate, onFailed });
+    installer: squirrelInstaller({ autoUpdater }), quiet: () => quietNow(signals), fallback: notice, log: slog, onState: tellAppUpdate, onFailed, serverRuns: () => { try { return vpsLink.view().compat?.server ?? null; } catch { return null; } } });
   appUpdater.start();
   powerMonitor.on("resume", () => appUpdater?.soon?.());
 }
