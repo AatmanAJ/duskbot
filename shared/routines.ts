@@ -95,6 +95,11 @@ export interface RoutineProbe {
   /** script only: `full` runs it outside the read-only fence, as the server's user. Set only through the person's card.
    * Missing means the fence. */
   access?: "full";
+  /** script only: a file in the bot's own folder (workspaces/<bot>) that dusk bot writes each new output to, never a path
+   * outside it. The script itself stays inside its fence. */
+  saveTo?: string;
+  /** script only, with `saveTo`: add each output to the end of the file (it keeps the newest 1 MB) instead of replacing it. */
+  saveMode?: "append";
 }
 
 /** The most routines a routine reads from or runs after. */

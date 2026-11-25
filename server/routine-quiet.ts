@@ -19,14 +19,16 @@ const SELECTOR = /^[a-z][a-z0-9-]*$|^[a-z][a-z0-9-]*[#.][\w-]+$|^[#.][\w-]+$/i;
 /** A probe as asked for: undefined for none, an error for one that cannot be read. */
 export function cleanProbe(value: unknown): RoutineProbe | undefined {
   if (value == null) return undefined;
-  const { kind, url, selector, command, post, access } = value as Partial<RoutineProbe>;
-  if (kind !== "script" && (post !== undefined || access !== undefined)) throw new Error("A page, feed or price check cannot post what it reads or run with full access; only a script check can");
+  const { kind, url, selector, command, post, access, saveTo, saveMode } = value as Partial<RoutineProbe>;
+  if (kind !== "script" && (post !== undefined || access !== undefined || saveTo !== undefined || saveMode !== undefined)) throw new Error("A page, feed or price check cannot post what it reads, save it to a file or run with full access; only a script check can");
   if (kind === "script") {
     const line = typeof command === "string" ? command.trim() : "";
     if (!line || line.length > MAX_COMMAND || /[\0\r\n]/.test(line)) throw new Error("Give the script check one command line of at most 2,000 characters");
     if (post !== undefined && post !== true) throw new Error("A script check's post can only be true");
     if (access !== undefined && access !== "full") throw new Error("A script check's access can only be full");
-    return { kind, url: "", command: line, ...(post ? { post } : {}), ...(access ? { access } : {}) };
+    const file = saveTo === undefined ? undefined : workspaceRelative(saveTo);
+    if (saveMode !== undefined && (saveMode !== "append" || !file)) throw new Error("save_mode can only be append, and only with save_to");
+    return { kind, url: "", command: line, ...(post ? { post } : {}), ...(access ? { access } : {}), ...(file ? { saveTo: file } : {}), ...(saveMode ? { saveMode } : {}) };
   }
   if (kind !== "page" && kind !== "feed" && kind !== "price") throw new Error("Choose a page, a feed, a price or a script to check");
   const text = typeof url === "string" ? url.trim() : "";
@@ -38,6 +40,19 @@ export function cleanProbe(value: unknown): RoutineProbe | undefined {
   const part = typeof selector === "string" ? selector.trim() : "";
   if (part && (kind !== "page" || !SELECTOR.test(part) || part.length > 200)) throw new Error("A selector applies only to a page check, as #id, .class, tag, tag#id or tag.class");
   return { kind, url: parsed.toString(), ...(part ? { selector: part } : {}) };
+}
+
+// Security: a script's output is outside text, so it never lands where the bot reads its own memory, personality or skills.
+const BOT_OWN = new Set(["memory.md", "memory", "soul.md", "skills"]);
+
+/** A path inside the bot's own folder, as given: relative, no `..`, no hidden first part, a plain file name at the end. */
+export function workspaceRelative(value: unknown): string {
+  const path = typeof value === "string" ? value.trim().replace(/^\.\/+/, "") : "";
+  const parts = path.split("/");
+  if (!path || path.length > 300 || path.startsWith("/") || /[\0\\:]/.test(path) || parts.some((part) => !part || part === "." || part === "..") || parts[0]!.startsWith(".") || BOT_OWN.has(parts[0]!.toLowerCase())) {
+    throw new Error("save_to is a file path inside the bot's own folder, such as reports/prices.md");
+  }
+  return path;
 }
 
 /** A probe as kept on disk; anything out of range is dropped. */

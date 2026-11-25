@@ -70,6 +70,8 @@ const probeSchema = z.object({
   command: z.string().max(2_000).optional(),
   post: z.literal(true).optional(),
   access: z.literal("full").optional(),
+  saveTo: z.string().max(300).optional(),
+  saveMode: z.literal("append").optional(),
 }).strict();
 const chainIds = z.array(z.string().min(1).max(128)).min(1).max(5);
 const chainSchema = z.object({

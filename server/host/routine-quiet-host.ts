@@ -8,6 +8,7 @@ import { createAllowance } from "../allowance.ts";
 import { writeFileAtomic } from "../atomic.ts";
 import { ledgerCost } from "../model-prices.ts";
 import { createRoutineProbes, withProbes } from "../routine-probe.ts";
+import { saveScriptOutput } from "../routine-save.ts";
 import { runCheckScript, scriptRunOptions } from "../routine-script.ts";
 import { flexOf, useFreeReruns } from "../routine-quiet.ts";
 import { nextOccurrence } from "../routine-schedules.ts";
@@ -43,6 +44,8 @@ export interface RoutineHostDeps {
   model(botId: string): { driverKind: string; model: string } | undefined;
   tell(botId: string, threadId: string | undefined, text: string): void;
   language(threadId: string | undefined): string | undefined;
+  /** The bot's own folder (workspaces/<bot>). */
+  workspace(botId: string): string;
   /** Only a verification fixture sets this (control-dusk): one loopback origin its probes may read. */
   probeLoopbackOrigin?: string;
 }
@@ -85,7 +88,14 @@ export function createRoutineHost(deps: RoutineHostDeps) {
     dataDir: deps.dataDir,
     fetch: (url) => fetchPublicPage(url, loopback && url.startsWith(`${loopback}/`) ? { allow: () => true } : {}),
     // Security: a Cloud home runs no script checks; its routines can be written by people who do not own the machine.
-    ...(deps.cloudHome ? {} : { script: (routine: Routine, command: string, dryRun: boolean) => runCheckScript(command, scriptRunOptions(routine, dryRun)) }),
+    ...(deps.cloudHome ? {} : { script: async (routine: Routine, command: string, dryRun: boolean) => {
+      const result = await runCheckScript(command, scriptRunOptions(routine, dryRun));
+      if (result.ok && !dryRun && routine.probe?.saveTo) {
+        const saved = saveScriptOutput(deps.workspace(routine.botId), routine.probe.saveTo, result.output, routine.probe.saveMode);
+        if (saved) console.warn(`routines: ${routine.id} could not save its script's output: ${saved}`);
+      }
+      return result;
+    } }),
     failed: (routine, sentence, count) => {
       const thread = resultsThread(routine);
       deps.tell(routine.botId, thread, serverLine(deps.language(thread), "server.routine.probeStuck", { routine: routine.name, count, reason: sentence }));
