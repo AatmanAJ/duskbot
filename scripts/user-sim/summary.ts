@@ -1,7 +1,7 @@
 // summary.json and summary.md from a run's results.jsonl, and a diff of two runs:
 //   node --experimental-strip-types scripts/user-sim/summary.ts <run-dir>                 (rewrite its summary)
-//   node --experimental-strip-types scripts/user-sim/summary.ts <before-dir> <after-dir>   (what changed)
-import { readFileSync, writeFileSync } from "node:fs";
+//   node --experimental-strip-types scripts/user-sim/summary.ts <before> <after>   (what changed; a run folder, summary.json or baseline.json)
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,7 +16,9 @@ const pct = (n: number, d: number) => (d ? Math.round((n / d) * 1000) / 10 : 0);
 const mean = (xs: number[]) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : null);
 const quantile = (xs: number[], q: number) => { const v = [...xs].sort((a, b) => a - b); return v.length ? v[Math.min(v.length - 1, Math.floor(q * v.length))]! : null; };
 
-export function summarize(rows: Row[], label?: string) {
+export interface RunInfo { label?: string; repoCommit?: string; codeCommit?: string; model?: string }
+
+export function summarize(rows: Row[], info: RunInfo = {}) {
   const m = rows.flatMap((r) => (r.metrics ? [r.metrics] : []));
   const recall = m.reduce((t, x) => ({ hit: t.hit + (x.recall?.hit ?? 0), of: t.of + (x.recall?.of ?? 0) }), { hit: 0, of: 0 });
   const patterns: Record<string, number> = {};
@@ -26,7 +28,10 @@ export function summarize(rows: Row[], label?: string) {
   const ttft = m.map((x) => x.ttftMs).filter((x): x is number => x !== null);
   const lat = m.map((x) => x.turnLatencyMs).filter((x): x is number => x !== null);
   return {
-    label: label ?? null,
+    label: info.label ?? null,
+    repoCommit: info.repoCommit ?? null,
+    codeCommit: info.codeCommit ?? null,
+    model: info.model ?? null,
     at: new Date().toISOString(),
     scenarios: rows.length,
     passRate: pct(rows.filter((r) => r.pass).length, rows.length),
@@ -49,10 +54,14 @@ export function summarize(rows: Row[], label?: string) {
     patterns: Object.fromEntries(Object.entries(patterns).sort((a, b) => b[1] - a[1])),
     byTag: Object.fromEntries(Object.entries(byTag).sort()),
     rows: rows.map((r) => ({
-      key: r.key, pass: r.pass, success: r.success, score: r.verdict.score, checks: `${r.checks.filter((c) => c.ok).length}/${r.checks.length}`,
-      failed: r.checks.filter((c) => !c.ok).map((c) => c.label), patterns: r.verdict.patterns,
-      turns: r.metrics?.personTurns ?? 0, steps: r.metrics?.steps ?? 0, ttftMs: r.metrics?.ttftMs ?? null, turnMs: r.metrics?.turnLatencyMs ?? null,
-      tokens: (r.metrics?.tokensIn ?? 0) + (r.metrics?.tokensOut ?? 0), why: r.verdict.why,
+      key: r.key, id: r.id, category: r.tags.find((t) => t !== "x-usage") ?? r.tags[0], tags: r.tags, world: r.world,
+      pass: r.pass, success: r.success, done: r.verdict.done, score: r.verdict.score, quality: r.verdict.quality ?? null, tone: r.verdict.tone ?? null,
+      needlessQuestions: r.verdict.needlessQuestions ?? 0, checks: `${r.checks.filter((c) => c.ok).length}/${r.checks.length}`,
+      failed: r.checks.filter((c) => !c.ok).map((c) => c.label), patterns: r.verdict.patterns, recall: r.metrics?.recall ?? null,
+      turns: r.metrics?.personTurns ?? 0, steps: r.metrics?.steps ?? 0, failedTurns: r.metrics?.failedTurns ?? 0,
+      ttftMs: r.metrics?.ttftMs ?? null, turnMs: r.metrics?.turnLatencyMs ?? null, wallMs: r.metrics?.wallMs ?? null,
+      tokensIn: r.metrics?.tokensIn ?? 0, tokensOut: r.metrics?.tokensOut ?? 0, tokens: (r.metrics?.tokensIn ?? 0) + (r.metrics?.tokensOut ?? 0),
+      costUsd: r.metrics?.costUsd ?? 0, crashed: r.crashed ?? null, why: r.verdict.why,
     })).sort((a, b) => a.key.localeCompare(b.key)),
   };
 }
@@ -63,6 +72,8 @@ const s = (ms: number | null) => (ms === null ? "-" : `${(ms / 1000).toFixed(1)}
 export function markdown(x: Summary): string {
   return [
     `# user-sim results${x.label ? `: ${x.label}` : ""}`,
+    "",
+    `Code ${x.codeCommit ?? "?"} (checkout ${x.repoCommit ?? "?"}), bot ${x.model ?? "?"}.`,
     "",
     `${x.scenarios} scenarios. Pass ${x.passRate}% (checks all green, goal done, judge >= 4). Task success ${x.taskSuccessRate}% (checks). Judge done ${x.judgeDoneRate}%.`,
     `Checks ${x.checksPassed}. Judge ${x.judgeScore}/5 (quality ${x.quality}, tone ${x.tone}). Needless questions ${x.needlessQuestions}. Memory recall ${x.memoryRecall ?? "-"}.`,
@@ -86,13 +97,20 @@ export function markdown(x: Summary): string {
   ].join("\n");
 }
 
-export function writeSummary(dir: string, label?: string): Summary {
+export function writeSummary(dir: string, info: RunInfo = {}): Summary {
+  const previous = existsSync(join(dir, "summary.json")) ? JSON.parse(readFileSync(join(dir, "summary.json"), "utf8")) as Partial<Summary> : {};
+  info = { label: previous.label ?? undefined, repoCommit: previous.repoCommit ?? undefined, codeCommit: previous.codeCommit ?? undefined, model: previous.model ?? undefined, ...Object.fromEntries(Object.entries(info).filter(([, v]) => v)) };
   const rows = readFileSync(join(dir, "results.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Row);
   const latest = new Map(rows.map((r) => [r.key, r]));
-  const summary = summarize([...latest.values()], label);
+  const summary = summarize([...latest.values()], info);
   writeFileSync(join(dir, "summary.json"), `${JSON.stringify(summary, null, 1)}\n`);
   writeFileSync(join(dir, "summary.md"), markdown(summary));
   return summary;
+}
+
+/** A run folder, or a summary.json / baseline.json file. */
+export function readSummary(path: string): Summary {
+  return JSON.parse(readFileSync(statSync(path).isDirectory() ? join(path, "summary.json") : path, "utf8")) as Summary;
 }
 
 export function diff(a: Summary, b: Summary): string {
@@ -100,12 +118,13 @@ export function diff(a: Summary, b: Summary): string {
   const rowsA = new Map(a.rows.map((r) => [r.key, r]));
   const flips = b.rows.filter((r) => rowsA.has(r.key) && rowsA.get(r.key)!.pass !== r.pass).map((r) => `- ${r.key}: ${rowsA.get(r.key)!.pass ? "pass -> fail" : "fail -> pass"} (score ${rowsA.get(r.key)!.score} -> ${r.score})`);
   const pats = [...new Set([...Object.keys(a.patterns), ...Object.keys(b.patterns)])].map((p) => `- ${p}: ${a.patterns[p] ?? 0} -> ${b.patterns[p] ?? 0}`);
-  return ["| metric | before | after |", "|---|---|---|", ...keys.map((k) => `| ${k} | ${a[k] ?? "-"} | ${b[k] ?? "-"} |`), "", "Flips:", ...(flips.length ? flips : ["- none"]), "", "Patterns:", ...pats, ""].join("\n");
+  const commits = `before ${a.codeCommit ?? "?"} (${a.label ?? "unlabelled"}), after ${b.codeCommit ?? "?"} (${b.label ?? "unlabelled"})`;
+  return [commits, "", "| metric | before | after |", "|---|---|---|", ...keys.map((k) => `| ${k} | ${a[k] ?? "-"} | ${b[k] ?? "-"} |`), "", "Flips:", ...(flips.length ? flips : ["- none"]), "", "Patterns:", ...pats, ""].join("\n");
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [one, two] = process.argv.slice(2);
   if (!one) throw new Error("usage: summary.ts <run-dir> [<other-run-dir>]");
   if (!two) console.log(markdown(writeSummary(one)));
-  else console.log(diff(JSON.parse(readFileSync(join(one, "summary.json"), "utf8")), JSON.parse(readFileSync(join(two, "summary.json"), "utf8"))));
+  else console.log(diff(readSummary(one), readSummary(two)));
 }

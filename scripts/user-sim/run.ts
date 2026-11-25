@@ -6,6 +6,7 @@
 //   node --experimental-strip-types scripts/user-sim/run.ts --out <dir> [--only id,id] [--tag memory,routine]
 //     [--parallel 4] [--repeat 1] [--model gpt-6.2-sol] [--judge gpt-6.2-sol] [--person gpt-6.2-sol] [--keep] [--repo <checkout>]
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -22,6 +23,7 @@ import { writeSummary } from "./summary.ts";
 import { connectorState, deepMerge, loadWorld, relEpoch, resolveTimes, setContentDir, startEpoch, type World } from "./world.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const git = (...args: string[]) => { try { return execFileSync("git", ["-C", values.repo!, ...args], { encoding: "utf8" }).trim().slice(0, 120); } catch { return undefined; } };
 const { values } = parseArgs({ options: {
   repo: { type: "string", default: resolve(here, "..", "..") },
   out: { type: "string" },
@@ -163,7 +165,7 @@ async function runScenario(s: Scenario, run: number): Promise<Record<string, unk
   try {
     await api.call("PATCH", "/api/config", { profile: { name: world.persona.name, ...(world.persona.aboutMe ? { aboutMe: world.persona.aboutMe } : {}) } });
     const writeFiles = (files: Record<string, string>) => {
-      for (const [path, body] of Object.entries(files)) { const full = join(srv.dataDir, path); mkdirSync(dirname(full), { recursive: true }); writeFileSync(full, body); }
+      for (const [path, body] of Object.entries(files)) { const full = join(srv.dataDir, path); mkdirSync(dirname(full), { recursive: true }); writeFileSync(full, body, { mode: /\.(sh|py|mjs|js)$/.test(path) || body.startsWith("#!") ? 0o755 : 0o644 }); }
     };
     writeFiles(resolveTimes(world.files ?? {}, start, tz));
     const bots = new Map<string, { id: string; threadId: string }>();
@@ -366,5 +368,5 @@ await Promise.all(Array.from({ length: Math.max(1, Number(values.parallel)) }, a
     }
   }
 }));
-writeSummary(out, values.label || undefined);
+writeSummary(out, { label: values.label || undefined, repoCommit: git("rev-parse", "--short=10", "HEAD"), codeCommit: git("log", "-1", "--format=%h %cs %s", "--abbrev=10", "--", "server", "shared"), model: values.model });
 log("done:", join(out, "summary.md"));

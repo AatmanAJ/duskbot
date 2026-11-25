@@ -35,6 +35,18 @@ node --experimental-strip-types scripts/user-sim/summary.ts <dir>               
 node --experimental-strip-types scripts/user-sim/summary.ts <before> <after>      # diff two runs
 ```
 
+Compare two runs (a run folder, its `summary.json`, or a saved `baseline.json`):
+
+```
+node --experimental-strip-types scripts/user-sim/summary.ts baseline.json <new-run>/summary.json
+```
+
+`summary.json` records the checkout and the last commit touching `server/` or `shared/` (`codeCommit`), the bot model,
+the totals, failure patterns, per-tag counts and one row per scenario (category, pass, task success, judge scores,
+needless questions, recall, turns, tool steps, time to first text, turn latency, tokens, cost, failed checks, why).
+With one model run per scenario, expect a scenario or two to flip between runs on noise alone; use `--repeat 2` or
+more before trusting a single flip.
+
 Run it on the Mac (never on contabo). The gateway key comes from `DUSK_EVAL_KEY` or the mchat `.env`
 (`scripts/memory-eval/sandbox.ts`). A rerun into the same `--out` skips scenarios already in `results.jsonl`.
 `--out` gets `results.jsonl`, `summary.json`, `summary.md` and one transcript per scenario in `transcripts/`.
