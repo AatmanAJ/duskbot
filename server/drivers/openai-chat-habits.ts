@@ -52,13 +52,16 @@ export function claimsUnmadeChange(text: string, effectful: number): boolean {
 }
 
 // tools that only report: they never change anything a person would call done
-const LOOKUP_TOOL = /(?:^|_)(?:set_status|find_tool|tool_result_read|ask_user|list_[a-z_]+|[a-z_]+_info|search[a-z_]*|read[a-z_]*|get[a-z_]*|describe|show|load|sql|recall)$/;
+const LOOKUP_TOOL = /(?:^|_)(?:set_status|find_tool|tool_result_read|ask_user|list_[a-z_]+|[a-z_]+_info|search[a-z_]*|read[a-z_]*|get[a-z_]*|describe|describe_tool|show|load|sql|recall)$/;
+
+/** a call that runs another tool by name: the agents bridge's use_tool, or call_tool of a server reached by tool search */
+export const BRIDGE_TOOL = /(?:^|_)(?:use_tool|call_tool)$/;
 
 /** a tool call (its name and raw JSON arguments) that can have changed something; a bridged call counts by the tool it ran */
 export function effectfulCall(name: string, rawArgs: string): boolean {
   let args: unknown;
   try { args = JSON.parse(rawArgs); } catch { args = null; }
-  const bridged = /(?:^|_)use_tool$/.test(name) && args && typeof args === "object" && typeof (args as { name?: unknown }).name === "string" ? (args as { name: string }).name : name;
+  const bridged = BRIDGE_TOOL.test(name) && args && typeof args === "object" && typeof (args as { name?: unknown }).name === "string" ? (args as { name: string }).name : name;
   return !LOOKUP_TOOL.test(bridged);
 }
 

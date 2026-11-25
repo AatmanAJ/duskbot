@@ -36,6 +36,7 @@ describe("callEvidence", () => {
     expect(callEvidence("calendar_create_event")).toEqual(["schedule", "save"]);
     expect(callEvidence("agents_use_tool", JSON.stringify({ name: "memory_update", arguments: { action: "forget" } }))).toEqual(["remove"]);
     expect(callEvidence("memory_update", JSON.stringify({ action: "append" }))).toEqual(["save"]);
+    expect(callEvidence("mcp_call_tool", JSON.stringify({ name: "gmail_gmail_send", arguments: { to: "a@b.test" } }))).toEqual(["send"]);
     expect(callEvidence("Bash")).toEqual(["shell"]);
   });
 
