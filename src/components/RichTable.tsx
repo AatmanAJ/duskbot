@@ -45,7 +45,7 @@ function ModalTableDialog({ title, closeLabel = t("table.close"), onClose, child
     return () => { dialog.close(); if (returnFocus?.isConnected) returnFocus.focus(); };
   }, [returnFocus]);
   return createPortal(
-    <dialog ref={ref} aria-labelledby={id} onCancel={onClose} onClose={onClose}
+    <dialog ref={ref} aria-labelledby={id} onCancel={onClose} onClose={() => { if (!ref.current?.open) onClose(); }}
       onKeyDown={(event) => { if (event.key === "Escape") event.stopPropagation(); }}
       className="m-auto flex max-h-[94dvh] w-[min(96vw,1400px)] max-w-none flex-col overflow-hidden rounded-2xl border border-transparent bg-panel p-0 text-ink shadow-2xl backdrop:bg-black/55">
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-transparent px-4 py-3">
