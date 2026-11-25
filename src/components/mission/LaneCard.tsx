@@ -6,6 +6,7 @@ import { ArrowUpRight, FileText, Folder, GitBranch, Play, RotateCcw, Send, Squar
 import { cn } from "@/lib/cn";
 import type { MausState } from "@/lib/mascot";
 import { t } from "@/lib/i18n";
+import { friendlyError } from "@/lib/plain-error";
 import { sendToLane, stopLane } from "@/state/missions";
 import { useStore, type Bot } from "@/state/store";
 import { useTurnLive } from "@/state/turn-status";
@@ -57,7 +58,7 @@ export function LaneCard({ lane, bot, now, onReview }: { lane: MissionLane; bot:
       setText("");
       setComposer(null);
     } catch (failure) {
-      setError(t("mission.lane.failedToSend", { error: failure instanceof Error ? failure.message : String(failure) }));
+      setError(t("mission.lane.failedToSend", { error: friendlyError(failure) }));
     } finally {
       setBusy(false);
     }

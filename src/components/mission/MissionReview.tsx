@@ -5,6 +5,7 @@ import { Copy, GitBranch, RotateCcw, Trash2 } from "@/icons";
 import { cn } from "@/lib/cn";
 import { copyText } from "@/lib/copy-text";
 import { t } from "@/lib/i18n";
+import { friendlyError } from "@/lib/plain-error";
 import { readLaneDiff, removeLaneFolder } from "@/state/missions";
 import { askConfirm } from "../ConfirmDialog";
 import { LaneLed } from "./LaneCard";
@@ -22,7 +23,7 @@ function useLaneDiff(missionId: string, lane: MissionLane | undefined, version: 
     let live = true;
     readLaneDiff(missionId, threadId)
       .then((diff) => { if (live) setLoaded({ lane: threadId, diff }); })
-      .catch((error: unknown) => { if (live) setLoaded({ lane: threadId, error: error instanceof Error ? error.message : String(error) }); });
+      .catch((error: unknown) => { if (live) setLoaded({ lane: threadId, error: friendlyError(error) }); });
     return () => { live = false; };
   }, [missionId, threadId, version, nonce]);
   return { loaded: loaded?.lane === threadId ? loaded : null, reload: () => setNonce((n) => n + 1) };
@@ -64,7 +65,7 @@ export function MissionReview({ view, focus }: { view: MissionView; focus: strin
     const yes = await askConfirm({ title: t("mission.review.removeConfirm", { name: lane.botName }), body: t("mission.review.removeBody", { branch: lane.worktree!.branch }), confirmLabel: t("mission.review.remove") });
     if (!yes) return;
     setProblem(null);
-    try { await removeLaneFolder(view.id, lane.threadId); reload(); } catch (error) { setProblem(error instanceof Error ? error.message : String(error)); }
+    try { await removeLaneFolder(view.id, lane.threadId); reload(); } catch (error) { setProblem(friendlyError(error)); }
   };
 
   return (

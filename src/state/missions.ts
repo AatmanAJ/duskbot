@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import { MISSION_TITLE_MAX, type LaneDiff, type MissionSummary, type MissionView, type RepoProbe } from "../../shared/mission";
+import { friendlyError } from "../lib/plain-error";
 import { randomUuid } from "../lib/random-uuid";
 import { api } from "./api";
 
@@ -113,7 +114,7 @@ export async function launchMission(draft: MissionDraft): Promise<LaunchResult> 
       });
       await sendToLane(lane.botId, made.task.threadId, brief);
     } catch (error) {
-      failed.push({ botId: lane.botId, error: error instanceof Error ? error.message : String(error) });
+      failed.push({ botId: lane.botId, error: friendlyError(error) });
     }
   }));
   page.set({ open: true, missionId, composing: false });

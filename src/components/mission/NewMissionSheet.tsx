@@ -4,6 +4,7 @@ import { MISSION_BRIEF_MAX, MISSION_MAX_LANES, MISSION_TITLE_MAX, type RepoProbe
 import { Check, FolderOpen, GitBranch, X, Zap } from "@/icons";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
+import { friendlyError } from "@/lib/plain-error";
 import { composeMission, launchMission, probeRepo } from "@/state/missions";
 import { useStore } from "@/state/store";
 import { BotAvatar } from "../Avatar";
@@ -27,7 +28,7 @@ export function NewMissionSheet() {
     setRepoPath(path);
     if (!path.trim()) { setRepo(null); return; }
     setChecking(true);
-    try { setRepo(await probeRepo(path.trim())); } catch (error) { setRepo({ ok: false, error: error instanceof Error ? error.message : String(error) }); }
+    try { setRepo(await probeRepo(path.trim())); } catch (error) { setRepo({ ok: false, error: friendlyError(error) }); }
     finally { setChecking(false); }
   };
   const pick = async () => {
