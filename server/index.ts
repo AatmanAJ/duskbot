@@ -249,7 +249,7 @@ import { BUILT_IN_DRIVERS } from "./drivers/builtIn.ts";
 import { openCodeProviderKeysAllowed, setOpenCodeProviderKeyPolicy } from "./drivers/acp/opencode-go.ts";
 import { openCardRows, readMessageText, recallMessages, recentMessages, closeMessageSearch, closeMessageDb, chatFollowups, cancelledChatFollowup, settleChatFollowups, threadsReferencing, logNotification, recentNotificationLog, lastRowAt, threadsWithCardsSince, optionCardsForTools } from "./message-db.ts";
 import { briefCrossingLabel, claimRecallCrossings, recallCrossingLabel } from "./recall-disclosure.ts";
-import { correctedChatTitles, parseSince, parseUntil, recentWork, recentWorkPrompt, turnOutcomeLine } from "./recent-work.ts";
+import { standingRulesNote } from "./standing-rules.ts"; import { correctedChatTitles, parseSince, parseUntil, recentWork, recentWorkPrompt, turnOutcomeLine } from "./recent-work.ts";
 import { createFailureNotices } from "./host/failure-notices.ts";
 import { createHandoffTicks } from "./handoff-ticks.ts"; import { IDLE_HTTP_SERVER } from "./due-timer.ts";
 
@@ -8916,7 +8916,7 @@ async function beginTurn(
         skillAuthoring ? expandLearnTurnText(setupText) : setupText,
         opts?.replyTo,
         userNameFor(threadId),
-      ), personLine ? activeMessages : [], skipTranscript, userNameFor(threadId)), lineLabels(threadId)), [...turnImages, ...documents.images], usesNativeImageInput && !imageRefusedThreads.has(threadId)), currentImages = [...turnImages, ...documents.images, ...quotedImages];
+      ), personLine ? activeMessages : [], skipTranscript, userNameFor(threadId)), lineLabels(threadId)) + (opts?.cardContinuation ? "" : standingRulesNote(setupText, { aboutMe: teamHost.profileFor(threadId, cfg.profile)?.aboutMe ?? "", memory: bot.memoryEnabled === false ? "" : readMemoryFile(teamHost.layer(bot.id, threadId)).text })), [...turnImages, ...documents.images], usesNativeImageInput && !imageRefusedThreads.has(threadId)), currentImages = [...turnImages, ...documents.images, ...quotedImages];
       const replay = usesNativeImageInput
         ? extractReplayImages(selection.inline, currentImages, { withoutImages: imageRefusedThreads.delete(threadId) })
         : { transcript: selection.inline, images: [] };

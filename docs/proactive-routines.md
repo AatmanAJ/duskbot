@@ -99,7 +99,9 @@ there is no brief at all. Its row says
      handed it;
    - Gmail's and Calendar's answers reach it as records;
    - no web search, browser, computer, phone or other tools; no memory, recent
-     work, team notes or skills in its prompt; nothing captured into memory;
+     work, team notes or skills in its prompt beyond the person's standing
+     rules (up to three always/never lines, under the run's words); nothing
+     captured into memory;
    - its conversation stays out of recall, recent work, `list_threads` and Chief
      notices.
 
