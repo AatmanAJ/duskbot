@@ -61,7 +61,7 @@ import { commandSummary, toolDetailPreview } from "../../tool-summary.ts";
 import { acpToolEndEvents } from "./tool-items.ts";
 import { AcpHost } from "./host.ts";
 import { exitDetail } from "./exit-report.ts";
-import { availableCommandNames, endTurn, isAccountError, lookupResultArrived, needsRemount, skipSubscriptionAuthForLocalInject, trackRunningTool, type AccountErrorCode, type AcpAskFinish, type AcpConfig, type AcpSession, type AcpTurn } from "./turn-state.ts";
+import { availableCommandNames, endTurn, isAccountError, lookupResultArrived, skipSubscriptionAuthForLocalInject, trackRunningTool, type AccountErrorCode, type AcpAskFinish, type AcpConfig, type AcpSession, type AcpTurn } from "./turn-state.ts";
 export { skipSubscriptionAuthForLocalInject, type AccountErrorCode, type AcpConfig };
 import { recoveryPromptFor } from "../../resume-recovery.ts";
 import { engineIdleMs, keepWarm, sessionIdlePolicy, stopIdleClose } from "../session-idle.ts";
@@ -69,7 +69,7 @@ import { classifyError } from "../retry.ts";
 import { engineFailureKind, engineFailureMessage, stopCause } from "../engine-errors.ts";
 import { cliExitCode, failureCode, rpcCode } from "../../../shared/usage-signals.ts";
 import { narrowsNativeTools, parseToolScope } from "../../../shared/tool-scope.ts";
-import { acpMcpMountKey, acpMcpServers, type AcpMcpServer } from "../turn-mcp.ts"; import { acpToolOutput, acpToolProgress } from "../tool-progress.ts";
+import { acpMcpMountKey, acpMcpServers, type AcpMcpServer } from "../turn-mcp.ts"; import { mountChanged, recordMount } from "./session-mounts.ts"; import { acpToolOutput, acpToolProgress } from "../tool-progress.ts";
 import { learnedMcpToolBudget, retryUnderToolLimit } from "../../tool-count-limit.ts"; import { instanceEnvNames } from "../../bot-box/env.ts"; import { botBox } from "../../bot-box/box.ts";
 
 /** Per-CLI specifics plugged into the shared ACP runtime; `askTool` is the native tool `questionRequests` come from. */
@@ -1140,9 +1140,9 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           closeSession(threadId, "reset");
           sessionAllows.delete(threadId);
         }
-        const pooled = sessions.get(threadId);
+        const pooled = sessions.get(threadId), remount = !turn.sessionReset && mountChanged(DRIVER_KIND, threadId, turn.resumeCursor, mountKey, pooled);
         let session: AcpSession;
-        if (pooled && !pooled.dead && !pooled.closing && pooled.contractKey === contractKey && !needsRemount(pooled, mountKey, support.shareProcess === true)
+        if (pooled && !pooled.dead && !pooled.closing && pooled.contractKey === contractKey && !remount
             && (!support.restartOnMcpChange || pooled.sessionKey === sessionKey)) {
           if (pooled.idleTimer) clearTimeout(pooled.idleTimer);
           pooled.idleTimer = null; stopIdleClose(hostIdleKey(pooled.host), null);
@@ -1150,7 +1150,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         } else {
           if (pooled) {
             if (pooled.dead) sessions.delete(threadId);
-            else closeSession(threadId, needsRemount(pooled, mountKey, support.shareProcess === true) ? "remount" : "contract");
+            else closeSession(threadId, remount ? "remount" : "contract");
           }
           const joining = sharedHost(hostKey);
           await turn.engineAdmission?.(joining ? "session" : "process", joining?.child.pid);
@@ -1326,7 +1326,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
               const selectionParams = narrowsNativeTools(turn.toolScope)
                 ? support.toolScopeSessionParams!(turn, init, mcpServers.length > 0, { config: turnConfig, env, cwd }) : {};
               let loaded = false;
-              if (cursor) {
+              if (cursor && !remount) {
                 if (cursor !== liveSessionId) session.availableCommands = [];
                 try {
                   await request(
@@ -1337,7 +1337,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
                       if (result) {
                         loaded = true;
                         session.sessionId = cursor;
-                        session.sessionKey = sessionKey; session.mountKey = mountKey;
+                        session.sessionKey = sessionKey; session.mountKey = mountKey; recordMount(DRIVER_KIND, threadId, cursor, mountKey);
                         receiveModelVariants(result, true);
                       }
                     },
@@ -1378,7 +1378,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
               session.availableCommands = [];
               await request("session/new", { cwd, mcpServers: support.mcpServersFromLaunch ? [] : mcpServers, ...selectionParams }, NEW_SESSION_TIMEOUT, (result) => {
                 session.sessionId = typeof result?.sessionId === "string" ? result.sessionId : null;
-                session.sessionKey = sessionKey; session.mountKey = mountKey;
+                session.sessionKey = sessionKey; session.mountKey = mountKey; recordMount(DRIVER_KIND, threadId, session.sessionId, mountKey);
                 receiveModelVariants(result, true);
               });
               break;

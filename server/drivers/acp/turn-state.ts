@@ -73,7 +73,7 @@ export interface AcpSession {
   /** mcpServers the native session was built with. They ride session/new and session/load, not argv,
    *  and bearer tokens rotate every turn, so a change re-establishes the session on the same child. */
   sessionKey: string | null;
-  /** The tools those servers offer (acpMcpMountKey); a change needs a new process, since a live load keeps the old list. */
+  /** The tools those servers offer (acpMcpMountKey); a change opens a new session. */
   mountKey: string | null;
   sessionId: string | null;
   sessionConfigResult: any;
@@ -92,12 +92,6 @@ export interface AcpSession {
 }
 
 /** Extracts command names from an ACP `available_commands_update` notification. */
-/** Agents connect a session's MCP servers once: a live session/load or session/resume keeps the old tool list, so a changed
- * mount needs a new process. A shared process (OpenCode) reloads a session's servers in place. */
-export function needsRemount(pooled: Pick<AcpSession, "mountKey"> | undefined, mountKey: string, sharedProcess: boolean): boolean {
-  return Boolean(pooled && !sharedProcess && pooled.mountKey !== null && pooled.mountKey !== mountKey);
-}
-
 export function availableCommandNames(update: unknown): string[] | null {
   if (!update || typeof update !== "object") return null;
   const record = update as { sessionUpdate?: unknown; availableCommands?: unknown };
