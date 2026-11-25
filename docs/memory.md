@@ -587,7 +587,17 @@ so the person never has to say "remember this".
 - **A new message wins.** When a turn starts for the bot, a skill review or
   capture call in flight for it is dropped; nothing is lost: the review runs
   again once the bot is free, and the capture's turns wait in the queue until
-  then (or the next ten-minute check).
+  then (or the next ten-minute check). Other captures are not held back by a
+  running turn.
+- **Before a summary.** Before a long conversation is compacted, by dusk
+  bot's own fold, Claude Code's idle summary on a fork, or Claude Code's own
+  compaction (its `PreCompact` hook), the turns waiting for capture in that
+  conversation are captured at once instead of after two quiet minutes, and
+  the conversation's held copy of `MEMORY.md` and About me is let go, so the
+  next turn reads memory as it is now, with whatever was saved meanwhile (as
+  Hermes Agent rebuilds its prompt from memory after compression). The
+  conversation itself stays in the chat history, so capture reads the turns
+  from there, not from the engine's context.
 - **Routines and other bots.** A routine run's and a hand-off's tool steps
   count toward the skill review, and the review sees the instruction as the
   routine's or the other bot's, never as the person's. Memory capture reads a

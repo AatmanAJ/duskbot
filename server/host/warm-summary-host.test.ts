@@ -141,6 +141,14 @@ describe("warm summaries for a Claude conversation", () => {
     expect(f.book).toHaveBeenCalledWith({ threadId: "t1", botId: "b1", instanceId: "claude" }, expect.objectContaining({ ok: true, cacheRead: 150_000 }));
   });
 
+  it("saves what the conversation taught before the engine summarizes it", async () => {
+    const order: string[] = [];
+    const f = setup({ summarizing: (target) => order.push(`flush ${target.threadId}`) }, { onCompact: () => order.push("compact") });
+    f.finishTurn();
+    await f.advance(WARM_SUMMARY_IDLE_MS);
+    expect(order).toEqual(["flush t1", "compact"]);
+  });
+
   it("writes its line in the language of the conversation's person", async () => {
     // A stand-in pack: the real translations are checked with the locale tests.
     addServerLinePacks({ de: { "server.warmSummary.summarized": "in einer Pause zusammengefasst" } });

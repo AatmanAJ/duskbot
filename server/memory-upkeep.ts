@@ -276,6 +276,7 @@ async function askModel(engine: UpkeepEngine, prompt: string, timeoutMs = MODEL_
 /** A flushed chat waiting for its capture call; `done` answers a caller of `capture`. */
 interface Waiting {
   batch: CaptureBatch;
+  /** Its call gave way to a new message: it waits until the bot is free. */ yielded?: true;
   done?: { resolve: (report: CaptureReport) => void; reject: (error: unknown) => void };
 }
 
@@ -566,8 +567,7 @@ export function createMemoryUpkeep(deps: UpkeepDeps): MemoryUpkeep {
     ensureWorkspace(id);
     const today = memoryDate(now());
     const known = await knownFacts(id, conversations, today);
-    const yielded = new AbortController();
-    capturing.set(id, yielded);
+    const yielded = new AbortController(); capturing.set(id, yielded);
     const answer = await askModel(engine, capturePrompt({
       botName: bot.name,
       conversations: conversations.map((conversation) => conversation.turns),
@@ -579,7 +579,7 @@ export function createMemoryUpkeep(deps: UpkeepDeps): MemoryUpkeep {
     }), MODEL_TIMEOUT_MS, yielded.signal).finally(() => { if (capturing.get(id) === yielded) capturing.delete(id); });
     if (started !== generation) return { ...off, note: "upkeep stopped" };
     if (yielded.signal.aborted) {
-      queue.unshift(...conversations.map((batch) => ({ batch })));
+      queue.unshift(...conversations.map((batch) => ({ batch, yielded: true as const })));
       return { at, added: 0, topics: 0, aboutMe: 0, note: "deferred until the bot answers its new message" };
     }
     if (answer === null) {
@@ -664,9 +664,10 @@ export function createMemoryUpkeep(deps: UpkeepDeps): MemoryUpkeep {
     return report;
   }
 
+  const ready = (entry: Waiting) => !entry.yielded || !deps.busy(entry.batch.botId);
   /** The first waiting batch, with its bot's other waiting batches that fit in the same call. */
   function takeCall(): Waiting[] {
-    const at = queue.findIndex((entry) => !deps.busy(entry.batch.botId));
+    const at = queue.findIndex(ready);
     if (at < 0) return [];
     const [first] = queue.splice(at, 1) as [Waiting];
     const call = [first];
@@ -707,7 +708,7 @@ export function createMemoryUpkeep(deps: UpkeepDeps): MemoryUpkeep {
   }
 
   function kick(): void {
-    if (!worker && !paused && queue.some((entry) => !deps.busy(entry.batch.botId))) worker = track(work());
+    if (!worker && !paused && queue.some(ready)) worker = track(work());
   }
 
   function enqueue(entry: Waiting): void {
