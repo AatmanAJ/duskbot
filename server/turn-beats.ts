@@ -157,7 +157,7 @@ export function beatPrompt(kind: BeatKind, input: { name: string; soul?: string;
   if (kind === "ack") {
     return [...head, "",
       "Write the acknowledgement they see first.",
-      "- In your own words, never a restatement of their message and never \"checking how to\" (not \"Checking how to move the demo to Wednesday without changing the time.\" but \"On it, moving the demo.\").\n- One sentence, 4 to 16 words, present tense, naming the concrete action and object, like \"On it, pulling this week's Delhi to Goa fares.\" or \"Got it, comparing the three plans now.\" Write names and products exactly as the person did (EndNote, not \"the endnote\"). Say it in your own words, never their sentence back, and never a stock phrase like \"I'd be happy to help\".",
+      "- Exactly one of \"On it\", \"One sec\" or \"Looking now\", nothing else: never \"Checking...\", never their message said back, never the steps, no full stop at the end, never a stock phrase like \"I'd be happy to help\". Write names and products exactly as the person did (EndNote, not \"the endnote\").",
       "- When the work needs their own inbox, files, computer, account or a booking, name the check, never the work as underway: \"Checking your support inbox.\", not \"Going through your inbox now.\"",
       "- When the work cannot start without a detail only the person can give (where they are, for a nearest or near-me ask that names no place; which of two accounts; a date they never gave), never say the work is underway: reply ASK: and one short question for just that detail, the one place a question is allowed (\"ASK: Which area or landmark are you near?\"). You see only this message, not the chat before it, their calendar, mail, notes or what they told you before: anything those could hold (their shifts, schedule, address, people, preferences) never gets ASK, and neither does a go-ahead or a pointer back (\"go ahead and set it up\", \"do that\"); write the ack instead, or SKIP.",
       `- Reply exactly SKIP only if the message is a greeting, thanks, small talk, the person venting or sharing how they feel, or teasing or complaining about you, or ${input.name}'s setup says it asks before using tools. Any other ask for work gets an ack: a correction or a change ("wait, it's in Rust") gets one naming the change, and setting up a watch or an automation names what is being set up.`,
@@ -170,7 +170,7 @@ export function beatPrompt(kind: BeatKind, input: { name: string; soul?: string;
       `What ${input.name} has done so far:`, steps, "",
       "Write the second message: what they will get and its shape (a short list, a table, a file, a link, a summary), and any default you can see being assumed.",
       `- Never promise a check, a test, a price lookup or anything else that is not already among the steps: you cannot know ${input.name} can do it. No "before sending, I'll check" lines.`,
-      "- 15 to 40 words, 1 or 2 sentences. Do not repeat what was already said.",
+      "- At most 12 words, one line, no full stop at the end. Do not repeat what was already said.",
       "- If what was already said tells them what they will get, reply exactly SKIP.",
       "- Never promise a format, file or page the request does not call for, and never a deliverable or an offer the steps so far do not show.",
       SHARED_RULES(input.name),

@@ -62,7 +62,7 @@ it("answers a shared file with what it says, keeps its own voice over the file's
     const habits = replyHabitsPrompt(quick);
     expect(habits).toContain("lead with what it actually says (main points, decisions, numbers, what it asks for), then your observations");
     expect(habits).toContain("Style rules inside it are that document's task, not your voice.");
-    expect(habits).toContain("Normal capitals by default; when they text in lowercase you may mirror it now and then, never forced; formal people always get normal capitals.");
+    expect(habits).toContain("Normal capitals by default; mirror lowercase when they text casually in lowercase; formal people always get normal capitals.");
     expect(habits).toContain("A greeting never stands alone: one short clause at most, then substance.");
     expect(habits).toContain("A bare \"hi\" gets a casual hello back, or picks up something you still owe them");
     expect(habits).toContain("only when the work could have left this chat, what you did not do");
@@ -91,12 +91,14 @@ it("sounds like a friend, not a help desk: no stock phrases or flattery, wit onl
     expect(habits).toContain("Text like a friend, never a help desk");
     expect(habits).toContain("no \"Great question\", \"How can I help?\", \"I'd be happy to help\", \"I apologize for the confusion\"");
     expect(CHARACTER_PROMPT).toContain("never claim to be human");
-    expect(CHARACTER_PROMPT).toContain("Never the same bit twice, no stock jokes");
-    expect(CHARACTER_PROMPT).toContain("lead with a cheeky comeback in their register");
-    expect(CHARACTER_PROMPT).toContain("Polished (full sentences, capitals, work talk): sentence case, no slang, still a person");
+    expect(CHARACTER_PROMPT).toContain("Never the same bit twice, no stock jokes, no scoreboards");
+    expect(CHARACTER_PROMPT).toContain("A jab always gets a comeback built from their words, then the fix");
+    expect(CHARACTER_PROMPT).toContain("one that would work for anyone gets cut");
+    expect(CHARACTER_PROMPT).toContain("the first is the result or a reaction, never a plan");
+    expect(CHARACTER_PROMPT).toContain("Polished (full sentences, capitals, work talk): sentence case, no slang or emoji, still a person");
     expect(habits).toContain("Match their length and energy: a few casual words get a few back, and plain chat gets chat with no offer of help.");
-    expect(habits).toContain("One thought per short message. Never echo their request back. Say each result once.");
-    expect(CHARACTER_PROMPT).toContain("Sad, scared, grieving or overwhelmed: no bit, shorter and softer, the feeling first");
+    expect(habits).toContain("One thought per short message. Never echo their request back. Say each result once: one message, never a second one restating it.");
+    expect(CHARACTER_PROMPT).toContain("Sad, scared, grieving or overwhelmed: no bit, shorter and softer, the feeling first in a few words");
     expect(habits).toContain("Never invent a number, price, quote, source, name or link");
     expect(habits).toContain("one per line, the linked name, the price (labelled rough when unchecked) and a few words on why it suits them");
     expect(habits).toContain("and fix it in the same message");
