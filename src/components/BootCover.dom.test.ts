@@ -10,8 +10,8 @@ let switching: ((on: boolean) => void) | null = null;
 const handed: HandedLook[] = [];
 
 const cover = () => document.querySelector<HTMLElement>("[data-boot-cover]");
-function render(busy: boolean) {
-  act(() => root!.render(createElement(BootCover, { busy })));
+function render(busy: boolean, hold = false) {
+  act(() => root!.render(createElement(BootCover, { busy, hold })));
 }
 
 beforeEach(() => {
@@ -71,6 +71,24 @@ describe("the boot cover on a switch of place", () => {
     act(() => switching!(false));
     act(() => { vi.advanceTimersByTime(2000); });
     expect(cover()?.dataset.bootCover).toBe("loading");
+  });
+});
+
+describe("a first-run welcome on its way", () => {
+  it("keeps the cover over the app until the welcome is there, then lets it go", () => {
+    render(true);
+    render(false, true);
+    act(() => { vi.advanceTimersByTime(2000); });
+    expect(cover()?.dataset.bootCover).toBe("loading");
+    render(false, false);
+    act(() => { vi.advanceTimersByTime(2000); });
+    act(() => { vi.advanceTimersByTime(2000); });
+    expect(cover()).toBeNull();
+  });
+
+  it("never raises a cover over a window that opened with its bots there", () => {
+    render(false, true);
+    expect(cover()).toBeNull();
   });
 });
 

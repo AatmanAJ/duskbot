@@ -7,14 +7,15 @@ type Phase = "loading" | "closing" | "fading" | "gone";
 const FADE_MS = 300;
 
 /** Covers the window while it first connects with the loading mascot; once the app has something to show the mascot
- * hops away and the cover fades over the app. From the closing on, clicks reach the app under it. A window that opens
- * with its bots already there never shows it. A switch to another place covers the page at once, until the next page
- * (whose own cover goes on with the same mascot) replaces it, or until main says the switch ended here. */
-export function BootCover({ busy, first }: { busy: boolean; first?: string }) {
+ * hops away and the cover fades over the app. `hold` keeps a cover already up a while longer (a first-run welcome on
+ * its way) but never raises one. From the closing on, clicks reach the app under it. A window that opens with its bots
+ * already there never shows it. A switch to another place covers the page at once, until the next page (whose own
+ * cover goes on with the same mascot) replaces it, or until main says the switch ended here. */
+export function BootCover({ busy, hold = false, first }: { busy: boolean; hold?: boolean; first?: string }) {
   const [phase, setPhase] = useState<Phase>(busy ? "loading" : "gone");
   const [switching, setSwitching] = useState(false);
   const [round, setRound] = useState(0);
-  const waiting = busy || switching;
+  const waiting = busy || switching || hold;
 
   useEffect(() => {
     const workspaces = window.duskDesktop?.workspaces;

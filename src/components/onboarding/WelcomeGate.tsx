@@ -3,7 +3,7 @@ import { useAmbientAway } from "@/ambient/away";
 import { emailGateDone } from "@/lib/analytics";
 import { clearWelcomeDraft } from "@/lib/welcome-draft";
 import { openedFromTheApp } from "@/lib/cloud-welcome";
-import { LOCAL_VIEWER, welcomeDue, welcomeViewer, type WelcomeViewer } from "@/lib/onboarding";
+import { LOCAL_VIEWER, useWelcomeOnScreen, welcomeDue, welcomeViewer, type WelcomeViewer } from "@/lib/onboarding";
 import { PHONE_LAYOUT } from "@/lib/use-media-query";
 import { api, useStore } from "@/state/store";
 import { focusComposerWhenShown } from "../AskCard";
@@ -42,27 +42,39 @@ export function useWelcomeViewer(): WelcomeViewer | null {
 
 const panelDocks = () => !window.matchMedia?.(PHONE_LAYOUT).matches && window.matchMedia?.(`(min-width: ${PANEL_DOCKS_AT}px)`).matches === true;
 
+const welcomeDueFor = (config: Parameters<typeof welcomeDue>[0], viewer: WelcomeViewer | null) => welcomeDue(config, {
+  remoteClient: window.duskDesktop?.remoteClient?.active === true,
+  legacyDone: emailGateDone(),
+  canSave: viewer?.canSave,
+  cloudHome: viewer?.cloudHome,
+  fromApp: openedFromTheApp(),
+});
+
+/** How long the window's loading cover may wait for a due welcome to arrive: a welcome that never loads uncovers the app. */
+const WELCOME_HOLD_MS = 4000;
+
+/** A welcome is due on this launch and not on screen yet, so the loading cover stays over the app until it is. */
+export function useWelcomeIncoming(viewer: WelcomeViewer | null): boolean {
+  const { state } = useStore();
+  const shown = useWelcomeOnScreen();
+  const [expired, setExpired] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setExpired(true), WELCOME_HOLD_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
+  if (expired || shown || !viewer) return false;
+  return state.config === null || welcomeDueFor(state.config, viewer);
+}
+
 export function WelcomeGate({ viewer }: { viewer: WelcomeViewer | null }) {
   const { state, dispatch } = useStore();
   const [dismissed, setDismissed] = useState(false);
-  const remoteClient = window.duskDesktop?.remoteClient?.active === true;
   // A welcome finished elsewhere (another window, an older version's record) leaves no draft behind to resume later.
-  const finished = Boolean(viewer && state.config) && !welcomeDue(state.config, {
-    remoteClient, legacyDone: emailGateDone(), canSave: viewer?.canSave, cloudHome: viewer?.cloudHome, fromApp: openedFromTheApp(),
-  });
+  const finished = Boolean(viewer && state.config) && !welcomeDueFor(state.config, viewer);
   useEffect(() => {
     if (finished) clearWelcomeDraft();
   }, [finished]);
-  const due =
-    Boolean(viewer) &&
-    !dismissed &&
-    welcomeDue(state.config, {
-      remoteClient,
-      legacyDone: emailGateDone(),
-      canSave: viewer?.canSave,
-      cloudHome: viewer?.cloudHome,
-      fromApp: openedFromTheApp(),
-    });
+  const due = Boolean(viewer) && !dismissed && welcomeDueFor(state.config, viewer);
   useAmbientAway("welcome", Boolean(viewer) && (state.welcomeOpen || due));
   if (!viewer) return null;
   // Settings panes the welcome sends people to: API keys (Open API keys), workspaces, the organization sign-in

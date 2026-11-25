@@ -7,7 +7,7 @@ import { SignInSheetHost } from "./components/SignInSheet";
 import { openSignIn } from "@/lib/sign-in-sheet";
 
 import { nextShortcutBot, shortcutBots, shownBotIds } from "@/lib/sidebar-shortcut-order";
-import { useWelcomeViewer, WelcomeGate } from "@/components/onboarding/WelcomeGate";
+import { useWelcomeIncoming, useWelcomeViewer, WelcomeGate } from "@/components/onboarding/WelcomeGate";
 import { LateCloudPlan } from "@/components/onboarding/LateCloudPlan";
 import { IslandIntroHost } from "@/components/onboarding/IslandIntroHost";
 import { NotesAskHost } from "@/components/onboarding/NotesAskHost";
@@ -197,6 +197,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   const welcome = useCloudWelcome();
   const welcomeOnScreen = cloudWelcomeVisible({ viewer, connected: state.connected, enginesKnown: state.instances.length > 0, onboarding: state.config?.onboarding }, welcome)
     && state.activeView === "chat";
+  const welcomeIncoming = useWelcomeIncoming(viewer);
   const firstRun = cloudFirstRun({ welcome: welcomeOnScreen, intent: cloudAsk, signIn: cloudSignIn || cloudJobWaiting });
   useAmbientAway("cloud-first-run", Boolean(firstRun));
 
@@ -382,7 +383,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
       </div>
       <AnimatePresence>{state.appSettingsOpen && <SettingsModal key="settings" />}</AnimatePresence>
       {cloudAddOpened.current && <CloudAddDialog />}
-      <BootCover busy={loading.busy && !bot && !group && !firstRun && !noEngines} first={loading.text === "app.loading.updating" ? t(loading.text) : undefined} />
+      <BootCover busy={loading.busy && !bot && !group && !firstRun && !noEngines} hold={welcomeIncoming} first={loading.text === "app.loading.updating" ? t(loading.text) : undefined} />
       <CloudHowTo />
       <CloudSetup viewer={viewer} welcomeShown={welcomeOnScreen} />
       <WelcomeKeeper viewer={viewer} />
