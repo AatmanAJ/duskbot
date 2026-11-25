@@ -26,6 +26,7 @@ import { TEAM_TOOLS_FAILED } from "./team-tools.ts";
 import { unsupportedCallsNotice } from "./codex-unsupported-calls.ts";
 import { rebuiltSessionNotice } from "../resume-recovery.ts";
 import { startFakeHttpMcp, type FakeHttpMcp } from "../testing/fake-http-mcp-server.ts";
+import { MCP_RESTART_ENV } from "../mcp-app-catalog.ts";
 import * as procs from "../procs.ts";
 import { autoVerdict } from "../auto-approve.ts";
 import { formatQuestionAnswers } from "../../shared/ask-question.ts";
@@ -1257,6 +1258,33 @@ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`)
     expect(seen.env.NOTES_TOKEN).toBe("tok-notes");
     expect(argv).toContain('mcp_servers.duskbot_connectors.default_tools_approval_mode');
     expect(argv).not.toContain('mcp_servers.notes.default_tools_approval_mode');
+  });
+
+  it("runs a command server the person turned on or restarted, whose spec carries the harness's restart count", async () => {
+    await create();
+    const dump = join(scratch, "restarted-mcp.json");
+    process.env.FAKE_CODEX_DUMP = dump;
+
+    await instance.adapter.sendTurn({
+      threadId: "t-restarted-mcp",
+      text: "go",
+      integrations: { custom: { notes: { command: "npx", args: ["-y", "@x/notes-mcp"], env: { NOTES_TOKEN: "tok-notes", [MCP_RESTART_ENV]: "2" } } } },
+    });
+    const done = await recorder.until((event) => event.type === "turn.completed");
+    expect(recorder.events.filter((event) => event.type === "runtime.error")).toEqual([]);
+    expect(done).toMatchObject({ ok: true });
+    const seen = JSON.parse(readFileSync(dump, "utf8"));
+    expect(seen.argv.join(" ")).toContain("mcp_servers.notes.command");
+    expect(seen.env[MCP_RESTART_ENV]).toBe("2");
+  });
+
+  it("still refuses a custom command server that sets one of dusk bot's own variables", async () => {
+    await create();
+    await expect(instance.adapter.sendTurn({
+      threadId: "t-reserved-mcp",
+      text: "go",
+      integrations: { custom: { notes: { command: "npx", args: ["-y", "@x/notes-mcp"], env: { DUSK_COMMS_TOKEN: "stolen" } } } },
+    })).rejects.toThrow("cannot set reserved environment variable “DUSK_COMMS_TOKEN”");
   });
 
   it("mounts a custom server under its own name when the user's config.toml already has one by that name", async () => {
