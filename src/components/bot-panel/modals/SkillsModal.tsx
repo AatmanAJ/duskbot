@@ -11,6 +11,7 @@ import { buttonCls } from "../rows";
 import { RowIconButton, textFieldCls } from "../../ui/GrokDialog";
 import { Toggle } from "../../ui/Toggle";
 import { useSkillActions } from "./use-skill-actions";
+import { skillRowHint } from "../skill-row-hint";
 import { ArtState } from "../../ui/Art";
 
 /** The bot's skills: how many are on, opening the list of them (each switchable and removable), a small form to add one
@@ -60,7 +61,7 @@ function SkillRows({ bot }: { bot: Bot }) {
               : skills.skills.length === 0 ? <ArtState data-art-state="skills" art="cap" title={t("empty.skills.title")} className="py-6">{t("empty.skillsSheet.hint", { name: bot.name })}</ArtState>
                 : skills.skills.map((skill) => (
                   <div key={skill.name} data-panel-row={`skill:${skill.name}`} className={cn(rowCls, "group/row")}>
-                    <RowText title={skill.name} hint={skill.description || skill.source} />
+                    <RowText title={skill.name} hint={skillRowHint(skill)} />
                     <RowIconButton
                       reveal
                       icon="trash"

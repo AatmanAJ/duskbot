@@ -115,6 +115,13 @@ describe("summarize", () => {
     expect(summarize("   padded   ")).toBe("padded");
   });
 
+  it("reads a bot's Markdown as plain words, so a link's address does not crowd out what it did", () => {
+    const reply = "Created and ran [count.sh](/srv/dusk/task-workspaces/685db5dd-c011-4d0e-ac3e-1e8fc27cccde/366c29de-e61a-4dc9-a70d-3b591c2af7f0/count.sh): **there are 3 `.md` files** here.";
+    expect(buildNotification("done", bot, "thread-1", reply)?.body).toBe("Created and ran count.sh: there are 3 .md files here.");
+    expect(buildNotification("question", bot, "thread-1", "Use **Ridgeway** or *Corvid*?")?.body).toBe("Use Ridgeway or Corvid?");
+    expect(buildNotification("approval", bot, "thread-1", "ls **/*.md")?.body).toBe("ls **/*.md");
+  });
+
   it("clamps long text with an ellipsis", () => {
     const long = summarize("x".repeat(400));
     expect(long).toHaveLength(140);

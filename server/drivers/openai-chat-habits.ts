@@ -3,7 +3,7 @@
 import { limitResetFromWords } from "./engine-errors.ts";
 import { computeBackoff, RETRY_MAX_ATTEMPTS, type ErrorClassification } from "./retry.ts";
 
-export const NUDGE_ANNOUNCED_ACTION = "You said what you would do next but called no tool. Use your tools for only the remaining work, or reply with verified results if nothing is left to do. Never repeat an operation that succeeded, was denied, or may already have taken effect; inspect its state instead. Do not retry a destructive operation.";
+export const NUDGE_ANNOUNCED_ACTION = "[dusk bot: you said what you would do next but called no tool, so nothing happened. Continue now: make the tool call for that step in this reply, and send your final answer only once the work is done. Do only the remaining work. Never repeat an operation that succeeded, was denied, or may already have taken effect; inspect its state instead. Do not retry a destructive operation. If you need something from the person, ask them.]";
 
 export const NUDGE_CLAIMED_CHANGE = "Your reply says something was done (sent, posted, saved, created, changed or cancelled), but no tool call in this turn did it, so nothing outside this chat changed. Do it now with your tools if you have one for it; otherwise rewrite the reply to say plainly what you did not do and what is ready instead (a draft, the steps), without claiming it is done.";
 
@@ -81,11 +81,15 @@ export function withRetryAfter<T extends Error>(error: T, headers: Pick<Headers,
  * transient failure, within the attempts, and never past MAX_RETRY_WAIT_MS. The request ran nothing, so tool calls
  * that already ran in this turn stay in its messages and are not repeated. */
 export function retryDelay(error: unknown, verdict: ErrorClassification, attempt: number): number | null {
-  if (!verdict.transient || attempt >= RETRY_MAX_ATTEMPTS - 1) return null;
-  const { retryAfterMs: asked, limitResetAt: named } = (error ?? {}) as { retryAfterMs?: unknown; limitResetAt?: unknown };
+  const { retryAfterMs: asked, limitResetAt: named, message } = (error ?? {}) as { retryAfterMs?: unknown; limitResetAt?: unknown; message?: unknown };
+  const hinted = typeof asked === "number" ? asked : typeof named === "number" ? named - Date.now() : undefined;
+  // a 429 naming a wait within the minute is a per-minute limit, whatever its words call it (Gemini's free tier says
+  // "You exceeded your current quota ... Please retry in 33s")
+  const brief = verdict.reason === "quota" && typeof message === "string" && /\bHTTP 429\b/.test(message) && hinted !== undefined && hinted <= MAX_RETRY_WAIT_MS;
+  if ((!verdict.transient && !brief) || attempt >= RETRY_MAX_ATTEMPTS - 1) return null;
   if (typeof asked === "number" && asked > MAX_RETRY_WAIT_MS) return null;
   if (verdict.reason === "rate_limited" && typeof asked !== "number" && typeof named === "number" && named - Date.now() > MAX_RETRY_WAIT_MS) return null;
-  return Math.max(computeBackoff(attempt), typeof asked === "number" ? asked : 0);
+  return Math.max(computeBackoff(attempt), brief || typeof asked === "number" ? Math.max(0, hinted!) : 0);
 }
 
 // gpt-oss's harmony tokens (`<|channel|>commentary to=functions.x <|constrain|>json<|message|>{...}<|call|>`), which a
@@ -99,8 +103,8 @@ export function leakedToolSyntax(text: string): boolean {
 }
 
 export const CORRECTIVE_ROUND = "[dusk bot: a tool call in this turn failed (its result is marked ok:false). Re-run the failed operations with corrected inputs where possible, check the results, then give your one final answer: what worked, what did not and what the person can do about it. Do not report results you did not get.]";
-/** rounds a local model gets to fix a failed tool call before its answer stands */
-export const LOCAL_CORRECTIVE_ROUNDS = 2;
+/** rounds a model gets to fix a failed tool call, or say plainly what failed, before the turn stops on it */
+export const CORRECTIVE_ROUNDS = 2;
 
 export const REASONING_AGAIN = "[dusk bot: your last reply was your own working notes about the request, not an answer, so the person did not see it. Do the work with your tools if it needs them, then answer the person directly in plain words.]";
 

@@ -2,6 +2,7 @@
 // silent. A rung that just failed cools down for a few minutes so the next turns skip it; a rung that just answered
 // (a turn or the start-up probe) goes first. In memory only: a restart starts over, and the start-up probe refills it.
 import type { ModelCatalog } from "../../contracts.ts";
+import { trail } from "../../trail.ts";
 
 export interface FreeRung { model: string; variant?: string }
 
@@ -148,4 +149,25 @@ export async function probeFreeLadder(
     }
   }
   return null;
+}
+
+/** A one-shot call (a connection check, memory upkeep) on free models: each rung is named, since an engine's own default
+ * can be a model of a provider it has no access to (OpenCode 1.19 answers "Authentication required"), and a rung that
+ * fails hands over to the next, up to `maxRungs` or the free limit every free model shares. */
+export async function freeOneShot<T>(ladder: readonly FreeRung[], run: (rung: FreeRung) => Promise<T>, signal: AbortSignal | undefined, name: string, maxRungs = 3): Promise<T> {
+  let failure: unknown = new Error(`${name} background call aborted`);
+  for (const rung of ladder.slice(0, maxRungs)) {
+    if (signal?.aborted) break;
+    try {
+      const answer = await run(rung);
+      warmFreeRung(rung);
+      return answer;
+    } catch (error) {
+      failure = error;
+      const reason = freeFailure(error instanceof Error ? error.message : String(error));
+      trail("free_model.one_shot_failed", { model: rung.model, reason });
+      if (reason === "pool_limit") break;
+    }
+  }
+  throw failure;
 }

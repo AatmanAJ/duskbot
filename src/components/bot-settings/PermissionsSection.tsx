@@ -118,6 +118,19 @@ export function PermissionsSection({
         </div>
         {Array.isArray(bot.peers) && <PeersListNote peers={bot.peers} bots={state.bots}
           onOpen={() => patch({ peers: null, acknowledgePeerScope: true })} />}
+        {!state.config?.team && <div className="mt-3 flex items-center justify-between gap-4 pt-3">
+          <div>
+            <div className="text-[14px] font-medium text-ink">{t("permissions.readsOtherChats.title")}</div>
+            <div className="mt-0.5 text-[13px] text-ink-secondary">
+              {bot.readsOtherChats !== false ? t("permissions.readsOtherChats.on") : t("permissions.readsOtherChats.off")}
+            </div>
+          </div>
+          <Switch
+            checked={bot.readsOtherChats !== false}
+            aria-label={t("permissions.readsOtherChats.title")}
+            onClick={() => patch({ readsOtherChats: bot.readsOtherChats === false })}
+          />
+        </div>}
       </div>}
 
       {shows("approval") && <div className="rounded-xl bg-card p-4">

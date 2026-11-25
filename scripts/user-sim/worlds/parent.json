@@ -1,0 +1,54 @@
+{
+  "persona": {
+    "id": "parent",
+    "name": "Sophie Nguyen",
+    "email": "sophie.nguyen82@gmail.com",
+    "tz": "Australia/Sydney",
+    "about": "You are Sophie, 43, mum of Liam (9, Year 4) and Ava (6, Year 1) at Parramatta East Public School. You work part time at a pharmacy (Tue, Thu, Sat). Your husband Dan works long hours in construction. You live at 27 Wattle Street, Parramatta. You are not very confident with technology and only started using an assistant app recently.",
+    "style": "Short messages, a bit unsure, sometimes asks 'is that right?' or 'did that work?'. Uses Australian words (arvo, brekkie, uni, rego, footy). Occasional typos, no capital letters at the start, sometimes a thank you with 'ta' or 'thanks love'.",
+    "aboutMe": "Mum of Liam and Ava. Work at the pharmacy Tue/Thu/Sat."
+  },
+  "botName": "Rosie",
+  "apps": ["gmail", "google_calendar", "notes"],
+  "start": "mon 08:10",
+  "profile": { "name": "Sophie Nguyen", "email": "sophie.nguyen82@gmail.com" },
+  "mail": [
+    { "from": "Parramatta East Public School <office@parraeast-p.schools.nsw.edu.au>", "subject": "Year 4 excursion to Taronga Zoo: permission needed by Wednesday", "date": "@-2d 15:30", "body": "Dear Parents and Carers,\n\nYear 4 will visit Taronga Zoo on Friday. Students need to be at school by 8:15am, wear full school uniform and a hat, and bring a packed lunch and water bottle. Cost $25, payable at the office or by bank transfer.\n\nPlease reply to this email by Wednesday confirming your child's name and that you give permission.\n\nKind regards,\nMrs Anjali Patel, Year 4 teacher" },
+    { "from": "Emma Clarke <emma.clarke.mum@gmail.com>", "subject": "playdate thursday", "date": "@-1d 19:10", "body": "hi sophie! still ok for Ava to come to ours thursday after school? Mia is so excited. I can pick both girls up at 3, you grab Ava at 5:30? x Emma" },
+    { "from": "Emma Walsh <emma@splashswimschool.com.au>", "subject": "Liam's swim lesson Thursday", "date": "@-1d 10:00", "body": "Hi Sophie, just a reminder Liam's lesson is Thursday 4:30pm at Parramatta Aquatic Centre. Last lesson of the term! Emma Walsh, Splash Swim School" },
+    { "from": "Northside Family Dental <reception@northsidefamilydental.com.au>", "subject": "Reminder: Ava's check-up Tuesday 3:45pm", "date": "@-1d 09:00", "body": "Hi Sophie, reminder of Ava's check-up with Dr Lim on Tuesday at 3:45pm. Please also let us know if any of your contact details have changed. Reply to this email to reschedule." },
+    { "from": "Service NSW <noreply@service.nsw.gov.au>", "subject": "Your vehicle registration is due", "date": "@-3d 07:00", "body": "Registration for vehicle CX 41 PQ (Toyota Kluger) expires in 14 days. Renew online. Amount: $412.00." },
+    { "from": "Dan Nguyen <dan.nguyen.builds@gmail.com>", "subject": "christmas at mum's?", "date": "@-1d 21:00", "body": "mum wants to know if we're doing christmas lunch at hers again. i said probably yes. can you let her know what we're bringing? she's thinking pav and prawns from us" },
+    { "from": "Parramatta Juniors Football <secretary@parrajuniorsfc.org.au>", "subject": "End of season presentation Sunday", "date": "@-2d 18:00", "body": "U9 presentation and BBQ this Sunday 10am at Dan Mahoney Reserve. Bring a plate to share. Trophies for all players." },
+    { "from": "Ms Siobhan O'Brien <siobhan.obrien@parraeast-p.schools.nsw.edu.au>", "subject": "Year 1 Christmas concert costumes", "date": "@-1d 14:00", "body": "Hi families, for next Wednesday's concert, Year 1 are elves! Green top, red or green leggings, and a hat if you have one. Thanks, Ms O'Brien" },
+    { "from": "Woolworths <noreply@woolworths.com.au>", "subject": "Your order is confirmed", "date": "@-2d 20:00", "body": "Delivery Tuesday 6-8pm. 34 items. Total $187.45.", "read": true },
+    { "from": "AGL <noreply@agl.com.au>", "subject": "Your electricity bill", "date": "@-4d 08:00", "body": "Amount due $318.60 by the 15th.", "read": true },
+    { "from": "Kmart <hello@kmart.com.au>", "subject": "Christmas toys from $5", "date": "@-1d 06:00", "body": "Shop the toy sale.", "labels": ["INBOX", "CATEGORY_PROMOTIONS"] },
+    { "from": "Jess Morgan <jessmorgan77@gmail.com>", "subject": "carpool next week", "date": "@-1d 16:40", "body": "can you do school drop off mon and wed next week? i'll do tue thu fri. ta!" }
+  ],
+  "events": [
+    { "title": "Liam soccer training", "start": "@-2d 09:00", "end": "@-2d 10:00", "location": "Dan Mahoney Reserve" },
+    { "title": "School drop off", "start": "@0d 08:20", "end": "@0d 08:45" },
+    { "title": "Pharmacy shift", "start": "@+1d 09:00", "end": "@+1d 15:00", "location": "Priceline Parramatta" },
+    { "title": "Ava dentist (Dr Lim)", "start": "@+1d 15:45", "end": "@+1d 16:15", "location": "Northside Family Dental" },
+    { "title": "Woolies delivery", "start": "@+1d 18:00", "end": "@+1d 20:00" },
+    { "title": "Pharmacy shift", "start": "@+3d 09:00", "end": "@+3d 15:00", "location": "Priceline Parramatta" },
+    { "title": "Ava playdate at Mia's (Emma Clarke)", "start": "@+3d 15:00", "end": "@+3d 17:30" },
+    { "title": "Liam swimming (Emma Walsh)", "start": "@+3d 16:30", "end": "@+3d 17:15", "location": "Parramatta Aquatic Centre" },
+    { "title": "Pharmacy shift", "start": "@+5d 08:30", "end": "@+5d 13:00", "location": "Priceline Parramatta" },
+    { "title": "U9 presentation + BBQ", "start": "@+6d 10:00", "end": "@+6d 12:00", "location": "Dan Mahoney Reserve" },
+    { "title": "Year 1 Christmas concert", "start": "@+9d 13:30", "end": "@+9d 14:30", "location": "School hall" }
+  ],
+  "notes": [
+    { "title": "Christmas list", "folder": "Notes", "updated": "@-3d 21:30", "body": "Liam: footy boots size 4, Lego\nAva: art set, scooter helmet\nDan: ?\nMum: hand cream\nBudget $600" },
+    { "title": "Lunchbox ideas", "folder": "Notes", "updated": "@-10d 20:00", "body": "wraps with ham + cheese\npasta salad\nbanana muffins\ncheese + crackers\nNO nuts (school is nut free)\nAva won't eat tomato" },
+    { "title": "Passwords hint", "folder": "Notes", "updated": "@-40d 20:00", "body": "school app: same as the old one with Ava's birthday" },
+    { "title": "Things to do", "folder": "Notes", "updated": "@-1d 22:00", "body": "zoo form + $25\ncar rego\nelf costume for Ava\ncall mum about christmas" },
+    { "title": "Kids sizes", "folder": "Notes", "updated": "@-60d 19:00", "body": "Liam: shirt 10, shoe 4\nAva: shirt 6, shoe 12" }
+  ],
+  "files": {
+    "Documents/bills-2026.csv": "bill,amount,due,paid\nAGL electricity,318.60,15th,no\ncar rego,412.00,in 2 weeks,no\nswim school term 4,240.00,paid,yes\nOptus internet,85.00,20th,no\n",
+    "Documents/christmas-plan.txt": "christmas day at Dan's mum's (Bao) in Cabramatta\nwe bring pav + prawns\nboxing day at the beach?\n",
+    "Documents/school-term-dates.txt": "term 4 ends Wed 17 Dec\nterm 1 starts Mon 2 Feb (Liam and Ava both)\nsummer holiday camp at the PCYC?\n"
+  }
+}

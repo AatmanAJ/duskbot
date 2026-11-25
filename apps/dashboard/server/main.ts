@@ -73,7 +73,9 @@ if (database) { useStateBackend(database.backend); console.log("state: mongodb")
 // the waitlist the admin shows: DUSK_WAITLIST_DB names the database the dusk.bot site writes, "off" shows none
 const waitlistDb = process.env.DUSK_WAITLIST_DB?.trim();
 const trackOrigins = (process.env.DUSK_TRACK_ORIGINS ?? "").split(",").map(item => item.trim()).filter(Boolean);
-const analytics = { ...(database ? { sink: await mongoSink(database.db), usage: await mongoUsageStore(database.db), infra: await mongoInfraStore(database.db), ops: await mongoOpsStore(database.db), db: database.db, waitlist: waitlistDb === "off" ? null : mongoWaitlist(waitlistDb ? database.sibling(waitlistDb) : database.db) } : {}), trackOrigins };
+// DUSK_NOTES_CARRY_OVER names a file of account ids, one per line, whose session notes setting carries over as on
+const notesCarryOver = readCarryOver(process.env.DUSK_NOTES_CARRY_OVER?.trim());
+const analytics = { notesCarryOver, ...(database ? { sink: await mongoSink(database.db), usage: await mongoUsageStore(database.db), infra: await mongoInfraStore(database.db), ops: await mongoOpsStore(database.db), db: database.db, waitlist: waitlistDb === "off" ? null : mongoWaitlist(waitlistDb ? database.sibling(waitlistDb) : database.db) } : {}), trackOrigins };
 // preview's admin shows dusk.bot's analytics: DUSK_ADMIN_ANALYTICS_URI is a user with only read on DUSK_ADMIN_ANALYTICS_DB (dusk_prod)
 const liveUri = process.env.DUSK_ADMIN_ANALYTICS_URI?.trim(), liveDb = process.env.DUSK_ADMIN_ANALYTICS_DB?.trim();
 const live = liveUri && liveDb ? await openLiveData(liveUri, liveDb, "dusk.bot")
@@ -141,3 +143,9 @@ closers.push(() => app.close(), () => void incidents.close());
 gate.open(traced);
 await listening;
 console.log(`dashboard service listening on http://${host}:${port}`);
+
+function readCarryOver(file: string | undefined): string[] | null {
+  if (!file) return null;
+  try { return readFileSync(file, "utf8").split("\n").map(line => line.trim()).filter(line => /^[A-Za-z0-9_-]{4,80}$/.test(line)); }
+  catch (error) { console.warn(`analytics: the session notes carry-over file could not be read (${(error as NodeJS.ErrnoException).code ?? "error"})`); return null; }
+}

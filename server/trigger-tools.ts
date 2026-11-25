@@ -73,8 +73,13 @@ export function agentRoutine(routine: Routine, latestRun?: RoutineRun) {
     runOn: routine.runOn,
     durationMinutes: routine.durationMinutes,
     ...(routine.timeoutMinutes === undefined ? {} : { timeoutMinutes: routine.timeoutMinutes }),
+    ...(routine.catchUpMinutes === undefined ? {} : { catchUpMinutes: routine.catchUpMinutes }),
     schedule: agentSchedule(routine.schedule),
     nextRunAt: timestamp(routine.nextRunAt),
+    ...(routine.checkedAt ? { lastCheckedQuiet: timestamp(routine.checkedAt) } : {}),
+    ...(routine.checkTrouble ? { checkProblem: redactSecretsInText(routine.checkTrouble) } : {}),
+    ...(routine.strip?.length ? { lastOutcomes: routine.strip.map((entry) => `${new Date(entry.at).toISOString()} ${entry.outcome}`) } : {}),
+    ...(routine.chain ? { chain: routine.chain } : {}),
     latestRun: latestRun ? agentRun(latestRun) : null,
   };
 }

@@ -21,6 +21,14 @@ describe("checking a just-connected engine with one tiny real message", () => {
     expect(engineCheckError("ChatGPT", "spawn codex ENOENT with key sk-proj-abcdefghijklmnopqrstuvwxyz0123456789")).not.toContain("sk-proj-abcdefghijklmnop");
   });
 
+  it("shows one plain sentence for an error it can't name, and keeps the engine's raw text for the log", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(engineCheckError("OpenCode", "OpenCode background Authentication required: provider authentication required"))
+      .toBe("OpenCode didn't answer. Check again in a minute.");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Authentication required"));
+    warn.mockRestore();
+  });
+
   it("can't check an engine without a one-shot call, and runs one check per engine at a time", async () => {
     expect(await checkEngine(engine(undefined))).toEqual({ ok: null });
     let answer!: (text: string) => void;

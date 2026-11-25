@@ -73,7 +73,8 @@ export interface ThreadRouteDeps {
   cliOwnerToken(): string | undefined;
   defaultPage: number;
   pageSize(raw: string | null): number | null | undefined;
-  messagePage(threadId: string, limit: number | undefined, before?: string | null): MessagePage;
+  messagePage(threadId: string, limit: number | undefined): MessagePage;
+  olderPage(threadId: string, limit: number, before: string): MessagePage | null;
   messageWindow(threadId: string, messageId: string, limit: number): { messages: Array<Message | Record<string, unknown>>; hasMore: boolean } | null;
   publicBotQueuedMessages(): ReturnType<typeof queuedSteerSnapshot>;
   publicGroupState(record: GroupRecord): WireGroup;
@@ -99,7 +100,7 @@ export function createThreadRoutes(deps: ThreadRouteDeps): RouteHandler {
   const {
     store, userName: userNameFor, sessions, groupUsageReader,
     sessionCookie: SESSION_COOKIE, loopback: LOOPBACK, defaultPage: DEFAULT_PAGE,
-    pageSize, messagePage, messageWindow, publicBotQueuedMessages, publicGroupState, wireBot,
+    pageSize, messagePage, olderPage, messageWindow, publicBotQueuedMessages, publicGroupState, wireBot,
     botComputerControlSnapshot, messageFileRootsForThread, viewerFor, visibleTo,
   } = deps;
   const jobs = createJobRoutes({ store, coordinator: deps.coordinator, groupThreadIsWorking: deps.groupThreadIsWorking, viewerFor, visibleTo, sessions });
@@ -171,7 +172,7 @@ export function createThreadRoutes(deps: ThreadRouteDeps): RouteHandler {
       const add = (threadId: string) => {
         if (only && !only.has(threadId)) return;
         const page = messagePage(threadId, limit);
-        threads.push({ threadId, messages: page.messages, hasMore: page.hasMore, activeLeafId: store.activeLeaf(threadId) });
+        threads.push({ threadId, messages: page.messages, hasMore: page.hasMore, activeLeafId: page.activeLeafId });
       };
       for (const bot of store.bots) {
         if (!visible.bot(bot.id)) continue;
@@ -202,11 +203,12 @@ export function createThreadRoutes(deps: ThreadRouteDeps): RouteHandler {
         if (!window) return json(res, 404, { error: "no such message" });
         return json(res, 200, { ...window, activeLeafId: store.activeLeaf(threadId) });
       }
-      // An unknown cursor must not answer with the newest page: the client would paginate in a circle.
-      if (before && !store.messagesFor(threadId).some((msg) => msg.id === before)) {
-        return json(res, 404, { error: "no such message" });
+      if (before) {
+        // An unknown cursor must not answer with the newest page: the client would paginate in a circle.
+        const page = olderPage(threadId, limit ?? DEFAULT_PAGE, before);
+        return page ? json(res, 200, page) : json(res, 404, { error: "no such message" });
       }
-      return json(res, 200, { ...messagePage(threadId, limit ?? DEFAULT_PAGE, before), activeLeafId: store.activeLeaf(threadId) });
+      return json(res, 200, messagePage(threadId, limit ?? DEFAULT_PAGE));
     }
 
     m = path.match(/^\/api\/threads\/([\w-]+)\/messages\/([\w-]+)\/image$/);

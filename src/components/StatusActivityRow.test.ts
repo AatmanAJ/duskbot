@@ -70,7 +70,7 @@ describe("a notice that signing in fixes", () => {
 
   it("leaves a sign-out something has since followed out of the chat, and draws any other notice as one quiet line", () => {
     // while it is the newest thing, the card above the composer says it with its Sign in (GroupView.failed-turn.test.ts)
-    render(notice("notice: Claude is signed out on the Cloud. Sign in again in Settings → AI to keep using it.", true));
+    render(notice("notice: Claude is signed out on the Cloud. Sign in again in Settings → Models to keep using it.", true));
     expect(host.textContent).toBe("");
     render(notice("notice: continuing on Codex while Claude is signed out"));
     expect(host.querySelector("[role=status]")).not.toBeNull();

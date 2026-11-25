@@ -37,7 +37,7 @@ import { importNoteText } from "../import-note.ts";
 import { conversationLanguage } from "../server-lines.ts";
 import type { UsageTrigger } from "../usage-ledger.ts";
 import { noteTypedSend } from "../typed-sends.ts";
-import { parseMentionPicks } from "../../shared/room-mentions.ts";
+import { parseMentionPicks, resolveMentions } from "../../shared/room-mentions.ts";
 import { pinnedClientThreadGuard } from "./pinned-client-thread.ts";
 import { PASS, type RouteHandler } from "./table.ts";
 
@@ -138,7 +138,8 @@ export interface BotMessageRouteDeps {
   /** On a team: the name of whoever connects its AI; empty until they have opened the team. */
   teamAiOwnerName?(): string;
   inboxReply?(auth: RequestAuth, threadId: string, replyToId: string, text: string, line: { sendId?: string; sender?: ResolvedSender }): { status: number; message?: Message; error?: string } | null;
-  /** A typed line that answers a bot's question card; null sends it as usual. */
+  /** A typed line that answers a bot's question card; null sends it as usual. A line said on a call, or one that names
+   * another bot, is never asked about: it is meant for the call or for that bot, not as this card's answer. */
   typedCardAnswer?(auth: RequestAuth, threadId: string, text: string, target: Message | undefined, line: { sendId?: string; sender?: ResolvedSender }): Promise<{ status: number; message?: Message; error?: string } | null>;
   /** On a Team Cloud: why the person a relayed message names may not chat with this bot; null when they may. */
   relayRefusal?(bot: BotRecord, email: string | undefined): string | null;
@@ -276,7 +277,9 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
       const target = resolveReplyTarget(threadId, press ? press.messageId : appSent ? appSent.messageId : body.replyToId);
       if (relayed && target?.role !== "bot") return json(res, 400, { error: "a relayed reaction answers a bot's message" });
       const passedBack = !guarded && !press && !appSent && !pointed && target ? deps.inboxReply?.(auth, threadId, target.id, text, { sendId, sender: messageSender(auth) }) : null;
-      const typedAnswer = passedBack || guarded || press || appSent || pointed ? null : await deps.typedCardAnswer?.(auth, threadId, text, target, { sendId, sender: messageSender(auth) });
+      const namesAnotherBot = resolveMentions(text, store.bots.filter((one) => one.id !== bot.id), mentions).bots.length > 0;
+      const typedAnswer = passedBack || guarded || press || appSent || pointed || voiceCall || namesAnotherBot ? null
+        : await deps.typedCardAnswer?.(auth, threadId, text, target, { sendId, sender: messageSender(auth) });
       const answeredBack = passedBack ?? typedAnswer;
       if (answeredBack) return json(res, answeredBack.status, answeredBack.message ? { ok: true, threadId, message: answeredBack.message } : { error: answeredBack.error });
       if (!guarded && !press && !appSent && !relayed) deps.typedOverHeldCards?.(threadId);

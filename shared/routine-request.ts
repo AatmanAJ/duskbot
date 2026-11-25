@@ -6,7 +6,7 @@
 
 import type { LimitResetRepeat } from "./limit-reset.ts";
 import type { RoutineCronSchedule } from "./routine-schedule.ts";
-import type { RoutineProbe } from "./routines.ts";
+import type { RoutineChain, RoutineProbe } from "./routines.ts";
 
 export type RoutineRequestRunOn = "maus" | "cloud";
 
@@ -56,6 +56,8 @@ export interface RoutineRequestDefinition {
   durationMinutes: number;
   /** Optional safety cap for active work. Missing means no timeout. */
   timeoutMinutes?: number;
+  /** Cron, daily and interval routines: minutes after its time a missed run may still start; 0 never starts late. */
+  catchUpMinutes?: number;
   /** Carry the previous run's report into the next run. */
   continuity?: boolean;
   /** Skip by default, or keep at most one scheduled run waiting. */
@@ -64,16 +66,22 @@ export interface RoutineRequestDefinition {
   runOnStartup?: boolean;
   /** A plain check before each run: the bot runs only when it found something new. */
   probe?: RoutineProbe;
+  /** Other routines it reads from or runs after, and the bot or room its reports also go to. */
+  chain?: RoutineChain;
 }
 
 export type RoutineRequestChanges =
-  & Omit<Partial<RoutineRequestDefinition>, "schedule" | "timeoutMinutes" | "probe">
+  & Omit<Partial<RoutineRequestDefinition>, "schedule" | "timeoutMinutes" | "catchUpMinutes" | "probe" | "chain">
   & {
     /** `null` removes the check. */
     probe?: RoutineProbe | null;
+    /** `null` removes every link; a chain replaces all of them. */
+    chain?: RoutineChain | null;
     schedule?: RoutineRequestScheduleChanges;
     /** `null` removes an existing safety cap. */
     timeoutMinutes?: number | null;
+    /** `null` removes the window, back to the 12-hour default. */
+    catchUpMinutes?: number | null;
   };
 
 /** Another bot in the proposer's section that this proposal targets: a

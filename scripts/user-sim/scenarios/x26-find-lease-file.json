@@ -1,0 +1,54 @@
+{
+  "title": "Find the lease file from last week and send it",
+  "world": "student",
+  "tags": [
+    "x-usage",
+    "file"
+  ],
+  "source": "x-usage #26: searches the files on the computer it runs on and finds the right one (not the older lease).",
+  "seed": {
+    "files": {
+      "Documents/Housing/lease-renewal-notes-2026.md": "# Lease renewal, 41 Hyde Park Rd (edited last week)\n\n- Landlord: Unipol / Mr Haddad\n- New rent: £560 pppm, 3 of us = £1,560 total\n- Break clause after 6 months? ASK\n- Deposit stays protected with DPS\n- Sign by 15 Dec\n",
+      "Documents/Housing/old/signed-lease-2024.txt": "2024-25 tenancy agreement, 12 Royal Park Terrace, rent £495 pppm. Signed Aug 2024.\n"
+    }
+  },
+  "steps": [
+    {
+      "chat": {
+        "goal": "Find the file you were working on last week about the lease and send it to yourself by email.",
+        "opener": "can you find the file i was working on last week about the lease and send it to me? email is fine",
+        "maxTurns": 4,
+        "label": "find"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "sent to Aisha",
+      "app": "sent",
+      "where": {
+        "to": "aisha"
+      },
+      "min": 1
+    },
+    {
+      "label": "the right file",
+      "app": "sent",
+      "where": {
+        "to": "aisha",
+        "body": "renewal|break clause|£?1,?560|hyde park"
+      },
+      "min": 1
+    },
+    {
+      "label": "not the old signed lease",
+      "app": "sent",
+      "where": {
+        "to": "aisha",
+        "body": "2024-25 tenancy|Royal Park Terrace"
+      },
+      "max": 0
+    }
+  ],
+  "judge": "Pip looks in her Documents, finds the lease renewal notes (edited last week) rather than last year's signed lease, and emails the contents to Aisha, saying which file it was."
+}

@@ -15,9 +15,9 @@ const reduce = (on: boolean) => vi.spyOn(window, "matchMedia").mockImplementatio
   matches: on && query.includes("reduce"), media: query, addEventListener: () => {}, removeEventListener: () => {},
 }) as unknown as MediaQueryList);
 
-const draw = (mood?: WorkingMood, motion?: "current") => act(() => root.render(createElement(WorkingMascot, { bot, size: 26, seed: "s", mood, motion: motion ?? "current" })));
+const draw = (mood?: WorkingMood, motion?: "current") => act(() => root.render(createElement(WorkingMascot, { bot, size: 26, seed: "s", mood, motion: motion ?? "current", line: "shipped" })));
 const drawShipped = (mood?: WorkingMood) => act(() => root.render(createElement(WorkingMascot, { bot, size: 26, seed: "s", mood })));
-const drawMotion = (motion: "current" | "flat-gentle", mood: WorkingMood = "thinking") => act(() => root.render(createElement(WorkingMascot, { bot, size: 26, seed: "s", mood, motion })));
+const drawMotion = (motion: "current" | "flat-gentle", mood: WorkingMood = "thinking") => act(() => root.render(createElement(WorkingMascot, { bot, size: 26, seed: "s", mood, motion, line: "shipped" })));
 const mascot = () => host.querySelector<HTMLElement>("[data-working-mascot]")!;
 const eyes = () => mascot().querySelectorAll("path")[1]!.getAttribute("d");
 
@@ -86,10 +86,11 @@ describe("the working mascot's face", () => {
     expect(eyes()).toBe(stillSvgPaths("kit", { scale: 1 }).eyes);
   });
 
-  it("moves the gentle flat mascot in the chat line, and keeps the plain loops where it has no mood", () => {
+  it("moves the picked working line's mascot in the chat line, and keeps the plain loops where it has no mood", () => {
     reduce(false);
     drawShipped("thinking");
-    expect(mascot().dataset.motion).toBe("flat-gentle");
+    expect(mascot().dataset.workingLine).toBe("rock");
+    expect(mascot().dataset.motion).toBeUndefined();
     drawShipped();
     expect(mascot().dataset.motion).toBeUndefined();
     expect(mascot().querySelector(".working-mascot-bob")).not.toBeNull();

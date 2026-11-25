@@ -8,11 +8,17 @@ import type { Message, Store } from "../store.ts";
 export interface StreamedReplyDeps {
   store: Pick<Store, "activePath" | "botByThread" | "groupByThread" | "messagesFor" | "patchMessage">;
   /** A one-on-one turn the person is in: a "(pass)" there sends nothing. Never a routine's run, an internal turn, a
-   * bot API thread or assigned work. */
+   * bot API thread or assigned work other than a notice. */
   directPassAllowed(threadId: string): boolean;
 }
 
 const TURN_OUTPUT: ReadonlySet<Message["kind"]> = new Set(["text", "widget", "app", "options", "screen"]);
+
+/** The turn in this thread is a notice another bot sent (coordinate_bots reply "none"): nothing is owed back, so a
+ * "(pass)" there may stay silent. */
+export function runsNotice(nodes: ReadonlyArray<{ threadId: string; status: string; mode: string }>, threadId: string): boolean {
+  return nodes.some((node) => node.threadId === threadId && node.status === "running" && node.mode === "notify");
+}
 
 export function createStreamedReply(deps: StreamedReplyDeps) {
   const { store } = deps;

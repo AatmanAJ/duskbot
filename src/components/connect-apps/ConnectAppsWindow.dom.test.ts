@@ -22,7 +22,7 @@ const fixture = vi.hoisted(() => ({
     ],
   },
   actions: { attio: { actions: ["Create record", "Find person"] } } as Record<string, { actions: string[]; triggers?: string[] }>,
-  mcpServers: [] as Array<{ name: string; enabled: boolean }> | null,
+  mcpServers: [] as Array<{ name: string; enabled: boolean; type?: string; url?: string; headerKeys?: string[] }> | null,
 }));
 
 vi.mock("@/state/store", async (original) => {
@@ -71,6 +71,11 @@ const CARDS = [
   card("linear", "Linear", "developer tools"), card("figma", "Figma", "design"), card("stripe", "Stripe", "finance"), card("posthog", "PostHog", "analytics"),
 ];
 
+const STRIPE_SERVER = {
+  id: "stripe", source: "remote-mcp", label: "Stripe", description: "Payments", categories: ["finance"], domain: "stripe.com", logo: null,
+  url: "https://mcp.stripe.com", auth: "oauth",
+};
+
 let root: Root;
 let onClose: ReturnType<typeof vi.fn<() => void>>;
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')!;
@@ -86,6 +91,8 @@ beforeEach(async () => {
   fixture.api.mockImplementation(async (path: string) => {
     if (path === "/api/connectors/catalog") return { configured: true, mode: "self-hosted", setup: "ready", source: "api", cards: CARDS };
     if (path.endsWith("/authorize")) return { url: "https://connect.example/asana" };
+    if (path === "/api/connectors/directory") return { apps: [STRIPE_SERVER] };
+    if (path === "/api/mcp/servers") return { servers: fixture.mcpServers ?? [] };
     return { services: {} };
   });
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ skills: [{ name: "invoice-chaser", description: "Chase unpaid invoices" }] }) })));
@@ -336,7 +343,7 @@ describe("the Connect Apps window", () => {
         }
         if (path === "/api/config" && init?.method === "PUT") {
           const sent = JSON.parse(String(init.body)) as { composio?: { apiKey?: string } };
-          if (sent.composio?.apiKey !== "ak_good") throw new ApiError("Composio rejected this key (HTTP 401)", 400, { error: "Composio rejected this key (HTTP 401)" });
+          if (!["ak_good", "fixture-project-token"].includes(sent.composio?.apiKey ?? "")) throw new ApiError("Composio rejected this key (HTTP 401)", 400, { error: "Composio rejected this key (HTTP 401)" });
           keySaved = true;
           return { composio: { mode: "self-hosted", configured: true } };
         }
@@ -386,8 +393,8 @@ describe("the Connect Apps window", () => {
       ]);
       expect([...step.querySelectorAll("a")].map((link) => link.getAttribute("href")))
         .toEqual(["https://dashboard.composio.dev", "https://dashboard.composio.dev/~/project/settings/api-keys"]);
-      await paste("ak_good");
-      expect(fixture.api).toHaveBeenCalledWith("/api/config", { method: "PUT", body: JSON.stringify({ composio: { apiKey: "ak_good" } }) });
+      await paste("fixture-project-token");
+      expect(fixture.api).toHaveBeenCalledWith("/api/config", { method: "PUT", body: JSON.stringify({ composio: { apiKey: "fixture-project-token" } }) });
       expect(fixture.dispatch).toHaveBeenCalledWith({ type: "configStatus", config: { composio: { mode: "self-hosted", configured: true } } });
       expect(fixture.api).toHaveBeenCalledWith("/api/connectors/attio/authorize", { method: "POST" });
       expect(fixture.opened).toEqual(["https://connect.example/attio"]);
@@ -725,11 +732,13 @@ describe("the Connect Apps window", () => {
 
     it("a key Composio refuses says so in one line and connects nothing", async () => {
       await remount({ kind: "detail", id: "attio" }, "unavailable");
-      await paste("ak_bad");
+      await paste("fixture-refused-key");
       expect(dialog().querySelector("[data-composio-key] [role=alert] > span")?.textContent).toBe("Composio didn't accept that key. Copy it again from API keys.");
       expect(fixture.api).not.toHaveBeenCalledWith("/api/connectors/attio/authorize", expect.anything());
+      fixture.api.mockClear();
       await paste("not a key");
-      expect(dialog().querySelector("[data-composio-key] [role=alert] > span")?.textContent).toBe("Composio keys start with ak_. Copy it again from API keys.");
+      expect(fixture.api).not.toHaveBeenCalledWith("/api/config", expect.anything());
+      expect(dialog().querySelector("[data-composio-key] [role=alert] > span")?.textContent).toBe("That doesn't look like an API key: keys have no spaces. Copy the key again and paste it here.");
     });
 
     it("with the managed broker, an app it cannot sign in to asks for the person's own key instead of a dead end", async () => {
@@ -888,6 +897,18 @@ describe("the Connect Apps window", () => {
     expect(off?.textContent, "a server that failed its test is still listed, as off").toContain("Off");
     await act(async () => { dialog().querySelector<HTMLElement>(`[data-app-row="mcp:${opened}"] :is(button, [role=button])`)!.click(); });
     expect(dialog().querySelector("[data-detail-hero-title]")?.textContent).toBe("Custom MCP");
+  });
+
+  it("lists a saved server at a vendor's own address as off on Your plugins, as a moved bot's Stripe is", async () => {
+    act(() => root.unmount());
+    fixture.mcpServers = [{ name: "stripe", type: "http", url: "https://mcp.stripe.com", headerKeys: [], enabled: false }];
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => { root.render(createElement(ConnectAppsWindow, { page: { kind: "yours" }, nonce: 8, onClose, onTemplates: vi.fn() })); });
+    await flush();
+    const row = dialog().querySelector('[data-app-row="stripe"]');
+    expect(row?.textContent).toContain("Stripe");
+    expect(row?.textContent).toContain("Off");
+    expect(dialog().textContent).not.toContain("Nothing installed yet");
   });
 
   it("closes on Escape, and the search's Escape only closes its results", async () => {

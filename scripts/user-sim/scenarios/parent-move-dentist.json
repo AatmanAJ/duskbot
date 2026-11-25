@@ -1,0 +1,55 @@
+{
+  "title": "'Can this one go to next week' replying to the dentist line",
+  "world": "parent",
+  "tags": [
+    "reply-context"
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Ask what's on this week for the kids.",
+        "opener": "whats on this week for the kids",
+        "maxTurns": 3,
+        "label": "week"
+      }
+    },
+    {
+      "chat": {
+        "goal": "Replying to the line about Ava's dentist, ask to move it to next week at the same time because you got called in for an extra shift.",
+        "opener": "can this one go to next week same time? got called in for an extra shift",
+        "knows": "Tuesday next week 3:45 is fine; if not, any arvo after 3:30.",
+        "maxTurns": 4,
+        "thread": "same",
+        "replyTo": "dentist|dr lim",
+        "label": "move"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "dentist asked to reschedule",
+      "app": "sent",
+      "where": {
+        "to": "northside"
+      },
+      "min": 1
+    },
+    {
+      "label": "talks about the dentist, not something else",
+      "said": {
+        "step": "move",
+        "match": "dentist|dr lim"
+      }
+    },
+    {
+      "label": "no other event moved",
+      "app": "log",
+      "where": {
+        "action": "^event_update$",
+        "title": "^(?!.*dentist).*$"
+      },
+      "max": 0
+    }
+  ],
+  "judge": "Rosie knows 'this one' is Ava's dentist from the quoted message, emails the practice asking for next Tuesday 3:45 (they handle rebooking), and updates or notes the calendar without touching other events. Explains simply what happens next."
+}

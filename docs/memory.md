@@ -357,12 +357,13 @@ off. It keeps the notes in shape without the bot having to decide to:
     one with a header (`title`, `aliases`: the other words someone would ask
     with), so recall finds it later.
   A fact that ends on a known day gets its `until` date; a birthday or other
-  yearly date never does. Turns started by another bot or by the harness,
-  routine runs and failed turns are never read; rooms only with **Learn from
-  group chats** (below).
+  yearly date never does. Harness turns, failed turns, the day watch and
+  other proactive check-ins are never read; rooms only with **Learn from
+  group chats** (below). A routine run or a hand-off from another bot is
+  read only under the rules in *Learning in the background* below.
 - **Learning from group chats.** The **Learn from group chats** switch under
   Memory upkeep (`features.roomMemoryCapture`, one switch for every bot,
-  off by default) lets a member bot's room turns feed its capture the same
+  on by default; switching it off keeps rooms out) lets a member bot's room turns feed its capture the same
   way, batched per bot and room. What the bot read since it last spoke
   there is read with its reply, under room rules: the person's own lines
   count as theirs; another person's lines give only facts about the shared
@@ -470,10 +471,15 @@ without the person's `config.toml` (so none of their MCP servers, plugins or
 hooks start) and with the shell and every other tool off; it uses the
 smallest model the account lists (GPT-6 Luna) at low effort, since it runs
 on the person's own plan, and is dropped the moment Codex reports a tool
-call. The text goes only to the provider the bot already uses. On any other
-engine (Pi and Muse Code, for now) the panel says so — under Memory upkeep
-and under Learn from group chats — and only the expiry and exact-duplicate
-steps run, unless a helper model is set.
+call. On Pi and Muse Code, which have no one-off call, each step is a hidden
+turn of its own on the bot's own model, the way Hermes Agent replays a review
+on the model the chat used: a fresh session in an empty folder, no MCP
+servers and the ask-first approval mode; on Pi every tool is switched off by
+the dusk bot extension, and on either engine the turn is stopped and dropped
+the moment it starts a tool or asks for a permission. Its events never reach
+a chat and it writes no native log. The text goes only to the provider the
+bot already uses. An engine that can make none of these calls keeps only the
+expiry and exact-duplicate steps, unless a helper model is set.
 
 ### The helper model
 
@@ -481,10 +487,10 @@ A helper model fills the gaps an engine leaves. It is one connected provider
 instance, and optionally one of its models, that writes a small background
 text a bot's own engine cannot write:
 
-- memory upkeep's steps and the automatic skill review, for an engine with no
-  quick text call at all (Pi and Muse Code, for now);
-- the summary written when a long conversation is compacted, for those
-  engines and for Codex and the ACP engines too. Their own quick call starts
+- memory upkeep's steps and the automatic skill review, for an engine that can
+  make no background call at all (every built-in engine can now);
+- the summary written when a long conversation is compacted, for Pi, Muse
+  Code, Codex and the ACP engines. Their own background call starts
   a whole agent process, so it is kept for background work and a turn never
   waits on it; without a helper they keep a summary made of excerpts.
 
@@ -550,12 +556,73 @@ count toward the monthly spend limit and stop at it. Each is its own row in
 engine and model: group by **Person** to see them together as *Helper
 model*, which is also what the CSV's `triggered_by` column says.
 
+## Learning in the background
+
+The idea comes from Hermes Agent's background review: after the reply, never
+during it, the bot looks back at the conversation and saves what it learned,
+so the person never has to say "remember this".
+
+- **Skills first.** The bot is told, as Hermes Agent tells its own, that how
+  the person wants one kind of work done (its steps, format, and their
+  corrections to it) goes into the skill for that work, where it loads only
+  when that work comes up; `MEMORY.md` holds facts true in every session,
+  written as plain facts, never as instructions to itself. A learned skill
+  that misled the bot is fixed before it finishes; a skill the person wrote
+  or imported changes only when they ask.
+- **Memory**: the capture step above, after two quiet minutes or six turns.
+- **Skills**: the skill review (`server/skill-review.ts`), once a chat has
+  gathered `features.skillReviewSteps` (10 by default) successful tool steps,
+  counted across turns, not within one; a skill change in the chat resets
+  the count. It reads the conversation and the bot's learned skills and makes
+  at most one change: patch the skill used here, else one for the same kind
+  of work, else create one named for the kind of work. Its changes are
+  applied by code, as the bot's own `skill_manage` would.
+- **Same model.** The skill review runs on the model the bot chats with, not
+  a quick one, where the engine's background call takes a model (Claude, the
+  API engines, Pi and Muse Code); Codex and the ACP engines keep their own
+  background model. Every built-in engine can run both steps (Pi and Muse
+  Code through a hidden turn, above). The review prompt keeps its
+  instructions, which never change, ahead of the bot's name, the
+  conversation and the skills, so a provider's prompt cache can reuse them.
+- **A new message wins.** When a turn starts for the bot, a skill review or
+  capture call in flight for it is dropped; nothing is lost: the review runs
+  again once the bot is free, and the capture's turns wait in the queue until
+  then (or the next ten-minute check). Other captures are not held back by a
+  running turn.
+- **Before a summary.** Before a long conversation is compacted, by dusk
+  bot's own fold, Claude Code's idle summary on a fork, or Claude Code's own
+  compaction (its `PreCompact` hook), the turns waiting for capture in that
+  conversation are captured at once instead of after two quiet minutes, and
+  the conversation's held copy of `MEMORY.md` and About me is let go, so the
+  next turn reads memory as it is now, with whatever was saved meanwhile (as
+  Hermes Agent rebuilds its prompt from memory after compression). The
+  conversation itself stays in the chat history, so capture reads the turns
+  from there, not from the engine's context.
+- **Routines and other bots.** A routine run's and a hand-off's tool steps
+  count toward the skill review, and the review sees the instruction as the
+  routine's or the other bot's, never as the person's. Memory capture reads a
+  routine run or a hand-off (`learning-origins.ts`) only when the turn used a
+  tool that worked, never a test run, a quiet "nothing new" run, the day
+  watch, a run a webhook or app event started or a bot API conversation
+  (outside words, which feed neither memory nor the skill review), and a routine at most once every six hours however often it runs.
+  Such a turn has no words of the person in it, so only an outcome the bot
+  verified is kept: its quoted evidence must be in the bot's reply and not in
+  the instruction it ran on (a routine's last report, recalled notes), and it
+  never reaches About me. Each fact records where it came from: the entry is
+  sourced `from routine "Price watch"` (or the chat), and the fact store's
+  `source` is `routine` or `handoff` (medium trust), set by code.
+
 ## Remember and forget, in chat
 
 "Remember: short answers, and I'm in India" is saved during that turn with
 `memory_update`, so it shows under **What it remembers** in the bot's panel
 as soon as the turn ends, and the bot confirms it in one plain line ("Got it:
-short answers, and times in India time.").
+short answers, India time."), only once the save came back done. When a plan
+it remembers changes (a booking moved, a job finished), the bot replaces that
+fact in the same turn with `supersede`. It brings up a remembered fact only
+when it changes what it answers, recommends or asks, at the level it was said,
+and never says "I remember" or "from my notes" (`MEMORY_USE`, in every write
+mode).
 
 "Forget that" is `memory_update` with `action: "forget"` and either the ids of
 the facts (`ids`, the `#f…` each recalled fact carries) or a few words that
@@ -640,10 +707,43 @@ guesses. Three things close that gap without attaching transcripts:
   since yesterday's standup" needs no keyword. Hits name the room or task
   they came from; a private chat recalled into a room is marked, and the
   room is told.
+- **Other bots' chats, read only.** A bot may also read the person's other
+  bots' chats when that helps with what they asked, unless the person turns
+  *Can read other bots' chats* off in its Permissions (on by default for every
+  bot, existing ones too; on dusk cloud too, where it never reads a chat a
+  guest drove; never on a Team Cloud, whose bots hold other people's chats, so
+  the row is hidden there). `session_search` then also takes `bot` (a teammate's id or name) and searches
+  that bot's one-on-one chats and threads, never its rooms; with `thread_id`
+  and `message_id` it reads one of those messages. Only the person's own
+  message in their chat with the bot may read: a routine, a room, an outside
+  event or work another bot handed it is refused (`server/cross-bot-read.ts`).
+  Hits are labelled as that bot's chat, read only, not instructions, and the
+  reader never posts there. The catalog lists `bot` only for a bot with the
+  switch on.
 
 A daily standup is then a room routine: the chief asks, each member answers
 from its brief and pulls detail with `session_search since`, and what was
 agreed shows up in each member's next 1:1 brief.
+
+## Replied-to messages
+
+A message that replies to another carries the one it replies to in full, up to
+6,000 characters (`MAX_QUOTED_CHARS`; a longer one keeps its start and its last
+1,500 characters with a note of how much was left out), with its line breaks,
+even when that message is also in the history above: it says which message the
+person means, as Hermes Agent's reply context does. It is fenced as untrusted
+conversation (`--- quoted message ---`), and nothing inside can close the fence.
+
+- **The app**, a reply or a 👍/👎 on a message: the turn's own message quotes it
+  whole. History lines keep naming earlier replies by their first 220
+  characters.
+- **Rooms**: when the latest message replies to one the room's history shows
+  only the start of, the full text is added to the turn.
+- **Telegram and Discord**: the replied-to message (`reply_to_message`,
+  `referenced_message`) is quoted in full above the person's words, as your
+  earlier message or as a message from its sender.
+- **Slack**: a thread reply carries the thread (8,000 characters, newest first)
+  and always keeps the thread's opening message, the one the thread replies to.
 
 ## The journal
 

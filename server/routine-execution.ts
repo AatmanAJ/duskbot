@@ -2,6 +2,7 @@ import { SILENT_LINE } from "../shared/routine-run.ts";
 import type { RoutineRetryCause } from "../shared/routines.ts";
 import { stopCause } from "./drivers/engine-errors.ts";
 import { redactSecretsInText } from "./redact.ts";
+import { chainReadBlock, type ChainRead } from "./routine-chain.ts";
 import { retryNote } from "./routine-recovery.ts";
 import type { Routine, RoutineContextAttachment, RoutineRun, RoutineRunOn, RoutineRunTrigger } from "./routines.ts";
 
@@ -118,6 +119,7 @@ export function composeExecutionPrompt(
   carry?: RoutineContinuityCarry | null,
   retried?: RoutineRetryCause,
   memory?: RoutineMemory | null,
+  reads: readonly ChainRead[] = [],
 ): string {
   const parts = [`${routineHeader(routine.name, routine.trigger)}${routine.trigger === "webhook" ? "" : `Trigger id: ${routine.id}\n`}${prompt}`, retried ? retryNote(retried) : "",
     routine.dryRun ? DRY_RUN_NOTE : ""];
@@ -139,6 +141,7 @@ export function composeExecutionPrompt(
     );
   }
   if (memory) parts.push(memoryBlock(memory));
+  parts.push(chainReadBlock(reads));
   for (const attachment of attachments ?? []) {
     const tag = attachment.kind === "image" ? "attached-image" : "attached-file";
     parts.push(

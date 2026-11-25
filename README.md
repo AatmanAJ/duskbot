@@ -250,7 +250,7 @@ bot computer dusk bot server on 127.0.0.1:8799
 | Vault logins and app tokens | Encrypted files in the data folder, keys beside them as `0600` |
 | Backups | One file, AES-256-GCM, from a password of at least 12 characters |
 | What you say to a bot | Straight from the bot computer to your AI provider, not through us |
-| Usage information | Anonymous usage counts and crash reports, never your messages or files, on until you turn off "help improve dusk bot" (first screen or Settings). The phone app sends none. [What it sends](docs/analytics.md) |
+| Usage information | Anonymous usage counts, crash reports and, now and then, a short scrubbed note your own AI writes about how a session went (it reads a few recent messages where your bots run and uses a little of your AI plan; your messages are never sent). On until you turn off "help improve dusk bot" in Settings. The phone app sends none. [What it sends](docs/analytics.md) |
 
 ## Security
 

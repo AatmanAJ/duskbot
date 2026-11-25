@@ -124,6 +124,14 @@ export function readOnPhones(ids: unknown): void {
   if (activeRead && Array.isArray(ids)) activeRead(ids.filter((id): id is string => typeof id === "string"));
 }
 
+/** Lookups live in one relay node's memory and the phone reads typed codes only at DEFAULT_MOBILE_RELAY, so a server
+ * homed on another dusk bot node (link-in.dusk.bot) posts its code there, never to its own node. */
+export function typedCodeRelay(agentBase: string): string {
+  let host = "";
+  try { host = new URL(agentBase).hostname; } catch { return agentBase; }
+  return host === "dusk.bot" || host.endsWith(".dusk.bot") ? DEFAULT_MOBILE_RELAY : agentBase;
+}
+
 /** DUSK_MOBILE_RELAY: the relay that holds typed-code lookups when no link agent names one ("default" for the public one,
  * "none" for no typed codes); unset, the desktop app uses the public one and a server none */
 export function mobileLookupRelay(env: NodeJS.ProcessEnv = process.env, desktop = false): string | null {
@@ -368,7 +376,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
     }
     const payload: MobileLinkPayload = { v: MOBILE_LINK_VERSION, workspace: workspace(), grant: { id: opened.id, secret: opened.credential, expiresAt: opened.expiresAt, issuedAt: now() }, via };
     const lookupPayload: MobileLinkPayload = signIn ? { ...payload, signIn } : payload;
-    const lookupBase = relay?.base ?? deps.lookupRelay;
+    const lookupBase = relay ? typedCodeRelay(relay.base) : deps.lookupRelay;
     const typed = lookupBase && await postLookup(lookupBase, opened.code, lookupPayload, opened.expiresAt - now(), deps.fetch) ? formatPairingCode(opened.code) : null;
     const answer: MobilePairingResponse = { payload, link: mobileLinkUrl(payload), code: typed, expiresAt: opened.expiresAt };
     return { status: 200, body: answer };

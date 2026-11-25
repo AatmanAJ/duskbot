@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { cn } from "@/lib/cn";
 import { haptic } from "./haptics";
 import { closesOnBack } from "./Sheet";
-import { ease, feel, holdPress, prefersReducedMotion, springEasing } from "./motion";
+import { ease, feel, holdPress, prefersReducedMotion, springKeyframes } from "./motion";
 
 export interface ContextAction {
   key: string;
@@ -19,14 +19,14 @@ export interface ContextAction {
  * shows, so the tap that ends the hold does not also open the item under it. */
 export interface NativePress { press(el: HTMLElement, opened: () => void): void; cancel(): void }
 
-const HOLD_MS = 430;
+/** Telegram iOS opens a held thing's menu here: 120ms still, then a 200ms shrink, then the menu. */
+export const HOLD_MS = holdPress.stillMs + holdPress.shrinkMs;
 const MOVE_CANCEL = 8;
 
 /** The sink under a held finger: in toward the press scale over the whole hold, so the hand feels the menu coming; a
  * finger that lets go early springs it back. `null` hands the element over to the menu's lift with no release. */
 export function holdSink(el: HTMLElement): (on: boolean | null) => void {
   let anim: Animation | null = null;
-  const release = springEasing(feel.press.release.stiffness, feel.press.release.damping);
   return (on) => {
     if (prefersReducedMotion()) return;
     const now = anim ? Number(getComputedStyle(el).scale) || 1 : 1;
@@ -44,7 +44,8 @@ export function holdSink(el: HTMLElement): (on: boolean | null) => void {
         { scale: String(shrunk) },
       ], { duration: HOLD_MS, fill: "forwards" });
     } else if (on === false && now !== 1) {
-      el.animate([{ scale: String(now) }, { scale: "1" }], { duration: release.duration, easing: release.easing });
+      const release = springKeyframes(feel.press.release.stiffness, feel.press.release.damping, (p) => ({ scale: String(now + (1 - now) * p) }));
+      el.animate(release.keyframes, { duration: release.duration });
     }
   };
 }

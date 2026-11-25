@@ -7,9 +7,10 @@ import { SignInSheetHost } from "./components/SignInSheet";
 import { openSignIn } from "@/lib/sign-in-sheet";
 
 import { nextShortcutBot, shortcutBots, shownBotIds } from "@/lib/sidebar-shortcut-order";
-import { useWelcomeViewer, WelcomeGate } from "@/components/onboarding/WelcomeGate";
+import { useWelcomeIncoming, useWelcomeViewer, WelcomeGate } from "@/components/onboarding/WelcomeGate";
 import { LateCloudPlan } from "@/components/onboarding/LateCloudPlan";
 import { IslandIntroHost } from "@/components/onboarding/IslandIntroHost";
+import { NotesAskHost } from "@/components/onboarding/NotesAskHost";
 import { CloudTimeZoneSync } from "@/components/CloudTimeZone";
 import { useWarmChatImages } from "@/components/use-warm-chat-images";
 import { cloudSignInDue, type WelcomeViewer } from "@/lib/onboarding";
@@ -33,7 +34,7 @@ import { usePhoneViewport } from "@/lib/phone-viewport";
 import { preloadConnectedApps } from "@/lib/connected-apps";
 import { ConnectAppsHost, connectAppsPageFor, openConnectApps } from "@/components/connect-apps";
 import {
-  BotSettingsDialog, CloudAddDialog, KeyboardShortcutsModal,
+  BotSettingsDialog, CloudAddDialog, InboxPanel, KeyboardShortcutsModal,
   preloadScreens, RemoteAgentSettingsPanel, RoomPanel, SettingsModal,
 } from "@/components/lazy-screens";
 import { useRoomPanelShown } from "@/lib/room-panel";
@@ -51,8 +52,7 @@ import { CloudMoveOffer } from "@/components/CloudMoveOffer";
 import { HomeLine } from "@/components/HomeLine";
 import { useTeamChats } from "@/state/team-chats";
 import { needsYouVersion, useTeamPeopleLoader } from "@/state/team-people";
-import { inboxVersion, useInboxLoader, useInboxPanel, useInboxReady } from "@/state/inbox";
-import { InboxPanel } from "@/components/inbox/InboxPanel";
+import { inboxVersion, useInboxLoader, useInboxPanel, useInboxReady, useInboxSupport } from "@/state/inbox";
 import { InboxColumn } from "@/components/inbox/InboxColumn";
 import { PlacesRail } from "@/components/PlacesRail";
 import { CloudHowTo } from "@/components/CloudHowTo";
@@ -105,7 +105,8 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   useTeamPeopleLoader(state.config, needsYou);
   useInboxLoader(`${inboxVersion(state.bots) ?? ""}|${needsYou}`);
   const inboxReady = useInboxReady();
-  const inboxShown = useInboxPanel().open && inboxReady;
+  const inboxSupported = useInboxSupport() !== "no";
+  const inboxShown = useInboxPanel().open && (inboxReady || inboxSupported);
   // A Switch AI pick lands once its stopped turn's chat is idle, wherever the person is by then.
   useAiSwitchKeeper({ bots: state.bots, dispatch });
   useWarmChatImages(state.bots);
@@ -196,6 +197,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   const welcome = useCloudWelcome();
   const welcomeOnScreen = cloudWelcomeVisible({ viewer, connected: state.connected, enginesKnown: state.instances.length > 0, onboarding: state.config?.onboarding }, welcome)
     && state.activeView === "chat";
+  const welcomeIncoming = useWelcomeIncoming(viewer);
   const firstRun = cloudFirstRun({ welcome: welcomeOnScreen, intent: cloudAsk, signIn: cloudSignIn || cloudJobWaiting });
   useAmbientAway("cloud-first-run", Boolean(firstRun));
 
@@ -381,7 +383,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
       </div>
       <AnimatePresence>{state.appSettingsOpen && <SettingsModal key="settings" />}</AnimatePresence>
       {cloudAddOpened.current && <CloudAddDialog />}
-      <BootCover busy={loading.busy && !bot && !group && !firstRun && !noEngines} first={loading.text === "app.loading.updating" ? t(loading.text) : undefined} />
+      <BootCover busy={loading.busy && !bot && !group && !firstRun && !noEngines} hold={welcomeIncoming} first={loading.text === "app.loading.updating" ? t(loading.text) : undefined} />
       <CloudHowTo />
       <CloudSetup viewer={viewer} welcomeShown={welcomeOnScreen} />
       <WelcomeKeeper viewer={viewer} />
@@ -434,6 +436,7 @@ function Application({ children }: { children?: ReactNode }) {
         <LateCloudPlan viewer={viewer} />
         <BotsElsewhere />
         <IslandIntroHost />
+        <NotesAskHost />
         <CloudTimeZoneSync viewer={viewer} />
         {liveCallEnabled() && <LiveCallHost />}
         <AmbientPublisher />

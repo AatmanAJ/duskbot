@@ -19,13 +19,13 @@
       transition: opacity var(--dm-menu-out-ms) var(--motion-ease-out, ease-out), transform var(--dm-menu-out-ms) var(--motion-ease-out, ease-out);
     }
 
-    & :is([role="alertdialog"], [role="dialog"][aria-modal="true"], .ui-modal, .ui-dialog, .templates-sheet):not(.popover-surface, .menu-surface) {
+    & :is([role="alertdialog"], [role="dialog"][aria-modal="true"], .ui-modal, .ui-dialog, .templates-sheet):not(.popover-surface, .menu-surface, [data-screen]) {
       animation: dm-sheet-in var(--dm-dialog-ms) var(--dm-dialog-ease);
     }
     & :is([role="alertdialog"], [aria-modal="true"], .ui-modal, .ui-dialog):not(.popover-surface, .menu-surface).animate-pop-out {
       animation: dm-fade-out var(--dm-dialog-out-ms) var(--motion-ease-out, ease-out) forwards;
     }
-    & :is(.ui-scrim, .ui-dialog-scrim, .ui-dialog-scrim-panel, .settings-backdrop) { animation: dm-fade-in var(--dm-scrim-ms) var(--motion-ease-out, ease-out); }
+    & :is(.ui-scrim, .ui-dialog-scrim, .ui-dialog-scrim-panel, .settings-backdrop, .ca-scrim:not([data-exit-ghost])) { animation: dm-fade-in var(--dm-scrim-ms) var(--motion-ease-out, ease-out); }
     & :is(.ui-scrim, .ui-dialog-scrim)[data-leaving] { animation: dm-fade-out var(--dm-dialog-out-ms) var(--motion-ease-out, ease-out) forwards; }
 
     & .settings-pane-swap { animation: dm-swap-in var(--dm-swap-ms) var(--motion-ease-out, ease-out) backwards; }

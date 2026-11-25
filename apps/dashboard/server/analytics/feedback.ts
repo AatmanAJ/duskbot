@@ -1,9 +1,9 @@
 // The admin's "how sessions went" view: every note a workspace sent (after a bad chat, after a big session, and
 // weekly), newest first, with the friction they share grouped at the top. Notes are scrubbed on the workspace and
-// checked again on the way in; a note carries its account id only so the admin can open that person.
+// checked again on the way in, and are kept with no account or workspace: the view cannot lead to a person.
 import type { UsageDigest, UsageFrustration, UsageSession } from "../../../../shared/usage-signals.ts";
 import { themesOf, type Theme } from "./usage-summary.ts";
-import type { UsageRan, UsageRecord, UsageStore } from "./usage.ts";
+import { USAGE_RETENTION_DAYS, type UsageRan, type UsageRecord, type UsageStore } from "./usage.ts";
 
 export const FEEDBACK_KINDS = ["bad", "big", "weekly"] as const;
 export type FeedbackKind = (typeof FEEDBACK_KINDS)[number];
@@ -13,8 +13,6 @@ export interface FeedbackNote {
   /** the note itself; null when the workspace sent only the counts */
   text: string | null;
   engine?: string; category?: string; tools?: string[]; apps?: string[];
-  /** the account the note came from, for the link to that person's page */
-  person?: string;
   /** where it ran ("mac", "cloud", "own server") and the app version, when the workspace said */
   where?: string; version?: string;
   /** bad: what the person did, and the follow-ups that repeated the request */
@@ -43,7 +41,7 @@ export function whereWord(ran: UsageRan): string {
 }
 
 export function feedbackNote(record: UsageRecord): FeedbackNote | null {
-  const own = { ...(record.accountId ? { person: record.accountId } : {}), ...(record.ran ? { where: whereWord(record.ran), ...(record.ran.version ? { version: record.ran.version } : {}) } : {}) };
+  const own = record.ran ? { where: whereWord(record.ran), ...(record.ran.version ? { version: record.ran.version } : {}) } : {};
   if (record.kind === "frustration") {
     const f = record.data as UsageFrustration;
     return { id: record.id, kind: "bad", at: record.at, text: f.summary ?? null, engine: f.engine, category: f.category, tools: f.tools, apps: f.apps, signals: f.signals, retries: f.retries, ...own };
@@ -78,7 +76,7 @@ export async function feedbackAnswer(store: UsageStore, input: { now: number; ki
   /** notes that stay out (test accounts', harness installs'); the page cursor still walks past them */
   hidden?: (record: UsageRecord) => boolean }): Promise<FeedbackAnswer> {
   const kinds = input.kind ? [input.kind] : [...FEEDBACK_KINDS], limit = input.limit ?? FEEDBACK_PAGE;
-  const until = input.before ?? input.now + 1, since = input.now - 90 * DAY, recent = input.now - THEME_DAYS * DAY;
+  const until = input.before ?? input.now + 1, since = input.now - USAGE_RETENTION_DAYS * DAY, recent = input.now - THEME_DAYS * DAY;
   const [pages, ...windows] = await Promise.all([
     Promise.all(kinds.map(kind => store.records(RECORD_KIND[kind], since, until, limit + 1))),
     ...FEEDBACK_KINDS.map(kind => allRecords(store, RECORD_KIND[kind], recent, input.now + 1)),

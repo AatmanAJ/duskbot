@@ -26,7 +26,7 @@ function harness(held = false) {
     if (opts.after) send({ type: "item.started", itemType: "tool", title: opts.after }, opts.threadId);
     send({ type: "turn.completed", ok: opts.ok ?? true }, opts.threadId);
   };
-  return { carried, lines, turn, hold: (on: boolean) => { isHeld = on; } };
+  return { carried, lines, turn, guard, hold: (on: boolean) => { isHeld = on; } };
 }
 
 describe("finish guard", () => {
@@ -166,6 +166,25 @@ describe("finish guard", () => {
     expect(finishReason({ text: "- [x] Saved the receipt\n- [ ] Save the invoice", tools: 1, plan: null, effectful: 1 })).toEqual({ kind: "checklist", items: ["Save the invoice"] });
   });
 
+  it("carries on a claimed reminder whose only trigger call paused something, on any engine", () => {
+    const h = harness();
+    const send = (body: Body) => h.guard.onEvent({ eventId: "e", provider: "fake", threadId: "t1", createdAt: "", ...body } as RuntimeEvent);
+    send({ type: "turn.started" });
+    send({ type: "item.started", itemType: "tool", title: "mcp__agents__trigger", input: '{"action":"pause","trigger_id":"r1"}' });
+    send({ type: "item.completed", itemType: "assistant_text", text: "Paused. I've set a reminder for Monday to turn it back on." });
+    send({ type: "turn.completed", ok: true });
+    expect(h.carried).toHaveLength(1);
+    expect(h.lines.at(-1)).toEqual({ kind: "promise" });
+
+    const set = harness();
+    const again = (body: Body) => set.guard.onEvent({ eventId: "e", provider: "fake", threadId: "t1", createdAt: "", ...body } as RuntimeEvent);
+    again({ type: "turn.started" });
+    again({ type: "item.started", itemType: "tool", title: "mcp__agents__trigger", input: '{"action":"create","when":"schedule"}' });
+    again({ type: "item.completed", itemType: "assistant_text", text: "Reminder set for Monday at 9." });
+    again({ type: "turn.completed", ok: true });
+    expect(set.carried).toHaveLength(0);
+  });
+
   it("leaves a promise alone once a wait or trigger was set up, or when the engine's loop already sent it back", () => {
     expect(finishReason({ text: "I'll let you know when it drops.", tools: 1, plan: null, scheduled: true })).toBeNull();
     expect(finishReason({ text: "I'll let you know when it drops. All set.", tools: 0, plan: null, gated: ["follow_up"] })).toBeNull();
@@ -242,5 +261,37 @@ describe("finish guard: open asks and done claims", () => {
     const file = withAsks([]);
     file.turn("Done, the config is updated.", ["Edit"]);
     expect([...read.carried, ...file.carried]).toEqual([]);
+  });
+});
+
+describe("finish guard: claims with nothing behind them", () => {
+  it("carries on a reply that says it sent something when only a lookup ran, and leaves a turn whose loop already checked", () => {
+    const h = harness();
+    const send = (body: Body) => h.guard.onEvent({ eventId: "e", provider: "fake", threadId: "t1", createdAt: "", ...body } as RuntimeEvent);
+    send({ type: "turn.started" });
+    send({ type: "item.started", itemType: "tool", itemId: "c1", title: "mcp__mail__gmail_search" });
+    send({ type: "item.completed", itemType: "tool", itemId: "c1", ok: true });
+    send({ type: "item.completed", itemType: "assistant_text", text: "I've emailed Priya the three slots." });
+    send({ type: "turn.completed", ok: true });
+    expect(h.carried.at(-1)?.note).toContain("no tool call in this turn did that");
+
+    const checked = harness();
+    checked.turn("I've emailed Priya the three slots.");
+    const sent = checked.carried.length;
+    checked.guard.onEvent({ eventId: "e", provider: "fake", threadId: "t2", createdAt: "", type: "turn.started" } as RuntimeEvent);
+    checked.guard.onEvent({ eventId: "e", provider: "fake", threadId: "t2", createdAt: "", type: "item.completed", itemType: "assistant_text", text: "I've emailed Priya the three slots." } as RuntimeEvent);
+    checked.guard.onEvent({ eventId: "e", provider: "fake", threadId: "t2", createdAt: "", type: "turn.completed", ok: true, claimsChecked: true } as RuntimeEvent);
+    expect(checked.carried.length).toBe(sent);
+  });
+
+  it("lets a sent claim end when a send succeeded", () => {
+    const h = harness();
+    const send = (body: Body) => h.guard.onEvent({ eventId: "e", provider: "fake", threadId: "t1", createdAt: "", ...body } as RuntimeEvent);
+    send({ type: "turn.started" });
+    send({ type: "item.started", itemType: "tool", itemId: "c1", title: "mcp__mail__gmail_send" });
+    send({ type: "item.completed", itemType: "tool", itemId: "c1", ok: true });
+    send({ type: "item.completed", itemType: "assistant_text", text: "I've emailed Priya the three slots." });
+    send({ type: "turn.completed", ok: true });
+    expect(h.carried).toEqual([]);
   });
 });

@@ -6,7 +6,7 @@ Three ways to make the server reachable are covered. Pick one; the rest of the g
 
 | | You need | Who can reach it | Best for |
 |---|---|---|---|
-| **A. Public address, no domain** (`serve --tunnel`) | a dusk bot account (email code) | anyone with a pairing code, over HTTPS | the fastest path; a phone on cellular |
+| **A. The app's one-line installer** (no domain) | the dusk bot app | your app and the devices you pair, through the dusk bot relay or a Cloudflare tunnel | the fastest path; a phone on cellular |
 | **B. Your own domain** (Docker + Caddy) | a domain name, ports 80/443 | anyone with a pairing code, over HTTPS | a permanent address you own |
 | **C. Your Tailscale network** (`serve --tailscale`) | Tailscale on the server and your devices | only your tailnet | the most private; nothing public at all |
 
@@ -14,7 +14,7 @@ Whichever you pick, the login is the same: you **pair** each device once with a 
 
 ## Hetzner launch check (2026-09-07)
 
-Path A was exercised on a blank Hetzner CX43 (x86-64, Ubuntu 24.04), using
+The `serve --tunnel` path (unavailable today, see path A) was exercised on a blank Hetzner CX43 (x86-64, Ubuntu 24.04), using
 Node 24.20.0 and Codex 0.153.4. The published 0.1.60 baseline was followed by
 local candidate fixes from this change; these results do not certify the
 unmodified published 0.1.60 package.
@@ -39,7 +39,7 @@ Needs the desktop app instead: dictation and controlling the server's own deskto
 ## Before you start
 
 1. **A server.** Any Linux VPS: Ubuntu 22.04 or 24.04, 2 CPUs and 4 GB of RAM is plenty. You need `sudo` or root. Hetzner, DigitalOcean, Lightsail, a Mac mini in a cupboard: all fine.
-2. **Node 24 or newer** for paths A and C (`node --version`). On Ubuntu:
+2. **Node 24 or newer** for path C (`node --version`). On Ubuntu:
 
    ```sh
    curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash - && sudo apt-get install -y nodejs
@@ -54,7 +54,7 @@ Connect to the server for everything below:
 ssh root@YOUR_SERVER_IP
 ```
 
-For paths A and C, use the same unprivileged Linux account for setup and the
+For path C, use the same unprivileged Linux account for setup and the
 running service. The examples below use `maus` with home `/home/maus`. From an
 administrator shell, create it if it does not already exist, then switch to it:
 
@@ -68,25 +68,27 @@ Run the `npx` commands and engine sign-ins below in this account. Keep a separat
 administrator shell for system packages and systemd. If you already signed in as
 root, sign in again as `maus`; those accounts have different homes and credentials.
 
-## Path A: a public address with one command
+## Path A: the app's one-line installer
 
-No domain, no proxy, no open port. The server gets an address like `https://c-7f3a9c.cloud.dusk.bot` through a Cloudflare tunnel; only traffic through the tunnel reaches it, and that traffic still has to pair.
+No domain, no proxy, no open port, nothing to install first. Ubuntu 20.04+ or Debian 11+.
 
-```sh
-npx duskbot setup          # once: choose AI access, connect, and choose a model
-npx duskbot login          # once: an emailed code signs this machine in and reserves its address
-npx duskbot serve --tunnel # runs the server there and prints the pairing link with a QR code
-```
+1. In the dusk bot app, open the menu at the top of the sidebar, choose **Add a cloud or your own server**, then your own server.
+2. The app shows one line. Paste it on the server as root or a user with `sudo`:
 
-`setup` connects an AI provider; it is separate from the dusk bot account.
-Use Codex's device-code option over SSH, or enter a hidden API key for a
-chat-only connection. More engines can be added later. See [CLI setup](cli-onboarding.md).
+   ```sh
+   curl -fsSL https://dusk.bot/s/<code>/cloudflare | sh   # a Cloudflare tunnel (recommended)
+   curl -fsSL https://dusk.bot/s/<code> | sh              # the dusk bot relay
+   curl -fsSL https://dusk.bot/s/<code>/tailscale | sh    # your tailnet
+   curl -fsSL https://dusk.bot/s/<code>/ssh | sh          # over your SSH port
+   ```
 
-`login` asks for your email, sends an 8-digit code, and prints the address it reserved for this machine. `serve --tunnel` downloads `cloudflared` on the first run (a pinned version with a verified digest, into `~/.duskbot`), starts the server, connects the tunnel, and after a few seconds prints `tunnel: live at https://…`. Leave it running; see "Keep it running" for a service.
+3. Sign in to your AI from the app, not on the server, and let the app move your bots over.
 
-The account credentials live in `~/.duskbot/tunnel-account.json`, readable only by your user. `npx duskbot logout` releases the address.
+The installer sets dusk bot up as `duskbot.service`, runs the link agent beside it and links the server to your app. The link is sealed with a key only your app and your server hold, so the relay passes blobs it can't read. The line works once and expires after 30 minutes; paste the same line again if it stopped half way. To link another computer, run `duskbot pair --label desktop` on the server and paste what it prints in that computer's app under **Already running dusk bot?**. More in [your own server](https://dusk.bot/docs/your-own-server).
 
-Skip to "Install and sign the engines in".
+The installer covers the service and the link, and AI sign-in happens in the app, so the rest of this guide is for paths B and C.
+
+Older guides used `npx duskbot login` and `npx duskbot serve --tunnel` here. Those sign in to a secure access service that dusk.bot does not run today, so they fail; use the installer above, or path B or C for a server you run by hand.
 
 ## Path B: your own domain, with Docker
 
@@ -108,7 +110,7 @@ One container for the server plus Caddy for HTTPS at `https://maus.example.com`.
    nano .env                # DOMAIN=maus.example.com ; ENGINES=@anthropic-ai/claude-code @openai/codex
    ```
 
-   The published image has Claude Code and Codex. `ENGINES` lists the engine CLIs baked in when you build the image yourself (`docker compose up -d --build`), separated by spaces; other engines install from Settings → Engines.
+   The published image has Claude Code and Codex. `ENGINES` lists the engine CLIs baked in when you build the image yourself (`docker compose up -d --build`), separated by spaces; other engines install from Settings → Models.
 
 4. **Start it:**
 
@@ -138,7 +140,7 @@ Tailscale terminates HTTPS with its own certificate and the pairing link uses th
 ## Give the bots a browser (optional)
 
 Bots can browse on a server. Docker (path B) ships the engine and Chrome in
-the image. For paths A and C, install Linux system libraries once from the
+the image. For path C, install Linux system libraries once from the
 administrator shell:
 
 ```sh
@@ -162,7 +164,7 @@ gets its own isolated session whose logins persist across restarts.
 
 ## Install and sign the engines in
 
-The npm dusk bot package does not install model engine CLIs. For paths A and C,
+The npm dusk bot package does not install model engine CLIs. For path C,
 install the engine you use in the service account, then sign it in. For example,
 from the `maus` shell, for Claude:
 
@@ -213,7 +215,7 @@ npx duskbot status                # what the server says about itself
 
 ## Keep it running
 
-`npx duskbot serve` is a plain foreground process. For systemd (paths A and C),
+`npx duskbot serve` is a plain foreground process. For systemd (path C),
 install a chosen release first, from the `maus` shell. Replace `X.Y.Z` with the
 published version you want to run:
 
@@ -235,7 +237,7 @@ User=maus
 WorkingDirectory=/home/maus
 Environment=HOME=/home/maus
 Environment=PATH=/home/maus/.local/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/home/maus/.local/bin/duskbot serve --tunnel --no-pair
+ExecStart=/home/maus/.local/bin/duskbot serve --tailscale --no-pair
 Restart=always
 RestartSec=5
 
@@ -245,18 +247,30 @@ WantedBy=multi-user.target
 
 ```sh
 sudo systemctl daemon-reload && sudo systemctl enable --now duskbot
-journalctl -u duskbot -f            # the server's log, including "tunnel: live at …"
+journalctl -u duskbot -f            # the server's log
 ```
 
-Use `--tailscale` instead of `--tunnel` for path C. `--no-pair` skips printing a code at every restart; mint one with `npx duskbot pair` when you need it. Docker (path B) restarts on its own (`restart: unless-stopped`).
+Behind your own HTTPS reverse proxy, use `--public-url https://your.host` instead of `--tailscale`. `--no-pair` skips printing a code at every restart; mint one with `npx duskbot pair` when you need it. Docker (path B) restarts on its own (`restart: unless-stopped`).
 
 Adjust the account, home, and PATH if yours differ; Node 24 must be available on
 that PATH. The service runs the installed CLI directly, so a restart uses the
 same release without an npm install prompt or an implicit upgrade.
 
+### Time zone
+
+A server clock is usually UTC. A `daily` routine at 18:00, or a bot's "current
+time", then follows UTC and not your day. Pick one:
+
+- Add `Environment=DUSK_ADOPT_TIME_ZONE=1` under `[Service]`. The server then
+  tells time in the zone your app reports, and follows you when you travel.
+- Or add `Environment=TZ=Area/City` (for example `TZ=Asia/Kolkata`) to fix one
+  zone.
+
+If both are set, `TZ` wins and the app's zone is ignored.
+
 ## Update
 
-- **Paths A and C with the service above:** choose the new published version,
+- **Path C with the service above:** choose the new published version,
   then run these commands from the administrator shell, replacing `X.Y.Z`:
 
   ```sh
@@ -267,7 +281,7 @@ same release without an npm install prompt or an implicit upgrade.
 
   Check that installation succeeded before starting. A service restart by itself
   does not update the installed package. For foreground `npx` usage, specify the
-  desired release as `npx --yes duskbot@X.Y.Z serve --tunnel`.
+  desired release as `npx --yes duskbot@X.Y.Z serve --tailscale`.
 - **Path B:** `cd duskbot/deploy && docker compose pull dusk && docker compose up -d`.
 
 Routines and queued work survive a restart. A teammate turn running at that moment runs again once at the next start, told to check what it already did, and the bot that asked for it is told. A person's own turn and a running routine are not run again: the conversation says it was interrupted. Update between runs where you can.
@@ -279,7 +293,7 @@ process, or `sudo systemctl stop duskbot` from the administrator shell for
 the service above. Stop any engine processes and managed desktops still writing
 files you intend to back up.
 
-For paths A and C, this backs up application state (bots, chats, routines, tunnel
+For path C, this backs up application state (bots, chats, routines, tunnel
 credentials, and paired sessions). Run it from the service account's shell:
 
 ```sh
@@ -322,9 +336,7 @@ Read this before putting anything else in front of the server.
 
 ## Troubleshooting
 
-**`serve --tunnel` says "no account on this machine yet".** Run `npx duskbot login` on this machine first; the credentials are per machine.
-
-**The tunnel stays on "retrying".** The server is running and usable locally; the public hop is not verified yet. Wait a minute (Cloudflare needs a moment on a fresh address), then check `journalctl`/the terminal for the reason. If it never comes up, `npx duskbot logout && npx duskbot login` issues a fresh address.
+**`duskbot login` or `serve --tunnel` fails with "Secure access is not available" or "the service behind `duskbot login`".** dusk.bot does not run that service today. Link the server with the app's installer (path A), or serve it with `--tailscale` (path C) or your own domain (path B).
 
 **Path B: the page never loads or shows a certificate error.** Caddy could not get a certificate. Check that the name resolves to the server and that ports 80 and 443 are open; `docker compose logs caddy` shows the reason.
 
@@ -345,7 +357,7 @@ shows an AppArmor `DENIED` for `userns`, the browser download is installed but
 Ubuntu is blocking its sandbox. [Chromium documents this restriction](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md).
 Do not add `--no-sandbox` or disable `kernel.apparmor_restrict_unprivileged_userns` globally.
 
-For paths A and C, an administrator can allow only a trusted, root-owned Chrome
+For path C, an administrator can allow only a trusted, root-owned Chrome
 copy. Find the service user's downloaded executable:
 
 ```sh
@@ -395,3 +407,31 @@ path in the `maus` shell before starting `serve`. After a Chrome update, copy th
 new version and update both the AppArmor profile and service environment; the
 root-owned copy is not updated by the browser installer. Keep
 `kernel.apparmor_restrict_unprivileged_userns=1`.
+
+### Ubuntu 24.04 script check sandbox
+
+On Ubuntu 24.04, read-only script checks fail with "bubblewrap is installed but
+this computer will not let it make the namespaces a script check runs in" until
+AppArmor lets `bwrap` make user namespaces. `install.sh` writes this profile for
+you. On a manual install, save it as the root-owned
+`/etc/apparmor.d/duskbot-bwrap`. Checks with `access: "full"` run outside the
+sandbox and do not need it.
+
+```text
+abi <abi/4.0>,
+include <tunables/global>
+
+profile duskbot-bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+
+  include if exists <local/duskbot-bwrap>
+}
+```
+
+Load the profile:
+
+```sh
+sudo apparmor_parser -r /etc/apparmor.d/duskbot-bwrap
+```
+
+Keep `kernel.apparmor_restrict_unprivileged_userns=1`.

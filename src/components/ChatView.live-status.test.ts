@@ -206,6 +206,27 @@ describe("the working line", () => {
     expect(host.querySelector(".turn-status-out"), "It leaves").not.toBeNull();
     expect(statusLine(), "with the bot's own words, not a stock phrase").toBe("Drafting the summary");
   });
+
+  it("opens the next turn with its own words, never the step the last turn ended on", () => {
+    const done: Message = { id: "done", role: "bot", kind: "text", at: started + 9_000, text: "Exported.", turnId: "t1" };
+    engine({ type: "turn.started" });
+    render(busyBot([ask]));
+    act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
+    engine({ type: "turn.progress", activity: "command", tool: "Bash", target: "export_invoices.js", label: "Running export_invoices.js" } as Partial<RuntimeEvent>);
+    expect(statusLine()).toBe("Running export_invoices.js");
+    engine({ type: "turn.completed", ok: true } as Partial<RuntimeEvent>);
+    render(busyBot([ask, done], false));
+    act(() => void vi.advanceTimersByTime(STATUS_EXIT_MS));
+    expect(line()).toBeNull();
+
+    const next: Message = { id: "optimistic-s2", role: "user", kind: "text", at: Date.now(), text: "Now the February ones", sendId: "s2" };
+    render(busyBot([ask, done, next], false));
+    act(() => noteSentTurn(THREAD, "s2", Date.now()));
+    act(() => void vi.advanceTimersByTime(100));
+    expect(statusLine(), "the new turn's own word from its first frame").toBe("Thinking");
+    act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
+    expect(statusLine()).toBe("Thinking");
+  });
 });
 
 describe("each bubble's typing beat", () => {

@@ -188,15 +188,15 @@ export function cliExitCode(exit: { code: number | null; signal?: string | null;
 
 // the engines' structured codes: codex app-server's codexErrorInfo, OpenCode's error class names, providers' error codes
 const CODE_REASONS: ReadonlyArray<[RegExp, UsageReason]> = [
-  [/^(?:contextWindowExceeded|context_length_exceeded|ContextOverflowError|string_above_max_length|MessageOutputLengthError)$/, "context"],
+  [/^(?:request_too_large|contextWindowExceeded|context_length_exceeded|ContextOverflowError|string_above_max_length|MessageOutputLengthError)$/, "context"],
   [/^(?:usageLimitExceeded|insufficient_quota|quota_exceeded|billing_hard_limit_reached|insufficient_balance|subscription_sharing_usage_limit_exceeded|free_pool_limit)$/, "quota"],
   [/^(?:rate_limit_exceeded|rate_limit_error|free_rate_limited)$/, "rate_limit"],
   [/^(?:unauthorized|invalid_api_key|authentication_error|permission_error|ProviderAuthError|invalid_credentials|inactive_subscription)$/, "auth"],
-  [/^(?:model_not_found|ProviderModelNotFoundError|unknown_model|provider_not_configured)$/, "model_not_found"],
-  [/^(?:badRequest|invalid_request_error|invalid_request|rpc_32700|rpc_32600|rpc_32601|rpc_32602)$/, "bad_request"],
-  [/^(?:announced_no_action|max_steps)$/, "no_reply"],
-  [/^(?:tool_args_malformed|reused_call_id)$/, "tool"],
-  [/^(?:internalServerError|serverOverloaded|responseTooManyFailedAttempts|overloaded_error|api_error|server_error|upstream_outage|free_busy)$/, "provider_down"],
+  [/^(?:model_not_found|model_not_set|ProviderModelNotFoundError|unknown_model|provider_not_configured)$/, "model_not_found"],
+  [/^(?:badRequest|invalid_request_error|invalid_request|rpc_32700|rpc_32600|rpc_32601|rpc_32602|legacy_function_call|stream_frame_too_large|responses_route_unavailable)$/, "bad_request"],
+  [/^(?:announced_no_action|max_steps|repeat_stopped|no_choice|no_completion|no_body)$/, "no_reply"],
+  [/^(?:tool_args_malformed|reused_call_id|tool_call_refused|tools_mount|tool_cleanup|ChatToolSessionError)$/, "tool"],
+  [/^(?:server_unresponsive|internalServerError|serverOverloaded|responseTooManyFailedAttempts|overloaded_error|api_error|server_error|upstream_outage|free_busy)$/, "provider_down"],
   [/^(?:httpConnectionFailed|responseStreamConnectionFailed|responseStreamDisconnected)$/, "network"],
   [/^(?:free_timeout)$/, "timeout"],
   [/^finish_content_filter$/, "refused"],
@@ -498,6 +498,24 @@ export const USAGE_DIGEST_KEYS = ["id", "at", "turns", "days", "summary"] as con
 export const MAX_REPORT_RUNS = 200;
 export const USAGE_SESSION_KEYS = ["id", "at", "engine", "category", "tools", "apps", "turns", "minutes", "failed", "summary"] as const;
 export const MAX_REPORT_SESSIONS = 20, SESSION_NOTE_MAX = 400;
+/** the chat lines a note's writer reads on the workspace: a chat that went badly, a big session, and the weekly digest's
+ * last lines of each of its newest chats; the privacy policy quotes these numbers */
+export const NOTE_LINES_BAD = 12, NOTE_LINES_BIG = 14, DIGEST_LINES = 6, DIGEST_CHATS = 12;
+/** days the account service keeps notes and raw usage records, and the workspace its list of what it sent */
+export const USAGE_RETENTION_DAYS = 30;
+/** note ids one report or app request may ask the account service to delete */
+export const MAX_FORGET_NOTES = 200;
+export const NOTE_ID = /^[A-Za-z0-9_-]{8,40}$/;
+/** what a workspace asks the account service to delete: notes by the ids only it knows, and with `records` its usage
+ * records too. Notes are stored under a hash of their id and no account, so these ids are the only way back to them. */
+export interface UsageForget { notes: string[]; records: boolean }
+export function cleanUsageForget(input: unknown): UsageForget | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const raw = input as Record<string, unknown>;
+  if (!Array.isArray(raw.notes) || raw.notes.length > MAX_FORGET_NOTES || typeof raw.records !== "boolean") return null;
+  const notes = raw.notes.filter((id): id is string => typeof id === "string" && NOTE_ID.test(id));
+  return notes.length === raw.notes.length ? { notes, records: raw.records } : null;
+}
 
 const ID = /^[A-Za-z0-9_-]{8,40}$/;
 const oneOf = <T extends string>(list: readonly T[], value: unknown): value is T => typeof value === "string" && (list as readonly string[]).includes(value);
@@ -563,6 +581,8 @@ export const NOTE_WORDS: ReadonlySet<string> = new Set([
   "cloud", "web", "website", "site", "page", "tab", "link", "search", "routine", "routines", "memory", "skill", "skills", "task", "tasks", "email", "emails",
   "message", "messages", "post", "posts", "reply", "draft", "file", "files", "folder", "note", "notes", "account", "settings", "room", "team",
 ]);
+/** small words inside a bot's name ("A to Zed", "The Closer") that every note also uses as plain words */
+const NAME_FILLERS: ReadonlySet<string> = new Set(["a", "an", "the", "to", "of", "and", "or", "for", "in", "on", "at", "by", "with", "my", "your", "our", "me", "it", "is", "de", "la", "le", "el", "y"]);
 const words = (text: string) => text.toLowerCase().normalize("NFKC").split(/[^\p{L}\p{N}']+/u).filter(Boolean);
 /** a word run this long shared with the chat means the note copied the person's words */
 export const COPIED_RUN = 6;
@@ -600,7 +620,7 @@ export function scrubSummary(raw: unknown, max = SUMMARY_MAX, options: { sources
   if (original.length < 12 || NOT_A_NOTE.test(original) || ECHOED_PROMPT.test(original)) return null;
   const sources = options.sources ?? [];
   if (sources.length && copies(original, sources)) return null;
-  const botNames = new Set((options.avoid ?? []).flatMap(words).filter(word => !NOTE_WORDS.has(word)));
+  const botNames = new Set((options.avoid ?? []).flatMap(words).filter(word => !NOTE_WORDS.has(word) && !NAME_FILLERS.has(word)));
   const avoid = new Set([...chatAvoidWords(sources)].filter(word => !NOTE_WORDS.has(word) && !botNames.has(word)));
   let text = original.replace(/[\p{L}\p{N}'-]+/gu, (word: string) => botNames.has(word.toLowerCase().replace(/'s$/, "")) ? "bot" : word).replace(EMAIL, " ").replace(URL_LIKE, " ").replace(HANDLE, " ").replace(QUOTED, " ").replace(PATH, " ").replace(FILE, " ").replace(LONG, " ")
     .replace(NUMBER_RUN, " ").replace(DIGITS, (token: string) => COUNT.test(token) ? token : " ");

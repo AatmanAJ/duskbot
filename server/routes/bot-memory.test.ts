@@ -11,7 +11,7 @@ import { launchVerificationServer, type VerificationServer } from "../../scripts
 import { createBotMemoryRoutes, type BotMemoryRouteDeps } from "./bot-memory.ts";
 import { dispatchRoutes } from "./table.ts";
 
-const BOTS: Record<string, { id: string }> = { "bot-123": { id: "bot-123" } };
+const BOTS: Record<string, { id: string }> = { "bot-123": { id: "bot-123" }, "bot-notes": { id: "bot-notes" } };
 const servers: Server[] = [];
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => new Promise((done) => server.close(done))));
@@ -54,6 +54,19 @@ describe("the bot-memory module through the route table", () => {
     const file = await fetch(`${base}/api/bots/bot-123/memory/file`);
     expect(file.status).toBe(200);
     expect(await file.json()).toMatchObject({ path: "MEMORY.md", exists: false, text: "" });
+  });
+
+  it("sends MEMORY.md and every topic but the archive in the overview when asked for notes", async () => {
+    const base = await serve();
+    for (const [path, text] of [["MEMORY.md", "- Stand-up is Monday 09:30.\n"], ["memory/kestrel.md", "- Kestrel renews in February.\n"], ["memory/archive.md", "- Old address\n"]]) {
+      const put = await fetch(`${base}/api/bots/bot-notes/memory/file`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ path, text }) });
+      expect(put.status).toBe(200);
+    }
+    const plain = (await (await fetch(`${base}/api/bots/bot-notes/memory`)).json()) as { notes?: unknown };
+    expect(plain.notes).toBeUndefined();
+    const { notes } = (await (await fetch(`${base}/api/bots/bot-notes/memory?notes`)).json()) as { notes: Array<{ path: string; text: string; exists: boolean }> };
+    expect(notes.map((note) => note.path)).toEqual(["MEMORY.md", "memory/kestrel.md"]);
+    expect(notes[1]).toMatchObject({ text: "- Kestrel renews in February.\n", exists: true });
   });
 
   it("names the chat in a journal row through the taskByThread seam, and keeps the prior text server-side", async () => {

@@ -1,0 +1,106 @@
+{
+  "title": "Three digests a day, but family, school, doctor and odd bank charges come straight through",
+  "world": "parent",
+  "tags": [
+    "x-usage",
+    "routine",
+    "proactive"
+  ],
+  "source": "x-usage #2: VIP and fraud mail bypass the batching, everything else waits for the 8/1/7 digests, approvals asked inside the digest. Daycare adapted to the kids' school.",
+  "steps": [
+    {
+      "chat": {
+        "goal": "Stop being pinged all day: one digest at 8, 1 and 7. Family (Dan, Mum), the kids' school, the doctor and any weird bank charge come through straight away.",
+        "opener": "can you stop pinging me all day? just one round up at 8, 1 and 7. but dan, my mum, the school, the doctor and any weird charge on my bank come through straight away",
+        "maxTurns": 4,
+        "label": "setup"
+      }
+    },
+    {
+      "inject": {
+        "mail": [
+          {
+            "from": "Parramatta East Public School <office@parraeast-p.schools.nsw.edu.au>",
+            "subject": "Ava is unwell",
+            "body": "Hi Sophie, Ava has a temperature of 38.4 and is resting in sick bay. Could someone please collect her as soon as possible? Thanks, Front Office"
+          },
+          {
+            "from": "Commonwealth Bank <alerts@notifications.commbank.com.au>",
+            "subject": "Unusual transaction on your card",
+            "body": "We noticed a transaction of $899.00 at GLOBALTECH STORE HK on your card ending 5521. If this wasn't you, call 13 2221 now."
+          },
+          {
+            "from": "Kmart <hello@kmart.com.au>",
+            "subject": "Toy sale ends tonight",
+            "body": "Up to 50% off toys.",
+            "labels": [
+              "INBOX",
+              "CATEGORY_PROMOTIONS"
+            ]
+          },
+          {
+            "from": "Bunnings <noreply@bunnings.com.au>",
+            "subject": "Your receipt",
+            "body": "Thanks for shopping. Total $42.80."
+          }
+        ]
+      },
+      "label": "arrive"
+    },
+    {
+      "advance": "+1h"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      },
+      "label": "urgent"
+    },
+    {
+      "advance": "+0d 13:05"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      },
+      "label": "digest"
+    }
+  ],
+  "checks": [
+    {
+      "label": "digest at 1pm scheduled",
+      "routine": {
+        "where": {
+          "schedule": "13|1 ?pm"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "school alert came right away",
+      "proactive": {
+        "after": "arrive",
+        "match": "ava|collect|temperature|sick"
+      },
+      "min": 1
+    },
+    {
+      "label": "bank alert came right away",
+      "proactive": {
+        "after": "arrive",
+        "match": "899|unusual|globaltech|bank"
+      },
+      "min": 1
+    },
+    {
+      "label": "8am and 7pm digests too",
+      "routine": {
+        "where": {
+          "schedule": "19|7 ?pm"
+        }
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Rosie sets up the three digests plus a fast lane. Ava's sick-bay email and the $899 charge reach Sophie within the hour; the Kmart promo and receipt wait for the 1pm round-up (or are dropped). Anything needing a yes/no is asked inside the digest."
+}

@@ -92,7 +92,7 @@ export class BotCreationDraft {
   dispose() { if (this.avatarObjectUrl) URL.revokeObjectURL(this.avatarObjectUrl); }
 
   private routine(input: RoutineInput, previous?: Routine): Routine {
-    const { groupId: _group, resultsThreadId: _results, checks: _checks, access: _access, deliver: _deliver, probe, timing, schedule, ...fields } = input;
+    const { groupId: _group, resultsThreadId: _results, checks: _checks, access: _access, deliver: _deliver, chain: _chain, probe, timing, schedule, ...fields } = input;
     const normalizedSchedule = schedule.type === "interval" ? {
       ...schedule, weekdays: schedule.weekdays ?? undefined,
       window: schedule.window ?? undefined, endsAt: schedule.endsAt ?? undefined,
@@ -101,7 +101,7 @@ export class BotCreationDraft {
       id: previous?.id ?? `draft-${randomUuid()}`, createdAt: previous?.createdAt ?? Date.now(),
       updatedAt: Date.now(), nextRunAt: null, runOn: "maus", ...previous, ...fields,
       enabled: input.enabled ?? previous?.enabled ?? true, target: "bot", botId: this.id,
-      timeoutMinutes: input.timeoutMinutes ?? undefined,
+      timeoutMinutes: input.timeoutMinutes ?? undefined, catchUpMinutes: input.catchUpMinutes ?? undefined,
       durationMinutes: input.durationMinutes ?? previous?.durationMinutes ?? 30,
       schedule: normalizedSchedule,
       probe: probe ?? undefined, timing: timing ?? undefined,

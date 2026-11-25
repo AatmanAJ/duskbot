@@ -5,6 +5,9 @@
  * secrets.
  */
 import { getDomain } from "tldts";
+import { plainHost } from "./login-host.ts";
+
+export { loginSealTarget, normalizeLoginHost, plainHost } from "./login-host.ts";
 
 /** Where a login came from: the sign-in card's Save, Settings, or the person's
  * 1Password vault (read-only here). */
@@ -71,35 +74,11 @@ function isLoopbackHost(host: string): boolean {
   return host === "localhost" || host.endsWith(".localhost") || host === "127.0.0.1" || host === "[::1]";
 }
 
-/** A host as pages report it: lower case, without the root's trailing dot. */
-export function plainHost(host: string): string {
-  return host.toLowerCase().replace(/\.$/u, "");
-}
-
 /** The site a host belongs to. Loopback names, IP addresses and hosts that
  * are themselves a public suffix are their own site. */
 export function loginSite(host: string): string {
   const name = plainHost(host);
   return getDomain(name, { allowPrivateDomains: true }) ?? name;
-}
-
-/** A login's host from what the person typed: a page address or a bare
- * domain. Anything that is not a plain http(s) address is refused. */
-export function normalizeLoginHost(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  const text = raw.trim();
-  // eslint-disable-next-line no-control-regex -- Reject control characters and spaces before URL parsing normalizes them.
-  if (!text || text.length > 2048 || /[\u0000- \u007f\\]/u.test(text)) return null;
-  let url: URL;
-  try {
-    url = new URL(/^[a-z][a-z\d+.-]*:/i.test(text) ? text : `https://${text}`);
-  } catch {
-    return null;
-  }
-  if ((url.protocol !== "https:" && url.protocol !== "http:") || !url.hostname || url.username || url.password) return null;
-  const host = plainHost(url.hostname);
-  if (!host.includes(".") && host !== "localhost" && !host.startsWith("[")) return null;
-  return host;
 }
 
 /** Where a new login may be filled: the site of the address it was saved
@@ -151,10 +130,4 @@ export function loginLabel(login: LoginPlace & { username: string }): string {
 /** The resume line after the person saved a login from a sign-in card. */
 export function savedLoginResumePrompt(site: string): string {
   return `dusk bot sign-in update: the person saved a login for ${site}. Open its login page in your browser and call fill_login there: it fills the form and submits it. Then check you are signed in. You never see the password. Never ask for a password or a one-time code in chat.`;
-}
-
-/** What a login saved from Settings is sealed for (shared/saved-secrets.ts sealedValueAAD): its normalized host and
- * trimmed username, so a relay cannot move the password to another site or account. */
-export function loginSealTarget(host: string, username: unknown): string[] {
-  return [host, typeof username === "string" ? username.trim() : ""];
 }

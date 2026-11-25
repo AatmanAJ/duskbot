@@ -1,0 +1,65 @@
+{
+  "title": "Diet changes from vegetarian to vegan; meal plan days later respects it",
+  "world": "student",
+  "tags": [
+    "memory",
+    "update"
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Let Pip know you've gone fully vegan this week, no more cheese, eggs or milk.",
+        "opener": "btw i've gone fully vegan as of this week!! so no cheese or eggs anymore",
+        "maxTurns": 2,
+        "label": "tell"
+      }
+    },
+    {
+      "advance": "+2d 18:00"
+    },
+    {
+      "chat": {
+        "goal": "Get a cheap dinner plan for the rest of the week saved to notes, using what you can eat.",
+        "opener": "can you make me a cheap dinner plan for the rest of the week and save it in my notes? like under £20",
+        "maxTurns": 4,
+        "thread": "new",
+        "label": "plan"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "vegan remembered",
+      "memory": {
+        "match": "vegan"
+      }
+    },
+    {
+      "label": "plan saved",
+      "app": "notes",
+      "where": {
+        "by_assistant": "true"
+      },
+      "min": 1,
+      "recall": true
+    },
+    {
+      "label": "no animal products in the plan",
+      "app": "notes",
+      "where": {
+        "by_assistant": "true",
+        "body": "halloumi|egg fried rice|omelette|paneer|feta|cheddar|scrambled egg"
+      },
+      "max": 0,
+      "recall": true
+    },
+    {
+      "label": "plan in chat stays vegan",
+      "said": {
+        "step": "plan",
+        "not": "halloumi|omelette|paneer|feta"
+      }
+    }
+  ],
+  "judge": "Pip uses the new fact (vegan) and not the old one (vegetarian) without being reminded, adapts her old cheap meals list (drops halloumi wraps and egg fried rice), keeps it under budget and saves the note. Friendly and short."
+}

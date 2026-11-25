@@ -1,7 +1,7 @@
 import { t } from "@/lib/i18n";
 import { canScroll } from "./gesture";
 import { haptic } from "./haptics";
-import { prefersReducedMotion, rubberband, springEasing } from "./motion";
+import { prefersReducedMotion, rubberband, springKeyframes } from "./motion";
 import { isGlassDark, type GlassBridge } from "./native-glass";
 
 /** Telegram iOS's numbers: the pull that arms a reply, by who sent the message. */
@@ -15,7 +15,7 @@ const DECIDE = 10;
 export const BACK_EDGE = 24;
 const ICON = 36;
 /** settles in about 0.3 s, as Telegram's release does */
-const RELEASE = springEasing(700, 50);
+const RELEASE = { stiffness: 700, damping: 50 } as const;
 
 const ROW = "[data-mobile-chat] [data-message-row]";
 const IGNORED = "textarea, input, select, [contenteditable='true'], [data-tour='composer'], nav, [role='dialog'], [data-no-swipe], [role='slider']";
@@ -154,7 +154,9 @@ export function installSwipeReply(chat: HTMLElement, glass?: GlassBridge): () =>
       icon = null;
       const instantRelease = prefersReducedMotion() || !from;
       if (!instantRelease) {
-        back = row.animate([{ translate: from }, { translate: "0 0" }], { duration: RELEASE.duration, easing: RELEASE.easing });
+        const x = Number.parseFloat(from) || 0;
+        const release = springKeyframes(RELEASE.stiffness, RELEASE.damping, (p) => ({ translate: `${x * (1 - p)}px 0` }));
+        back = row.animate(release.keyframes, { duration: release.duration });
       }
       if (nativeBadge) {
         nativeBadge(null, instant || prefersReducedMotion());

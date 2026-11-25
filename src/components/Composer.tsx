@@ -90,7 +90,7 @@ import { voiceShortcut, voiceShortcutLabel } from "@/lib/voice-input/shortcut";
 import { openSettings } from "@/lib/open-settings";
 import { NotesWaitingLine, useNotesIntake } from "./NotesWaiting"; import { looksLikeNotes, notesInFiles } from "@/lib/assistant-notes";
 import { escapeCancelsReply } from "@/lib/replies";
-import { useKeyGate } from "./ComposerKeyWarning";
+import { useKeyGate } from "./ComposerKeyWarning"; import { applyTextEdit, markdownKeyEdit, markdownKeyOf } from "@/lib/composer-markdown";
 import { useStopPress } from "@/lib/stop-turn";
 import { useThreadRefs } from "./ThreadRefs";
 import {
@@ -1100,6 +1100,9 @@ export const Composer = memo(function Composer({
               onEditLast();
               return;
             }
+            const field = e.currentTarget, markdownKey = markdownKeyOf(e.nativeEvent, sendsMessage(e.nativeEvent, sendKey));
+            const markdown = markdownKey && markdownKeyEdit(field.value, field.selectionStart, field.selectionEnd, markdownKey);
+            if (markdown) { e.preventDefault(); applyTextEdit(field, markdown); setCaret(markdown.caret); return; }
             if (sendsMessage(e.nativeEvent, sendKey)) {
               e.preventDefault();
               if (

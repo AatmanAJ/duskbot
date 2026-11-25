@@ -90,6 +90,10 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
       reply(request.id, { isError: true, content: [{ type: "text", text: "Synthetic tool failed before writing." }] });
       return;
     }
+    if (name === "broken") {
+      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, error: { code: -32000, message: "fixture transport refusal" } }) + "\\n");
+      return;
+    }
     if (name === "wait") await new Promise((resolve) => setTimeout(resolve, 30_000));
     if (!["write", "wait"].includes(name)) {
       appendFileSync(join(directory, "effects.ndjson"), JSON.stringify({ name, ...args }) + "\\n");
@@ -187,6 +191,75 @@ async function fixture(script: Script, provider: Provider = "openai-compat", api
 }
 
 
+async function backupAi(script: (body: ChatRequest, response: ServerResponse) => void) {
+  const seen: ChatRequest[] = [];
+  const server = createServer(async (request, response) => {
+    if (request.method !== "POST") { response.setHeader("content-type", "application/json"); response.end('{"data":[]}'); return; }
+    let data = "";
+    for await (const part of request) data += part.toString();
+    const body = JSON.parse(data) as ChatRequest;
+    seen.push(body);
+    script(body, response);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("backup fixture did not bind TCP");
+  const instance = await OpenAICompatDriver.create({ instanceId: randomUUID(), displayName: "Backup fixture", enabled: true,
+    config: { url: `http://127.0.0.1:${address.port}/v1`, apiKeyEnv: "BACKUP_KEY" }, environment: { BACKUP_KEY: "backup-fixture-key" } });
+  cleanups.push(async () => {
+    await instance.dispose();
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+  return { seen, backup: { name: "Backup fixture", model: "backup-model", complete: instance.adapter.chatCompletion! } };
+}
+
+function refuse(response: ServerResponse, status: number, message: string) {
+  response.writeHead(status, { "content-type": "application/json" });
+  response.end(JSON.stringify({ error: { message } }));
+}
+
+describe("falling back mid-turn to the bot's backup AI", () => {
+  it("carries the reply on with the backup, tool results and all, when the provider runs out of credit after a tool ran", async () => {
+    const backup = await backupAi((_body, response) => answer(response, "Stored the receipt; all done."));
+    const f = await fixture((_body, response, round) => round === 1
+      ? sse(response, [chunk({ tool_calls: [toolCall()] }, "tool_calls")])
+      : refuse(response, 402, "Insufficient Balance"));
+    await f.start({ approvalMode: "full", chatBackups: () => [backup.backup] });
+    expect(await f.completed()).toMatchObject({ ok: true });
+    expect(f.requests).toHaveLength(2);
+    expect(f.effects()).toEqual([{ name: "receipt", value: "done" }]);
+    // the rest of the turn stays on the backup, its check-the-result gate included
+    expect(backup.seen.length).toBeGreaterThanOrEqual(1);
+    expect(backup.seen[0]!.messages.find((message) => message.role === "tool")).toMatchObject({ tool_call_id: "call_write" });
+    expect(backup.seen[0]!.tools?.map((tool) => tool.function.name)).toContain("audit_write");
+    expect(f.recorder.events).toContainEqual(expect.objectContaining({ type: "runtime.notice", message: expect.stringContaining("Backup fixture is carrying on") }));
+    expect(f.recorder.events).toContainEqual(expect.objectContaining({ type: "item.completed", itemType: "assistant_text", text: "Stored the receipt; all done." }));
+    expect(f.recorder.events.some((event) => event.type === "runtime.error")).toBe(false);
+  });
+
+  it("retries a rate limit first, then falls back, and fails as before with no backup", async () => {
+    const backup = await backupAi((_body, response) => answer(response, "Answered by the backup."));
+    const limited = await fixture((_body, response) => refuse(response, 429, "Rate limit exceeded"));
+    await limited.start({ approvalMode: "full", chatBackups: () => [backup.backup] });
+    expect(await limited.completed()).toMatchObject({ ok: true });
+    expect(limited.requests).toHaveLength(3);
+    expect(backup.seen).toHaveLength(1);
+    const alone = await fixture((_body, response) => refuse(response, 429, "Rate limit exceeded"));
+    await alone.start({ approvalMode: "full" });
+    expect(await alone.completed()).toMatchObject({ ok: false });
+    expect(alone.recorder.events.find((event) => event.type === "runtime.error")).toMatchObject({ message: expect.stringContaining("429") });
+  });
+
+  it("never falls back once the reply has started showing, nor on a provider's safety block", async () => {
+    const backup = await backupAi((_body, response) => answer(response));
+    const blocked = await fixture((_body, response) => refuse(response, 400, "Your request was flagged by our content policy (content_policy_violation)"));
+    await blocked.start({ approvalMode: "full", chatBackups: () => [backup.backup] });
+    expect(await blocked.completed()).toMatchObject({ ok: false });
+    expect(backup.seen).toHaveLength(0);
+  });
+});
+
 describe("independent read-only tool batches", () => {
   const readCall = (name: string, index: number) => ({ ...toolCall("audit_read", JSON.stringify({ name, value: name }), `read_${index}`), index });
 
@@ -277,17 +350,41 @@ describe("bounded action announcement recovery", () => {
       : sse(response, [chunk({ tool_calls: [toolCall("audit_write", JSON.stringify({ name: `step-${round}`, value: "done" }), `call-${round}`)] }, "tool_calls")]));
     await f.start({ approvalMode: "full" });
     expect(await f.completed()).toMatchObject({ ok: false });
-    expect(f.requests).toHaveLength(7);
-    expect(f.effects()).toHaveLength(3);
-    expect(f.recorder.events).toContainEqual(expect.objectContaining({ type: "runtime.error", message: expect.stringContaining("3 announcement nudges") }));
+    expect(f.requests).toHaveLength(17);
+    expect(f.effects()).toHaveLength(8);
+    expect(f.recorder.events).toContainEqual(expect.objectContaining({ type: "runtime.error", message: expect.stringContaining("8 announcement nudges") }));
   });
 
-  it("stops on a second announcement without tool progress", async () => {
+  it("stops on a second announcement without tool progress, after asking for a tool call", async () => {
     const f = await fixture((_body, response) => answer(response, "I'll inspect the terminal."));
     await f.start();
     expect(await f.completed()).toMatchObject({ ok: false });
     expect(f.requests).toHaveLength(2);
+    expect((f.requests[0] as { tool_choice?: string }).tool_choice).toBeUndefined();
+    expect((f.requests[1] as { tool_choice?: string }).tool_choice).toBe("required");
     expect(f.effects()).toEqual([]);
+  });
+
+  it("gets the announced step done when the provider takes tool_choice: required, and sends it once only", async () => {
+    const f = await fixture((body, response, round) => round === 1 ? answer(response, "I'll write the receipt now.")
+      : (body as { tool_choice?: string }).tool_choice === "required" ? sse(response, [chunk({ tool_calls: [toolCall()] }, "tool_calls")])
+      : answer(response, "Wrote the receipt."));
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: true });
+    expect(f.effects()).toEqual([{ name: "receipt", value: "done" }]);
+    expect(f.requests.map((request) => (request as { tool_choice?: string }).tool_choice)).toEqual([undefined, "required", undefined]);
+  });
+
+  it("asks again without tool_choice when the provider refuses it", async () => {
+    const f = await fixture((body, response, round) => {
+      if (round === 1) answer(response, "I'll write the receipt now.");
+      else if ((body as { tool_choice?: string }).tool_choice) { response.writeHead(400, { "content-type": "application/json" }); response.end('{"error":{"message":"tool_choice required is not supported"}}'); }
+      else if (round === 3) sse(response, [chunk({ tool_calls: [toolCall()] }, "tool_calls")]);
+      else answer(response, "Wrote the receipt.");
+    });
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: true });
+    expect(f.requests.map((request) => (request as { tool_choice?: string }).tool_choice)).toEqual([undefined, "required", undefined, undefined]);
   });
 
   it("does not nudge after a denied operation", async () => {
@@ -301,6 +398,34 @@ describe("bounded action announcement recovery", () => {
     expect(f.effects()).toEqual([]);
   });
 
+  it("feeds a call its tool server refused back to the model, which goes on with the server's other tools", async () => {
+    const f = await fixture((_body, response, round) => round === 1
+      ? sse(response, [chunk({ tool_calls: [toolCall("audit_broken", '{"name":"x","value":"y"}', "call_broken")] }, "tool_calls")])
+      : round === 2 ? sse(response, [chunk({ tool_calls: [toolCall()] }, "tool_calls")])
+      : answer(response, "Stored the receipt another way."));
+    process.env.FIXTURE_EXTRA_TOOLS = "broken";
+    try {
+      await f.start({ approvalMode: "full" });
+      expect(await f.completed()).toMatchObject({ ok: true });
+    } finally { delete process.env.FIXTURE_EXTRA_TOOLS; }
+    const fed = f.requests[1]!.messages.find((message) => message.tool_call_id === "call_broken");
+    expect(JSON.parse(String(fed?.content))).toMatchObject({ ok: false });
+    expect(String(fed?.content)).not.toContain("fixture transport refusal");
+    expect(f.effects()).toEqual([{ name: "receipt", value: "done" }]);
+  });
+
+  it("asks once more after a stream with no choice in it, and names the failure by its code when it comes back the same", async () => {
+    const empty = (response: ServerResponse) => sse(response, [{ id: "frame-without-choices" }]);
+    const once = await fixture((_body, response, round) => round === 1 ? empty(response) : answer(response));
+    await once.start({ approvalMode: "full" });
+    expect(await once.completed()).toMatchObject({ ok: true });
+    expect(once.requests).toHaveLength(2);
+    const twice = await fixture((_body, response) => empty(response));
+    await twice.start({ approvalMode: "full" });
+    expect(await twice.completed()).toMatchObject({ ok: false });
+    expect(twice.recorder.events.find((event) => event.type === "runtime.error")).toMatchObject({ errorCode: "no_choice" });
+  });
+
   it("does not use an announcement to bypass a failed operation", async () => {
     const f = await fixture((_body, response, round) => round === 1
       ? sse(response, [chunk({ tool_calls: [toolCall("audit_fail")] }, "tool_calls")])
@@ -312,7 +437,7 @@ describe("bounded action announcement recovery", () => {
     expect(f.effects()).toEqual([]);
   });
 
-  it("marks a turn whose final reply came back after a failed step as partly done, and no other stop", async () => {
+  it("ends ok on a final reply that says which step failed, partly done on one that does not, and no other stop", async () => {
     const run = async (reply: (response: Parameters<typeof answer>[0]) => void) => {
       const f = await fixture((_body, response, round) => round === 1
         ? sse(response, [chunk({ tool_calls: [toolCall("audit_fail")] }, "tool_calls")])
@@ -321,7 +446,10 @@ describe("bounded action announcement recovery", () => {
       const completed = await f.completed();
       return { completed, errors: f.recorder.events.filter((event) => event.type === "runtime.error") };
     };
-    const done = await run((response) => answer(response, "Here is the summary; one file could not be read."));
+    const owned = await run((response) => answer(response, "Here is the summary; one file could not be read."));
+    expect(owned.completed).toMatchObject({ ok: true });
+    expect(owned.errors).toEqual([]);
+    const done = await run((response) => answer(response, "Here is the summary."));
     expect(done.completed).toMatchObject({ ok: false, stopReason: "tool_error" });
     expect(done.errors).toEqual([expect.objectContaining({ partial: true, terminal: true, message: expect.stringContaining("Stopped because the tool call") })]);
     // A reply the provider cut off is not a finished one, even after a failed step.
@@ -1015,21 +1143,23 @@ describe("structured tool execution boundaries", () => {
   });
 
   it.each([
-    { scenario: "only a DONE marker", body: "data: [DONE]\n\n" },
-    { scenario: "an invalid frame before DONE", body: "data: {invalid\n\ndata: [DONE]\n\n" },
-    { scenario: "a frame without a completion choice", body: "data: {}\n\ndata: [DONE]\n\n" },
+    // a stream with no choice in it ran and showed nothing, so it is asked for once more
+    { scenario: "only a DONE marker", body: "data: [DONE]\n\n", requests: 2 },
+    { scenario: "an invalid frame before DONE", body: "data: {invalid\n\ndata: [DONE]\n\n", requests: 2 },
+    { scenario: "a frame without a completion choice", body: "data: {}\n\ndata: [DONE]\n\n", requests: 2 },
     {
       scenario: "ordinary text followed by a malformed frame",
       body: `data: ${JSON.stringify(chunk({ content: "Partial response" }))}\n\ndata: {invalid\n\ndata: ${JSON.stringify(chunk({}, "stop"))}\n\ndata: [DONE]\n\n`,
+      requests: 1,
     },
-  ])("fails an SSE response with $scenario instead of completing successfully", async ({ body }) => {
+  ])("fails an SSE response with $scenario instead of completing successfully", async ({ body, requests }) => {
     const f = await fixture((_request, response) => {
       response.setHeader("content-type", "text/event-stream");
       response.end(body);
     });
     await f.start({ integrations: undefined });
     expect(await f.completed()).toMatchObject({ ok: false });
-    expect(f.requests).toHaveLength(1);
+    expect(f.requests).toHaveLength(requests);
     expect(f.effects()).toEqual([]);
     expect(f.recorder.events.some((event) => event.type === "runtime.error")).toBe(true);
     expect(f.recorder.events.filter((event) => event.type === "turn.completed")).toHaveLength(1);
@@ -1052,10 +1182,10 @@ describe("structured tool execution boundaries", () => {
   });
 
   it.each([
-    { scenario: "missing choices", body: {}, requests: 1 },
-    { scenario: "empty choices", body: { choices: [] }, requests: 1 },
-    { scenario: "empty assistant message", body: { choices: [{ message: {}, finish_reason: "stop" }] }, requests: 1 },
-    // an empty reply is asked for once more, with a nudge
+    // a reply with nothing in it, or no reply at all, is asked for once more, with a nudge
+    { scenario: "missing choices", body: {}, requests: 2 },
+    { scenario: "empty choices", body: { choices: [] }, requests: 2 },
+    { scenario: "empty assistant message", body: { choices: [{ message: {}, finish_reason: "stop" }] }, requests: 2 },
     { scenario: "null content without calls", body: { choices: [{ message: { content: null }, finish_reason: "stop" }] }, requests: 2 },
     { scenario: "blank content", body: { choices: [{ message: { content: "   " }, finish_reason: "stop" }] }, requests: 2 },
   ])("rejects a JSON completion with $scenario instead of reporting an empty successful turn", async ({ body, requests }) => {

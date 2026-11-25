@@ -89,7 +89,7 @@
     },
     {
       "name": "coordinate_bots",
-      "description": "The one way to hand work on: ask existing dusk bot teammates a question or assign them concrete work. In a room it defaults to this room; use group_id from list_room_targets for a specific room. Outside a room, what you send a teammate from this conversation goes to one standing work thread with them; thread \"new\" opens a fresh one, a thread id picks one you opened. Where work you gave is still open, it goes into that work: it answers the question that work waits on, or reaches the turn running it. Give 1-4 bot_ids, teammate ids as list_bots or your roster prints them; a unique teammate name also resolves: they see only what you send them and use their own model, tools and permissions. They can consult their own specialists; every result returns here and resumes you automatically, so after sending all assignments END your turn: do not poll or wait, and never call assignment_status in the same turn. consult true asks a question the teammate answers from what it knows, acting on nothing; reply \"none\" is a one-way notice nothing comes back from. Include exact file paths, constraints and what must be verified (done_when). On return, resolve tradeoffs, verify the requested outcome and request concrete corrections with rework true if necessary before giving one final answer. Never target whoever assigned you this work or anyone above it: to ask or report back, end your turn and your reply resumes them. Never thank or approve a finished teammate; its result already returned. Never repeat a refused call unchanged.",
+      "description": "The one way to hand work on: ask existing dusk bot teammates a question or assign them concrete work. In a room it defaults to this room; use group_id from list_room_targets for a specific room. Outside a room, what you send a teammate from this conversation goes to one standing work thread with them; thread \"new\" opens a fresh one, a thread id picks one you opened. Where work you gave is still open, it goes into that work: it answers the question that work waits on, or reaches the turn running it. Give 1-4 bot_ids, teammate ids as list_bots or your roster prints them; a unique teammate name also resolves: they see only what you send them (give context) and use their own model, tools and permissions. They can consult their own specialists; every result returns here and resumes you automatically, so after sending all assignments END your turn: do not poll or wait, and never call assignment_status in the same turn. consult true asks a question the teammate answers from what it knows, acting on nothing; reply \"none\" is a one-way notice nothing comes back from. Include exact file paths, constraints and what must be verified (done_when). On return, resolve tradeoffs, verify the requested outcome and request concrete corrections with rework true if necessary before giving one final answer. Never target whoever assigned you this work or anyone above it: to ask or report back, end your turn and your reply resumes them. Never thank or approve a finished teammate; its result already returned. Never repeat a refused call unchanged.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -145,6 +145,14 @@
           "done_when": {
             "type": "string",
             "description": "Optional: what must be true for this to count as done, in one or two sentences; the teammate is held to it."
+          },
+          "expecting": {
+            "type": "string",
+            "description": "Optional: what you need back."
+          },
+          "context": {
+            "type": "string",
+            "description": "Optional: facts from this chat they need (names, dates, decisions), in your words."
           },
           "answers": {
             "type": "string",
@@ -687,12 +695,17 @@
               "resume",
               "run_now",
               "email",
-              "note"
+              "note",
+              "fail"
             ]
           },
           "note": {
             "type": "string",
             "description": "action=note: notes for this automation's next run."
+          },
+          "reason": {
+            "type": "string",
+            "description": "action=fail: one line saying why this run could not do its job. Only inside a run of an automation."
           },
           "trigger_id": {
             "type": "string",
@@ -853,6 +866,15 @@
             "type": "boolean",
             "description": "Only for updates: set true to remove an existing safety limit. Do not combine with timeout_minutes."
           },
+          "catch_up_minutes": {
+            "type": "integer",
+            "maximum": 10080,
+            "description": "Repeating schedules only: how many minutes late a missed run may still start. 0 never starts late. Omit for 12 hours."
+          },
+          "clear_catch_up": {
+            "type": "boolean",
+            "description": "Only for updates: set true to go back to the 12-hour default. Do not combine with catch_up_minutes."
+          },
           "continuity": {
             "type": "boolean",
             "description": "Schedules only: give each run the last completed run's report, so it can say what is new since last time. Default true on create; false makes each run start fresh."
@@ -891,7 +913,21 @@
               },
               "command": {
                 "type": "string",
-                "description": "script: one shell command. Same output as last time = nothing new; last line {\"wakeAgent\":false} = skip, true = run."
+                "description": "script: one shell command. Without post, the same output as last time = nothing new; last line {\"wakeAgent\":false} = skip, true = run."
+              },
+              "post": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "description": "script only: true posts what the script prints as your reply with no AI turn (for \"run this script on a schedule and post what it prints\"). Empty output stays quiet."
+              },
+              "access": {
+                "type": "string",
+                "enum": [
+                  "full"
+                ],
+                "description": "script only: full runs it outside the read-only fence, so it can write files (for \"it needs to write files\"). Always asks the person on a card."
               }
             },
             "required": [

@@ -266,14 +266,14 @@ describe("a local model repeating itself", () => {
     }, "hosted");
     await f.start();
     expect(await f.completed()).toMatchObject({ ok: false, stopReason: "tool_error" });
-    expect(f.requests).toHaveLength(4);
+    expect(f.requests).toHaveLength(6);
   });
 
-  it("a hosted model's failed turn ends as before", async () => {
+  it("a hosted model's failed turn gets the same two rounds to fix it, then ends failed", async () => {
     let id = 0;
     const f = await fixture((_body, response, round) => round === 1 ? structured(response, "audit_fail", `call-${++id}`) : say(response, "It is finished."), "hosted");
     await f.start();
     expect(await f.completed()).toMatchObject({ ok: false, stopReason: "tool_error" });
-    expect(f.requests).toHaveLength(2);
+    expect(f.requests).toHaveLength(4);
   });
 });

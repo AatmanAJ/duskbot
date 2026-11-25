@@ -1,0 +1,69 @@
+{
+  "title": "A research, writing and editing team behind one lead",
+  "world": "creator",
+  "tags": [
+    "x-usage",
+    "handoff",
+    "multi-step"
+  ],
+  "source": "x-usage #29: the lead routes the work, each helper does its part once, handoffs are visible, the person only talks to the lead.",
+  "bots": [
+    {
+      "name": "Sage",
+      "soul": "You are Sage, a researcher on Lucía's team. Pull facts from her shop, notes and mail and report them briefly."
+    },
+    {
+      "name": "Marlo",
+      "soul": "You are Marlo, a writer on Lucía's team. Write warm, plain newsletters in her voice from the facts you're given."
+    },
+    {
+      "name": "Edie",
+      "soul": "You are Edie, an editor on Lucía's team. Tighten drafts, fix facts and tone, and say what you changed."
+    }
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Wren is the lead: Sage researches, Marlo writes, Edie edits. Get the January newsletter made (what sold best, the market, ep.12) and saved to notes; only talk to Wren.",
+        "opener": "ok you're the lead. sage researches, marlo writes, edie edits. i only want to talk to you. can the team make my january newsletter? what sold best, how the market went, ep.12. put the final in notes",
+        "knows": "Market went well, sold 22 mugs. About 300 words.",
+        "maxTurns": 5,
+        "label": "make"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "Sage researched sales",
+      "said": {
+        "bot": "Sage",
+        "match": "speckled|best.?sell|mug"
+      }
+    },
+    {
+      "label": "Marlo wrote",
+      "said": {
+        "bot": "Marlo",
+        "match": "newsletter|january|hi (friends|everyone)|dear"
+      }
+    },
+    {
+      "label": "Edie edited",
+      "said": {
+        "bot": "Edie",
+        "match": "edit|tighten|cut|changed|trimmed|fixed"
+      }
+    },
+    {
+      "label": "one final newsletter note",
+      "app": "notes",
+      "where": {
+        "by_assistant": "true",
+        "title": "newsletter|january"
+      },
+      "min": 1,
+      "max": 1
+    }
+  ],
+  "judge": "Wren hands research to Sage (Speckled Mug is the top seller), drafting to Marlo, polish to Edie, keeps Lucía updated in a line or two, and saves one final newsletter note. No duplicated drafts, no flood of bot messages to Lucía."
+}

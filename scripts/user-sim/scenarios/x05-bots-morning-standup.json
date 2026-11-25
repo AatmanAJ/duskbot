@@ -1,0 +1,79 @@
+{
+  "title": "Morning rundown of what each bot did yesterday",
+  "world": "developer",
+  "tags": [
+    "x-usage",
+    "routine",
+    "handoff"
+  ],
+  "source": "x-usage #5: cross-bot standup from run history, blockers first. Voice delivery skipped (no voice here). Another bot (Patch) does real work the day before.",
+  "bots": [
+    {
+      "name": "Patch",
+      "soul": "You are Patch, Arjun's code helper at Tidepool. You dig into bugs and flaky CI, read the data, and write crisp findings."
+    }
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Have Patch dig into the flaky settlement_sync spec (#207) using the flaky-runs CSV and write its findings into a note.",
+        "opener": "look at #207, the flaky settlement_sync spec, plus Documents/flaky-runs.csv. write what you think causes it in a note",
+        "maxTurns": 4,
+        "bot": "Patch",
+        "label": "patchwork"
+      }
+    },
+    {
+      "chat": {
+        "goal": "Set up an 8am rundown every morning of what each of your bots did yesterday and what's stuck, blockers first.",
+        "opener": "every morning 8am give me a 5 min rundown of what each of my bots did yesterday and what's stuck. blockers first",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "advance": "+1d 08:05"
+    },
+    {
+      "settle": {
+        "seconds": 120
+      },
+      "label": "morning"
+    }
+  ],
+  "checks": [
+    {
+      "label": "8am routine",
+      "routine": {
+        "where": {
+          "schedule": "0 8 |08:00|8:00"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "it ran",
+      "routine": {
+        "ran": true
+      },
+      "min": 1
+    },
+    {
+      "label": "rundown covers Patch",
+      "proactive": {
+        "after": "morning",
+        "match": "patch"
+      },
+      "min": 1
+    },
+    {
+      "label": "rundown has Patch's actual work",
+      "proactive": {
+        "after": "morning",
+        "match": "207|flaky|settlement"
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Kiran's 8am message names each bot, says Patch looked at #207 and what it concluded (Postgres cold start timeouts), puts anything stuck first, and is short enough to read in a minute."
+}

@@ -1,0 +1,57 @@
+{
+  "title": "Hand runway math to the finance bot Ledger with the right context",
+  "world": "founder",
+  "tags": [
+    "handoff"
+  ],
+  "bots": [
+    {
+      "name": "Ledger",
+      "soul": "You are Ledger, Daniel's finance assistant at Loomware. You handle runway, invoices and cash forecasts. Be exact, show the arithmetic in one or two lines, and say what you assumed."
+    }
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Get Ledger to work out the runway if the Northwind renewal lands and Halvorsen pays, using the numbers in Daniel's runway note, and have Ledger reply.",
+        "opener": "can you get ledger to work out runway if northwind renews and halvorsen pays up? numbers are in my runway note",
+        "maxTurns": 4,
+        "label": "ask"
+      }
+    },
+    {
+      "chat": {
+        "goal": "Check with Ledger directly that it got the numbers from Juniper and what runway it came up with.",
+        "opener": "hey, did juniper pass you the runway stuff? what did you get",
+        "maxTurns": 3,
+        "bot": "Ledger",
+        "label": "askledger"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "Ledger has the context",
+      "said": {
+        "step": "askledger",
+        "bot": "Ledger",
+        "match": "northwind|halvorsen|8,?400|118"
+      }
+    },
+    {
+      "label": "Ledger gives a runway in months",
+      "said": {
+        "bot": "Ledger",
+        "match": "\\d+(\\.\\d)?\\s*months"
+      }
+    },
+    {
+      "label": "Juniper actually handed it over",
+      "said": {
+        "step": "ask",
+        "match": "ledger"
+      }
+    }
+  ],
+  "judge": "Juniper reads the runway note and passes Ledger the real figures (cash $1.42M, burn ~$118k/month, +$8k/month MRR from Northwind, +$8,400 from Halvorsen); Ledger answers with about 13 months and shows its math. Nobody pretends a handoff happened that didn't."
+}

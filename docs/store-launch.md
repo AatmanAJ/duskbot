@@ -36,7 +36,19 @@ browser, so the two stay the same.
 4. Fill the review contact (name, email, phone) and the demo account in App Review Information.
 5. Attach the build to version 1.0 and Submit for Review, when the checklist under "Review risks" is green.
 
-Google (play.google.com/console):
+Google (play.google.com/console). State on 2026-11-25:
+
+- Developer account **Dusk Bot** (personal), ID `4895116571946777115`, under siddz.dev@gmail.com. Identity verified
+  2026-11-10. **Blocked:** "Verify your phone numbers" is still open, and Play disables Create app until it is done.
+- Signed bundle ready: versionName 1.2.10, versionCode 11 (the sideloaded APK on GitHub releases is 1.2.9, code 10),
+  built from dev with `DUSK_ANDROID_VERSION_CODE=11 DUSK_ANDROID_VERSION_NAME=1.2.10
+  apps/mobile/scripts/build-android-release.sh`. Not uploaded yet: there is no app record to upload to.
+- Push uses the "Messages" notification channel (id `messages`, high importance): made at app start, the manifest's
+  FCM default, and named in every FCM message.
+
+Left for you on Google: Play Console, Home, Verify your phone numbers, View details, Go to account details. Check the
+contact phone and the developer (public) phone, press Verify on each, take the code by SMS or call, enter it. After
+that the steps below can run (an agent can do them through the browser once Create app is enabled).
 
 1. Create the app: name **dusk bot**, default language English (United States), App, Free.
 2. Start **closed testing now**: personal accounts made after 13 Nov 2023 need 12 testers opted in for 14 days in a row
@@ -54,7 +66,7 @@ Google (play.google.com/console):
 |---|---|
 | iOS archive, Release config, unsigned | **verified** here: `build-ios-release.sh --unsigned` archives, the release gate passes, `PrivacyInfo.xcprivacy` and the icon catalog are inside |
 | iOS signed archive, export, TestFlight upload | **done**: build 2611140813 signed with Apple Distribution (push production, Sign in with Apple, associated domains), uploaded, VALID, internal TestFlight |
-| Android signed `.aab` | **verified** here: built and signed with the upload key, target SDK 36 |
+| Android signed `.aab` | **verified** here: 1.2.10 (11) built and signed with the upload key, target SDK 36; Play upload waits for phone verification |
 | Upload keystore | made, outside the repo (below) |
 | Screenshots | made for both stores (`docs/store/ios`, `docs/store/play`), photographed as the iPhone store app (no screen view, no plan lines) |
 | Privacy manifest | present, matches the nutrition label below |
@@ -157,8 +169,11 @@ Tracking: **No**. Every type below is **linked to the person**, used for **App F
 | User Content: Photos or Videos | when the bot runs on our servers and the person attaches a photo | the attached photo |
 | User Content: Other User Content | when the bot runs on our servers (a hosted computer or the review demo bot) | messages and files sent to that bot |
 
-Not collected: location, contacts, audio (dictation runs through Apple's speech recognition),
-browsing or search history, purchases, financial, health, usage data, diagnostics.
+Not collected: location, contacts, audio, browsing or search history, purchases, financial, health, usage data,
+diagnostics. Audio is not collected in Apple's sense (kept longer than it takes to serve the request live): dictation
+runs through Apple's speech recognition, and a voice call's audio is heard live, in memory, by the computer running the
+bot or by the voice provider connected there; no dusk bot code writes it anywhere. What the person said reaches the
+chat as text, which Other User Content above covers.
 
 Two switches that would change these answers, both off in the store build today:
 
@@ -305,7 +320,7 @@ the connection returns, a local network connection to the person's own computer 
 
 NOTES
 - Purchases: the app sells nothing and shows no prices, plans or links to buy. dusk cloud is set up on the website.
-- Camera: only for the pairing code and photos the person attaches. Microphone: only for dictation and voice notes.
+- Camera: only for the pairing code and photos the person attaches. Microphone: only for dictation, voice notes and voice calls.
   Local network: only to reach the person's own computer.
 - AI: replies come from the AI provider connected on the computer running the bots. The app asks before sending.
 - Chats are private to the person; there is no public or person-to-person content.
@@ -323,7 +338,7 @@ keep the account and its bot running for the whole review.
 | Package name | `bot.dusk.mobile` |
 | versionCode / versionName | `DUSK_ANDROID_VERSION_CODE` (default 1; raise it for every upload) / `DUSK_ANDROID_VERSION_NAME` (default 1.0) |
 | minSdk / compileSdk / targetSdk | 24 / 36 / 36. Play requires new apps and updates to target API 36 (Android 16) since 31 Aug 2026; 36 passes. Expect API 37 to be required from Aug 2027 |
-| Permissions (merged manifest) | INTERNET, ACCESS_NETWORK_STATE, CAMERA, VIBRATE, POST_NOTIFICATIONS, WAKE_LOCK, c2dm RECEIVE (push) |
+| Permissions (merged manifest) | INTERNET, ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE, ACCESS_LOCAL_NETWORK, CAMERA, RECORD_AUDIO, MODIFY_AUDIO_SETTINGS, VIBRATE, POST_NOTIFICATIONS, WAKE_LOCK, c2dm RECEIVE (push) |
 
 ### Upload key and Play App Signing
 
@@ -378,11 +393,23 @@ requires: https://dusk.bot/delete-account, which works without the app installed
 | Device or other IDs | yes (push token; ML Kit, see below) | no | App functionality; Analytics (ML Kit) | no |
 | Messages: Other in-app messages | yes, when the bot runs on our servers | no | App functionality | yes |
 | App info and performance: Diagnostics | yes (ML Kit, see below) | no | Analytics | no |
+| Audio: Voice or sound recordings | yes, during a voice call with a bot on our servers; processed ephemerally | no | App functionality | yes |
+
+Microphone: asked for the first time the person taps the microphone in the composer or starts a call, never at
+launch. Dictation runs through the phone's own speech recognizer (offline first, online when the phone lacks the
+language pack), and only the words land in the composer. In a voice call the audio streams live either to the computer
+running the bot, whose own recognizer hears it in memory, or (a Live call) over WebRTC straight to the voice provider
+connected there (OpenAI or Azure OpenAI), with the server only setting the session up and dropping the audio events it
+mirrors. Checked in code 2026-11-25: `server/local-voice`, `server/live-call*.ts` and `/api/tts/transcribe` keep audio in
+memory only and write none to disk or the database; what was said is saved as chat text. It reaches our servers only
+when that computer is a dusk cloud one, hence the Audio row, which can be marked **processed ephemerally**. The voice
+provider's own retention (for example OpenAI's API abuse-monitoring logs) is its policy, not ours. A voice service the
+person sets up on the phone (their own key) goes straight to that service.
 
 The Android QR scanner is Google's ML Kit (bundled `com.google.mlkit:barcode-scanning` plus
 `play-services-code-scanner`), which sends usage and diagnostics to Google. Check its current disclosure at
-https://developers.google.com/ml-kit/android-data-disclosure and copy its rows. Push on Android needs FCM
-(`google-services.json`, `docs/phone-push.md`), not set up yet; until it is, push does not work on Android.
+https://developers.google.com/ml-kit/android-data-disclosure and copy its rows. Push on Android uses FCM
+(Firebase project `dusk-bot-514309`, `docs/phone-push.md`): the FCM registration token is the push token above.
 
 ### Content rating (IARC questionnaire)
 
@@ -409,11 +436,18 @@ allows both, but drop the apps shot if a reviewer cites impersonation or tradema
 
 ### Android gaps (decide before production)
 
-- No `RECORD_AUDIO`: dictation, voice notes and calls cannot work on Android. Add the permission (with
-  `MODIFY_AUDIO_SETTINGS`) or hide voice on Android.
-- Cleartext http to a computer on the same Wi-Fi is blocked from Android 9; pairing over the local network needs a
-  network security config that allows private addresses, as iOS has. Pairing through the encrypted link is unaffected.
-- No push until FCM is set up.
+- Microphone: done. `RECORD_AUDIO` (with `MODIFY_AUDIO_SETTINGS`, which Capacitor's WebView asks for before it grants a
+  call's microphone) is in the manifest. The first dictation asks through `DuskSpeech.requestPermissions()`; if the
+  person says no, the composer shows one line: "Allow microphone access for dusk bot in your phone's settings, then try
+  again."
+- Cleartext http: allowed in `network_security_config.xml`'s base config (dusk.bot pinned to HTTPS), because Wi-Fi
+  pairing dials `http://<the computer's IPv4>:<port>` (`apps/companion/src/endpoints.ts`, kind `lan`) and a `<domain>`
+  matches only a name exactly or by suffix, so no private range can be written. The app scopes it instead: on Android
+  every fetch goes through `guardCleartext` (`src/mobile/cleartext.ts`), which refuses plain http to anything but an IP
+  address, a `.local` or `.ts.net` name, or localhost. Play accepts a base cleartext config (a lint and pre-launch report
+  note); the guard keeps the app from sending cleartext anywhere public. Pairing through the encrypted link or https is
+  unaffected.
+- Push: FCM is set up (Messages channel above).
 
 ## Review risks and where they are handled
 

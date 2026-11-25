@@ -251,6 +251,22 @@ describe("hosted dashboard service", () => {
     expect((await answer(6, { usageOptOut: "yes" })).usageOptOut).toBe(true);
   });
 
+  it("keeps session notes off until someone says yes, in the app or on the account, and takes deletes with a report", async () => {
+    const cookie = await login();
+    const id = await claim(cookie);
+    type Answer = { usageNotes?: boolean; usageNotesAnswered?: boolean; usageAsk?: boolean };
+    const answer = async (seq: number, extra: object = {}) => readJson<Answer>(signed("/v1/report", id, { ...report(seq), ...extra }).send());
+    expect(await answer(1)).toMatchObject({ usageNotes: false, usageNotesAnswered: false, usageAsk: false });
+    expect(await answer(2, { usageNotes: true })).toMatchObject({ usageNotes: true, usageNotesAnswered: true });
+    const sharing = async () => readJson<{ optOut: boolean; notes: boolean; askUsage: boolean }>(fetch(`${url}/v1/account/analytics`, { headers: { cookie } }));
+    expect(await sharing()).toEqual({ optOut: false, notes: true, askUsage: false });
+    const put = (body: object) => fetch(`${url}/v1/account/analytics`, { method: "PUT", headers: { cookie, [CSRF_HEADER]: csrf.get(cookie) ?? "", "content-type": "application/json", origin }, body: JSON.stringify(body) });
+    expect((await put({ notes: false })).status).toBe(200);
+    expect((await answer(3)).usageNotes).toBe(false);
+    expect((await put({})).status).toBe(400);
+    expect((await signed("/v1/report", id, { ...report(4), usageForget: { notes: ["frust00001"], records: true } }).send()).status).toBe(200);
+  });
+
   it("stores sections independently, reports live freshness, and restores sections from disk", async () => {
     const cookie = await login();
     const id = await claim(cookie);

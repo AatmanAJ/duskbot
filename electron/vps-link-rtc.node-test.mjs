@@ -183,3 +183,24 @@ test("chaos: a dropped channel moves requests to the relay at once and the link 
     await until(() => f.proxy.transport() === "direct", 10_000);
   } finally { await f.close(); }
 });
+
+test("a webrtc try that fails closes its data channel as well as the peer, so quit is not held", async () => {
+  const closed = [];
+  const fakeNdc = () => ({
+    PeerConnection: class {
+      createDataChannel() {
+        return { close: () => closed.push("dc"), isOpen: () => false, onOpen() {} };
+      }
+      gatheringState() { return "complete"; }
+      localDescription() { return { sdp: "v=0" }; }
+      setRemoteDescription() {}
+      onStateChange(callback) { this.state = callback; queueMicrotask(() => callback("failed")); }
+      close() { closed.push("pc"); }
+    },
+  });
+  await assert.rejects(rtcConnector({ ndc: fakeNdc(), signal: async () => { throw new Error("no tunnel"); }, gatherMs: 1 })(), /no tunnel/);
+  assert.deepEqual(closed, ["dc", "pc"]);
+  closed.length = 0;
+  await assert.rejects(rtcConnector({ ndc: fakeNdc(), signal: async () => ({ type: "answer", sdp: "v=0" }), gatherMs: 1, timeoutMs: 1000 })(), (error) => error.code === "RTC_TIMEOUT");
+  assert.deepEqual(closed, ["dc", "pc"]);
+});

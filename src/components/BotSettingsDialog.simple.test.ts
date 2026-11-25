@@ -79,7 +79,7 @@ vi.mock("@/lib/memory", async (importOriginal) => ({
   saveMemoryDoc: (...args: unknown[]) => fixture.saveMemory(...args),
 }));
 // The server renderer cannot portal; the dialog's props are what these tests read.
-vi.mock("./ConfirmDialog", () => ({ ConfirmDialog: () => null }));
+vi.mock("./ConfirmDialog", () => ({ ConfirmDialog: () => null, askConfirm: async () => true }));
 vi.mock("./bot-settings/useBotSettingsDerived", () => ({ useBotSettingsDerived: () => fixture.derived }));
 vi.mock("./DesktopCapabilities", async (importOriginal) => {
   const original = await importOriginal<typeof import("./DesktopCapabilities")>();
@@ -126,14 +126,14 @@ vi.mock("@/state/store", async (importOriginal) => {
 });
 
 const { BotSettingsDialog } = await import("./BotSettingsDialog");
-const { BotPanel, PanelPageBody, PanelDetailsTab, PanelAdvancedTab, PanelAvatarEditor } = await import("./bot-panel/PanelShell");
-await Promise.all([PanelPageBody.preload(), PanelDetailsTab.preload(), PanelAdvancedTab.preload(), PanelAvatarEditor.preload()]);
+const { BotPanel, PanelPageBody, PanelDetailsTab, PanelAdvancedTab, PanelComputerTab, PanelAvatarEditor } = await import("./bot-panel/PanelShell");
+await Promise.all([PanelPageBody.preload(), PanelDetailsTab.preload(), PanelAdvancedTab.preload(), PanelComputerTab.preload(), PanelAvatarEditor.preload()]);
 const { PanelHero } = await import("./bot-panel/PanelHero");
 const { AvatarEditorCard } = await import("./bot-panel/AvatarEditorCard");
 const { DetailsTab } = await import("./bot-panel/DetailsTab");
 const { AdvancedTab } = await import("./bot-panel/AdvancedTab");
 const { SettingsPage } = await import("./bot-panel/SettingsPage");
-const { LibraryPage, LibrarySection } = await import("./bot-panel/LibraryTab");
+const { LibraryPage, LibrarySection, libraryEmptyLine } = await import("./bot-panel/LibraryTab");
 const { CloudCtaCard, ComputerTab, WherePage, cloudCtaStep, hasDuskCloud } = await import("./bot-panel/ComputerTab");
 const { PageBody, AppsPage, RoutinesPage, MemoryPage, SkillsPage, FolderPage, BrowserPage } = await import("./bot-panel/pages");
 const { BrowserLogins } = await import("./bot-panel/browser-logins");
@@ -210,7 +210,7 @@ const find = (rendered: { nodes: Node[] }, attr: string, value: unknown = true) 
   return found;
 };
 const has = (rendered: { nodes: Node[] }, attr: string, value: unknown = true) => rendered.nodes.some((node) => node.props[attr] === value);
-const panelWrappers = new Map<unknown, unknown>([[DetailsTab, PanelDetailsTab], [AdvancedTab, PanelAdvancedTab], [AvatarEditorCard, PanelAvatarEditor]]);
+const panelWrappers = new Map<unknown, unknown>([[DetailsTab, PanelDetailsTab], [AdvancedTab, PanelAdvancedTab], [ComputerTab, PanelComputerTab], [AvatarEditorCard, PanelAvatarEditor]]);
 const ofType = (rendered: { nodes: Node[] }, type: unknown) => rendered.nodes.find((node) => node.type === type || node.type === panelWrappers.get(type));
 const click = (node: Node, detail = 1) => (node.props.onClick as (event: { detail: number }) => void)({ detail });
 const change = (node: Node, value: string) => (node.props.onChange as (event: unknown) => void)({ target: { value } });
@@ -632,17 +632,14 @@ describe("the Bot settings page", () => {
     expect(find(settingsPage(makeBot({ soul: "" })), "data-panel-page", "instructions").props.value).toBe("None");
   });
 
-  it("shows a backup saved as Automatic, Off or a list on Backup AIs and the Details tab's Backup model", () => {
+  it("shows a backup saved as Automatic, Off or a list on Backup AIs, and no backup row on the Details tab", () => {
     const backups = (fallback?: Array<{ instanceId: string; model: string }>) => find(settingsPage(makeBot(fallback ? { fallback } : {})), "data-panel-page", "backups").props.value;
-    const pill = (fallback?: Array<{ instanceId: string; model: string }>) => {
-      const html = botTab(makeBot(fallback ? { fallback } : {})).html;
-      return html.slice(html.indexOf('data-panel-row="backup-model"'));
-    };
     expect(backups()).toBe("None");
     expect(backups([])).toBe("None");
     expect(backups([{ instanceId: "codex", model: "gpt-6" }])).toBe("1 set up");
-    expect(pill()).toContain(">Automatic<");
-    expect(pill([])).toContain(">No backup<");
+    for (const fallback of [undefined, [], [{ instanceId: "codex", model: "gpt-6" }]]) {
+      expect(botTab(makeBot(fallback ? { fallback } : {})).html).not.toContain('data-panel-row="backup-model"');
+    }
   });
 
   it("has no rows for apps, signed-in sites, the API, conversations, Work until done, Hide, Call mode or the label", () => {
@@ -660,13 +657,18 @@ describe("the Bot settings page", () => {
 });
 
 describe("the Library", () => {
-  it("says what it will hold while the bot has made nothing, in Grok's words, and nothing else", () => {
+  it("says it holds this conversation's things while the bot has made nothing here, and how to find an earlier conversation's", () => {
     const rendered = library(makeBot());
     expect(rendered.html).toContain('data-panel-empty="library"');
-    expect(rendered.html).toContain(">Pages, files, and apps this bot makes show up here<");
+    expect(rendered.html).toContain(">Pages, files, and apps this bot makes in this conversation show up here. For one from an earlier conversation, ask Scout or search with Ctrl+K.<");
     expect(rendered.html).not.toContain("data-art-state");
     expect(rendered.html).not.toContain("Nothing made yet");
     for (const gone of ["memory", "skills", "folder"]) expect(has(rendered, "data-panel-page", gone), gone).toBe(false);
+  });
+
+  it("leaves the keyboard shortcut out on a touch screen with no keyboard", () => {
+    expect(libraryEmptyLine(makeBot(), false)).toBe("Pages, files, and apps this bot makes in this conversation show up here. For one from an earlier conversation, ask Scout or search for it.");
+    expect(libraryEmptyLine(makeBot(), true)).toContain("search with Ctrl+K.");
   });
 
   it("sits on top of the Advanced tab as a Library section, Grok's centred empty line until the bot makes something, with no View all", () => {
@@ -674,7 +676,7 @@ describe("the Library", () => {
     expect(rendered.html).toContain('data-panel-card="library"');
     expect(rendered.html).not.toContain(">library<");
     expect(rendered.html).not.toContain("data-panel-card-surface");
-    expect(rendered.html).toContain(">Pages, files, and apps this bot makes show up here<");
+    expect(rendered.html).toContain(">Pages, files, and apps this bot makes in this conversation show up here. For one from an earlier conversation, ask Scout or search with Ctrl+K.<");
     expect(has(rendered, "data-panel-page", "library")).toBe(false);
   });
 });
@@ -1030,7 +1032,7 @@ describe("the drill-in pages", () => {
     expect(rendered.html).not.toContain("# Notes");
     expect(switches(rendered.html)).toBe(0);
     for (const text of ["Tidy now", "Upkeep", "Obsidian", "daily logs", "Journal"]) expect(rendered.html).not.toContain(text);
-    click(rendered.nodes.filter((node) => node.props.label === "Forget")[0]!);
+    click(rendered.nodes.filter((node) => node.props.label === "Forget \u201cLikes short replies\u201d")[0]!);
     await Promise.resolve();
     expect(fixture.saveMemory).toHaveBeenLastCalledWith("scout", "MEMORY.md", "# Notes\n\n- Uses Resolve Studio\n", "h1", false);
     await Promise.resolve();
@@ -1052,7 +1054,7 @@ describe("the drill-in pages", () => {
 
     fixture.memory = { ...fixture.memory, docs: [memoryDoc("- Old\n")], error: false };
     fixture.saveMemory = vi.fn(() => Promise.resolve({ ok: false, conflict: true, current: "- New\n", currentHash: "h3" }));
-    click(find(body("memory"), "label", "Forget"));
+    click(find(body("memory"), "label", "Forget \u201cOld\u201d"));
     await Promise.resolve();
     await Promise.resolve();
     expect(fixture.memory.reload).toHaveBeenCalled();
@@ -1069,12 +1071,13 @@ describe("the drill-in pages", () => {
     expect(fixture.skills.toggle).toHaveBeenCalledWith(off);
     expect(rendered.html).not.toContain("Write a command");
 
+    const settle = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
     click(find(rendered, "data-panel-action", "remove-skill:summarise"));
-    await Promise.resolve();
+    await settle();
     expect(fixture.api).toHaveBeenCalledWith("/api/bots/scout/skills/summarise", { method: "DELETE" });
-    await Promise.resolve();
     expect(fixture.skills.refresh).toHaveBeenCalled();
     click(find(rendered, "data-panel-action", "remove-skill:triage"));
+    await settle();
     expect(fixture.skills.putAssignments).toHaveBeenCalledWith("triage", true);
 
     (find(rendered, "data-panel-form", "skill-import").props.onChange as (value: string) => void)("owner/repo");

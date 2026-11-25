@@ -51,6 +51,8 @@
 //   FAKE_CODEX_TEXT_MODE  `codex exec`: ok (default) | fail | exit | hang | tool | noisy
 //   FAKE_CODEX_TEXT_REFUSE  `codex exec`: comma-separated models answered with the 400 a ChatGPT account gets for gpt-5.4-mini
 //   FAKE_CODEX_LUNA  "1": model/list also offers gpt-6-luna
+//   FAKE_CODEX_REFUSE_MODELS  comma-separated models whose turns fail as a ChatGPT account's do for a model it can't use
+// `logout` leaves <CODEX_HOME>/fake-logged-out, and `login status` then answers "Not logged in" until it is removed.
 //   FAKE_CODEX_UPDATED_FILE  while this file exists, the CLI was updated in place: --version answers codex-cli 0.162.1
 //     and model/list also offers gpt-6.1-sol
 //   FAKE_CODEX_MCP_START  "1": on thread/start, start each `-c mcp_servers.*` mount as codex-cli 0.160.1 does
@@ -96,8 +98,14 @@ if (process.argv[2] === "--version") {
   process.stdout.write(`${updated ? "codex-cli 0.162.1" : process.env.FAKE_CODEX_VERSION ?? "codex-cli 0.147.0"}\n`);
   process.exit(0);
 }
+const loggedOutMarker = process.env.CODEX_HOME ? `${process.env.CODEX_HOME}/fake-logged-out` : "";
+if (process.argv[2] === "logout") {
+  if (loggedOutMarker) writeFileSync(loggedOutMarker, "");
+  process.stderr.write("Successfully logged out\n");
+  process.exit(0);
+}
 if (process.argv[2] === "login" && process.argv[3] === "status") {
-  if (mode === "logged-out") {
+  if (mode === "logged-out" || (loggedOutMarker && existsSync(loggedOutMarker))) {
     process.stderr.write("Not logged in\n");
     process.exit(1);
   }
@@ -196,6 +204,7 @@ let experimentalApi = false;
 
 const out = (obj: unknown) => process.stdout.write(JSON.stringify(obj) + "\n");
 let nativeThreadId = "codex-thread-1";
+let threadModel = "";
 const nativeTurnId = "turn-1";
 const notify = (method: string, params: any) => out({
   jsonrpc: "2.0", method,
@@ -642,6 +651,7 @@ process.stdin.on("data", (chunk) => {
       case "thread/start":
         dump();
         developerInstructions = msg.params?.developerInstructions ?? "";
+        threadModel = msg.params?.model ?? "";
         if (process.env.FAKE_CODEX_MCP_FAILED) {
           const name = process.env.FAKE_CODEX_MCP_FAILED;
           out({ jsonrpc: "2.0", method: "mcpServer/startupStatus/updated", params: { threadId: null, name, status: "failed", error: `MCP client for \`${name}\` timed out after 30 seconds.`, failureReason: null } });
@@ -789,10 +799,12 @@ process.stdin.on("data", (chunk) => {
             break;
           }
         }
-        if (mode === "plan-model-refused") {
+        const turnModel = msg.params?.model ?? threadModel;
+        if (mode === "plan-model-refused" || process.env.FAKE_CODEX_REFUSE_MODELS?.split(",").includes(turnModel)) {
           out({ jsonrpc: "2.0", id: msg.id, result: { turn: { id: nativeTurnId } } });
           // The reporter's words (2026-11-03): ChatGPT lists gpt-6.1-sol, then refuses it for a ChatGPT account.
-          const error = { message: "unexpected status 400 Bad Request: invalid_request_error model_not_found: The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.", codexErrorInfo: null, additionalDetails: null };
+          const refused = mode === "plan-model-refused" ? "gpt-6.1-sol" : turnModel;
+          const error = { message: `unexpected status 400 Bad Request: invalid_request_error model_not_found: The '${refused}' model is not supported when using Codex with a ChatGPT account.`, codexErrorInfo: null, additionalDetails: null };
           notify("error", { willRetry: false, error });
           notify("turn/completed", { turn: { status: "failed", error } });
           break;

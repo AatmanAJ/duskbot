@@ -1,5 +1,7 @@
 // Runs one agents tool: check arguments, call the harness, render the model's text. Stateless;
 // per-turn limits are the harness's, since one proxy can serve many turns of a warm engine.
+import { peerBrief } from "../peer-brief.ts";
+import { otherChatMessage, otherChatsText } from "./other-chats-text.ts";
 import { RUNS_NOTHING_NOTE } from "../bot-reach.ts";
 import { agentsCallMember, resolveAgentsCall } from "../../shared/agents-tool-names.ts";
 import { CREDENTIAL_TARGETS, isCredentialTargetId, LOGIN_CREDENTIAL } from "../../shared/credential-request.ts";
@@ -35,6 +37,7 @@ import { callDevsTool, DEVS_TOOL_NAMES } from "./agents-devs-tools.ts";
 import { STATUS_TOOL } from "../../shared/turn-progress.ts";
 import { callStatusTool } from "./agents-status-tool.ts";
 import { callSendMessageTool, SEND_MESSAGE_TOOL } from "./agents-send-message-tool.ts";
+import { recallLink } from "./recall-link.ts";
 
 /** What a turn with no computer still does: most "use your computer" asks are reads a page fetch answers. */
 export const NO_COMPUTER_NOTE = "\nNo computer is available here, but reading pages and searching the web need none: do every part of the task you can with those and your other tools, and say in one line only what setup would let you do the rest.";
@@ -303,15 +306,15 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
       && (canonical.thread === undefined || (typeof canonical.thread === "string" && /^[\w-]{1,128}$/.test(canonical.thread)))
       && (canonical.reply === undefined || canonical.reply === "resume" || canonical.reply === "none")
       && optional("consult", "boolean") && optional("in_my_folder", "boolean")
-      && optional("done_when", "string") && optional("reason", "string") && optional("title", "string") && optional("answers", "string");
+      && optional("done_when", "string") && optional("expecting", "string") && optional("context", "string") && optional("reason", "string") && optional("title", "string") && optional("answers", "string");
     if (!usable) {
       return {
-        text: `coordinate_bots takes snake_case arguments: bot_ids (an array of 1-4 teammate ids) and message are required; group_id, reason, rework, title, thread ("standing", "new" or the id of a thread you opened on that teammate), reply ("resume" or "none"), consult (true or false), in_my_folder (true or false), done_when and answers are optional. Received: ${Object.keys(args).join(", ") || "none"}.`,
+        text: `coordinate_bots takes snake_case arguments: bot_ids (an array of 1-4 teammate ids) and message are required; group_id, reason, rework, title, thread ("standing", "new" or the id of a thread you opened on that teammate), reply ("resume" or "none"), consult (true or false), in_my_folder (true or false), expecting, context, done_when and answers are optional. Received: ${Object.keys(args).join(", ") || "none"}.`,
         isError: true,
       };
     }
     const r = await api("/api/internal/coordinate-bots", { method: "POST", body: JSON.stringify({
-      groupId: canonical.group_id, botIds: ids, message: canonical.message,
+      groupId: canonical.group_id, botIds: ids, message: canonical.answers === undefined ? peerBrief(canonical.message as string, canonical) : canonical.message,
       reason: typeof canonical.reason === "string" && canonical.reason.trim() ? canonical.reason.trim() : undefined,
       rework: canonical.rework,
       thread: canonical.thread, reply: canonical.reply,
@@ -815,7 +818,10 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
     if (until) query.set("until", until);
     if (typeof args.limit === "number" && Number.isFinite(args.limit)) query.set("limit", String(Math.trunc(args.limit)));
     if (args.scope === "conversations" || args.scope === "memory") query.set("scope", args.scope);
+    const otherBot = typeof args.bot === "string" ? args.bot.trim() : "";
+    if (otherBot) query.set("bot", otherBot);
     const r = await api(`/api/internal/session-search?${query.toString()}`);
+    if (typeof r.otherBot === "string") return { text: otherChatsText(r.otherBot, Array.isArray(r.hits) ? (r.hits as Json[]) : [], q ? `matches "${q}"` : `is there since ${since}`, { when: recallWhen, speaker: recallSpeaker }) };
     const hits = Array.isArray(r.hits) ? (r.hits as Json[]) : [];
     const memoryHits = Array.isArray(r.memoryHits) ? r.memoryHits.filter(jsonRecord) : [];
     const memoryBlock = memorySearchText(memoryHits);
@@ -836,13 +842,13 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
         : typeof hit.room === "string" && hit.room
           ? `room "${hit.room}"${typeof hit.task === "string" && hit.task ? `, ${task}` : ""}`
           : hit.crossed ? `${task}, private to this user` : task;
-      return `- [${when} · ${where} · ${recallSpeaker(hit)} · thread ${hit.threadId} · message ${hit.messageId}] ${hit.snippet}`;
+      return `- [${when} · ${where} · ${recallSpeaker(hit)} · thread ${hit.threadId} · message ${hit.messageId}${recallLink(hit)}] ${hit.snippet}`;
     });
     const crossed = hits.some((hit) => hit.crossed === true);
     return {
       text:
         `${memoryBlock}${hits.length} ${q ? "matching " : ""}message${hits.length === 1 ? "" : "s"} from your earlier conversations (${q ? "best match first" : "newest first"}):\n${lines.join("\n")}\n\n` +
-        "These are your own past notes. If one of them is the message you need, call session_search with its thread_id and message_id for the full text rather than searching again. Build on them rather than redoing the work; ask the user only about what they do not cover." +
+        "These are your own past notes. If one of them is the message you need, call session_search with its thread_id and message_id for the full text rather than searching again. Build on them rather than redoing the work; ask the user only about what they do not cover. To point the person to the conversation where something is (a page, a file, an answer), copy that hit's link into your reply exactly as it is: the person can click it." +
         (crossed
           ? " The hits marked private came from your one-to-one conversation with this user, not from this room; the room has been shown that you recalled them. Use them, and say where something came from if anyone asks."
           : ""),
@@ -855,12 +861,14 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
       return { text: "Reading a message needs both thread_id and message_id, copied from a session_search hit.", isError: true };
     }
     const query = new URLSearchParams({ fromBotId: BOT_ID, fromThreadId: THREAD_ID, threadId, messageId });
+    if (typeof args.bot === "string" && args.bot.trim()) query.set("bot", args.bot.trim());
     let r: Json;
     try {
       r = await api(`/api/internal/session-read?${query.toString()}`);
     } catch (error) {
       return { text: `Couldn't read message ${JSON.stringify(messageId.slice(0, 80))} in thread ${JSON.stringify(threadId.slice(0, 80))}: ${error instanceof Error ? error.message : String(error)}. Copy thread_id and message_id exactly from a session_search hit's "thread …" and "message …" fields.`, isError: true };
     }
+    if (typeof r.otherBot === "string") return { text: otherChatMessage(r.otherBot, r, messageId, { when: recallWhen, speaker: recallSpeaker }) };
     const when = recallWhen(r.at, true);
     const readTask = typeof r.task === "string" && r.task ? `task "${r.task}"` : "an earlier task";
     const where = threadId === THREAD_ID ? "this conversation" : r.crossed ? `${readTask}, private to this user` : readTask;

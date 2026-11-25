@@ -3,21 +3,33 @@ import type { Bot, Message } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { peerLine } from "@/lib/peer-message";
 import { withoutCitationMarkers } from "@/lib/citations";
+import { ComposerNoticeSlot } from "./ComposerNoticeSlot";
 
-/** The chat's pinned message above the transcript: who said it, a one-line preview that jumps to it, and Unpin. */
-export function PinnedBanner({
-  bot,
-  pinnedId,
-  messages,
-  onJump,
-  onUnpin,
-}: {
+type BannerProps = {
   bot: Bot;
   pinnedId?: string;
   messages: Message[];
   onJump: (messageId: string) => void;
   onUnpin?: () => void;
-}) {
+};
+
+/** The chat's pinned message above the transcript: who said it, a one-line preview that jumps to it, and Unpin. It comes
+ * and goes as the notices above the composer do; another chat opens with its own at once. */
+export function PinnedBanner(props: BannerProps) {
+  return (
+    <ComposerNoticeSlot key={props.bot.threadId}>
+      <div><Banner {...props} /></div>
+    </ComposerNoticeSlot>
+  );
+}
+
+function Banner({
+  bot,
+  pinnedId,
+  messages,
+  onJump,
+  onUnpin,
+}: BannerProps) {
   const pinned = messages.find((m) => m.id === pinnedId);
   if (!pinned || pinned.kind !== "text") return null;
   const pinnedPeer = peerLine(pinned);

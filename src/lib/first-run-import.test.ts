@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const f = vi.hoisted(() => ({ api: vi.fn(), runBotMove: vi.fn() }));
 vi.mock("@/state/store", () => ({ api: f.api }));
-vi.mock("./bot-move", () => ({
+vi.mock("./bot-move", async (actual) => ({
+  factsBrought: (await actual<typeof import("./bot-move")>()).factsBrought,
   movable: (plan: { apps: Array<{ preview: { plans: unknown[] } }> }) => plan.apps.reduce((n, app) => n + app.preview.plans.length, 0),
   runBotMove: f.runBotMove,
   planCounts: (app: { preview: { plans: Array<{ counts?: object }> } }) => ({ bots: app.preview.plans.length, skills: 0, routines: 0, memories: 0, facts: 0, ...app.preview.plans[0]?.counts }),
@@ -105,7 +106,7 @@ describe("bringing the chosen in", () => {
       memory: { added: 12, sources: ["claudeCode" as const], failed: false },
     }));
     f.api.mockResolvedValue({ ok: true });
-    f.runBotMove.mockResolvedValue([{ app: {}, report: { bots: [{ id: "a", memories: 0, notes: 0 }, { id: "b", memories: 0, notes: 0 }], moved: [], unreadable: [], failed: [] } }]);
+    f.runBotMove.mockResolvedValue([{ app: app("OpenClaw", []), report: { bots: [{ id: "a", skills: 0, memories: 0, notes: 0 }, { id: "b", skills: 0, memories: 0, notes: 0 }], moved: [], unreadable: [], failed: [] } }]);
     const finds = localFinds(plan(app("OpenClaw", ["Atlas", "Juno"])), DETECTION, { now: NOW }).filter((find) => find.id !== "setup:cursor" && find.id !== "setup:codex");
     const run = bringChosen(finds, { dispatch: vi.fn(), firstBotId: "dusk", client: { detect: vi.fn(), apply }, memory: true });
     expect(bringRunNow()).toEqual({ kind: "working", ids: finds.map((find) => find.id), brought: [] });
@@ -116,6 +117,26 @@ describe("bringing the chosen in", () => {
     await vi.waitFor(() => expect(f.api).toHaveBeenCalledWith("/api/bots/dusk/import-note", expect.anything()));
     const note = JSON.parse(f.api.mock.calls.find(([path]) => path === "/api/bots/dusk/import-note")![1].body);
     expect(note).toMatchObject({ from: ["OpenClaw", "Claude Code"], skills: 2, tools: 1, memories: 12, instructions: ["Claude Code"], failed: false });
+  });
+
+  it("counts the skills the moved bots brought, and a fact several of them knew once", async () => {
+    f.api.mockResolvedValue({ ok: true });
+    const grok = { ...app("Grok Bot", [], "~/Downloads"), from: { name: "Grok Bot", key: "grok-bot" } };
+    grok.preview.plans = [
+      { name: "Ada", addedAs: "Ada", facts: ["Name: Priya Lennox", "Time zone: Europe/London"] },
+      { name: "Fen", addedAs: "Fen", facts: ["Name:  Priya Lennox", "Wants briefs under 600 words"] },
+      { name: "Pip", addedAs: "Pip", facts: ["Uses GitHub"] },
+    ] as never;
+    f.runBotMove.mockResolvedValue([{ app: grok, report: {
+      bots: [{ id: "a", name: "Ada", skills: 2, skillsOff: [], memories: 6, notes: 1, routines: 2, apps: 3, facts: 2 },
+        { id: "f", name: "Fen", skills: 1, skillsOff: [], memories: 3, notes: 0, routines: 1, apps: 2, facts: 2 }],
+      moved: [], unreadable: [], failed: ["Pip"] } }]);
+    const finds = localFinds(plan(app("Grok Bot", ["Ada", "Fen", "Pip"])), null, { now: NOW });
+    await bringChosen(finds, { dispatch: vi.fn(), firstBotId: "dusk", client: { detect: vi.fn(), apply: vi.fn() } });
+    expect(bringRunNow()).toMatchObject({ kind: "done", known: 13, line: "Your bots now know 13 things about you. Also brought in 2 bots, 3 skills, and 3 paused routines. Some of it couldn't come in. Try again from settings → general → import." });
+    await vi.waitFor(() => expect(f.api).toHaveBeenCalledWith("/api/bots/dusk/import-note", expect.anything()));
+    const note = JSON.parse(f.api.mock.calls.find(([path]) => path === "/api/bots/dusk/import-note")![1].body);
+    expect(note, "Priya's name once, not once per bot; Pip failed, so what it knew didn't come").toMatchObject({ facts: 3, skills: 3, memories: 10, routines: 3 });
   });
 
   it("records the bring card as seen once something came in, keeping the hints already saved", async () => {
@@ -146,7 +167,7 @@ describe("bringing the chosen in", () => {
 
   it("names a failure and keeps what did come in", async () => {
     const apply = vi.fn(async () => { throw new Error("offline"); });
-    f.runBotMove.mockResolvedValue([{ app: {}, report: { bots: [{ id: "a" }], moved: [], unreadable: [], failed: [] } }]);
+    f.runBotMove.mockResolvedValue([{ app: app("OpenClaw", []), report: { bots: [{ id: "a", skills: 0, memories: 0, notes: 0 }], moved: [], unreadable: [], failed: [] } }]);
     await bringChosen(localFinds(plan(app("OpenClaw", ["Atlas"])), DETECTION, { now: NOW }), { dispatch: vi.fn(), firstBotId: null, client: { detect: vi.fn(), apply } });
     expect(bringRunNow()).toMatchObject({ kind: "done", failed: true, line: "Brought in 1 bot. Some of it couldn't come in. Try again from settings → general → import." });
     expect(bringRunNow(), "a failed find stays one to import again").toMatchObject({ brought: [] });
@@ -155,7 +176,7 @@ describe("bringing the chosen in", () => {
   it("brings one app in on its own Import, and remembers it alongside the next", async () => {
     const apply = vi.fn(async () => ({ skills: { added: ["pdf"], present: [], skipped: [], filesLeftOut: 0, review: [] }, tools: { added: [], present: [], skipped: [] } }));
     f.api.mockResolvedValue({ ok: true });
-    f.runBotMove.mockResolvedValue([{ app: {}, report: { bots: [{ id: "a" }], moved: [], unreadable: [], failed: [] } }]);
+    f.runBotMove.mockResolvedValue([{ app: app("OpenClaw", []), report: { bots: [{ id: "a", skills: 0, memories: 0, notes: 0 }], moved: [], unreadable: [], failed: [] } }]);
     const finds = localFinds(plan(app("OpenClaw", ["Atlas"])), DETECTION, { now: NOW });
     const openclaw = finds.find((find) => find.id === "bots:openclaw")!;
     await bringChosen([openclaw], { dispatch: vi.fn(), firstBotId: null, client: { detect: vi.fn(), apply } });

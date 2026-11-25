@@ -114,3 +114,25 @@ export function passageMatcher(passage: string): ((text: string) => boolean) | n
   const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${folded.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "u");
   return (text) => pattern.test(foldForMatch(text));
 }
+
+const TRACE_STOP = new Set("about after again always another around because before between people person prefers really should something someone thing things through though whether without working morning mornings evening weekend weekends remember reminder reminders".split(" "));
+
+/** Whether a line names one of these forgotten facts: two of a fact's telling words (a name, a number, a long word), or
+ * its only one, appear in it. Null when no fact has a telling word. */
+export function traceMatcher(texts: readonly string[]): ((text: string) => boolean) | null {
+  const perFact: Array<{ terms: Array<(text: string) => boolean>; need: number }> = [];
+  for (const text of texts) {
+    const words = new Set<string>();
+    text.split(/\s+/).forEach((raw, index) => {
+      const word = raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+      const folded = foldForMatch(word);
+      if (folded.length < 3 || TRACE_STOP.has(folded)) return;
+      const named = index > 0 && /^\p{Lu}/u.test(word);
+      if (named || (/\p{N}/u.test(word) && /\p{L}/u.test(word)) || folded.length >= 6) words.add(folded);
+    });
+    const terms = [...words].map(passageMatcher).filter((match): match is (text: string) => boolean => match !== null);
+    if (terms.length) perFact.push({ terms, need: Math.min(2, terms.length) });
+  }
+  if (!perFact.length) return null;
+  return (line) => perFact.some(({ terms, need }) => terms.filter((matches) => matches(line)).length >= need);
+}

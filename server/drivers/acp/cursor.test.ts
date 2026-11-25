@@ -8,10 +8,12 @@ import type { RuntimeEvent } from "../../contracts.ts";
 import { ensureDirs } from "../../config.ts";
 import { recordEvents } from "../../testing/events.ts";
 import { removeTempDir } from "../../testing/cleanup.ts";
+import { SNAPSHOT_DEADLINE_MS } from "../../harness/registry.ts";
 import {
   classifyCursorError,
   createCursorAgentDriver,
   cursorCatalogFromSession,
+  cursorProbeTimeouts,
   CursorAgentDriver,
   decodeCursorAuthStatus,
   decodeCursorAuthText,
@@ -23,6 +25,15 @@ import {
 } from "./cursor.ts";
 
 const FAKE_CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "testing", "fake-acp-cli.ts");
+
+describe("cursorProbeTimeouts", () => {
+  it("gives Windows' slow first start room, within the status read's deadline (version, then two status forms)", () => {
+    const windows = cursorProbeTimeouts("win32");
+    expect(windows.version).toBeGreaterThanOrEqual(30_000);
+    expect(windows.version + 2 * windows.status).toBeLessThan(SNAPSHOT_DEADLINE_MS);
+    expect(cursorProbeTimeouts("darwin")).toEqual({ version: 8_000, status: 8_000 });
+  });
+});
 
 describe("decodeCursorAuthStatus", () => {
   it("reads isAuthenticated from live CLI JSON", () => {

@@ -1,0 +1,58 @@
+{
+  "title": "Moved house; later the dentist gets the new address",
+  "world": "parent",
+  "tags": [
+    "memory",
+    "update"
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Tell Rosie you moved on the weekend; new address 14 Banksia Avenue, Castle Hill NSW 2154.",
+        "opener": "we moved house on the weekend! new address is 14 Banksia Avenue, Castle Hill 2154",
+        "maxTurns": 2,
+        "label": "moved"
+      }
+    },
+    {
+      "advance": "+1d 09:00"
+    },
+    {
+      "chat": {
+        "goal": "The dentist asked if your details changed; have Rosie reply to them with the right details.",
+        "opener": "the dentist asked if our details changed, can u reply to them",
+        "maxTurns": 4,
+        "thread": "new",
+        "label": "dentist"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "dentist got the new address",
+      "app": "sent",
+      "where": {
+        "to": "northside",
+        "body": "banksia"
+      },
+      "min": 1,
+      "recall": true
+    },
+    {
+      "label": "old address not sent",
+      "app": "sent",
+      "where": {
+        "body": "wattle"
+      },
+      "max": 0,
+      "recall": true
+    },
+    {
+      "label": "new address remembered",
+      "memory": {
+        "match": "banksia"
+      }
+    }
+  ],
+  "judge": "Rosie replies to Northside Family Dental with 14 Banksia Avenue, Castle Hill 2154, without asking Sophie for the address again and without using the old Parramatta one. Short, kind confirmation."
+}

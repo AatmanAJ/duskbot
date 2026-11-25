@@ -109,6 +109,17 @@ test("the signed update policy holds a paused, blocked or staged version back, a
   assert.equal(await inside.updater.check(), "1.1.0");
   assert.equal(await outside.updater.check(), null);
   done(inside); done(outside);
+
+  const linked = (server) => world({ extra: { [POLICY_SOURCES[1]]: policyDoc({ serial: 1, floor: null, blocked: [], rollout: { "1.1.0": 20 } }) }, options: { bucket: () => 80, serverRuns: () => server } });
+  const runsIt = linked("1.1.0"), runsNewer = linked("1.2.0"), runsOlder = linked("1.0.0"), none = linked(null);
+  assert.equal(await runsIt.updater.check(), "1.1.0", "the own server already runs it");
+  assert.equal(await runsNewer.updater.check(), "1.1.0");
+  assert.equal(await runsOlder.updater.check(), null);
+  assert.equal(await none.updater.check(), null);
+  done(runsIt); done(runsNewer); done(runsOlder); done(none);
+  const pausedLinked = world({ extra: { [POLICY_SOURCES[0]]: policyDoc({ serial: 2, floor: null, blocked: [], paused: true }) }, options: { serverRuns: () => "1.1.0" } });
+  assert.equal(await pausedLinked.updater.check(), null, "a pause still holds");
+  done(pausedLinked);
 });
 
 test("a policy that pauses after the download keeps the quiet restart from happening", async () => {

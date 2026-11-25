@@ -18,6 +18,7 @@ import {
   openTunnelCredentials,
   platformName,
   prepareEntry,
+  SECURE_ACCESS_UNAVAILABLE,
   startTunnel,
   TUNNEL_CREDENTIALS_FILE,
   tunnelAccess,
@@ -66,6 +67,29 @@ describe("tunnel credentials: a private file, and unreadable is not empty", () =
     expect(broken.status).toBe("unavailable");
     await expect(broken.update((doc) => ({ ...doc, x: 1 }))).rejects.toThrow(/could not be read/);
     expect(readFileSync(join(dir, TUNNEL_CREDENTIALS_FILE), "utf8")).toBe("{not json");
+  });
+});
+
+describe("login where the control plane is not the secure access service", () => {
+  it("says so in one sentence and points at the working path, without asking for an email", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "dusk-tunnel-none-"));
+    const plain = createServer((_req, res) => res.writeHead(200, { "content-type": "text/plain" }).end("ok"));
+    await new Promise<void>((done) => plain.listen(0, "127.0.0.1", done));
+    const address = plain.address();
+    vi.stubEnv("DUSK_CONTROL_PLANE_URL", `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`);
+    try {
+      const asked: string[] = [];
+      const run = fakeIo([]);
+      run.io.ask = async (question) => (asked.push(question), "");
+      expect(await runLogin(options(dir), run.io)).toBe(1);
+      expect(run.err).toEqual([SECURE_ACCESS_UNAVAILABLE]);
+      expect(asked).toEqual([]);
+      expect(describeTunnelAccount(openTunnelCredentials(dir).read()).email).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+      await new Promise((done) => plain.close(done));
+      await removeTempDir(dir);
+    }
   });
 });
 

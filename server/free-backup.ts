@@ -78,19 +78,29 @@ export const FREE_BACKUP_SEND_WAIT_MS = 120_000;
 
 let arriving: Promise<void> | null = null;
 
-/** At boot: starts the preinstall without waiting on it when `env` asks for one; `installed` runs once a copy was added. */
+/** At boot: starts the preinstall without waiting on it when `env` asks for one; `installed` runs once a copy was added,
+ * `settled` once the download is no longer under way (landed, failed or given up). */
 export function startFreeBackupPreinstall(
   env: NodeJS.ProcessEnv,
   installed: () => void | Promise<void>,
   deps: FreeBackupPreinstallDeps = {},
+  settled: () => void = () => {},
 ): Promise<FreeBackupPreinstall> | null {
   if (env[PREINSTALL_FREE_BACKUP_ENV] !== "1") return null;
   const run = preinstallFreeBackup(deps);
   const landed = run.then(async ({ outcome }) => { if (outcome === "installed") await installed(); })
     .catch((error: unknown) => trailError("free_backup.installed", error))
-    .finally(() => { if (arriving === landed) arriving = null; });
+    .finally(() => {
+      if (arriving === landed) arriving = null;
+      try { settled(); } catch (error) { trailError("free_backup.settled", error); }
+    });
   arriving = landed;
   return run;
+}
+
+/** The free backup started at boot is still downloading. */
+export function freeBackupDownloading(): boolean {
+  return arriving !== null;
 }
 
 /** The free backup started at boot and still downloading: settles once it landed and `installed` ran, or after `capMs`.

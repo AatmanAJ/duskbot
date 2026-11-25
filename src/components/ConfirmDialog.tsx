@@ -17,7 +17,7 @@ export type ConfirmTone = "danger" | "neutral";
 export interface ConfirmDialogProps {
   open: boolean;
   title: string;
-  body: ReactNode;
+  body?: ReactNode;
   confirmLabel: string;
   /** The way out, "Cancel" unless given. */
   cancelLabel?: string;
@@ -38,8 +38,9 @@ export interface ConfirmDialogProps {
 
 /**
  * Grok's confirmation modal: Escape cancels and Tab stays inside it. A danger confirm opens on Cancel, so a stray Enter
- * cannot destroy anything; a neutral one opens on its confirm button. While pending, focus parks on the dialog.
- * Portalled to <body>: the sidebar's translate below md would become the containing block.
+ * cannot destroy anything; a neutral one opens on its confirm button. While pending, focus parks on the dialog and
+ * neither Escape nor a click outside cancels. Portalled to <body>: the sidebar's translate below md would become the
+ * containing block.
  */
 export const ConfirmDialog = memo(function ConfirmDialog(props: ConfirmDialogProps) {
   const nativeBody = systemDialogs() ? plainDialogText(props.body) : null;
@@ -100,6 +101,8 @@ function ConfirmDialogInner(props: ConfirmDialogProps) {
   const opensOnCancel = (props.tone ?? "danger") === "danger";
   const cancelAction = useRef(onCancel);
   cancelAction.current = onCancel;
+  const pendingRef = useRef(props.pending);
+  pendingRef.current = props.pending;
   useEffect(() => {
     if (!open) return;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -107,7 +110,7 @@ function ConfirmDialogInner(props: ConfirmDialogProps) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        cancelAction.current();
+        if (!pendingRef.current) cancelAction.current();
         return;
       }
       if (event.key === "Tab") {
@@ -150,7 +153,7 @@ function ConfirmDialogInner(props: ConfirmDialogProps) {
   return createPortal(
     <AnimatePresence onExitComplete={() => { setOpened(false); if (phone) void flushSystemControls(); else wakeSystemControls(); props.onClosed?.(); }}>
       {open && (
-        <ConfirmLayer key="confirm" phone={phone} layer={props.layer} onCancel={onCancel} scrim={motion.scrim}>
+        <ConfirmLayer key="confirm" phone={phone} layer={props.layer} pending={props.pending} onCancel={onCancel} scrim={motion.scrim}>
           <ConfirmDialogCard ref={dialogRef} confirmRef={opensOnCancel ? undefined : opensOn} cancelRef={opensOnCancel ? opensOn : undefined} animated enter={motion.sheet} {...props} />
         </ConfirmLayer>
       )}
@@ -160,7 +163,7 @@ function ConfirmDialogInner(props: ConfirmDialogProps) {
 }
 
 /** The dialog's layer, still drawn while it leaves but no longer taking presses or focus. */
-function ConfirmLayer({ phone, layer, onCancel, scrim, children }: { phone: boolean; layer?: string; onCancel: () => void; scrim: HTMLMotionProps<"div">; children: ReactNode }) {
+function ConfirmLayer({ phone, layer, pending, onCancel, scrim, children }: { phone: boolean; layer?: string; pending?: boolean; onCancel: () => void; scrim: HTMLMotionProps<"div">; children: ReactNode }) {
   const leaving = !useIsPresent();
   useEffect(() => {
     if (!phone) return;
@@ -176,8 +179,8 @@ function ConfirmLayer({ phone, layer, onCancel, scrim, children }: { phone: bool
       className={`fixed inset-0 ${phone ? (layer ?? "z-[85]") : (layer ?? "z-50")} flex items-center justify-center p-6`}
       inert={leaving || undefined}
       data-leaving={leaving ? "" : undefined}
-      onMouseDown={(event) => !leaving && event.target === event.currentTarget && onCancel()}
-      onClick={(event) => phone && !leaving && event.target === event.currentTarget && onCancel()}
+      onMouseDown={(event) => !leaving && !pending && event.target === event.currentTarget && onCancel()}
+      onClick={(event) => phone && !leaving && !pending && event.target === event.currentTarget && onCancel()}
     >
       <ScrimMotion aria-hidden="true" data-raw-dialog="" className="ui-dialog-scrim pointer-events-none absolute inset-0" {...scrim} />
       {children}
@@ -222,7 +225,7 @@ export function ConfirmDialogCard({
       aria-modal="true"
       aria-busy={pending}
       aria-labelledby="confirm-dialog-title"
-      aria-describedby="confirm-dialog-body"
+      aria-describedby={body ? "confirm-dialog-body" : undefined}
       data-tone={tone}
       className="ui-dialog relative flex w-full max-w-[320px] flex-col outline-none"
     >
@@ -231,9 +234,11 @@ export function ConfirmDialogCard({
         <h2 id="confirm-dialog-title" className="m-0 min-w-0 text-[14px] font-semibold leading-[22px] tracking-[-0.15px] text-ink">
           {title}
         </h2>
-        <div id="confirm-dialog-body" className="text-[14px] leading-[22px] tracking-[-0.15px] text-ink/56 text-pretty">
-          {body}
-        </div>
+        {body && (
+          <div id="confirm-dialog-body" className="text-[14px] leading-[22px] tracking-[-0.15px] text-ink/56 text-pretty">
+            {body}
+          </div>
+        )}
       </div>
       <div className="flex flex-wrap gap-2 py-3 pl-4 pr-3">
         <button ref={cancelRef} type="button" onClick={onCancel} disabled={pending} className={`${confirmCancelCls} flex-1`}>

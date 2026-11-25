@@ -183,7 +183,7 @@ export function resolveAntigravityReleaseAsset(
   return target ? PINNED_RELEASES.get(target) ?? null : null;
 }
 
-function compareSemver(left: string, right: string): number {
+export function compareSemver(left: string, right: string): number {
   const a = left.split(".").map(Number);
   const b = right.split(".").map(Number);
   for (let index = 0; index < 3; index++) {

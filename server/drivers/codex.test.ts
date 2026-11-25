@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
 import { once } from "node:events";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
@@ -26,6 +26,7 @@ import { TEAM_TOOLS_FAILED } from "./team-tools.ts";
 import { unsupportedCallsNotice } from "./codex-unsupported-calls.ts";
 import { rebuiltSessionNotice } from "../resume-recovery.ts";
 import { startFakeHttpMcp, type FakeHttpMcp } from "../testing/fake-http-mcp-server.ts";
+import { MCP_RESTART_ENV } from "../mcp-app-catalog.ts";
 import * as procs from "../procs.ts";
 import { autoVerdict } from "../auto-approve.ts";
 import { formatQuestionAnswers } from "../../shared/ask-question.ts";
@@ -58,7 +59,8 @@ describe("CodexDriver.decodeConfig", () => {
     expect(codexUserError("x".repeat(500) + "subscription_sharing_usage_limit_exceeded", "plan")).toMatch(/^subscription_sharing_usage_limit_exceeded:/);
     const refusal = "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.";
     expect(codexUserError(refusal, "plan")).toBe("This model isn't available on your ChatGPT plan, so it's now hidden from this account's model list. Pick another model.");
-    expect(codexUserError(refusal, "own")).toBe(refusal);
+    expect(codexUserError(refusal, "own")).toBe("This ChatGPT account can't use this model in Codex, so it's now hidden from Codex's model list. Your next message will use Codex's default model.");
+    expect(codexUserError(refusal, "other")).toBe(refusal);
     expect(() => CodexDriver.decodeConfig({ authMode: "chatgpt-plan", managed: {} })).toThrow("cannot be combined");
   });
   it("defaults to the codex binary with fullAuto off", () => {
@@ -1257,6 +1259,33 @@ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`)
     expect(seen.env.NOTES_TOKEN).toBe("tok-notes");
     expect(argv).toContain('mcp_servers.duskbot_connectors.default_tools_approval_mode');
     expect(argv).not.toContain('mcp_servers.notes.default_tools_approval_mode');
+  });
+
+  it("runs a command server the person turned on or restarted, whose spec carries the harness's restart count", async () => {
+    await create();
+    const dump = join(scratch, "restarted-mcp.json");
+    process.env.FAKE_CODEX_DUMP = dump;
+
+    await instance.adapter.sendTurn({
+      threadId: "t-restarted-mcp",
+      text: "go",
+      integrations: { custom: { notes: { command: "npx", args: ["-y", "@x/notes-mcp"], env: { NOTES_TOKEN: "tok-notes", [MCP_RESTART_ENV]: "2" } } } },
+    });
+    const done = await recorder.until((event) => event.type === "turn.completed");
+    expect(recorder.events.filter((event) => event.type === "runtime.error")).toEqual([]);
+    expect(done).toMatchObject({ ok: true });
+    const seen = JSON.parse(readFileSync(dump, "utf8"));
+    expect(seen.argv.join(" ")).toContain("mcp_servers.notes.command");
+    expect(seen.env[MCP_RESTART_ENV]).toBe("2");
+  });
+
+  it("still refuses a custom command server that sets one of dusk bot's own variables", async () => {
+    await create();
+    await expect(instance.adapter.sendTurn({
+      threadId: "t-reserved-mcp",
+      text: "go",
+      integrations: { custom: { notes: { command: "npx", args: ["-y", "@x/notes-mcp"], env: { DUSK_COMMS_TOKEN: "stolen" } } } },
+    })).rejects.toThrow("cannot set reserved environment variable “DUSK_COMMS_TOKEN”");
   });
 
   it("mounts a custom server under its own name when the user's config.toml already has one by that name", async () => {
@@ -3560,6 +3589,70 @@ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`)
       expect(done).toMatchObject({ ok: false, stopReason: message });
       const custom = await runTurn("t-limit-custom", "badprov::badmodel");
       expect((custom.errors[0] as { message: string }).message).toMatch(/^You've hit your usage limit\. Upgrade to Pro/);
+    });
+
+    it("hides a model OpenAI refuses for Codex's ChatGPT sign-in, and runs that bot's next turn on Codex's default model", async () => {
+      await create({ environment: { ...signedIn(), FAKE_CODEX_LUNA: "1", FAKE_CODEX_REFUSE_MODELS: "gpt-6-luna" } });
+      expect(instance.models.options.map((model) => model.id)).toContain("gpt-6-luna");
+      const refused = await runTurn("t-own-refused", "gpt-6-luna");
+      expect(refused.done).toMatchObject({ ok: false });
+      expect(refused.errors).toHaveLength(1);
+      expect(instance.models.options.map((model) => model.id)).not.toContain("gpt-6-luna");
+      expect(instance.models.default).toBe("gpt-fake-default");
+      expect(instance.refusedModels?.()).toEqual(["gpt-6-luna"]);
+
+      const dump = join(scratch, "own-refused-next.json");
+      process.env.FAKE_CODEX_DUMP = dump;
+      const next = await runTurn("t-own-refused", "gpt-6-luna");
+      expect(next).toMatchObject({ done: { ok: true }, errors: [] });
+      const seen = JSON.parse(readFileSync(dump, "utf8"));
+      expect(seen.calls.find((call: { method: string }) => call.method === "thread/start").params.model).toBe("gpt-fake-default");
+    });
+
+    const threadStartModel = async (threadId: string) => {
+      const dump = join(scratch, `${threadId}.json`);
+      process.env.FAKE_CODEX_DUMP = dump;
+      const turn = await runTurn(threadId, "gpt-6-luna");
+      const seen = JSON.parse(readFileSync(dump, "utf8"));
+      return { turn, model: seen.calls.find((call: { method: string }) => call.method === "thread/start").params.model };
+    };
+
+    it("lists a refused model again after Codex's own sign-out, and stops sending its turns to the default model", async () => {
+      await create({ environment: { ...signedIn(), FAKE_CODEX_LUNA: "1", FAKE_CODEX_REFUSE_MODELS: "gpt-6-luna" } });
+      const refused = await runTurn("t-own-refused-out", "gpt-6-luna");
+      expect((refused.errors[0] as { message: string }).message).toMatch(/^This ChatGPT account can't use this model in Codex/);
+      expect(instance.models.options.map((model) => model.id)).not.toContain("gpt-6-luna");
+
+      await instance.signOut!();
+      expect(instance.refusedModels?.()).toEqual([]);
+      expect(instance.models.options.map((model) => model.id)).toContain("gpt-6-luna");
+      unlinkSync(join(scratch, ".codex", "fake-logged-out"));
+      expect((await threadStartModel("t-own-after-sign-out")).model).toBe("gpt-6-luna");
+    });
+
+    it("forgets a refused model when Codex is signed in to another account", async () => {
+      const environment = signedIn();
+      const authFile = join(environment.CODEX_HOME, "auth.json");
+      writeFileSync(authFile, JSON.stringify({ auth_mode: "chatgpt", tokens: { account_id: "account-a", refresh_token: "a" } }));
+      await create({ environment: { ...environment, FAKE_CODEX_LUNA: "1", FAKE_CODEX_REFUSE_MODELS: "gpt-6-luna" } });
+      await runTurn("t-own-account-a", "gpt-6-luna");
+      writeFileSync(authFile, JSON.stringify({ auth_mode: "chatgpt", tokens: { account_id: "account-a", refresh_token: "a2" } }));
+      expect((await threadStartModel("t-own-same-account")).model).toBe("gpt-fake-default");
+
+      writeFileSync(authFile, JSON.stringify({ auth_mode: "chatgpt", tokens: { account_id: "account-b", refresh_token: "b" } }));
+      expect((await threadStartModel("t-own-account-b")).model).toBe("gpt-6-luna");
+      expect(instance.refusedModels?.()).toEqual(["gpt-6-luna"]);
+
+      writeFileSync(authFile, JSON.stringify({ auth_mode: "apikey", OPENAI_API_KEY: "sk-fake" }));
+      await instance.snapshot();
+      expect(instance.refusedModels?.()).toEqual([]);
+      await vi.waitFor(() => expect(instance.models.options.map((model) => model.id)).toContain("gpt-6-luna"));
+    });
+
+    it("keeps a model listed when Codex fails it for any other reason", async () => {
+      await create({ mode: "usage-limit", environment: { ...signedIn(), FAKE_CODEX_LUNA: "1" } });
+      await runTurn("t-own-limit", "gpt-6-luna");
+      expect(instance.models.options.map((model) => model.id)).toContain("gpt-6-luna");
     });
   });
 

@@ -18,6 +18,7 @@ const { BotEditorStore, initialState } = await import("@/state/store");
 const { forgetStops, sendStop } = await import("@/lib/stop-turn");
 const { noteReplyEvent, resetLiveReplies } = await import("@/state/live-reply");
 const { t } = await import("@/lib/i18n");
+const { LINE_SPECS, WORKING_LINE } = await import("@/lib/working-line");
 const { PERSON_STOPPED_TURN_NAME, STOPPED_TURN_NAME } = await import("../../shared/client-cancel");
 
 let root: Root;
@@ -52,7 +53,7 @@ const ask: Message = { id: "u1", role: "user", kind: "text", text: "Write a 250 
 const stopped = () => container.querySelector("[data-turn-stopped]");
 const said = () => [...container.querySelectorAll("[data-message-row]")].map((row) => row.textContent ?? "");
 // the word comes once the working line has left (140ms)
-const settle = () => new Promise((done) => setTimeout(done, 220));
+const settle = () => new Promise((done) => setTimeout(done, LINE_SPECS[WORKING_LINE].exitMs + 80));
 const press = () => sendStop(async () => ({ ok: true }), { type: "interrupt", botId: "scout", threadId: "t" }, () => {});
 
 it("says Stopped once, quietly, as soon as the working line has left, before the server has answered", async () => {

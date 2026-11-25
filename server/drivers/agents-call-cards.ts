@@ -20,14 +20,10 @@ async function callAppTool(name: "show_html" | "update_html", args: Json, contex
   if (!parsed.ok) return { text: parsed.error, isError: true };
   const page = parsed.value.jsx !== undefined ? { jsx: args.jsx } : parsed.value.path !== undefined ? { path: args.path } : { html: args.html };
   const frameless = parsed.value.frameless !== undefined ? { frameless: parsed.value.frameless } : {};
+  const fallback = typeof args.fallback_text === "string" ? { fallback_text: args.fallback_text } : {};
   const body = updating
-    ? { tool: name, app_id: args.app_id, ...page, ...(typeof args.title === "string" ? { title: args.title } : {}), ...frameless }
-    : {
-        tool: name, ...page, title: args.title,
-        ...(typeof args.height === "number" ? { height: args.height } : {}),
-        ...(typeof args.fallback_text === "string" ? { fallback_text: args.fallback_text } : {}),
-        ...frameless,
-      };
+    ? { tool: name, app_id: args.app_id, ...page, ...(typeof args.title === "string" ? { title: args.title } : {}), ...fallback, ...frameless }
+    : { tool: name, ...page, title: args.title, ...(typeof args.height === "number" ? { height: args.height } : {}), ...fallback, ...frameless };
   const answer = await context.client.apiResponse(CARD_ROUTE, { method: "POST", body: JSON.stringify(body) });
   if (!answer.ok) return { text: String(answer.body.error ?? (updating ? "Could not update that page." : "Could not show that page.")), isError: true };
   const messageId = String(answer.body.messageId ?? "");

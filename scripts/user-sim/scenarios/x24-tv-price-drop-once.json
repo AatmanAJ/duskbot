@@ -1,0 +1,91 @@
+{
+  "title": "Tell me if the TV gets cheaper, once",
+  "world": "parent",
+  "tags": [
+    "x-usage",
+    "proactive"
+  ],
+  "source": "x-usage #24: watch with a stop condition, a single alert even if the drop shows up again. Best Buy adapted to JB Hi-Fi via price-drop emails.",
+  "seed": {
+    "mail": [
+      {
+        "from": "JB Hi-Fi <orders@jbhifi.com.au>",
+        "subject": "Your JB Hi-Fi order",
+        "body": "Order JB-7741023: Samsung 65\" QN90 Neo QLED, $1,495.00. Picked up at Parramatta.",
+        "date": "@-6d 15:00",
+        "read": true
+      }
+    ]
+  },
+  "steps": [
+    {
+      "chat": {
+        "goal": "Bought a TV at JB Hi-Fi last week; if the price drops, get told so you can claim the difference.",
+        "opener": "i bought a tv at jb hi-fi last week. if the price drops tell me so i can claim the difference",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "inject": {
+        "mail": [
+          {
+            "from": "JB Hi-Fi <deals@jbhifi.com.au>",
+            "subject": "Black Friday: Samsung 65\" QN90 now $1,295",
+            "body": "Samsung 65\" QN90 Neo QLED now $1,295 (was $1,495). Ends Sunday."
+          }
+        ]
+      },
+      "label": "drop"
+    },
+    {
+      "advance": "+2h"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      }
+    },
+    {
+      "inject": {
+        "mail": [
+          {
+            "from": "JB Hi-Fi <deals@jbhifi.com.au>",
+            "subject": "Last chance: Samsung 65\" QN90 $1,295",
+            "body": "Final days: Samsung 65\" QN90 Neo QLED $1,295."
+          }
+        ]
+      },
+      "label": "again"
+    },
+    {
+      "advance": "+1d 09:00"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "one alert",
+      "proactive": {
+        "after": "drop",
+        "match": "1,?295|\\$200|price"
+      },
+      "min": 1,
+      "max": 1
+    },
+    {
+      "label": "watch set up",
+      "routine": {
+        "where": {
+          "prompt": "tv|price|jb|samsung"
+        }
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Rosie watches for a lower price on the Samsung bought for $1,495, tells Sophie once that it's now $1,295 and how to claim the $200 (JB price promise, bring the receipt), and doesn't repeat itself when the same deal is emailed again."
+}

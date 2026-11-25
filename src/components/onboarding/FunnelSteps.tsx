@@ -78,7 +78,7 @@ export function ProgressInk({ at }: { at: number }) {
 
 /** One piece of a step arriving: the art first, then the title, the line, what to do and the way on, 45ms apart, each
  * rising 12px out of a 4px blur on the enter spring. Under reduced motion they only fade. */
-function useCascade() {
+export function useCascade() {
   const reduced = useReducedMotion() === true;
   return (index: number) => {
     if (reduced) return { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.15, ease: [0.22, 1, 0.36, 1] as const } };

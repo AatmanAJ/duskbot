@@ -158,6 +158,22 @@ describe("where notes land", () => {
     expect(aboutMeWithNotes(first.text, notes), "a second paste adds nothing").toBeNull();
   });
 
+  it("carries on one app's list when several of its bots add facts in a row, and starts another for the next app", () => {
+    const grok = (facts: string[]) => ({ from: { name: "Grok Bot", key: "grok-bot" }, aboutMe: facts, instructions: "" });
+    const ada = aboutMeWithNotes("I run a studio.", grok(["Name: Priya Lennox", "Time zone: Europe/London"]), "2026-11-14")!.text;
+    const fen = aboutMeWithNotes(ada, grok(["Wants briefs under 600 words"]), "2026-11-14")!.text;
+    const other = aboutMeWithNotes(fen, { ...grok(["Uses Linear"]), from: { name: "OpenClaw", key: "openclaw" } }, "2026-11-14")!.text;
+    expect(other).toBe([
+      "I run a studio.",
+      "",
+      "- 2026-11-14 · learned by Grok Bot · Name: Priya Lennox",
+      "- 2026-11-14 · learned by Grok Bot · Time zone: Europe/London",
+      "- 2026-11-14 · learned by Grok Bot · Wants briefs under 600 words",
+      "",
+      "- 2026-11-14 · learned by OpenClaw · Uses Linear",
+    ].join("\n"));
+  });
+
   it("keeps memories in one topic per app, merged with an earlier paste", () => {
     const first = notesMemoryText(notes)!;
     expect(first).toContain("# Notes from ChatGPT");

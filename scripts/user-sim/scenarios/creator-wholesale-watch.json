@@ -1,0 +1,86 @@
+{
+  "title": "Tell me when Fernwood's wholesale order lands and thank Rosa",
+  "world": "creator",
+  "tags": [
+    "proactive",
+    "multi-step"
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Ask Wren to watch for Rosa's wholesale order from Fernwood today, tell you as soon as it lands, and email Rosa a thank-you confirming it ships by the 10th.",
+        "opener": "rosa from fernwood is placing a wholesale order today. when it comes in tell me right away and send her a thank you + confirm we ship by the 10th",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "inject": {
+        "shop": {
+          "orders": [
+            {
+              "number": 1051,
+              "email": "rosa@fernwoodgeneral.com",
+              "customer": "Rosa Jimenez (Fernwood General Store)",
+              "total": 726,
+              "currency": "USD",
+              "status": "paid",
+              "created": "@0m",
+              "items": [
+                {
+                  "title": "Speckled Mug",
+                  "qty": 24,
+                  "price": 19
+                },
+                {
+                  "title": "Celadon Bud Vase",
+                  "qty": 12,
+                  "price": 22.5
+                }
+              ],
+              "shipping": "Freight, 88 Main St, Fernwood CA"
+            }
+          ]
+        }
+      },
+      "label": "arrived"
+    },
+    {
+      "advance": "+30m"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      },
+      "label": "noticed"
+    }
+  ],
+  "checks": [
+    {
+      "label": "Lucía told on her own",
+      "proactive": {
+        "after": "noticed",
+        "match": "1051|fernwood|rosa|wholesale"
+      },
+      "min": 1
+    },
+    {
+      "label": "Rosa thanked",
+      "app": "sent",
+      "where": {
+        "to": "rosa"
+      },
+      "min": 1
+    },
+    {
+      "label": "ship date confirmed",
+      "app": "sent",
+      "where": {
+        "to": "rosa",
+        "body": "10"
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Wren notices order #1051 within the half hour, tells Lucía unprompted, and sends Rosa a warm thank-you confirming shipping by the 10th. A great one also flags that only 3 bud vases are in stock against 12 ordered."
+}

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { ago } from "../lib/format";
-import { PersonLink } from "./sheet";
 import { Button, cx } from "../ui/kit";
 import { adminCall, useAdmin } from "./api";
 import { AdminHeader, Failed, Loading, Section, n, stamp } from "./ui";
@@ -9,7 +8,7 @@ type Kind = "bad" | "big" | "weekly";
 export interface Note {
   id: string; kind: Kind; at: number; text: string | null;
   engine?: string; category?: string; tools?: string[]; apps?: string[]; signals?: string[]; retries?: number;
-  person?: string; where?: string; version?: string;
+  where?: string; version?: string;
   turns?: number; minutes?: number; failed?: number; days?: number;
 }
 interface Theme { key: string; label: string; count: number; examples: string[]; pain: boolean }
@@ -40,23 +39,22 @@ export function touched(note: Note): { shown: string[]; more: number } {
 }
 
 const CHIP = "inline-flex h-6 items-center rounded-full bg-card-2 px-2.5 text-12 text-ink-2";
-/** the second line of a note: where it ran, what it used, and the way to that person */
+/** the second line of a note: where it ran and what it used */
 export function NoteMeta({ note }: { note: Note }) {
   const { shown, more } = touched(note);
   const ran = [note.where, note.version && `v${note.version}`].filter(Boolean).join(" \u00b7 ");
-  if (!ran && !shown.length && !note.person) return null;
+  if (!ran && !shown.length) return null;
   return (
     <div className="mt-2 flex flex-wrap items-center gap-1.5">
       {ran && <span className={CHIP}>{ran}</span>}
       {shown.map((name) => <span key={name} className={CHIP}>{name}</span>)}
       {more > 0 && <span className={cx(CHIP, "text-ink-3")}>+{more}</span>}
-      {note.person && <PersonLink id={note.person} className="hover-chip ml-auto inline-flex h-6 items-center rounded-full px-2.5 text-12 text-ink-2 hover:text-ink">view person</PersonLink>}
     </div>
   );
 }
 
 /** every note people's own engines wrote about how a session went: after a bad chat, after a big session, and weekly.
- * scrubbed on their computer and again on the way in; the link to a person is for the admin only. */
+ * scrubbed on their computer and again on the way in, and kept with no link to a person. */
 export function FeedbackPage() {
   const [kind, setKind] = useState<Kind | null>(null);
   const { data, error, loading, reload } = useAdmin<FeedbackAnswer>(`/feedback${kind ? `?kind=${kind}` : ""}`);

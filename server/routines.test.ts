@@ -269,6 +269,34 @@ describe("bounded scheduled overlap and run health", () => {
     expect(h.manager.listRoutines()[0].failureStreak).toBe(1);
   });
 
+  it("ends a run its bot marked failed with the reason, counts it as a failure, and leaves an unmarked run done", async () => {
+    const h = harness(start);
+    const routine = h.manager.create({ ...input(), enabled: false });
+    h.manager.runNow(routine.id); await h.manager.tick();
+    finish(h, "thread-1", true);
+    expect(h.manager.listRuns()[0]).toMatchObject({ status: "completed" });
+    h.manager.runNow(routine.id); await h.manager.tick();
+    const marked = h.manager.listRuns().find(run => run.threadId === "thread-2")!;
+    expect(h.manager.failOnTurnEnd(marked.id, "ERROR|token expired")).toBe(true);
+    finish(h, "thread-2", true);
+    expect(h.manager.listRuns().find(run => run.threadId === "thread-2")).toMatchObject({ status: "failed", error: "ERROR|token expired" });
+    expect(h.failed).toHaveLength(1);
+    expect(h.manager.listRoutines()[0].failureStreak).toBe(1);
+    expect(h.manager.failOnTurnEnd(marked.id, "again")).toBe(false);
+  });
+
+  it("lets an engine error win over a failure reason the bot set", async () => {
+    const h = harness(start);
+    const routine = h.manager.create({ ...input(), enabled: false });
+    h.manager.runNow(routine.id); await h.manager.tick();
+    h.manager.failOnTurnEnd(h.manager.listRuns()[0].id, "bank sync broken");
+    finish(h, "thread-1", false);
+    const run = h.manager.listRuns()[0];
+    expect(run.status).toBe("failed");
+    expect(run.error).not.toContain("bank sync broken");
+    expect(run).not.toHaveProperty("failReason");
+  });
+
   it("derives failures from completed receipts, ignoring repeated events and intermediate successful turns", async () => {
     const h = harness(start);
     const routine = h.manager.create({ ...input(), enabled: false });
@@ -758,6 +786,78 @@ describe("cron routines use the existing persistent scheduler", () => {
     expect(h.manager.listRuns()).toHaveLength(1);
     expect(h.manager.listRuns()[0]).toMatchObject({ scheduledFor: routine.nextRunAt, status: "missed" });
     expect(h.manager.listRoutines()[0].nextRunAt).toBe(start + 20 * 3_600_000 + 60_000);
+  });
+
+  describe("catchUpMinutes", () => {
+    const everyMinute = () => input({ ...monthly, expression: "* * * * *" });
+
+    it("0 never starts late: the overdue time is missed and the next one is scheduled", async () => {
+      const h = harness(start);
+      const routine = h.manager.create({ ...everyMinute(), catchUpMinutes: 0 });
+      h.setNow(routine.nextRunAt! + 2 * 60_000);
+      await h.manager.tick(); await h.manager.tick();
+      expect(h.started).toHaveLength(0);
+      expect(h.manager.listRuns()).toHaveLength(1);
+      expect(h.manager.listRuns()[0]).toMatchObject({ scheduledFor: routine.nextRunAt, status: "missed" });
+      expect(h.manager.listRoutines()[0].nextRunAt).toBeGreaterThan(h.manager.listRuns()[0].scheduledFor);
+    });
+
+    it("0 still starts a run the due clock reaches a few milliseconds after its time", async () => {
+      const h = harness(start);
+      const routine = h.manager.create({ ...everyMinute(), catchUpMinutes: 0 });
+      h.setNow(routine.nextRunAt! + 5);
+      await h.manager.tick(); await h.manager.tick();
+      expect(h.manager.listRuns()[0]).toMatchObject({ scheduledFor: routine.nextRunAt, status: "running" });
+    });
+
+    it("0 counts from the end of an around window, where a Cloud home wakes for it", async () => {
+      const h = harness(start);
+      const routine = h.manager.create({ ...everyMinute(), timing: "around", catchUpMinutes: 0 });
+      h.setNow(routine.nextRunAt! + 29 * 60_000);
+      await h.manager.tick(); await h.manager.tick();
+      expect(h.manager.listRuns()[0]).toMatchObject({ scheduledFor: routine.nextRunAt, status: "running" });
+    });
+
+    it.each([
+      [30, "running"],
+      [90, "missed"],
+    ])("60 starts a run %s minutes late only inside the window", async (late, status) => {
+      const h = harness(start);
+      const routine = h.manager.create({ ...everyMinute(), catchUpMinutes: 60 });
+      h.setNow(routine.nextRunAt! + late * 60_000);
+      await h.manager.tick(); await h.manager.tick();
+      expect(h.started).toHaveLength(status === "running" ? 1 : 0);
+      expect(h.manager.listRuns()).toHaveLength(1);
+      expect(h.manager.listRuns()[0]).toMatchObject({ scheduledFor: routine.nextRunAt, status });
+    });
+
+    it("unset keeps twelve hours", async () => {
+      const h = harness(start);
+      const routine = h.manager.create(everyMinute());
+      expect(routine).not.toHaveProperty("catchUpMinutes");
+      h.setNow(routine.nextRunAt! + 11 * 3_600_000);
+      await h.manager.tick(); await h.manager.tick();
+      expect(h.manager.listRuns()[0]).toMatchObject({ status: "running" });
+    });
+
+    it("never changes a once routine: it keeps twelve hours", async () => {
+      const h = harness(start);
+      const routine = h.manager.create({ ...input({ ...monthly, expression: "* * * * *" }), schedule: { type: "once", at: start + 60_000 }, catchUpMinutes: 0 });
+      h.setNow(routine.nextRunAt! + 30 * 60_000);
+      await h.manager.tick(); await h.manager.tick();
+      expect(h.manager.listRuns()[0]).toMatchObject({ status: "running" });
+    });
+
+    it("an update sets it and null clears it; bad values are refused", () => {
+      const h = harness(start);
+      const routine = h.manager.create(everyMinute());
+      expect(h.manager.update(routine.id, { catchUpMinutes: 45 })).toMatchObject({ catchUpMinutes: 45 });
+      expect(h.manager.update(routine.id, { name: "Renamed" })).toMatchObject({ catchUpMinutes: 45 });
+      expect(h.manager.update(routine.id, { catchUpMinutes: null })).not.toHaveProperty("catchUpMinutes");
+      for (const bad of [-1, 1.5, 10_081]) {
+        expect(() => h.manager.create({ ...everyMinute(), catchUpMinutes: bad })).toThrow(/0 to 10080/);
+      }
+    });
   });
 
   it("does not accumulate cron work while a previous run is queued or active", async () => {

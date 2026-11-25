@@ -6,10 +6,11 @@
 //     | session-slow (answers new_session after FAKE_PI_SESSION_DELAY_MS, default 800, and dumps {sessionReplied})
 //   FAKE_PI_MODELS  provider/model pairs (default "ollama-cloud/glm-5.2,openai/gpt-4o")
 //   FAKE_PI_DUMP  path to append {argv, env} JSON to
+//   FAKE_PI_SCOPE_READY  confirm the tool selection the way the dusk bot extension does
 //   FAKE_PI_STEER_REFUSE  answer a steer with an explicit success:false
 //   FAKE_PI_STEER_OUT_OF_ORDER  hold the first steer until a second arrives, then refuse the first and accept the second
 
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 
 const mode = process.env.FAKE_PI_MODE ?? "happy";
 const modelPairs = (process.env.FAKE_PI_MODELS ?? "ollama-cloud/glm-5.2,openai/gpt-4o")
@@ -44,9 +45,15 @@ if (process.env.FAKE_PI_DUMP) {
           (k) => process.env[k] !== undefined,
         ),
         mcpConfig,
+        cwd: process.cwd(),
       }) + "\n",
     );
   } catch {}
+}
+
+if (process.env.FAKE_PI_SCOPE_READY && process.env.DUSK_MCP_CONFIG) {
+  const config = JSON.parse(readFileSync(process.env.DUSK_MCP_CONFIG, "utf8"));
+  if (config.scopeReadyPath) writeFileSync(config.scopeReadyPath, JSON.stringify({ ok: true, toolScope: config.toolScope }));
 }
 
 if (argv[0] === "update" && argv.includes("--models")) {

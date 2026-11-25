@@ -25,8 +25,7 @@ vi.mock("@/lib/analytics", () => ({ emailGateDone: () => false }));
 // The gate's job is choosing; the flow itself has its own recipe.
 vi.mock("./WelcomeFlow", () => ({ WelcomeFlow: () => null }));
 vi.mock("@/components/Avatar", () => ({ MausAvatar: () => null }));
-import { useWelcomeViewer, WelcomeGate } from "./WelcomeGate";
-import { WelcomeFlow } from "./WelcomeFlow";
+import { useWelcomeViewer, WelcomeFlowScreen, WelcomeGate } from "./WelcomeGate";
 
 type Node = ReactElement<Record<string, unknown> & { onClick?: () => void; onClose?: () => void; onDone?: (botId: string | null) => void; children?: ReactNode }>;
 function render(component: () => ReactNode) {
@@ -78,7 +77,7 @@ describe("who gets the welcome flow", () => {
   it("opens the desktop flow for the desktop app's own window, exactly as before", () => {
     vi.stubGlobal("window", LOCAL_PAGE);
     const { tree } = gate(LOCAL_VIEWER);
-    expect(tree?.type).toBe(WelcomeFlow);
+    expect(tree?.type).toBe(WelcomeFlowScreen);
     expect(tree?.props).toMatchObject({ replay: false });
   });
 
@@ -160,7 +159,7 @@ describe("who gets the welcome flow", () => {
     vi.stubGlobal("window", REMOTE_PAGE);
     expect(gate({ canSave: true, cloudHome: true }).tree).toBeNull();
     store.state = { ...store.state, welcomeOpen: true };
-    expect(gate({ canSave: true, cloudHome: true }).tree?.type).toBe(WelcomeFlow);
+    expect(gate({ canSave: true, cloudHome: true }).tree?.type).toBe(WelcomeFlowScreen);
   });
 
   it("adds nothing for a paired browser without admin scope", () => {
@@ -169,7 +168,7 @@ describe("who gets the welcome flow", () => {
     expect(html).toBe("");
     store.state = { ...store.state, welcomeOpen: true };
     const replay = gate({ canSave: false }).tree!;
-    expect(replay.type).toBe(WelcomeFlow);
+    expect(replay.type).toBe(WelcomeFlowScreen);
     expect(replay.props).toMatchObject({ replay: true });
   });
 
@@ -215,7 +214,7 @@ describe("who gets the welcome flow", () => {
     store.state = { ...store.state, appSettingsOpen: true, appSettingsSection: "organization" };
     expect(gate(LOCAL_VIEWER).tree).toBeNull();
     store.state = { ...store.state, appSettingsOpen: false };
-    expect(gate(LOCAL_VIEWER).tree?.type).toBe(WelcomeFlow);
+    expect(gate(LOCAL_VIEWER).tree?.type).toBe(WelcomeFlowScreen);
   });
 
   it("steps aside for the API keys its Open API keys opens, so Settings is not hidden under it", () => {
@@ -223,7 +222,7 @@ describe("who gets the welcome flow", () => {
     store.state = { ...store.state, appSettingsOpen: true, appSettingsSection: "connections" };
     expect(gate(LOCAL_VIEWER).tree).toBeNull();
     store.state = { ...store.state, appSettingsOpen: false };
-    expect(gate(LOCAL_VIEWER).tree?.type).toBe(WelcomeFlow);
+    expect(gate(LOCAL_VIEWER).tree?.type).toBe(WelcomeFlowScreen);
   });
 });
 

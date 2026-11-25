@@ -40,7 +40,7 @@ export function LateCloudPlan({ viewer }: { viewer: WelcomeViewer | null }) {
   }, [open]);
   if (!open) return null;
   return (
-    <div role="dialog" aria-modal aria-labelledby="welcome-title" data-late-cloud=""
+    <div role="dialog" aria-modal aria-labelledby="welcome-title" data-late-cloud="" data-screen=""
       className="welcome-screen fixed inset-y-0 left-[var(--rail-beside,0px)] right-0 z-50 flex overflow-y-auto bg-app">
       <WindowDragStrip />
       <div className="place-step relative flex min-h-full w-full flex-col">

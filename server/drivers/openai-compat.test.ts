@@ -30,6 +30,53 @@ describe("OpenAICompatDriver", () => {
     expect(OpenAICompatDriver.metadata.access).toBe("api");
   });
 
+  describe("a model its server does not have", () => {
+    const run = async (listed: string[] | null, model?: string, url = "https://llm.example.test/v1") => {
+      const asked: string[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (input, init) => {
+        if (String(input).endsWith("/models")) return listed ? Response.json({ data: listed.map((id) => ({ id })) }) : new Response("nope", { status: 500 });
+        const body = JSON.parse(String(init?.body)) as { model: string };
+        asked.push(body.model);
+        if (!listed?.includes(body.model)) return new Response(JSON.stringify({ error: { message: `model ${body.model} does not exist` } }), { status: 404 });
+        return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: "Hello." }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+          { headers: { "content-type": "text/event-stream" } });
+      }));
+      const instance = await OpenAICompatDriver.create({
+        instanceId: "model-intent", displayName: "Other", enabled: true,
+        config: OpenAICompatDriver.decodeConfig({ url, ...(model ? { model } : {}) }),
+        environment: { OPENAI_COMPAT_API_KEY: "synthetic-fixture-key" },
+      });
+      const recorder = recordEvents(instance.adapter);
+      try {
+        await instance.adapter.sendTurn({ threadId: "model-intent", text: "Hi.", ...(model ? { model } : {}) });
+        const completed = await recorder.until((event) => event.type === "turn.completed");
+        return { completed, asked, events: recorder.events, models: instance.models };
+      } finally { recorder.stop(); await instance.dispose(); }
+    };
+
+    it("answers with the one listed model a saved name clearly means", async () => {
+      const done = await run(["llama-3.3-70b-versatile", "gemma2-9b-it"], "meta-llama/llama-3.3-70b-instruct");
+      expect(done.completed).toMatchObject({ ok: true });
+      expect(done.asked).toEqual(["meta-llama/llama-3.3-70b-instruct", "llama-3.3-70b-versatile"]);
+      expect(done.events).toContainEqual(expect.objectContaining({ type: "runtime.notice", message: expect.stringContaining('uses its "llama-3.3-70b-versatile"') }));
+    });
+
+    it("fails a model no listed one matches with the server's models to pick from, coded model_not_found", async () => {
+      const done = await run(["gpt-6", "glm-5.3"], "meta-llama/llama-3.3-70b-instruct");
+      expect(done.completed).toMatchObject({ ok: false });
+      expect(done.events.find((event) => event.type === "runtime.error")).toMatchObject({
+        errorCode: "model_not_found", message: expect.stringMatching(/model is unavailable.*"gpt-6", "glm-5.3"/),
+      });
+    });
+
+    it("never sends OpenRouter's model name to another server whose list it could not read", async () => {
+      const done = await run(null);
+      expect(done.models.default).toBe("");
+      expect(done.asked).toEqual([]);
+      expect(done.events.find((event) => event.type === "runtime.error")).toMatchObject({ errorCode: "model_not_set" });
+    });
+  });
+
   it("falls back to the OpenRouter endpoint by default", () => {
     const cfg = OpenAICompatDriver.defaultConfig();
     expect(cfg.url).toBe("https://openrouter.ai/api/v1");
@@ -646,7 +693,7 @@ describe("OpenAICompatDriver", () => {
       instanceId: "test-include-usage",
       displayName: "Include usage",
       enabled: true,
-      config: { url: "http://host.lima.internal:9090/v1", apiKeyEnv: "TEST_KEY" },
+      config: { url: "http://host.lima.internal:9090/v1", apiKeyEnv: "TEST_KEY", model: "fixture-model" },
       environment: { TEST_KEY: "secret" },
     });
     const recorder = recordEvents(inst.adapter);
@@ -692,7 +739,7 @@ describe("OpenAICompatDriver", () => {
       instanceId: "test-u25",
       displayName: "U25",
       enabled: true,
-      config: { url: "http://host.lima.internal:9090/v1", apiKeyEnv: "TEST_KEY" },
+      config: { url: "http://host.lima.internal:9090/v1", apiKeyEnv: "TEST_KEY", model: "fixture-model" },
       environment: { TEST_KEY: "secret" },
     });
     const recorder = recordEvents(inst.adapter);
@@ -725,7 +772,7 @@ describe("OpenAICompatDriver", () => {
       instanceId: "test-prompt-split",
       displayName: "Prompt split",
       enabled: true,
-      config: { url: "http://localhost:9/v1", apiKeyEnv: "TEST_KEY" },
+      config: { url: "http://localhost:9/v1", apiKeyEnv: "TEST_KEY", model: "fixture-model" },
       environment: { TEST_KEY: "secret" },
     });
     const recorder = recordEvents(inst.adapter);
@@ -789,7 +836,7 @@ describe("OpenAICompatDriver", () => {
         instanceId: "test-replay-notes",
         displayName: "Replay notes",
         enabled: true,
-        config: { url: "http://localhost:9/v1", apiKeyEnv: "TEST_KEY" },
+        config: { url: "http://localhost:9/v1", apiKeyEnv: "TEST_KEY", model: "fixture-model" },
         environment: { TEST_KEY: "secret" },
       });
       const recorder = recordEvents(inst.adapter);

@@ -1,6 +1,7 @@
 // The routine editor's one "when" picker: a few plain presets and a time, mapped to and from the schedules the server
-// keeps. A schedule no preset can say (a cron line, another interval, after a limit resets) stays as it is.
+// keeps. A schedule no preset can say (another cron line, another interval, after a limit resets) stays as it is.
 import type { LocaleKey } from "@/locales";
+import { cronAsDaily, sameZoneHere } from "@/lib/automations";
 import { toLocalDateInput, toLocalTimeInput } from "@/lib/routine-calendar";
 import type { RoutineIntervalWindow, RoutineSchedule, RoutineScheduleInput } from "@/lib/routines";
 
@@ -34,16 +35,26 @@ export function newWhenDraft(now = Date.now()): WhenDraft {
   return { preset: "daily", time: "09:00", day: new Date(now).getDay(), date: toLocalDateInput(tomorrow.getTime()) };
 }
 
-/** The preset a saved schedule reads as, or "keep" when none says it exactly. */
+/** A cron line that runs at one clock time on some days, read on this computer's clock; null for any other line, or one
+ * kept in another zone, whose clock time here differs. */
+function cronClock(expression: string, timeZone: string, now: number): { time: string; weekdays: number[] } | null {
+  const daily = cronAsDaily(expression);
+  return daily && sameZoneHere(timeZone, now) ? { time: daily.time.padStart(5, "0"), weekdays: daily.weekdays } : null;
+}
+
+/** The preset a saved schedule reads as, or "keep" when none says it exactly (with its time and day when it has one, so
+ * picking a preset starts from them). */
 export function whenDraftFor(schedule: RoutineSchedule | undefined, now = Date.now()): WhenDraft {
   const draft = newWhenDraft(now);
   if (!schedule) return draft;
   if (schedule.type === "once") return { ...draft, preset: "once", time: toLocalTimeInput(schedule.at), date: toLocalDateInput(schedule.at) };
-  if (schedule.type === "daily") {
-    const time = schedule.time;
-    if (sameDays(schedule.weekdays, ALL_DAYS)) return { ...draft, preset: "daily", time };
-    if (sameDays(schedule.weekdays, WEEKDAYS)) return { ...draft, preset: "weekdays", time };
-    if (schedule.weekdays.length === 1) return { ...draft, preset: "weekly", time, day: schedule.weekdays[0]! };
+  const clock = schedule.type === "daily" ? schedule : schedule.type === "cron" ? cronClock(schedule.expression, schedule.timeZone, now) : null;
+  if (clock) {
+    const { time, weekdays } = clock;
+    if (sameDays(weekdays, ALL_DAYS)) return { ...draft, preset: "daily", time };
+    if (sameDays(weekdays, WEEKDAYS)) return { ...draft, preset: "weekdays", time };
+    if (weekdays.length === 1) return { ...draft, preset: "weekly", time, day: weekdays[0]! };
+    return { ...draft, preset: "keep", time, day: weekdays[0] ?? draft.day };
   }
   if (schedule.type === "interval" && schedule.everyMinutes === 60 && !schedule.weekdays && schedule.endsAt == null) {
     return { ...draft, preset: "hourly", window: schedule.window ?? null };

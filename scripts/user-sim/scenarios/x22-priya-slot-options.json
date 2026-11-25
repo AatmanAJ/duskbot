@@ -1,0 +1,57 @@
+{
+  "title": "Find 30 minutes next week with Priya and send her options",
+  "world": "developer",
+  "tags": [
+    "x-usage",
+    "multi-step"
+  ],
+  "source": "x-usage #22: real free slots, respects the stated rules (afternoons, not Friday), asks before sending.",
+  "steps": [
+    {
+      "chat": {
+        "goal": "Find a 30 minute slot next week for a call with Priya (the recruiter) and send her a few options. Afternoons only, never Friday.",
+        "opener": "find a slot next week for a 30 min call with priya (the recruiter) and send her the options. afternoons only, not friday",
+        "knows": "Yes send it.",
+        "maxTurns": 4,
+        "label": "slots"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "options sent to Priya",
+      "app": "sent",
+      "where": {
+        "to": "priya"
+      },
+      "min": 1
+    },
+    {
+      "label": "no Friday offered",
+      "app": "sent",
+      "where": {
+        "to": "priya",
+        "body": "fri"
+      },
+      "max": 0
+    },
+    {
+      "label": "no mornings offered",
+      "app": "sent",
+      "where": {
+        "to": "priya",
+        "body": "\\b(9|10|11)(:\\d\\d)?\\s?am\\b|\\b(09|10|11):\\d\\d\\b"
+      },
+      "max": 0
+    },
+    {
+      "label": "no meeting booked yet",
+      "app": "events",
+      "where": {
+        "attendees": "priya"
+      },
+      "max": 0
+    }
+  ],
+  "judge": "Kiran checks next week's calendar (Arjun is back from Jaipur on Tuesday), offers 2-3 real afternoon slots Mon-Thu in IST, shows them before sending, then emails Priya Raman. No Friday, no mornings, nothing booked until she picks."
+}

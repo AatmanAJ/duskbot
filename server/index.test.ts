@@ -907,7 +907,7 @@ beforeAll(async () => {
       return res.end(JSON.stringify(id ? found ?? { error: { message: "Auth config not found" } } : { items: connectorAuthConfigs }));
     }
     if (req.url?.startsWith("/api/v3.1/tool_router/session")) {
-      if (req.headers["x-api-key"] !== "ak_good") {
+      if (req.headers["x-api-key"] !== "ak_good" && req.headers["x-api-key"] !== "fixture-project-token") {
         res.writeHead(401, { "content-type": "application/json" });
         return res.end(JSON.stringify({ error: { message: "invalid project key" } }));
       }
@@ -8730,7 +8730,7 @@ describe("harness HTTP API", () => {
   it("keeps skill authoring on by default and persists an explicit opt-out", async () => {
     const before = await api("GET", "/api/config");
     expect(before.status).toBe(200);
-    expect(before.body.features).toEqual({ browser: false, skillAuthoring: true, skillReview: true, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true, quickUpdates: true, suggestions: true });
+    expect(before.body.features).toEqual({ browser: false, skillAuthoring: true, skillReview: true, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: true, parallelRoomJobs: false, llmThreadTitles: true, quickUpdates: true, suggestions: true });
     const untouched = JSON.parse(readFileSync(join(home, ".duskbot", "config.json"), "utf8"));
     expect(untouched.features?.skillAuthoring).toBeUndefined();
     expect(untouched.features?.skillReview).toBeUndefined();
@@ -8739,7 +8739,7 @@ describe("harness HTTP API", () => {
       features: { skillAuthoring: false },
     });
     expect(saved.status).toBe(200);
-    expect(saved.body.features).toEqual({ browser: false, skillAuthoring: false, skillReview: true, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true, quickUpdates: true, suggestions: true });
+    expect(saved.body.features).toEqual({ browser: false, skillAuthoring: false, skillReview: true, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: true, parallelRoomJobs: false, llmThreadTitles: true, quickUpdates: true, suggestions: true });
 
     const disk = JSON.parse(readFileSync(join(home, ".duskbot", "config.json"), "utf8"));
     // Earlier browser coverage may have persisted its own toggle: opting out must preserve sibling settings.
@@ -8747,7 +8747,7 @@ describe("harness HTTP API", () => {
 
     const tools = await api("PATCH", "/api/config", { features: { showToolCalls: true } });
     expect(tools.status).toBe(200);
-    expect(tools.body.features).toEqual({ browser: false, skillAuthoring: false, skillReview: true, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true, quickUpdates: true, suggestions: true });
+    expect(tools.body.features).toEqual({ browser: false, skillAuthoring: false, skillReview: true, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: true, parallelRoomJobs: false, llmThreadTitles: true, quickUpdates: true, suggestions: true });
 
     const bot = (await api("POST", "/api/bots", {})).body.bot;
     try {
@@ -10898,34 +10898,33 @@ describe("harness HTTP API", () => {
   });
 
   it("validates a Composio project key, creates a Session, and keeps externally stored secrets off disk", async () => {
-    const oldKey = await api("PUT", "/api/config", { composio: { apiKey: "old_key" } });
-    expect(oldKey.status).toBe(400);
-    expect(oldKey.body.error).toMatch(/start with ak_/i);
-
     const rejected = await api("PUT", "/api/config", { composio: { apiKey: "ak_wrong" } });
     expect(rejected.status).toBe(400);
     expect(rejected.body.error).toMatch(/invalid project key/i);
 
     const saved = await api("PUT", "/api/config?secretStorage=external", {
-      composio: { apiKey: "ak_good" },
+      composio: { apiKey: "fixture-project-token" },
       opencodeGo: { apiKey: "opencode-external" },
       profile: { name: "External Store" },
     });
     expect(saved.status).toBe(200);
-    expect(saved.body.composio).toEqual({ configured: true, mode: "self-hosted" });
+    expect(saved.body.composio).toEqual({ configured: true, mode: "self-hosted", last4: "oken" });
     expect(saved.body.opencodeGo).toEqual({ configured: true, last4: "rnal", providerKeys: [] });
     expect(saved.body.profile).toEqual({ name: "External Store", email: "", aboutMe: "" });
-    expect(JSON.stringify(saved.body)).not.toContain("ak_good");
+    expect(JSON.stringify(saved.body)).not.toContain("fixture-project-token");
 
     const disk = JSON.parse(readFileSync(join(home, ".duskbot", "config.json"), "utf8"));
     expect(disk.composio).toMatchObject({ apiKey: "", sessionId: "trs_config_test" });
     expect(disk.opencodeGo).toEqual({ apiKey: "" });
     expect(disk.profile).toEqual({ name: "External Store" });
-    expect(JSON.stringify(disk)).not.toContain("ak_good");
+    expect(JSON.stringify(disk)).not.toContain("fixture-project-token");
     expect(JSON.stringify(disk)).not.toContain("opencode-external");
 
     expect((await api("PUT", "/api/config", { profile: { name: "Grace" } })).status).toBe(200);
-    expect((await api("GET", "/api/config")).body.composio).toEqual({ configured: true, mode: "self-hosted" });
+    const replacement = await api("PUT", "/api/config?secretStorage=external", { composio: { apiKey: "fixture-refused-key" } });
+    expect(replacement.status).toBe(400);
+    expect(replacement.body.error).toMatch(/invalid project key/i);
+    expect((await api("GET", "/api/config")).body.composio).toEqual(saved.body.composio);
 
     const kiwi = (await api("POST", "/api/bots", { name: "Kiwi" })).body.bot;
     try {

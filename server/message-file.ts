@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { fromMarkdown } from "mdast-util-from-markdown";
 
+import { closeUnclosedFileLinks } from "../shared/markdown-unclosed-destinations.ts";
 import { windowsPathDestinations } from "../shared/markdown-windows-paths.ts";
 import { FILE_MAX_BYTES } from "../shared/upload-limits.ts";
 import { inSecretFolder, SECRET_FILE_REFUSAL } from "./secret-folder.ts";
@@ -154,7 +155,7 @@ function renderedMarkdownTargets(markdown: string): string[] {
   const links: string[] = [];
   const references: string[] = [];
 
-  walkMarkdown(fromMarkdown(markdown, { mdastExtensions: [windowsPathDestinations] }), (node) => {
+  walkMarkdown(fromMarkdown(closeUnclosedFileLinks(markdown).markdown, { mdastExtensions: [windowsPathDestinations] }), (node) => {
     if (node.type === "definition" && node.identifier && node.url) {
       if (!definitions.has(node.identifier)) definitions.set(node.identifier, node.url);
     } else if ((node.type === "link" || node.type === "image") && node.url) {

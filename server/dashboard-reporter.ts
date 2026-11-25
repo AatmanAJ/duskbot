@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { APP_WATCH_MS, SIGNATURE_HEADERS, signedPayload } from "../shared/dashboard-protocol.ts";
 import type { CommandResult, DashboardCommand, EnrollAnswer, EnrollRequest, ReportAnswer, WorkspaceReport } from "../shared/dashboard-protocol.ts";
 import type { createDashboardCollector } from "./dashboard-report.ts";
-import type { UsageReport } from "../shared/usage-signals.ts";
+import type { UsageForget, UsageReport } from "../shared/usage-signals.ts";
+import type { AccountChoice } from "./usage-signals-switch.ts";
 import type { PulseSample } from "../shared/machine-pulse.ts";
 
 interface LinkState {
@@ -22,7 +23,9 @@ export interface DashboardReporterDeps {
   /** usage signals waiting for the next report (usage-signals.ts) */
   usage?: { take(): UsageReport | null; requeue(report: UsageReport): void };
   /** the "help improve dusk bot" switch, which is the account's switch too (usage-signals-switch.ts) */
-  choice?: { pending(): boolean | null; pushed(value: boolean): void; fromAccount(optOut: boolean): unknown };
+  choice?: { pending(): boolean | null; notesPending?(): boolean | null; pushed(value: boolean, notes?: boolean | null): void; fromAccount(answer: AccountChoice): unknown };
+  /** the workspace's own list of what it sent, and the deletions it owes the account service (usage-shared.ts) */
+  shared?: { sent(report: UsageReport): void; forgetting(): UsageForget | null; forgotten(done: UsageForget): void };
   /** recent cpu and memory samples; only those not yet sent ride a report, and only while someone watches */
   pulse?: { since(after: number): PulseSample[] };
   execute(command: DashboardCommand): Promise<CommandResult>;
@@ -196,8 +199,10 @@ export function createDashboardReporter(deps: DashboardReporterDeps) {
         if (!running || generation !== run) return;
         const usage = deps.usage?.take() ?? null;
         if (usage) report.usage = usage;
-        const optOut = deps.choice?.pending() ?? null;
+        const optOut = deps.choice?.pending() ?? null, notes = deps.choice?.notesPending?.() ?? null, forget = deps.shared?.forgetting() ?? null;
         if (optOut !== null) report.usageOptOut = optOut;
+        if (notes !== null) report.usageNotes = notes;
+        if (forget) report.usageForget = forget;
         const pulse = watching ? deps.pulse?.since(pulseSent) ?? [] : [];
         if (pulse.length) report.pulse = pulse;
         let answer: ReportAnswer;
@@ -210,8 +215,10 @@ export function createDashboardReporter(deps: DashboardReporterDeps) {
         if (report.apps) appsAt = at;
         if (pulse.length) pulseSent = pulse.at(-1)!.t;
         lastReportAt = now(); lastError = null; backoff = 5000;
-        if (optOut !== null) deps.choice?.pushed(optOut);
-        if (typeof answer.usageOptOut === "boolean") deps.choice?.fromAccount(answer.usageOptOut);
+        if (optOut !== null || notes !== null) deps.choice?.pushed(optOut ?? false, notes);
+        if (usage) deps.shared?.sent(usage);
+        if (forget) deps.shared?.forgotten(forget);
+        if (typeof answer.usageOptOut === "boolean") deps.choice?.fromAccount({ optOut: answer.usageOptOut, ...(typeof answer.usageNotes === "boolean" ? { notes: answer.usageNotes, notesAnswered: answer.usageNotesAnswered === true } : {}), askUsage: answer.usageAsk === true });
         accept(answer, run);
         await pause(Math.max(2000, Math.min(600_000, Number(answer.nextReportMs) || 180_000)), true);
       } catch (error) {

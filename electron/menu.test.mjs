@@ -145,4 +145,11 @@ describe("buildApplicationMenu", () => {
     for (const entry of help.submenu) entry.click?.();
     expect(shell.openExternal.mock.calls.slice(-3).map(([url]) => url)).toEqual(["https://dusk.bot/docs", "https://dusk.bot/changelog", "mailto:hello@dusk.bot"]);
   });
+
+  it.each(["darwin", "linux", "win32"])("makes text bigger with ⌘= or Ctrl+= as well as ⌘+, and smaller and back on %s", platform => {
+    const view = build(platform).find(item => item.label === "View");
+    const roles = view.submenu.map(item => item.role).filter(Boolean);
+    expect(roles).toEqual(expect.arrayContaining(["resetZoom", "zoomIn", "zoomOut", "reload", "toggleDevTools", "togglefullscreen"]));
+    expect(view.submenu.find(item => item.role === "zoomIn" && item.accelerator === "CmdOrCtrl+=")).toMatchObject({ visible: false, acceleratorWorksWhenHidden: true });
+  });
 });

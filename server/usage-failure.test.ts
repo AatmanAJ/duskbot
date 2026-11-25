@@ -179,6 +179,15 @@ describe("the api engine's own stops", () => {
     ["Stopped after 64 steps without a final answer. The steps so far already ran, so ask only for what's left.", "max_steps", "no_reply"],
     ["tool arguments are not complete JSON", "tool_args_malformed", "tool"],
     ["provider reused a tool-call ID; refusing to repeat an operation", "reused_call_id", "tool"],
+    ["MCP server shutdown could not be confirmed; execution outcome may be uncertain", "ChatToolSessionError", "tool"],
+    ["MCP server configuration is invalid", "tools_mount", "tool"],
+    ["Tool processes could not be stopped; their execution state is uncertain.", "tool_cleanup", "tool"],
+    ["provider returned no streaming completion choice", "no_choice", "no_reply"],
+    ["The model server at 192.168.1.4:1234 stopped answering, so the reply was stopped.", "server_unresponsive", "provider_down"],
+    ["This message is too large for Llama 3.3. Start a new chat or pick a model that accepts more.", "request_too_large", "context"],
+    ["This model can only use tools through OpenAI's Responses API, and this API address or key can't reach it. Choose another model. Provider: nope", "responses_route_unavailable", "bad_request"],
+    ["legacy function_call is unsupported; use structured tool_calls", "legacy_function_call", "bad_request"],
+    ["The same search ran 5 times with the same result, so this stopped.", "repeat_stopped", "no_reply"],
   ])("%s", (text, code, reason) => {
     expect(failureOf(text, { code, stopReason: "error" })).toEqual({ reason, detail: code });
   });

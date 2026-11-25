@@ -118,6 +118,15 @@ export interface TunnelAccount {
   controlPlane: string;
 }
 
+export const SECURE_ACCESS_UNAVAILABLE =
+  "dusk.bot does not run the secure access service behind `duskbot login` and `--tunnel` right now, so link this server with the one line from the app's Add a cloud or your own server sheet, or serve it with --tailscale or --domain.";
+
+export async function loginRefusal(account: TunnelAccount): Promise<string | null> {
+  if (account.credentials.status === "unavailable") return `${account.credentials.file} exists but could not be read; fix or remove it, then try again`;
+  if (!account.controlPlane) return "DUSK_CONTROL_PLANE_URL is set but is not an https address";
+  return (await account.service.state()).reason === "unsupported" ? SECURE_ACCESS_UNAVAILABLE : null;
+}
+
 export interface TunnelRecovery {
   running(): RunningTunnel | null;
 }

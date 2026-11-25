@@ -15,6 +15,8 @@ import { json, readBody } from "../harness/http.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import { removeTempDir } from "../testing/cleanup.ts";
 import { createDashboardRoutes, dashboardUrl } from "./dashboard.ts";
+import { createUsageSignalsSwitch } from "../usage-signals-switch.ts";
+import { createSharedLog } from "../usage-shared.ts";
 import type { DashboardRouteDeps } from "./dashboard.ts";
 import { dispatchRoutes } from "./table.ts";
 
@@ -57,7 +59,7 @@ async function routes(overrides: Partial<DashboardRouteDeps> = {}, auth = ADMIN)
     const url = new URL(req.url ?? "/", "http://localhost");
     if (!await dispatchRoutes(handlers, { req, res, url, path: url.pathname, method: req.method ?? "GET", auth, json, readBody })) json(res, 404, {});
   }));
-  return { reporter, call: (method = "GET", body?: object, contentType = "application/json") => fetch(`${base}/api/dashboard/link`, { method, headers: { "content-type": contentType }, ...(body ? { body: JSON.stringify(body) } : {}) }) };
+  return { reporter, base, call: (method = "GET", body?: object, contentType = "application/json") => fetch(`${base}/api/dashboard/link`, { method, headers: { "content-type": contentType }, ...(body ? { body: JSON.stringify(body) } : {}) }) };
 }
 
 describe("dashboard collector", () => {
@@ -191,4 +193,30 @@ it("counts a Mac's active, wired and compressed pages as used memory, not its fi
   const vmStat = "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:  100.\nPages active:  1000.\nPages inactive:  5000.\nPages wired down:  500.\nPages occupied by compressor:  250.\n";
   expect(macMemoryUsed(vmStat)).toBe(1750 * 16384);
   expect(macMemoryUsed("nothing useful")).toBeNull();
+});
+
+describe("usage switches and what was shared", () => {
+  it("reads and sets usage and notes, refuses a body with neither, and deletes what was shared", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "dashboard-shared-")); dirs.push(dir);
+    const usageSignals = createUsageSignalsSwitch(dir, {});
+    const usageShared = createSharedLog({ file: join(dir, "usage-shared.json") });
+    usageShared.sent({ turns: [], runs: [], frustrations: [{ id: "frust00001", at: Date.now(), engine: "claude", category: "email", tools: [], apps: [], signals: ["retried"], retries: 1, summary: "gmail would not connect." }] });
+    const onUsageChoice = vi.fn();
+    const { base } = await routes({ usageSignals, usageShared, onUsageChoice, usageNotes: { notes: () => null, sent: () => ({}) } });
+    const call = (path: string, method = "GET", body?: object) => fetch(`${base}${path}`, { method, headers: { "content-type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    expect(await (await call("/api/dashboard/usage-signals")).json()).toEqual({ enabled: true, notes: null, askUsage: false, askNotes: false });
+    expect((await call("/api/dashboard/usage-signals", "PUT", {})).status).toBe(400);
+    expect(await (await call("/api/dashboard/usage-signals", "PUT", { notes: true })).json()).toMatchObject({ notes: true });
+    expect(usageSignals.notesPending()).toBe(true);
+    const listed = await (await call("/api/dashboard/usage-shared")).json() as { notes: unknown[] };
+    expect(listed.notes).toEqual([expect.objectContaining({ id: "frust00001", kind: "bad", text: "gmail would not connect." })]);
+    expect(await (await call("/api/dashboard/usage-shared", "DELETE")).json()).toEqual({ ok: true, removing: true });
+    expect(onUsageChoice).toHaveBeenCalled();
+    expect(await (await call("/api/dashboard/usage-shared")).json()).toEqual({ notes: [], counts: [], removing: true });
+    expect(usageShared.forgetting()).toEqual({ notes: ["frust00001"], records: true });
+    // with no account dashboard linked, the app carries the owed note deletes and reports them done
+    expect(await (await call("/api/dashboard/usage-notes")).json()).toEqual({ notes: null, forget: ["frust00001"] });
+    expect((await call("/api/dashboard/usage-notes", "POST", { forgotten: ["frust00001"] })).status).toBe(200);
+    expect(usageShared.forgetting()).toEqual({ notes: [], records: true });
+  });
 });

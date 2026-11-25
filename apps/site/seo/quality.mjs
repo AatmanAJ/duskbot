@@ -2,8 +2,8 @@
 // what it checks, per page: the fields its kind needs and enough of them; enough words of its own (shared template text
 // does not count); a 40 to 80 word answer first; title, description and h1 lengths, each unique; one h1; alt text, width and
 // height on every picture; its own picture files; no placeholder text, no em dash, no subscription claim we cannot stand
-// behind (see SUBSCRIPTION below); dated sources; internal links that lead somewhere; and no page too close to another
-// (word 5-gram jaccard over each page's own text).
+// behind (see SUBSCRIPTION below); no app place that is gone (GONE); dated sources; internal links that lead somewhere;
+// and no page too close to another (word 5-gram jaccard over each page's own text).
 import fs from 'node:fs';
 import path from 'node:path';
 import { sceneId } from './art/scene.mjs';
@@ -16,6 +16,11 @@ export const SUBSCRIPTION = [
   [/\b(?:endorsed|approved|certified|partnered|sponsored|backed)\s+(?:by|with)\s+(?:anthropic|openai|google|xai|microsoft)\b/i, 'implies vendor endorsement'],
   [/\b(?:official|authori[sz]ed)\s+(?:anthropic|openai|google|xai|claude|chatgpt|gemini|grok)\s+(?:partner|app|client|integration)\b/i, 'implies vendor endorsement'],
   [/\b(?:free|unlimited)\s+(?:claude|chatgpt|gemini|grok)\b/i, 'promises free or unlimited ai'],
+];
+// places the app no longer has, which no page may send people to
+export const GONE = [
+  [/\bautomations(?:\*\*)? in the sidebar\b|\bopen (?:\*\*)?automations\b|\bunder automations\b/i, 'the automations page is gone: a routine and its recent runs are in the bot\'s side panel'],
+  [/\bimport(?:\*\*)?\s*(?:→|,|, then)\s*(?:\*\*)?move from grok bot\b/i, 'settings has no move from grok bot: the move is settings, general, start import'],
 ];
 // the voice lint (owner, 12 november 2026: "be more human and genuine, hit hard"). filler phrases and hype are refused;
 // sentences stay short, paragraphs stay small, and most sentences are active. strict on rewritten pages ("voice": 2)
@@ -98,6 +103,7 @@ export function checkPages({ rendered, records, site, TYPES, hubPages, check = f
     if (/—/.test(html) || /—/.test(JSON.stringify(r))) say(r, 'has an em dash');
     const m = PLACEHOLDER.exec(text); if (m) say(r, `placeholder text: "${m[0]}"`);
     for (const [re, why] of SUBSCRIPTION) { const hit = re.exec(text) || re.exec(r.title || ''); if (hit) say(r, `${why}: "${hit[0]}" (see SUBSCRIPTION in seo/quality.mjs)`); }
+    for (const [re, why] of GONE) { const hit = re.exec(text); if (hit) say(r, `${why}: "${hit[0]}" (see GONE in seo/quality.mjs)`); }
     for (const s of r.sources || []) if (!s.url.startsWith('/') && !s.checked) say(r, `source "${s.label}" has no checked date`);
     for (const [, at] of ((/<article[\s\S]*<\/article>/.exec(html) || [''])[0]).matchAll(/<a href="(\/[^"]*)"/g)) if (!exists(at.replace(/&amp;/g, '&'))) {
       if (check && planned.has(at.split(/[?#]/)[0])) continue;

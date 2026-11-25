@@ -225,6 +225,13 @@ describe("order and the grey line", () => {
     expect(runLine(run("failed", at(-1, 9), { error: "token expired, sign in again" }), NOW)).toMatchObject({ mark: "✗", text: "It's signed out. Sign in again so it can run." });
   });
 
+  it("puts an engine's own failure words plainly, as the chat's card does, and keeps them as the line's detail", () => {
+    const error = "claude exited 3 before result: fake-claude: simulated crash before result (not retried: it failed before doing anything)";
+    expect(runLine(run("failed", at(0, 9), { error }), NOW)).toEqual({ when: "today 9:00 AM", mark: "✗", text: "Your AI didn't reply. Try again.", detail: error });
+    expect(runLine(run("failed", at(0, 9), { error: "ECONNRESET socket hang up" }), NOW)).toMatchObject({ text: "The connection dropped. Try again.", detail: "ECONNRESET socket hang up" });
+    expect(runLine(run("failed", at(0, 9), { error: "The inbox could not be reached." }), NOW)).toEqual({ when: "today 9:00 AM", mark: "✗", text: "The inbox could not be reached." });
+  });
+
   it("says why a stopped run stopped when it knows, and plain Stopped when nobody gave a reason", () => {
     expect(runLine(run("cancelled", at(0, 9), { error: "The assigned bot was deleted\nmore" }), NOW)).toMatchObject({ mark: "✗", text: "Stopped: The assigned bot was deleted" });
     expect(runLine(run("cancelled", at(0, 9)), NOW)).toMatchObject({ mark: "✗", text: "Stopped" });

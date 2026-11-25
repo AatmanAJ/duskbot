@@ -24,7 +24,7 @@ function QuestionAnswer({ view, row, threadId, asker }: AnswerProps) {
   if (!threadId) return null;
   if (!question) return <QuestionCard threadId={threadId} asker={asker} message={asMessage(row)} />;
   return <InboxQuestionAnswer row={row} question={question} asker={asker}
-    onAnswer={(response, failed) => { answer(row, response, failed); settleInboxRow(row); }} />;
+    onAnswer={(response, failed) => { if (answer(row, response, failed)) settleInboxRow(row); }} />;
 }
 
 function ApprovalAnswer({ row, threadId, asker }: AnswerProps) {

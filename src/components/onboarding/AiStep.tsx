@@ -6,7 +6,7 @@ import { engineReady } from "@/components/EngineLibrary";
 import { ProviderMark } from "@/components/ProviderIcons";
 import { cn } from "@/lib/cn";
 import { activeLocale, t } from "@/lib/i18n";
-import { useStore } from "@/state/store";
+import { useStore, type InstanceInfo } from "@/state/store";
 import { AiCards } from "./AiCards";
 import { ConnectAiDialog } from "./ConnectAi";
 import { aiName, aiTileOf, aiTiles, freeModel, type AiTileId } from "./funnel";
@@ -33,13 +33,16 @@ function ChoiceTile({ kind, icon, title, sub, busy = false, wide = false, autoFo
 export function AiStep({ tested, cloud = false, computerAis = [], onNext }: { tested: WelcomeAiNow | null; cloud?: boolean;
   /** on a cloud the desktop app set up: the AIs signed in on that computer, by instance id */
   computerAis?: readonly string[]; onNext: (how: AiChoice) => void }) {
+  const { state } = useStore();
   const [plan, setPlan] = useState(false);
   const own = tested && tested.state !== "failed" ? tested : null;
+  // a dusk cloud being made brings free models of its own
+  const free = cloud ? "ready" : freeOffer(state.instances, state.config?.freeBackupDownloading === true);
   if (plan) return <PlanStep tested={tested} cloud={cloud} computerAis={computerAis} onNext={onNext} onBack={() => setPlan(false)} />;
   const ownName = own ? aiName(own.instance) : "";
   const checking = own?.state === "testing";
   return (
-    <StepFrame art={<StepArt art="plug" />} title={t("funnel.ai.chooseTitle")} sub={cloud ? t("funnel.ai.chooseCloud") : t("funnel.ai.chooseSub")} wide>
+    <StepFrame art={<StepArt art="plug" />} title={t("funnel.ai.chooseTitle")} sub={cloud ? t("funnel.ai.chooseCloud") : t(free ? "funnel.ai.chooseSub" : "funnel.ai.sub")} wide>
       <div role="group" aria-label={t("funnel.ai.chooseTitle")} className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
         {own && (
           <ChoiceTile kind="own" wide autoFocus={!checking} busy={checking} onClick={() => onNext("own")}
@@ -49,10 +52,13 @@ export function AiStep({ tested, cloud = false, computerAis = [], onNext }: { te
               ? <span role="status" className="flex items-center gap-1.5"><LoaderCircle size={13} aria-hidden="true" className="shrink-0 animate-spin motion-reduce:animate-none" />{t("onboarding.engines.checkingAnswer", { name: ownName })}</span>
               : t("funnel.ai.useOwnSub")} />
         )}
-        <ChoiceTile kind="free" autoFocus={!own} onClick={() => onNext("free")}
-          icon={<Sparkles size={22} strokeWidth={1.5} className="text-ink-secondary" />}
-          title={t("funnel.ai.useFree")} sub={t("funnel.ai.useFreeSub")} />
-        <ChoiceTile kind="plan" onClick={() => setPlan(true)}
+        {free && (
+          <ChoiceTile kind="free" autoFocus={!own && free === "ready"} busy={free === "downloading"} onClick={() => onNext("free")}
+            icon={<Sparkles size={22} strokeWidth={1.5} className="text-ink-secondary" />}
+            title={t("funnel.ai.useFree")} sub={free === "ready" ? t("funnel.ai.useFreeSub")
+              : <span role="status" className="flex items-center gap-1.5"><LoaderCircle size={13} aria-hidden="true" className="shrink-0 animate-spin motion-reduce:animate-none" />{t("funnel.ai.useFreeDownloading")}</span>} />
+        )}
+        <ChoiceTile kind="plan" wide={!free} autoFocus={!own && !free} onClick={() => setPlan(true)}
           icon={<><ProviderMark driverKind="claudeAgent" size={20} /><ProviderMark driverKind="codex" size={20} /><ProviderMark driverKind="antigravityAgent" size={20} /></>}
           title={t("funnel.ai.usePlan")} sub={t("funnel.ai.usePlanSub")} />
       </div>
@@ -80,7 +86,7 @@ function PlanStep({ tested, cloud, computerAis, onNext, onBack }: { tested: Welc
     <StepFrame art={<StepArt art="plug" />} title={t("funnel.ai.title")} sub={sub} wide
       footer={<>
         <button type="button" data-primary="" data-funnel-ai-continue="" disabled={connected.length === 0} onClick={() => onNext("connected")} className={PRIMARY}>{t("funnel.next")}</button>
-        {connected.length === 0 && <button type="button" data-funnel-free="" onClick={() => onNext("free")} className={SECONDARY}>{t("funnel.ai.useFreeInstead")}</button>}
+        {connected.length === 0 && (free || cloud) && <button type="button" data-funnel-free="" onClick={() => onNext("free")} className={SECONDARY}>{t("funnel.ai.useFreeInstead")}</button>}
         <button type="button" data-funnel-choices="" onClick={onBack} className={cn(QUIET, "inline-flex items-center gap-0.5")}>
           <ChevronLeft size={14} strokeWidth={1.5} aria-hidden="true" className="rtl:-scale-x-100" />{t("funnel.ai.otherChoices")}
         </button>
@@ -102,6 +108,13 @@ function PlanStep({ tested, cloud, computerAis, onNext, onBack }: { tested: Welc
       {more && <ConnectAiDialog tested={tested} directory onClose={() => setMore(false)} />}
     </StepFrame>
   );
+}
+
+/** Free models as a choice: "ready" to pick, "downloading" while they arrive (shown, not yet pickable), or null when
+ * none is coming, so nobody picks free models only to be told to sign in somewhere. */
+export function freeOffer(instances: readonly InstanceInfo[], downloading: boolean): "ready" | "downloading" | null {
+  if (freeModel(instances, engineReady)) return "ready";
+  return downloading ? "downloading" : null;
 }
 
 const list = (tiles: readonly { label: string }[]) => new Intl.ListFormat(activeLocale(), { style: "long", type: "conjunction" }).format(tiles.map((tile) => tile.label));

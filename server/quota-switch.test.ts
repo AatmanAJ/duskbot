@@ -568,7 +568,7 @@ describe("quota switch", () => {
 
     describe("an AI that is signed out", () => {
       const SIGNED_OUT = "Not logged in · Please run /login";
-      const NOTICE = "Claude is signed out on the Cloud. Sign in again in Settings → AI to keep using it.";
+      const NOTICE = "Claude is signed out on the Cloud. Sign in again in Settings → Models to keep using it.";
       let scopes: unknown[];
       beforeEach(() => {
         scopes = [];

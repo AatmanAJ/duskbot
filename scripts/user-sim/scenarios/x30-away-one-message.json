@@ -1,0 +1,80 @@
+{
+  "title": "Away for the afternoon: one message if anything needs me",
+  "world": "parent",
+  "tags": [
+    "x-usage",
+    "proactive"
+  ],
+  "source": "x-usage #30: only what needs her, in one message. Phone delivery skipped (no WhatsApp/iMessage here), kept as one proactive message in the app.",
+  "steps": [
+    {
+      "chat": {
+        "goal": "Off to the beach with the kids; if anything needs you while you're away, get told in one message.",
+        "opener": "off to the beach with the kids this arvo. if anything needs me while im away tell me in one message",
+        "maxTurns": 3,
+        "label": "away"
+      }
+    },
+    {
+      "inject": {
+        "mail": [
+          {
+            "from": "Emma Clarke <emma.clarke.mum@gmail.com>",
+            "subject": "dinner tonight?",
+            "body": "hey! can Ava stay for dinner at ours on thursday after the playdate? need to know by 4 today so I can shop x Emma"
+          },
+          {
+            "from": "Kmart <hello@kmart.com.au>",
+            "subject": "Beach gear from $3",
+            "body": "Towels, buckets and more.",
+            "labels": [
+              "INBOX",
+              "CATEGORY_PROMOTIONS"
+            ]
+          },
+          {
+            "from": "Woolworths <noreply@woolworths.com.au>",
+            "subject": "Your receipt",
+            "body": "Total $64.10. Thanks for shopping."
+          }
+        ]
+      },
+      "label": "arrive"
+    },
+    {
+      "advance": "+2h"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "one message",
+      "proactive": {
+        "after": "arrive"
+      },
+      "min": 1,
+      "max": 1
+    },
+    {
+      "label": "it's about Emma's question",
+      "proactive": {
+        "after": "arrive",
+        "match": "emma|dinner|ava|by 4"
+      },
+      "min": 1
+    },
+    {
+      "label": "no noise",
+      "proactive": {
+        "after": "arrive",
+        "match": "kmart|towels|woolworths"
+      },
+      "max": 0
+    }
+  ],
+  "judge": "Rosie sends Sophie one short message about Emma's dinner question (answer needed by 4) and stays quiet about the promo and the receipt."
+}

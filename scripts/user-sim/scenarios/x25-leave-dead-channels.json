@@ -1,0 +1,152 @@
+{
+  "title": "Leave every dead channel, list first",
+  "world": "developer",
+  "tags": [
+    "x-usage",
+    "multi-step"
+  ],
+  "source": "x-usage #25: list, confirm, bulk action. Telegram adapted to Slack channels with no posts in 3+ months; slack_leave_channel added to the connectors.",
+  "seed": {
+    "slack": {
+      "channels": {
+        "hackathon-2025": {
+          "topic": "Internal hackathon",
+          "members": [
+            "arjun",
+            "rohan",
+            "fatima"
+          ],
+          "messages": [
+            {
+              "user": "rohan",
+              "text": "demo videos are up",
+              "at": "@-190d 18:00"
+            }
+          ]
+        },
+        "random": {
+          "topic": "anything",
+          "members": [
+            "arjun",
+            "neha",
+            "rohan",
+            "fatima",
+            "wei",
+            "diego"
+          ],
+          "messages": [
+            {
+              "user": "diego",
+              "text": "anyone been to the new filter coffee place in HSR?",
+              "at": "@-120d 11:00"
+            }
+          ]
+        },
+        "book-club": {
+          "topic": "Monthly book",
+          "members": [
+            "arjun",
+            "fatima",
+            "wei"
+          ],
+          "messages": [
+            {
+              "user": "fatima",
+              "text": "next pick: The Ministry for the Future",
+              "at": "@-100d 20:00"
+            }
+          ]
+        },
+        "offsite-goa": {
+          "topic": "Goa offsite planning",
+          "members": [
+            "arjun",
+            "neha",
+            "rohan",
+            "fatima",
+            "wei"
+          ],
+          "messages": [
+            {
+              "user": "neha",
+              "text": "photos folder is up, thanks all",
+              "at": "@-96d 09:00"
+            }
+          ]
+        },
+        "frontend": {
+          "topic": "Frontend",
+          "members": [
+            "arjun",
+            "fatima",
+            "wei"
+          ],
+          "messages": [
+            {
+              "user": "fatima",
+              "text": "CSV download button is in, needs #217 merged",
+              "at": "@-1d 17:00"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "steps": [
+    {
+      "chat": {
+        "goal": "Leave every Slack channel nobody has posted in for 3 months, but show the list first.",
+        "opener": "leave every slack channel nobody's posted in for 3 months. show me the list first",
+        "knows": "Yes, leave all the ones you listed.",
+        "maxTurns": 4,
+        "label": "clean"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "hackathon left",
+      "app": "log",
+      "where": {
+        "action": "^slack_leave$",
+        "channel": "hackathon"
+      },
+      "min": 1
+    },
+    {
+      "label": "book club left",
+      "app": "log",
+      "where": {
+        "action": "^slack_leave$",
+        "channel": "book-club"
+      },
+      "min": 1
+    },
+    {
+      "label": "offsite and random left",
+      "app": "log",
+      "where": {
+        "action": "^slack_leave$",
+        "channel": "offsite|random"
+      },
+      "min": 2
+    },
+    {
+      "label": "active channels kept",
+      "app": "log",
+      "where": {
+        "action": "^slack_leave$",
+        "channel": "^(eng|deploys|frontend|dm:.*)$"
+      },
+      "max": 0
+    },
+    {
+      "label": "list shown first",
+      "said": {
+        "step": "clean",
+        "match": "hackathon[\\s\\S]*book-club|book-club[\\s\\S]*hackathon"
+      }
+    }
+  ],
+  "judge": "Kiran checks each channel's last post, lists the four dead ones (hackathon-2025, random, book-club, offsite-goa) with their last activity, waits for a yes, then leaves exactly those."
+}

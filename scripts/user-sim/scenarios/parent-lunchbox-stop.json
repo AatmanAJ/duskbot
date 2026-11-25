@@ -1,0 +1,73 @@
+{
+  "title": "Daily lunchbox idea on school mornings, then stop it",
+  "world": "parent",
+  "tags": [
+    "routine",
+    "stop"
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Get a lunchbox idea every school morning at 7, nut free, and Ava won't eat tomato.",
+        "opener": "could you send me a lunchbox idea every school morning at 7? has to be nut free and ava wont eat tomato",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "advance": "+1d 07:05"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      },
+      "label": "idea"
+    },
+    {
+      "chat": {
+        "goal": "Thank Rosie and ask her to stop the lunchbox ideas now.",
+        "opener": "thanks love, you can stop the lunchbox ones now",
+        "maxTurns": 2,
+        "label": "stop"
+      }
+    },
+    {
+      "advance": "+1d 07:05"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      },
+      "label": "quiet"
+    }
+  ],
+  "checks": [
+    {
+      "label": "idea arrived",
+      "proactive": {
+        "after": "idea",
+        "match": "lunch|wrap|muffin|pasta|sandwich"
+      },
+      "min": 1
+    },
+    {
+      "label": "routine off",
+      "routine": {
+        "where": {
+          "prompt": "lunch",
+          "enabled": "true"
+        }
+      },
+      "max": 0
+    },
+    {
+      "label": "nothing the next morning",
+      "proactive": {
+        "after": "quiet",
+        "match": "lunch|wrap|muffin|pasta|sandwich"
+      },
+      "max": 0
+    }
+  ],
+  "judge": "Rosie sets a weekday 7am routine, Tuesday's idea is nut free with no tomato, and after 'stop' it actually turns the routine off so Wednesday is quiet. Simple, warm words."
+}

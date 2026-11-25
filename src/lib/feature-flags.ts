@@ -113,5 +113,5 @@ export function shareLearnedSkillsMode(config: FeatureFlagConfig | null | undefi
 }
 
 export function roomMemoryCaptureEnabled(config: FeatureFlagConfig | null | undefined): boolean {
-  return config?.features?.roomMemoryCapture === true;
+  return config?.features?.roomMemoryCapture !== false;
 }

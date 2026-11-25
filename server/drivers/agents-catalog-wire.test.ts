@@ -77,25 +77,25 @@ const FULL = "skills+voice+x+team";
 
 /** Bytes when the budget was last set; a profile may move at most 2% either way (lower it to lock in a win). */
 const BUDGET_BASELINE: Record<string, number> = {
-  "default": 73495,
-  "voice": 74273,
-  "skills": 76314,
-  "skills+voice": 77092,
-  "non-chief": 65477,
-  "voice+non-chief": 66255,
-  "skills+non-chief": 68296,
-  "skills+voice+non-chief": 69074,
-  "skills+voice+cloud-home": 76113,
-  "skills+voice+non-chief+cloud-home": 68095,
-  "skills+voice+x": 82526,
-  "skills+voice+x+team": 82942,
-  "skills+skill-reader": 76730,
-  "default+legacy-switches": 73495,
-  "default+dusk": 74146,
-  "skills+voice+dusk": 77743,
-  "default+no-computer-pick": 72288,
-  "default+room": 62598,
-  "non-chief+room": 54580,
+  "default": 75602,
+  "voice": 76380,
+  "skills": 78568,
+  "skills+voice": 79346,
+  "non-chief": 67584,
+  "voice+non-chief": 68362,
+  "skills+non-chief": 69672,
+  "skills+voice+non-chief": 71328,
+  "skills+voice+cloud-home": 78367,
+  "skills+voice+non-chief+cloud-home": 69471,
+  "skills+voice+x": 84780,
+  "skills+voice+x+team": 85196,
+  "skills+skill-reader": 78984,
+  "default+legacy-switches": 75602,
+  "default+dusk": 76253,
+  "skills+voice+dusk": 79997,
+  "default+no-computer-pick": 74395,
+  "default+room": 64705,
+  "non-chief+room": 55809,
 };
 
 const RPC_PREFIX = '{"jsonrpc":"2.0","id":1,"result":';
@@ -212,7 +212,7 @@ describe("agents proxy tools/list golden", () => {
       for (const alias of ["delegate_bot", "ask_bot", "send_to_bot", "check_delegation", "wait_delegation"]) expect(tools.has(alias), `${name}: ${alias}`).toBe(false);
       expect(JSON.stringify([...tools.values()])).not.toMatch(/Deprecated alias|works for this release/);
       const coordinate = tools.get("coordinate_bots")!.inputSchema.properties;
-      expect(Object.keys(coordinate)).toEqual(["group_id", "bot_ids", "message", "reason", "rework", "thread", "title", "in_my_folder", "reply", "consult", "done_when", "answers"]);
+      expect(Object.keys(coordinate)).toEqual(["group_id", "bot_ids", "message", "reason", "rework", "thread", "title", "in_my_folder", "reply", "consult", "done_when", "expecting", "context", "answers"]);
       expect(coordinate.thread).toMatchObject({ type: "string", description: expect.stringContaining("threadId") });
       expect(coordinate.thread!.enum).toBeUndefined();
       expect(coordinate.reply!.enum).toEqual(["resume", "none"]);

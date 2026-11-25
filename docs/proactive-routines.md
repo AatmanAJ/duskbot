@@ -99,7 +99,9 @@ there is no brief at all. Its row says
      handed it;
    - Gmail's and Calendar's answers reach it as records;
    - no web search, browser, computer, phone or other tools; no memory, recent
-     work, team notes or skills in its prompt; nothing captured into memory;
+     work, team notes or skills in its prompt beyond the person's standing
+     rules (up to three always/never lines, under the run's words); nothing
+     captured into memory;
    - its conversation stays out of recall, recent work, `list_threads` and Chief
      notices.
 
@@ -120,6 +122,33 @@ there is no brief at all. Its row says
    mail as above, on Claude only.
 4. **Deliver to the brief** (`deliver: "brief"`): results become brief rows,
    not chat lines of their own.
+
+## Script-only routines
+
+A script check (`probe.kind: "script"`) with `post: true` runs its command on
+schedule and posts what it prints as the bot's reply. No AI turn runs.
+
+- **Posts.** Any output, as written.
+- **Quiet.** Empty output, or a last line of `{"wakeAgent": false}`.
+- **Fails.** A non-zero exit or a timeout. The routine's `timeoutMinutes` sets
+  the limit; without it the limit is 60 seconds.
+- **Fence.** The script runs read-only by default.
+- **`access: "full"`.** Runs it outside the fence, as the server's user, so it can
+  write files. A bot cannot grant this alone: the person approves it on a card.
+  The card also says the script posts without the AI.
+- **`saveTo` (tool: `check.save_to`).** dusk bot writes each new output to a file in
+  the bot's own folder (`workspaces/<bot>/<path>`), so a script's results can be
+  used locally with no full access card. The path must stay inside the folder,
+  is never followed through a link, and never lands on `MEMORY.md`, `memory/`,
+  `SOUL.md` or `skills/`. It replaces the file each time, or with
+  `saveMode: "append"` (`check.save_mode`) adds a `## <time>` line and the output,
+  keeping the newest 1 MB. A test run saves nothing (`server/routine-save.ts`).
+- **On dusk cloud.** Script checks run there too, in the bot's box exactly as
+  background jobs do (docs/background-jobs.md "Where it runs": its mounts,
+  egress gate, seccomp filter and environment allow-list, `HOME` in
+  `workspaces/<bot>/.jobs/home`). Only the owner's own chat may set one up, as on
+  a desktop. `access: "full"` is refused on a Cloud, and a box that is off fails
+  the check with one plain sentence instead of running the script bare.
 
 ## Reliability, for every routine with checks
 
@@ -168,10 +197,28 @@ there is no brief at all. Its row says
   On My Cloud the arrived watch pauses My Cloud's own. The move freeze pauses the watch like any routine, so two
   homes never watch the same inbox. Dusk never moves into a team.
 
+## Intentions become automations when they are said
+
+"Remind me...", "check back on this tomorrow" and "tell me when X happens" are set up in the same turn, never kept as
+words the bot hopes to remember (prospective recall fades with context length; facts do not). The trigger part of the
+system prompt (`TRIGGER_PROMPT`, `server/system-prompt.ts`) maps them: a reminder is a once schedule or `wait_until`
+kind=time, a check back is `wait_until` kind=time with `follow_up`, a "tell me when" is `wait_until` when a plain check
+can see it, else a trigger whose instructions pause it once it has told the person. Caps, from OpenClaw's anti-nag
+defaults: at most 3 nags about one thing, at most one a day, and a watch for something that may never happen ends
+within 90 days (a wait ends on its own after its hours).
+
+A reply that promises or claims a follow-up with nothing behind it is sent back, on every engine: the chat loop's
+stop gate (`TurnGates`) inside the turn, and the finish guard's carry-on turn for engines that own their loop. The
+detector (`promisesFollowUp`, `server/turn-stop-gates.ts`) hears "I'll remind you", "I'll check on it tomorrow",
+"I'll send you the summary in 2 hours", "I've set a reminder", "Reminder set for 9", "I'll keep you posted" and the
+German and Spanish forms, and leaves offers, questions, past tense and quoted or code text alone. Only a call that
+sets something up counts as scheduled (`schedulesCall`): `wait_until`, `background_job` or a `trigger` create,
+update, resume or run, never a pause, note, fail or listing. The carry-on note tells the bot to set it up now, or
+say in one line that it can't follow up by itself.
+
 ## Not in v1
 
 - More than one account per app.
-- Phone push when the app is closed (there is no caller of the push relay yet).
 - Quiet hours.
 - A sweep of old run conversations.
 - A run against a real Google account: the Composio slugs and answer shapes

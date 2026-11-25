@@ -6,7 +6,7 @@ type Client = typeof import("./product-analytics");
 type Payload = { install: string; session: string; platform: string; version: string; events: { name: string; at: number; props: Record<string, string | number | boolean> }[] };
 let client: Client;
 const fetcher = vi.fn<typeof fetch>();
-const config = { origin: "https://accounts.example", token: null, platform: "darwin", version: "1.2.3", kind: "desktop", force: true } as const;
+const config = { origin: "https://accounts.example", token: "omc_fixture", platform: "darwin", version: "1.2.3", kind: "desktop", force: true } as const;
 const watchWindow = () => vi.spyOn(window, "addEventListener");
 const watchDocument = () => vi.spyOn(document, "addEventListener");
 let windowEvents: ReturnType<typeof watchWindow>;
@@ -237,15 +237,12 @@ describe("product analytics", () => {
     expect(bodies()[0].install).toMatch(/^[A-Za-z0-9_-]{22}$/);
   });
 
-  it("queues before the origin is known and opens only once", async () => {
-    client.configure({ ...config, origin: null });
-    client.feature("bot_created");
-    await client.flush();
-    expect(fetcher).not.toHaveBeenCalled();
+  it("opens only once however often the page is configured", async () => {
     client.configure(config);
-    client.configure({ ...config, token: "omc_fixture" });
+    client.feature("bot_created");
+    client.configure(config);
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(events().map(event => event.name)).toEqual(["app_feature", "app_open"]);
+    expect(events().map(event => event.name)).toEqual(["app_open", "app_feature"]);
   });
 
   it("sends batches of at most 50", async () => {
@@ -267,13 +264,12 @@ describe("product analytics", () => {
   });
 
   it("drops the oldest events beyond the 200 event bound", async () => {
-    client.configure({ ...config, origin: null });
-    for (let i = 0; i < 205; ++i) client.error("test", `event_${i}`);
     client.configure(config);
+    for (let i = 0; i < 205; ++i) client.error("test", `event_${i}`);
     await client.flush();
-    // 200 kept: the newest errors, app_open and the env signal (left out of events())
-    expect(events()).toHaveLength(199);
-    expect(events()[0].props.code).toBe("event_7");
+    // 200 kept: the newest errors, with app_open and the env signal pushed out
+    expect(events()).toHaveLength(200);
+    expect(events()[0].props.code).toBe("event_5");
   });
 
   it("folds ids, removes query strings and dedupes consecutive folded screens", async () => {
@@ -348,18 +344,25 @@ describe("product analytics", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("adds a bearer header only while the configured token is set", async () => {
-    client.configure(config);
+  it("a page that never signed in sends nothing, and starts only after sign-in without what came before", async () => {
+    client.configure({ ...config, token: null });
+    client.feature("bot_created");
+    client.messageSent();
+    client.replyReceived(10);
     await client.flush();
-    expect(fetcher.mock.calls[0][1]?.headers).toEqual({ "content-type": "application/json" });
-    client.configure({ ...config, token: "omc_fixture" });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(localStorage.getItem("dusk-install-id")).toBeNull();
+    client.configure(config);
     client.feature("search_used");
     await client.flush();
-    expect(fetcher.mock.calls[1][1]?.headers).toEqual({ "content-type": "application/json", Authorization: "Bearer omc_fixture" });
-    client.configure(config);
+    expect(fetcher.mock.calls[0][1]?.headers).toEqual({ "content-type": "application/json", Authorization: "Bearer omc_fixture" });
+    expect(events().map(event => event.props.feature ?? event.name)).toEqual(["app_open", "search_used"]);
+    client.configure({ ...config, token: null });
     client.feature("chat_opened");
     await client.flush();
-    expect(fetcher.mock.calls[2][1]?.headers).toEqual({ "content-type": "application/json" });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetcher).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(bodies())).not.toContain("omc_fixture");
   });
 

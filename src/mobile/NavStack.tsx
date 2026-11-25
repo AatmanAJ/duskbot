@@ -4,7 +4,7 @@ import { TranscriptStaging } from "@/components/transcript-staging";
 import { wakeSystemControls } from "@/lib/system-control";
 import { canScroll, ownsDrag, useDrag } from "./gesture";
 import { replyRowAt } from "./swipe-reply";
-import { prefersReducedMotion, projectRelease, settleTo, sheetNav, springPath, system } from "./motion";
+import { prefersReducedMotion, settleTo, sheetNav, springPath, system } from "./motion";
 import { PlatformContext } from "./platform";
 
 const NavLeavingContext = createContext(false);
@@ -24,6 +24,12 @@ function readSafeTop(el: HTMLElement): number {
 
 /** Parallax of the page underneath, as a share of the width: UIKit's navigation push moves it a third as far. */
 const UNDER_SHIFT = 0.3;
+
+/** UIKit's interactive pop, as Telegram iOS reads it off UIKitCore: a released page goes back when where it would be
+ * 0.35 s on at the finger's speed is past 187.5pt, or half a narrower screen. */
+export function finishesBack(position: number, velocity: number, width: number): boolean {
+  return position + velocity * 0.35 > Math.min(187.5, width / 2);
+}
 const NAV = { stiffness: system.stiffness, damping: system.damping };
 const SNAPPY_NAV = { stiffness: sheetNav.stiffness, damping: sheetNav.damping };
 /** A chat still loading its transcript slides in once it has it, or after this long with its loading rows. */
@@ -34,14 +40,17 @@ type Run = { stop: () => number };
 /** A page slide as the compositor plays it: positions in px, one per 60 Hz frame, linear between them. */
 export type SlidePath = { duration: number; points: number[] };
 
+function transcriptLoading(el: HTMLElement): boolean {
+  return el.querySelector("[role='log'][aria-busy='true']") !== null;
+}
+
 /** Resolves once a freshly mounted page has painted, and its transcript has loaded or `LOAD_WAIT_MS` has passed. */
 function whenPainted(el: HTMLElement, signal: { cancelled: boolean }): Promise<void> {
   return new Promise((resolve) => {
     const started = performance.now();
     const tick = (now: number) => {
       if (signal.cancelled) return;
-      const loading = el.querySelector("[role='log'][aria-busy='true']") !== null;
-      if (!loading || now - started > LOAD_WAIT_MS) resolve();
+      if (!transcriptLoading(el) || now - started > LOAD_WAIT_MS) resolve();
       else requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -135,10 +144,12 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
   // the list under a page is inert from the page's landing until it has fully left: toggling inert restyles the whole
   // list, so it never happens as a back slide or a finger's drag starts, only once nothing moves
   const [covered, setCovered] = useState(false);
+  // read while nothing moves: measuring it as a finger takes the page forces a layout in the gesture's first frame
+  const safeTop = useRef(0);
   const lockSafeTop = useCallback(() => {
     const el = pageRef.current;
     if (!el) return;
-    const top = readSafeTop(el);
+    const top = safeTop.current || readSafeTop(el);
     if (top > 0) el.style.setProperty("--m-safe-top", `${top}px`);
   }, []);
   const unlockSafeTop = useCallback(() => {
@@ -146,6 +157,7 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
   }, []);
   const landed = useCallback(() => {
     unlockSafeTop();
+    if (pageRef.current) safeTop.current = readSafeTop(pageRef.current);
     setCovered(true);
     sliding.current = false;
     const steps = [...waiting.current];
@@ -203,14 +215,17 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
     x.set(width);
     pageOpacity.set(prefersReducedMotion() ? 0 : 1);
     setMoving(true);
+    const slideIn = () => {
+      if (signal.cancelled) return;
+      preparing.current = null;
+      go(0, null, () => { landed(); settled.current?.(true); });
+    };
+    // a page that has what it shows starts in the frame that first draws it, as UIKit's push does; the compositor
+    // starts the slide's clock at that frame, so the mount's cost is never skipped over
+    const el = pageRef.current;
+    if (el && !transcriptLoading(el)) { slideIn(); return; }
     requestAnimationFrame(() => {
-      const el = pageRef.current;
-      const ready = el ? whenPainted(el, signal) : Promise.resolve();
-      void ready.then(() => {
-        if (signal.cancelled) return;
-        preparing.current = null;
-        go(0, null, () => { landed(); settled.current?.(true); });
-      });
+      void (el ? whenPainted(el, signal) : Promise.resolve()).then(slideIn);
     });
   }, [go, landed, unlockSafeTop, x, pageOpacity, width]);
 
@@ -227,19 +242,14 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
   }, [gone, unlockSafeTop]);
   const pop = useCallback(() => {
     if (preparing.current) preparing.current.cancelled = true;
-    const signal = { cancelled: false };
-    preparing.current = signal;
+    preparing.current = null;
     popping.current = true;
     sliding.current = true;
     lockSafeTop();
     setLeavingPage(true);
     leaving.current?.();
     setMoving(true);
-    requestAnimationFrame(() => {
-      if (signal.cancelled) return;
-      preparing.current = null;
-      go(width, null, popped);
-    });
+    go(width, null, popped);
   }, [go, lockSafeTop, popped, width]);
   const unpop = useCallback(() => {
     if (preparing.current) preparing.current.cancelled = true;
@@ -333,8 +343,7 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
       wakeSystemControls();
     },
     onEnd: (s) => {
-      const landing = projectRelease(x.get(), s.vx);
-      if ((landing > width / 2 && s.vx > -200) || s.vx > 500) {
+      if (finishesBack(x.get(), s.vx, width)) {
         popping.current = true;
         lockSafeTop();
         setLeavingPage(true);
@@ -358,7 +367,7 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
         aria-hidden={pageShown && covered ? true : undefined}
       >
         {base}
-        {pageShown && <motion.div ref={dimRef} aria-hidden className="pointer-events-none absolute inset-0 bg-[rgb(10_10_12/0.16)]" style={{ opacity: still ? pageOpacity : dim }} />}
+        {pageShown && <motion.div ref={dimRef} aria-hidden className="pointer-events-none absolute inset-0 bg-[rgb(10_10_12/0.10)]" style={{ opacity: still ? pageOpacity : dim }} />}
       </motion.div>
       {pageShown && (
         <motion.div

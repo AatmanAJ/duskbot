@@ -1,4 +1,6 @@
+import { FORGET_ASK } from "./forget-traces.ts";
 import { parseMemoryEntries } from "./memory-entries.ts";
+import { forgottenTraces } from "./profile-learned.ts";
 import { latestSaidByBot, recallTerms, type ThreadLatest } from "./message-db.ts";
 import { hostTimeZone } from "./turn-clock.ts";
 import type { BotRecord, GroupRecord, TaskRecord } from "./store.ts";
@@ -74,8 +76,9 @@ export function recentWorkLines(threads: readonly BotThread[], latest: readonly 
 const CHAT_SOURCE = /· from chat ("(?:[^"\\]|\\.)*")/;
 
 /** A chat is titled by its first message. When a note from that chat was struck as wrong and the title says what it
- * said (two words in common), the title would bring the old fact back, so it is left out wherever titles are shown. */
-export function correctedChatTitles(memory: string): (title: string) => boolean {
+ * said (two words in common), the title would bring the old fact back, so it is left out wherever titles are shown; so
+ * is a title that asks to forget something or names a fact the person had forgotten. */
+export function correctedChatTitles(memory: string, forgotten: (text: string) => boolean = forgottenTraces()): (title: string) => boolean {
   const stale: string[] = [];
   for (const entry of parseMemoryEntries(memory)) {
     if (!entry.struck) continue;
@@ -86,7 +89,7 @@ export function correctedChatTitles(memory: string): (title: string) => boolean 
     const said = new Set(recallTerms(entry.body.replace(/~~/g, "")));
     if (recallTerms(title).filter((word) => said.has(word)).length >= 2) stale.push(title);
   }
-  return (title) => stale.some((known) => known === title || (known.endsWith("…") && title.startsWith(known.slice(0, -1))));
+  return (title) => FORGET_ASK.test(title) || forgotten(title) || stale.some((known) => known === title || (known.endsWith("…") && title.startsWith(known.slice(0, -1))));
 }
 
 export function recentWork(
@@ -95,7 +98,7 @@ export function recentWork(
   opts: { userName: string; currentThreadId?: string; now?: number; windowMs?: number; include?: (threadId: string) => boolean; privateThread?: (threadId: string) => boolean; staleTitle?: (title: string) => boolean },
 ): RecentWorkLine[] {
   const threads = botThreads(store, bot, opts.userName, opts.privateThread)
-    .filter((thread) => thread.threadId !== opts.currentThreadId && (!opts.include || opts.include(thread.threadId)))
+    .filter((thread) => thread.threadId !== opts.currentThreadId && (!opts.include || opts.include(thread.threadId)) && !(thread.title && FORGET_ASK.test(thread.title)))
     .map((thread) => (thread.title && opts.staleTitle?.(thread.title) ? { ...thread, title: null } : thread));
   if (!threads.length) return [];
   const since = (opts.now ?? Date.now()) - (opts.windowMs ?? RECENT_WORK_WINDOW_MS);

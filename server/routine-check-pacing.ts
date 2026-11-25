@@ -5,7 +5,8 @@ import type { RoutineRun } from "./routines.ts";
 
 /** The first checks after dusk bot starts wait this long, so they never compete with the person's first prompt. */
 export const CHECK_BOOT_HOLD_MS = 2 * 60_000;
-/** AI runs a routine's checks may start in any 24 hours: email triage and meeting prep together. */
+/** AI runs a routine's checks may start in any 24 hours: email triage and meeting prep together. A script-only run uses
+ * no AI and does not count. */
 export const CHECK_RUNS_PER_DAY = 24;
 const DAY_MS = 24 * 60 * 60_000;
 const BACKOFF_FIRST_MS = 15 * 60_000;
@@ -13,13 +14,14 @@ const BACKOFF_MAX_MS = 4 * 60 * 60_000;
 
 /** Why no AI run may start now: one is already queued or working, the day's runs are used up, or the last ones failed. */
 export type CheckHold = "running" | "capped" | "backoff";
-/** `scheduled`: the routine's own time came; otherwise a wake its checks asked for (`wakeAt`) or a person's run. */
-export interface RoutineCheckContext { manual: boolean; hold?: CheckHold; scheduled?: boolean }
+/** `scheduled`: the routine's own time came; otherwise a wake its checks asked for (`wakeAt`) or a person's run.
+ * `dryRun`: the person's test run, which may change nothing outside dusk bot. */
+export interface RoutineCheckContext { manual: boolean; hold?: CheckHold; scheduled?: boolean; dryRun?: true }
 
 const ACTIVE = new Set(["queued", "running", "waiting"]);
 
 export function checkRunsLeft(runs: readonly RoutineRun[], routineId: string, now: number): number {
-  const used = runs.filter((run) => run.routineId === routineId && run.checkKey !== undefined && !run.manual && run.createdAt > now - DAY_MS).length;
+  const used = runs.filter((run) => run.routineId === routineId && run.checkKey !== undefined && !run.manual && !run.scriptOnly && run.createdAt > now - DAY_MS).length;
   return Math.max(0, CHECK_RUNS_PER_DAY - used);
 }
 

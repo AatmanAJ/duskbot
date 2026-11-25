@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createProactivePrefs, isQuiet, neverAbout, outsideQuiet, parsePrefs, prefsBlock, renderPrefs, withRule } from "./proactive-prefs.ts";
+import { createProactivePrefs, isQuiet, neverAbout, outsideQuiet, parsePrefs, prefsBlock, renderPrefs, routineNewsHeld, withRule } from "./proactive-prefs.ts";
 
 describe("What to tell me about", () => {
   it("reads and writes the three sections, hand edits included", () => {
@@ -48,5 +48,19 @@ describe("What to tell me about", () => {
     owner = null;
     expect(store.rule("tell", "x")).toBeNull();
     expect(store.block()).toBe("");
+  });
+});
+
+describe("routine news in quiet hours", () => {
+  const quiet = { from: "22:00", to: "07:00" };
+  it("holds a plain report while quiet hours last, never a question or anything outside them", () => {
+    expect(routineNewsHeld("done", quiet, 23 * 60)).toBe(true);
+    expect(routineNewsHeld("done", quiet, 6 * 60 + 59)).toBe(true);
+    expect(routineNewsHeld("question", quiet, 23 * 60)).toBe(false);
+    expect(routineNewsHeld("routine-failed", quiet, 23 * 60)).toBe(false);
+    expect(routineNewsHeld("done", quiet, 12 * 60)).toBe(false);
+    expect(routineNewsHeld("done", null, 23 * 60 + 30)).toBe(true);
+    expect(routineNewsHeld("done", null, 7 * 60)).toBe(false);
+    expect(routineNewsHeld("done", { from: "01:00", to: "02:00" }, 23 * 60 + 30)).toBe(false);
   });
 });

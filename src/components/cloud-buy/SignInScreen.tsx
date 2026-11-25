@@ -2,6 +2,7 @@
 import type { FormEvent } from "react";
 import { Check, ExternalLink, Loader2 } from "../../icons";
 import { CodeBoxes } from "./CodeBoxes";
+import { SignInLegal } from "@/components/SignInLegal";
 import type { CloudSignInPhase, CloudSignInProblem } from "@/lib/cloud-plan";
 import { t } from "@/lib/i18n";
 import { ACTIONS, BackLink, FIELD, Heading, LINK, PRIMARY, PRIMARY_WIDE, QUIET, SCREEN } from "./parts";
@@ -77,6 +78,7 @@ export function SignInScreen({ phase, email, code, profileEmail, busy, now, onBa
     </div>}
     {phase.step !== "done" && !browser && <p className="text-[13px] leading-[18px] text-ink-tertiary">{t("cloudBuy.signIn.ssoHint")}{" "}
       <button type="button" className={LINK} onClick={onBrowser}>{t("cloudBuy.signIn.continueBrowser")}</button></p>}
+    {phase.step !== "done" && <SignInLegal className="text-start" />}
   </div>;
 }
 

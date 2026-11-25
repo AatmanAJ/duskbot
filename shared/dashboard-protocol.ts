@@ -2,7 +2,7 @@
 // commands it takes back. transport-agnostic (plain https today, any relay that forwards it later), owner-only,
 // never message contents or secrets. docs: apps/dashboard/README.md
 
-import { cleanUsageReport, type UsageReport } from "./usage-signals.ts";
+import { cleanUsageForget, cleanUsageReport, type UsageForget, type UsageReport } from "./usage-signals.ts";
 import { cleanSignal } from "./product-signals.ts";
 import { parsePulse, type PulseSample } from "./machine-pulse.ts";
 
@@ -202,6 +202,10 @@ export interface WorkspaceReport {
   /** the person changed "help improve dusk bot" in the app: true is off. The service sets the account's switch to match
    * (off also deletes what it stored); sent until a report gets through */
   usageOptOut?: boolean;
+  /** the person answered about session notes in the app (true is yes); sent until a report gets through */
+  usageNotes?: boolean;
+  /** what the workspace asks the service to delete: notes it sent, by id, and with `records` its usage records */
+  usageForget?: UsageForget;
   /** cpu and memory samples newer than the last report's, sent only while someone watches (machine-pulse.ts) */
   pulse?: PulseSample[];
   results?: CommandResult[];
@@ -210,8 +214,16 @@ export interface WorkspaceReport {
 /** answer to POST /v1/report and GET /v1/wait */
 export interface ReportAnswer {
   v: 1; watching: boolean; nextReportMs: number; commands: DashboardCommand[];
-  /** the account's "help improve dusk bot" switch (true is off), so the app follows a change made on the account */
+  /** the account's "help improve dusk bot" switch (true is off), so the app follows a change made on the account.
+   * While `usageAsk` is true it is true too, so an app that predates the ask stays off. */
   usageOptOut?: boolean;
+  /** whether the account's session notes are on */
+  usageNotes?: boolean;
+  /** the person answered about session notes themselves, so the app never asks */
+  usageNotesAnswered?: boolean;
+  /** the report came from where usage counts need a yes first (the EU, the EEA, the UK, Switzerland, or a place the
+   * service cannot tell) and the account has not answered */
+  usageAsk?: boolean;
 }
 
 /** POST /v1/enroll: a workspace introduces its ed25519 public key (spki der, base64) and gets a one-time claim link */
@@ -335,6 +347,8 @@ const dashboardSections: Record<string, DashboardParser> = {
       via: dashboardOptional(dashboardEnum("composio", "app")) }), 500) }),
   pulse: input => parsePulse(input) ?? dashboardInvalid,
   usageOptOut: dashboardBoolean,
+  usageNotes: dashboardBoolean,
+  usageForget: input => cleanUsageForget(input) ?? dashboardInvalid,
   usage: input => cleanUsageReport(input, Date.now(), (name, props) => cleanSignal(name, props, "workspace")) ?? dashboardInvalid,
   results: dashboardArray(input => {
     const result = dashboardObject({ id: dashboardId, ok: dashboardBoolean, message: dashboardNullable(dashboardText()), at: dashboardNumber })(input);

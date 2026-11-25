@@ -74,6 +74,20 @@ describe("Slack bridge", () => {
     expect(f.fake.callsTo("users.info")).toHaveLength(1);
   });
 
+  it("keeps the thread's opening message in the context when a long thread fills the budget", async () => {
+    const root = "1700000001.000000", ts = "1700000001.000099";
+    f.fake.seedMessages("C0GENERAL", [
+      { ts: root, user: "U0BOB", text: "Opening question about the launch" },
+      ...Array.from({ length: 12 }, (_, i) => ({ ts: `1700000001.0000${10 + i}`, thread_ts: root, user: "U0BOB", text: `reply ${i} ${"x".repeat(900)}` })),
+      { ts, thread_ts: root, user: "U0ALICE", text: "trigger" },
+    ]);
+    await f.deliver(f.event({ type: "app_mention", channel: "C0GENERAL", ts, thread_ts: root, text: `<@${f.link.botUserId}> so?` }));
+    const context = f.send.mock.calls[0]![0].context as string;
+    expect(context).toContain("Bob: Opening question about the launch");
+    expect(context).toContain("reply 11");
+    expect(context.length).toBeLessThanOrEqual(8_000);
+  });
+
   it("maps channel mentions by root thread and carries earlier context only on creation", async () => {
     const root = "1700000000.000000", ts = "1700000000.000003";
     f.fake.seedMessages("C0GENERAL", [

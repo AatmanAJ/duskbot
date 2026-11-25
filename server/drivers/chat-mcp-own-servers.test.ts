@@ -109,7 +109,7 @@ describe("dusk bot's own servers on the chat runtime", () => {
     const stub = await harness(() => {});
     const session = await mountChatTools({ agents: agentsServer(stub.url) }, new AbortController().signal, false, undefined, 50);
     sessions.push(session);
-    await expect(session.execute("agents_list_bots", {}, new AbortController().signal)).rejects.toThrow(/timed out/);
+    expect(await session.execute("agents_list_bots", {}, new AbortController().signal)).toMatchObject({ ok: false, text: expect.stringMatching(/timed out/) });
   });
 
   it("still starts a child for a configured server, a non-loopback harness or a server without its token", () => {

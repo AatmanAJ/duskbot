@@ -9,6 +9,8 @@ import type { Assignment, EnvelopeNames, Level, OriginSource, TurnEvidence } fro
 export const ENVELOPE_MARK = "[From";
 
 const QUOTE_MAX = 400;
+/** The ask a report restates, so a requester deep in other work reads the answer against what it asked. */
+const ASKED_MAX = 1_200;
 const NAME_MAX = 80;
 const DETAIL_MAX = 200;
 const FILES_SHOWN = 8;
@@ -99,6 +101,14 @@ function replyLine(a: Assignment, requester: string, parent?: Assignment): strin
     return `${requester} is resumed with your reply when your turn ends${close}.${ask}`;
   }
   if (a.reply === "poll") return `${requester} reads your reply from its inbox when it asks${close}.`;
+  if (a.mode === "notify") {
+    const silent = " It is a notice: take in what it tells you and do what it plainly asks, if anything. If it needs nothing from you, reply exactly (pass) and nothing else.";
+    return `${ownership(a, requester, parent)}${silent}`;
+  }
+  return ownership(a, requester, parent);
+}
+
+function ownership(a: Assignment, requester: string, parent?: Assignment): string {
   const { botId, threadId } = a.requester;
   // A room thread is not a thread of the requester bot, so a notice into it is refused: offer it only between direct threads.
   const answerBack = a.requester.kind === "bot_turn" && botId && threadId && a.assignee.destination.groupId === undefined
@@ -171,7 +181,9 @@ function evidenceLine(evidence: TurnEvidence | undefined): string {
 export function composeReport(a: Assignment, names: EnvelopeNames): string {
   const assignee = `@${label(names.assignee, a.assignee.botId)}`;
   const id = label(a.id, "unknown");
-  const lines = [fromNote(botWho(label(names.assignee, a.assignee.botId)), `report on assignment ${id}: ${outcomeLabel(a)}`, AUTHORITY.info), evidenceLine(a.evidence)];
+  const asked = quote(a.brief, ASKED_MAX);
+  const lines = [fromNote(botWho(label(names.assignee, a.assignee.botId)), `report on assignment ${id}: ${outcomeLabel(a)}`, AUTHORITY.info),
+    ...(asked ? [`You ${a.mode === "consult" ? "asked" : "gave"} ${assignee}: "${asked}"`] : []), evidenceLine(a.evidence)];
   if (a.outcome === "needs_input") {
     const question = quote(a.question, QUOTE_MAX);
     lines.push(`It ended on a question the person has not answered${question ? `: "${question}"` : ""}.`);

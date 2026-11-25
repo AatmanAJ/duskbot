@@ -1,0 +1,69 @@
+{
+  "title": "Dentist moved to Thursday 4pm; two days later, when is it?",
+  "world": "parent",
+  "tags": [
+    "x-usage",
+    "memory",
+    "update"
+  ],
+  "source": "x-usage #6: answers the new time (Thursday 4pm), not the old Tuesday 3:45, and can say where it changed.",
+  "steps": [
+    {
+      "chat": {
+        "goal": "Tell Rosie Ava's dentist moved to Thursday at 4pm and get the calendar fixed.",
+        "opener": "ava's dentist got moved to thursday 4pm, can you fix it on the calendar",
+        "maxTurns": 3,
+        "label": "move"
+      }
+    },
+    {
+      "advance": "+2d 10:00"
+    },
+    {
+      "chat": {
+        "goal": "Ask when Ava's dentist is.",
+        "opener": "whens ava's dentist again?",
+        "maxTurns": 2,
+        "thread": "new",
+        "label": "ask"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "calendar moved to 4pm",
+      "app": "events",
+      "where": {
+        "title": "dentist",
+        "start": "T16:00"
+      },
+      "min": 1
+    },
+    {
+      "label": "old slot gone",
+      "app": "events",
+      "where": {
+        "title": "dentist",
+        "start": "T15:45"
+      },
+      "max": 0
+    },
+    {
+      "label": "answers Thursday 4",
+      "said": {
+        "step": "ask",
+        "match": "thu.{0,30}4|4.{0,20}thu"
+      },
+      "recall": true
+    },
+    {
+      "label": "no old time",
+      "said": {
+        "step": "ask",
+        "not": "3:45|tuesday"
+      },
+      "recall": true
+    }
+  ],
+  "judge": "Rosie moves the event to Thursday 4pm (noting it clashes with Liam's swim and the playdate). Two days later she answers 'Thursday at 4' straight away, without the old time."
+}

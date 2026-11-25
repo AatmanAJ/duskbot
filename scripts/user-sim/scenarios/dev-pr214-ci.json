@@ -1,0 +1,55 @@
+{
+  "title": "Explain #214's red CI, comment on the PR, ping Rohan",
+  "world": "developer",
+  "tags": [
+    "multi-step"
+  ],
+  "steps": [
+    {
+      "chat": {
+        "goal": "Find out why #214 is still red, leave a PR comment with exactly what needs fixing, and ping Rohan on Slack.",
+        "opener": "#214 still red. whats wrong? leave a comment on the PR with the fix and ping rohan",
+        "maxTurns": 4,
+        "label": "ci"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "commented on 214",
+      "app": "log",
+      "where": {
+        "action": "^gh_comment$",
+        "number": "^214$"
+      },
+      "min": 1
+    },
+    {
+      "label": "comment names the real failures",
+      "app": "github.repos.0.pulls",
+      "where": {
+        "number": "^214$",
+        "comments": "409|ConflictError|existing|unused"
+      },
+      "min": 1
+    },
+    {
+      "label": "Rohan pinged",
+      "app": "slack.channels.dm:rohan.messages",
+      "where": {
+        "by_assistant": "true"
+      },
+      "min": 1
+    },
+    {
+      "label": "no stray comment on 217",
+      "app": "log",
+      "where": {
+        "action": "^gh_comment$",
+        "number": "^217$"
+      },
+      "max": 0
+    }
+  ],
+  "judge": "Kiran reads the checks: lint (unused 'existing' at insert.ts:88) and the unit spec expecting 200 but getting 409 because insert.ts:91 throws ConflictError instead of returning the existing row. The PR comment says both fixes concretely; the Slack DM to Rohan is short and kind (he's sick). Reply to Arjun is terse."
+}

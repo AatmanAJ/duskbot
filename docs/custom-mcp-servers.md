@@ -24,7 +24,9 @@ but off: the test failed*, with the reason, and that bots can use it once it's
 on. When it refused the keys (HTTP 401 or 403), the line names the headers
 to check and **Fix the keys** asks for just their values, then tests again; when
 it couldn't be reached or timed out, **Try again** tests again. One that wants
-you to sign in opens its sign-in page. A click on a server's switch in the
+you to sign in opens its sign-in page. A saved server's switch does the same:
+switching it on tests it first, and one that doesn't answer stays off and
+says why (*Couldn't connect, so it stays off*). A click on a server's switch in the
 moment after a passing test turned it on keeps it on (*it passed its test a
 moment ago*): it was aimed at the Off you saw, never at switching it straight
 back off.

@@ -16,7 +16,13 @@ describe("the fleet", () => {
   it("counts each desktop install once, at the version it opened last, and errors by version", () => {
     const rows = desktopFleetOf([open("a", "0.2.24", NOW - 3 * DAY), open("a", "0.2.25", NOW - DAY), open("b", "0.2.24", NOW - DAY), open("c", "0.2.25", NOW - 40 * DAY),
       open("b", "0.2.24", NOW - DAY, "app_error"), open("a", "0.2.25", NOW - DAY, "app_error"), open("a", "0.2.25", NOW - DAY, "app_error")], NOW - 14 * DAY, NOW);
-    expect(rows).toEqual([{ version: "0.2.25", installs: 1, errors: 2 }, { version: "0.2.24", installs: 1, errors: 1 }]);
+    expect(rows).toEqual([{ version: "0.2.25", installs: 1, errors: 2, errorInstalls: 1 }, { version: "0.2.24", installs: 1, errors: 1, errorInstalls: 1 }]);
+  });
+
+  it("counts the distinct installs that sent a version's errors", () => {
+    const rows = desktopFleetOf([open("a", "0.2.29", NOW - DAY), open("b", "0.2.29", NOW - DAY), open("c", "0.2.29", NOW - DAY),
+      ...[1, 2, 3, 4, 5, 6].map(n => open("a", "0.2.29", NOW - DAY + n, "app_error")), ...[1, 2, 3, 4, 5, 6].map(n => open("b", "0.2.29", NOW - DAY + n, "app_error"))], NOW - 14 * DAY, NOW);
+    expect(rows).toEqual([{ version: "0.2.29", installs: 3, errors: 12, errorInstalls: 2 }]);
   });
 
   it("counts managed clouds by version and reports the canary clouds' trial", () => {
@@ -66,6 +72,6 @@ describe("GET /v1/ops/fleet", () => {
     expect((await fetch(`${base}/v1/ops/fleet`, { headers: { authorization: `Bearer ${"x".repeat(32)}` } })).status).toBe(404);
     expect((await fetch(`${base}/v1/ops/fleet?canary=../x`, { headers: { authorization: `Bearer ${TOKEN}` } })).status).toBe(400);
     const answer = await (await fetch(`${base}/v1/ops/fleet?days=7&canary=c1`, { headers: { authorization: `Bearer ${TOKEN}` } })).json() as FleetAnswer;
-    expect(answer).toMatchObject({ desktops: { days: 7, versions: [{ version: "0.2.25", installs: 1, errors: 0 }] }, clouds: { versions: [], canary: [{ id: "c1", version: null }] }, servers: null });
+    expect(answer).toMatchObject({ desktops: { days: 7, versions: [{ version: "0.2.25", installs: 1, errors: 0, errorInstalls: 0 }] }, clouds: { versions: [], canary: [{ id: "c1", version: null }] }, servers: null });
   });
 });

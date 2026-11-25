@@ -4,7 +4,7 @@ import { connect, createServer, type ClientHttp2Session, type Http2Server, type 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { createPushSender, pushRelayBase, type PushMessage } from "./push.ts";
+import { createPushSender, pushRelayBase, RELAY_RECHECK_MS, type PushMessage } from "./push.ts";
 
 const ec = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
 const rsa = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -271,7 +271,7 @@ describe("FCM push", () => {
     expect(body.includes("body text")).toBe(false);
     expect(JSON.parse(body)).toEqual({ message: {
       token: target.token, notification: { title: "Maus", body: "New message" }, data,
-      android: { collapse_key: "thread-1", priority: "high" },
+      android: { collapse_key: "thread-1", priority: "high", notification: { channel_id: "messages" } },
     } });
     expect(Object.values(JSON.parse(body).message.data).every((value) => typeof value === "string")).toBe(true);
   });
@@ -410,6 +410,26 @@ describe("push relay", () => {
     expect(await send(200, { outcome: "weird" })).toBe("failed");
     expect(await send(503, { code: "not_configured" })).toBe("skipped");
     expect(await send(429, { code: "rate_limited" })).toBe("failed");
+  });
+
+  it("stops sending a service the relay has no keys for, says so once, and asks again later", async () => {
+    const fetch = relayFetch(503, { code: "not_configured" });
+    const log = vi.fn();
+    let at = 1_000;
+    const push = createPushSender({}, { fetch, relay: () => "https://relay.example", log, now: () => at });
+    const android = { service: "fcm" as const, token: "fixture-token" };
+    expect(push.delivers?.("fcm")).toBe(true);
+    expect(await push.send(android, message)).toBe("skipped");
+    expect(await push.send(android, message)).toBe("skipped");
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(push.delivers?.("fcm")).toBe(false);
+    expect(push.delivers?.("apns")).toBe(true);
+    expect(log).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("the push relay at https://relay.example has no FCM keys"));
+    at += RELAY_RECHECK_MS;
+    expect(push.delivers?.("fcm")).toBe(true);
+    expect(await push.send(android, message)).toBe("skipped");
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(log).toHaveBeenCalledTimes(1);
   });
 
   it("reads DUSK_PUSH_RELAY", () => {

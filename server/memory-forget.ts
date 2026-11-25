@@ -5,11 +5,12 @@ import { join } from "node:path";
 import type { AboutMe } from "./about-me.ts";
 import type { CommitResult } from "./host/commitments.ts";
 import type { ProactiveRule } from "./host/proactive-prefs.ts";
-import { factIdentity, parseMemoryEntries, passageMatcher } from "./memory-entries.ts";
+import { factIdentity, parseMemoryEntries, passageMatcher, traceMatcher } from "./memory-entries.ts";
+import { noteForget } from "./forget-traces.ts";
 import { ABOUT_FILE, annotateFact, factById, factsOf, syncAboutFacts, syncWorkspaceFacts, type FactRow, type FactSource } from "./memory-facts.ts";
 import { looksLikeInstruction, saidByPerson } from "./memory-trust.ts";
 import { clearForgotten, rememberForgotten } from "./profile-learned.ts";
-import { compactMemoryTopic, isMemorySeed, listMemoryTopics, memoryEntry, readMemoryText, readMemoryTopic, updateMemory, workspaceDir, writeMemoryFile, writeMemoryTopic, type MemoryUpdate, type MemoryUpdateResult } from "./workspace.ts";
+import { compactMemoryTopic, isMemorySeed, listMemoryLogs, listMemoryTopics, memoryEntry, readMemoryLog, readMemoryText, readMemoryTopic, removeMemoryTopic, updateMemory, workspaceDir, writeMemoryFile, writeMemoryLog, writeMemoryTopic, type MemoryUpdate, type MemoryUpdateResult } from "./workspace.ts";
 
 const BULLET = /^\s*(?:[-*•]|\d+[.)])\s+/;
 
@@ -69,6 +70,46 @@ export function forgetInNotes(botId: string, mentions: (text: string) => boolean
     removed.push(...kept.removed);
   }
   return removed;
+}
+
+const SOURCE_QUOTE = /(· from [^·\n"]*?)\s*"(?:[^"\\]|\\.)*"/;
+
+/** `text` with no trace of a forgotten fact: a source quote that names it loses the quote, and a line that names it (in
+ * a daily log any line, in a note a struck old version) goes. */
+export function withoutTraces(text: string, names: (text: string) => boolean, log: boolean): string {
+  const struck = new Set(parseMemoryEntries(text).filter((entry) => entry.struck && names(entry.body)).map((entry) => entry.line));
+  return text.split("\n").flatMap((line, index) => {
+    if (struck.has(index)) return [];
+    const quote = SOURCE_QUOTE.exec(line);
+    const kept = quote && names(quote[0].slice(quote[1].length)) ? line.replace(SOURCE_QUOTE, "$1") : line;
+    return log && /^\s*-\s/.test(kept) && names(kept) ? [] : [kept];
+  }).join("\n");
+}
+
+/** A topic note left with nothing but its header after a forget. */
+const emptyTopic = (text: string) => !text.replace(/^---\n[\s\S]*?\n---\n?/, "").split("\n").some((line) => line.trim() && !line.trim().startsWith("#"));
+
+/** Every other place a bot's memory could still name forgotten facts: source quotes and struck lines in its notes, a topic
+ * left empty, and its daily logs. Each file is rewritten through the writers that keep the recall index current. */
+export function forgetTraces(botId: string, names: (text: string) => boolean): void {
+  const index = readNote(botId, "MEMORY.md");
+  if (index !== null && !isMemorySeed(index)) {
+    const kept = withoutTraces(index, names, false);
+    if (kept !== index) writeMemoryFile(botId, kept);
+  }
+  for (const topic of listMemoryTopics(botId)) {
+    const text = readMemoryTopic(botId, topic.name);
+    if (text === null) continue;
+    if (emptyTopic(text) && names(`${topic.name.replace(/\.md$/, "")} ${text}`)) { removeMemoryTopic(botId, topic.name); continue; }
+    const kept = withoutTraces(text, names, false);
+    if (kept !== text) writeMemoryTopic(botId, topic.name, kept);
+  }
+  for (const log of listMemoryLogs(botId)) {
+    const text = readMemoryLog(botId, log);
+    if (text === null) continue;
+    const kept = withoutTraces(text, names, true);
+    if (kept !== text) writeMemoryLog(botId, log, kept);
+  }
 }
 
 /** The person's own words started this turn: not another person's, not another bot's, not a room's. */
@@ -223,11 +264,16 @@ export function botMemoryUpdate(
     const exact = (text: string) => idents.has(factIdentity(text));
     const forgotten = found.facts.some((fact) => fact.file !== ABOUT_FILE) ? forgetInNotes(layer, exact) : [];
     const aboutMe = opts.aboutMe ? opts.aboutMe.forget(layer, exact) : [];
+    const traces = traceMatcher(found.facts.map((fact) => fact.text));
+    const named = passageMatcher(passage);
+    if (traces || named) forgetTraces(layer, (text) => Boolean(traces?.(text) || named?.(text)));
+    noteForget(layer, opts.source);
+    syncWorkspaceFacts(layer);
     if (opts.aboutMe) {
       // words of their own ("forget short answers") keep that from being learned again; one bare word only blocks these facts
       const words = passage.split(/[^\p{L}\p{N}]+/u).filter((word) => word.length > 2);
       if (!ids.length && words.length >= 2 && passageMatcher(passage)) rememberForgotten(passage, passageMatcher(passage)!);
-      else for (const fact of found.facts) rememberForgotten(fact.text, exact);
+      for (const fact of found.facts) rememberForgotten(fact.text, exact);
     }
     return { ok: true, forgotten, aboutMe };
   }

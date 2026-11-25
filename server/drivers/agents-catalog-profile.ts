@@ -14,6 +14,9 @@ export interface CatalogProfile {
   slack?: boolean;
   cloudHome: boolean;
   memoryEnabled?: boolean;
+  /** This bot may read other bots' chats: session_search takes bot. Absent means off; the server sets it unless the
+   * person turned it off. */
+  readsOtherChats?: boolean;
   /** The section's Chief of Staff; the server refuses Chief-only tools to every other bot. */
   chief: boolean;
   /** Only for Watcher's own tool. Never written into a schema: a list that names its bot can't share a prompt cache with other bots. */
@@ -49,6 +52,7 @@ export function catalogProfileFromEnv(env: NodeJS.ProcessEnv): CatalogProfile {
     slack: env.DUSK_SLACK === "1",
     cloudHome: env.DUSK_CLOUD_HOME === "1",
     memoryEnabled: env.DUSK_MEMORY_ENABLED !== "0",
+    readsOtherChats: env.DUSK_READS_OTHER_CHATS === "1",
     chief: env.DUSK_CHIEF_OF_STAFF === "1",
     botId: env.DUSK_BOT_ID ?? "",
     team: env.DUSK_TEAM_PEOPLE === "1",

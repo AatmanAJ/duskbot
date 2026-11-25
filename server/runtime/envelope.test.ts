@@ -330,12 +330,27 @@ describe("escapeEnvelope", () => {
   });
 });
 
+describe("composeEnvelope: a notice", () => {
+  it("owes nothing back and may stay silent with (pass)", () => {
+    const notice = composeEnvelope(assignment({ reply: "none", mode: "notify" }), names);
+    expect(notice).toContain("It is a notice: take in what it tells you and do what it plainly asks, if anything. If it needs nothing from you, reply exactly (pass) and nothing else.");
+    expect(composeEnvelope(base, names)).not.toContain("(pass)");
+    expect(composeEnvelope(assignment({ reply: "none" }), names)).not.toContain("(pass)");
+  });
+});
+
 describe("composeReport", () => {
   const done = assignment({
     status: "completed", outcome: "done", result: "Done. Added export.ts and pushed branch csv-export.",
     evidence: { commands: 3, filesChanged: ["src/export.ts", "src/reports.tsx"], toolCalls: 9 },
   });
   const report = composeReport(done, names);
+
+  it("restates what was asked, so the requester reads the answer against its own ask", () => {
+    expect(report.split("\n")[1]).toBe('You gave @Scout: "Add a CSV export to the reports page and push the branch."');
+    expect(composeReport(assignment({ ...done, mode: "consult", brief: "Which branch holds the export?" }), names)).toContain('You asked @Scout: "Which branch holds the export?"');
+    expect(composeReport(assignment({ ...done, brief: "" }), names)).not.toContain("You gave");
+  });
 
   it("names the assignee, the assignment and the outcome in its opening line", () => {
     expect(report.startsWith("[From @Scout (bot) · report on assignment as_7f3k: done · information only]\n")).toBe(true);

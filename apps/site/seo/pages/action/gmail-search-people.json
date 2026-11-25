@@ -39,7 +39,7 @@
     "**connect the right address book.** choose the google account holding your contacts and keep this bot read only.",
     "**try someone you know.** ask for their name and address, then compare them with your address book.",
     "**choose the search scope.** say whether it may include unsaved contacts.",
-    "**give it the visitor file.** open automations, confirm thursday at 13:00 and read the first report."
+    "**give it the visitor file.** open the routine in the bot's side panel, confirm thursday at 13:00 and read the first report."
   ],
   "watch": [
     "**30 matches is the ceiling.** add a surname or company clue when a common name fills the list.",

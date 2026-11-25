@@ -163,3 +163,54 @@ every chat.
 
 Cron series are changed through chat rather than the editor's presets, which
 could otherwise ambiguously change an entire expression.
+
+## Chained routines
+
+A schedule can work with other schedules and bots (`chain` on the routine; tool
+fields `read_from`, `after`, `hand_to`, `clear_chain`; `server/routine-chain.ts`).
+This is Hermes Agent's `context_from` plus its `bot-chat` and room delivery.
+
+- **`read_from`** (up to 5 trigger ids): each run first reads the latest report of
+  each of those schedules, fenced as data. Quiet runs ("NOTHING NEW") and test
+  runs are skipped, so a quiet stretch keeps the last real report.
+- **`after`** (up to 5 trigger ids): the routine runs when one of those finishes
+  with something to say, given its report. It is the `runs` check limited to those
+  routines: it wakes the moment their report posts, and still checks once a day
+  (the default schedule when none is given) so a report missed while dusk bot was
+  off is caught. It obeys the usual check limits (24 AI runs a day, one at a time,
+  back-off after failures). It cannot be combined with a page, feed, price or
+  script check: give that check to the routine it runs after.
+- **`hand_to`**: each report also goes on, script-only output included.
+  - `{ "bot_id" }`: another bot gets it as a new turn, framed as an automation's
+    output and not the person (an outside event, `triggerSource: "webhook"`,
+    `eventSource: "routine"`). Off a Cloud it lands in that bot's main chat; on a
+    Cloud in a chat of its own.
+  - `{ "room_id" }`: it is posted into the room as the routine's bot. No turn
+    starts there.
+- **Limits.** A chain stops after 4 hops (`MAX_CHAIN_HOPS`); `after` links that
+  would close a loop are refused. Quiet and test runs carry nothing on.
+- **Who may link.** Only the person's own chat: a Cloud guest's or outside work's
+  turn is refused. A routine may read from or run after routines of its own bot
+  or of bots the asker sets up; `hand_to` goes to a bot its bot can reach or a
+  room its bot is in. Giving any of the three on an update replaces all three.
+
+Script-only and preflight routines are the cheap end of a chain: a script with
+`post` and `hand_to` sends its output to another bot without any AI turn on the
+first bot, and a script with `save_to` keeps its output in the bot's folder
+(docs/proactive-routines.md "Script-only routines").
+
+## Proof of life and quiet nights
+
+- `trigger_info` shows each schedule's last outcomes (`ok`, `quiet`, `failed`,
+  `missed`, `skipped`), when its checks last found nothing (`lastCheckedQuiet`)
+  and a check that cannot read (`checkProblem`), so a quiet routine can be told
+  from a dead one. The automation card's strip shows the same.
+- During the person's quiet hours (the Quiet hours line of "What to tell me about",
+  docs/suggestions.md; 23:00 to 07:00 when they set none) a routine's plain report
+  waits unread in its chat instead of notifying. A question, an approval or a
+  failure still notifies at once. Telling a bot "quiet hours 1 to 2" (or any short
+  span) all but turns the hold off.
+- Each run starts in a fresh session with the routine's instructions, its last
+  reports and notes. A run that answers in the bot's own chat (one person, off a
+  Cloud) works in that chat, so its engine sees that chat's history too.
+

@@ -2,6 +2,7 @@ import type { AppSettingsSection } from "@/state/store";
 import { en, type LocaleKey } from "@/locales";
 import { activeLocale, t, tOptional } from "@/lib/i18n";
 import { SETTINGS_PANES, type AdvancedPage, type SettingsPane } from "@/lib/open-settings";
+import type { SimplePageId } from "./bot-panel/page-registry";
 import type { IconName } from "./Icon";
 
 export type SettingsTarget = SettingsPane | AdvancedPage | AppSettingsSection;
@@ -19,6 +20,17 @@ const SETTING_ROWS: readonly SettingRow[] = [
   { id: "backups", titleKey: "settings.section.backups", paneKey: "settings.pane.advanced", icon: "database", target: "backups" },
   { id: "skills", titleKey: "settings.section.skills", paneKey: "settings.pane.advanced", icon: "skills", target: "skills" },
   { id: "archived", titleKey: "settings.advanced.bots.archived", paneKey: "settings.pane.advanced", icon: "archive", target: "advanced" },
+];
+
+/** A search row that opens the open bot's side panel on one of its pages. */
+export type BotPageCommand = { id: string; name: string; detail: string; also?: string; icon: IconName; page: SimplePageId };
+
+type BotPageRow = { page: SimplePageId; titleKey: LocaleKey; icon: IconName };
+
+const BOT_PAGE_ROWS: readonly BotPageRow[] = [
+  { page: "routines", titleKey: "botPanel.ui.botSettingsSimpleRoutines", icon: "alarm-clock" },
+  { page: "memory", titleKey: "botPanel.memoryRow", icon: "brain" },
+  { page: "library", titleKey: "botPanel.tab.library", icon: "book" },
 ];
 
 /** Other words people search for a pane or setting with: the active language's, and in another language the English
@@ -48,4 +60,15 @@ export function settingsCommands(): SettingsCommand[] {
     target: row.target,
   }));
   return [...panes, ...rows];
+}
+
+export function botPageCommands(botName: string): BotPageCommand[] {
+  return BOT_PAGE_ROWS.map((row): BotPageCommand => ({
+    id: `bot-${row.page}`,
+    name: t(row.titleKey),
+    detail: botName,
+    also: searchWords(row.page, en[row.titleKey]),
+    icon: row.icon,
+    page: row.page,
+  }));
 }

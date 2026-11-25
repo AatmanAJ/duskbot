@@ -252,6 +252,13 @@ describe("a schedule's plain check in the trigger tool", () => {
     expect((calls[1]!.body as { routine: unknown }).routine).toMatchObject({ continuity: false, probe: { kind: "page", url: "https://status.example/", selector: "#state" } });
   });
 
+  it("keeps a script check's post and access", async () => {
+    const { calls, context: ctx } = context();
+    await callTool("trigger", { action: "create", when: "schedule", name: "Prices", instructions: "Post the prices.",
+      schedule: { type: "interval", every_minutes: 60 }, check: { kind: "script", command: "./prices.sh", post: true, access: "full" } }, ctx);
+    expect((calls[0]!.body as { routine: unknown }).routine).toMatchObject({ probe: { kind: "script", url: "", command: "./prices.sh", post: true, access: "full" } });
+  });
+
   it("removes a check with clear_check and refuses a check without what it reads", async () => {
     const { calls, context: ctx } = context();
     await callTool("trigger", { action: "update", trigger_id: "r-1", clear_check: true }, ctx);
@@ -259,5 +266,22 @@ describe("a schedule's plain check in the trigger tool", () => {
     expect((await callTool("trigger", { action: "update", trigger_id: "r-1", check: { kind: "script" } }, ctx)).text).toContain("needs command");
     expect((await callTool("trigger", { action: "update", trigger_id: "r-1", check: { kind: "feed" } }, ctx)).text).toContain("needs url");
     expect((await callTool("trigger", { action: "create", when: "webhook", name: "A", instructions: "B", check: { kind: "feed", url: "https://a.example/f" } }, ctx)).text).toContain("takes no check");
+  });
+
+  it("passes a script check's save_to and the chain links, and gives a routine that only runs after others a daily check", async () => {
+    const { calls, context: ctx } = context();
+    await callTool("trigger", { action: "create", when: "schedule", name: "Digest", instructions: "Summarise what the scraper found.",
+      after: ["r-1"], read_from: "r-2", hand_to: { room_id: "g-1" } }, ctx);
+    const routine = (calls[0]!.body as { routine: Record<string, unknown> }).routine;
+    expect(routine.chain).toEqual({ readFrom: ["r-2"], after: ["r-1"], handTo: { groupId: "g-1" } });
+    expect(routine.schedule).toMatchObject({ type: "interval", everyMinutes: 1440 });
+    await callTool("trigger", { action: "create", when: "schedule", name: "Prices", instructions: "Save the prices.",
+      schedule: { type: "interval", every_minutes: 60 }, check: { kind: "script", command: "./prices.sh", save_to: "reports/p.md", save_mode: "append" } }, ctx);
+    expect((calls[1]!.body as { routine: unknown }).routine).toMatchObject({ probe: { saveTo: "reports/p.md", saveMode: "append" } });
+    await callTool("trigger", { action: "update", trigger_id: "r-3", clear_chain: true }, ctx);
+    expect((calls[2]!.body as { changes: unknown }).changes).toEqual({ chain: null });
+    expect((await callTool("trigger", { action: "update", trigger_id: "r-3", hand_to: { bot_id: "a", room_id: "b" } }, ctx)).text).toContain("one bot_id");
+    expect((await callTool("trigger", { action: "update", trigger_id: "r-3", after: ["a"], clear_chain: true }, ctx)).text).toContain("not both");
+    expect((await callTool("trigger", { action: "create", when: "webhook", name: "A", instructions: "B", after: ["r-1"] }, ctx)).text).toContain("takes no after");
   });
 });

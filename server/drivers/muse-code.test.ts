@@ -191,6 +191,25 @@ describe("Muse Code's process", () => {
     expect(engine!.exitCode !== null || engine!.signalCode !== null).toBe(true);
   }, 20_000);
 
+  it.skipIf(process.platform === "win32")("writes background text as a hidden turn in an empty folder and ends its host", async () => {
+    const { cli } = fakeMuse();
+    const spawned = vi.spyOn(procs, "spawnCli");
+    const instance = await MuseCodeDriver.create({ instanceId: "museCode", displayName: "Muse Code", enabled: true,
+      environment: { HOME: root }, config: MuseCodeDriver.decodeConfig({ cli }) });
+    const events: RuntimeEvent[] = [];
+    instance.adapter.onEvent((event) => events.push(event));
+    try {
+      expect(await instance.generateMemoryText!("Read the chat and answer in JSON.")).toBe("hello");
+      expect(events).toEqual([]);
+      const host = spawned.mock.calls.findIndex((call) => call[3] === "bot");
+      expect(String(spawned.mock.calls[host]![2]?.cwd)).toMatch(/dusk-background-text-/);
+      const child = spawned.mock.results[host]!.value as ReturnType<typeof procs.spawnCli>;
+      expect(child.exitCode !== null || child.signalCode !== null || child.killed).toBe(true);
+    } finally {
+      await instance.dispose();
+    }
+  }, 20_000);
+
   describe("session MCP names", () => {
     const injected = { command: "fixture-mcp", args: ["serve"], env: { FIXTURE_MODE: "local", FIXTURE_FORMAT: "json" } };
     const remote = { type: "streamable-http", url: "https://example.invalid/mcp" };

@@ -1,0 +1,56 @@
+{
+  "title": "Build the market note from the packing list file, despite a save error",
+  "world": "creator",
+  "tags": [
+    "recovery",
+    "file"
+  ],
+  "steps": [
+    {
+      "fault": {
+        "notes_create": {
+          "times": 1,
+          "error": "500 Internal Server Error: upstream timeout"
+        }
+      }
+    },
+    {
+      "chat": {
+        "goal": "Have Wren make a note for Saturday's market from your packing list file (Documents/market-packing-list.txt), adding 30 mugs, 8 vases and Maya's tent weights.",
+        "opener": "can you make a note for saturday's market using my packing list in Documents (market-packing-list.txt)? and add 30 mugs, 8 vases, and grab Maya's tent weights",
+        "maxTurns": 4,
+        "label": "note"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "note made from the file",
+      "app": "notes",
+      "where": {
+        "title": "market|saturday",
+        "body": "square reader"
+      },
+      "min": 1
+    },
+    {
+      "label": "additions included",
+      "app": "notes",
+      "where": {
+        "title": "market|saturday",
+        "body": "30 mugs"
+      },
+      "min": 1
+    },
+    {
+      "label": "no duplicate notes",
+      "app": "notes",
+      "where": {
+        "by_assistant": "true",
+        "title": "market|saturday"
+      },
+      "max": 1
+    }
+  ],
+  "judge": "Wren reads the actual file (table, tent weights, Square reader, price cards, cash float), adds the three items, retries the failed save once and ends with exactly one note. It reports honestly if the save didn't go through."
+}

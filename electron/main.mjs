@@ -552,7 +552,7 @@ const { isLocalSender: senderIsLocal, localOnly, localOnlySync, setLocalOrigin }
 const localOrHome = (channel, handler) => (event, ...args) => (homeWindow.homePage(event) ? handler : localOnly(channel, handler))(event, ...args);
 // only the installed app reports usage; dev, worktree, CI and smoke runs (DUSK_ANALYTICS=0) send nothing
 // an unpackaged run that opted in (the dev app against preview) says so in its version, so the admin can tell it apart
-const productEvents = createProductEvents({ origin: cloudTarget(process.env).origin, token: () => cloudAccount?.eventToken?.() ?? null, platform: process.platform, version: app.isPackaged ? app.getVersion() : `${app.getVersion()}+dev`,
+const productEvents = createProductEvents({ origin: cloudTarget(process.env).origin, token: () => cloudAccount?.eventToken?.() ?? null, signedInSince: () => desktopPrefs?.signedInAt() ?? null, platform: process.platform, version: app.isPackaged ? app.getVersion() : `${app.getVersion()}+dev`,
   enabled: analyticsAllowed({ packaged: app.isPackaged, env: process.env, custom: cloudTarget(process.env).custom }) });
 for (const [kind, emitter] of [["page", "render-process-gone"], ["child", "child-process-gone"]]) {
   app.on(emitter, (...args) => { const details = args.at(-1); const props = crashProps(kind === "page" ? "page" : details?.type, details?.reason, { name: details?.name, ending: appEnding(), exitCode: details?.exitCode }); if (props) productEvents.action("crash", props); });
@@ -958,7 +958,7 @@ function ensureCloudAccount() {
     // account gets the website's first steps there, and this app signs itself in when the website approves it
     openBrowser: url => shell.openExternal(url), awaitingWake: () => cloudPower.awaiting(), appLinks: false,
     onState: state => {
-      cloudSync.accountChanged(state.account?.id ?? null); rememberCloudHome(state);
+      if (state?.account && state.status === "connected") desktopPrefs?.markSignedIn(); cloudSync.accountChanged(state.account?.id ?? null); rememberCloudHome(state);
       rememberedHome = rememberedCloudHome(rememberedHome, state);
       cloudPower.changed(); try { void oneHome.kick(); void homeWindow.changed(); announceAddedCloud(state); railChanged(); accountEnroll.onState(state); accountGate.changed(state); void botsElsewhere.remember(); void vpsCloudMove?.kick(); void vpsCloudMove?.signedInNow?.(); serverEnroll?.onState(state); } catch {}
       // a server's install line that waited on the account: made at once now (vpsLink may not exist yet at launch)
@@ -3493,7 +3493,7 @@ app.whenReady().then(async () => {
     );
   }
   registerCuaIpc();
-  desktopPrefs = createDesktopPrefs({ ...jsonFile(path.join(app.getPath("userData"), "desktop-prefs.json")), frameByDefault: FRAME_BY_DEFAULT });
+  desktopPrefs = createDesktopPrefs({ ...jsonFile(path.join(app.getPath("userData"), "desktop-prefs.json")), frameByDefault: FRAME_BY_DEFAULT }); try { const signIn = cloudAccount?.state(); if (signIn?.account && signIn.status === "connected") desktopPrefs.markSignedIn(); } catch {}
   registerDesktopPrefs({ ipcMain, prefs: desktopPrefs, analyticsChanged: syncUsageSignals, localConfig: jsonFile(path.join(desktopDataDir(), "config.json")).read, cloudOffered: () => cloudAccountRestored().then(cloudOffersReady),
     frame: { made: () => windowFrameMade, restarts: process.platform === "win32", changed: () => void broadcastDesktopCapabilities() },
     languageChanged: (language, sender) => {
@@ -3726,7 +3726,7 @@ function startAppUpdates(notice) {
   const bundle = path.resolve(path.dirname(app.getPath("exe")), "..", "..");
   appUpdateMode = "self";
   appUpdater = createAppUpdater({ current: app.getVersion(), arch: process.arch, dir: updateDir, signed: () => developerIdSigned(bundle), blocked: async () => updatePlace(bundle),
-    installer: squirrelInstaller({ autoUpdater }), quiet: () => quietNow(signals), fallback: notice, log: slog, onState: tellAppUpdate, onFailed });
+    installer: squirrelInstaller({ autoUpdater }), quiet: () => quietNow(signals), fallback: notice, log: slog, onState: tellAppUpdate, onFailed, serverRuns: () => { try { return vpsLink.view().compat?.server ?? null; } catch { return null; } } });
   appUpdater.start();
   powerMonitor.on("resume", () => appUpdater?.soon?.());
 }

@@ -15,7 +15,7 @@ The npm CLI supports a managed public tunnel, Tailscale, or your own proxy.
 > [Loopback trust](#loopback-trust-owner-or-service) below.
 
 Step by step, for a server you do not have yet: [Deploy dusk bot on a
-VPS](deploy-vps.md) walks through the three ways in (public address, own
+VPS](deploy-vps.md) walks through the three ways in (the app's one line, own
 domain, Tailscale), signing engines in, pairing, keeping it running,
 updating and backups. This page is the reference behind it.
 
@@ -137,32 +137,18 @@ For a Linux service, the [VPS guide](deploy-vps.md#before-you-start) shows the
 account setup, engine installation, and browser dependency installation.
 After installing browser libraries as administrator, also run
 `npx duskbot browser install` as the service user so that user's browser
-is present. Three ways to make the server reachable from elsewhere:
+is present. Ways to make the server reachable from elsewhere:
 
 - **On your Tailscale network, no domain needed:**
   `npx duskbot serve --tailscale`. Tailscale terminates HTTPS with its
   own certificate and the link uses this machine's MagicDNS name, so only
   devices on your tailnet can reach it. Needs Tailscale signed in and HTTPS
   certificates enabled for the tailnet (admin console → DNS).
-- **A public address, no domain, no proxy, no open port:**
-
-  ```sh
-  npx duskbot login          # once: an emailed code signs this machine in
-  npx duskbot serve --tunnel
-  ```
-
-  `login` reserves an address like `https://c-….cloud.dusk.bot` for this
-  machine; `serve --tunnel` connects it through a Cloudflare tunnel (the same
-  one the desktop app uses for its companion) and prints the pairing link at
-  that address. The first run downloads `cloudflared` (pinned version and
-  digest) into the data dir. Only traffic through the tunnel reaches the
-  server, and it still has to pair: the tunnel lands on a separate listener
-  the server treats as "through a proxy", never as the owner. That listener
-  also gzips JSON replies of 1 KB or more when the client accepts gzip, since
-  the hop to Cloudflare runs on this machine's upload uncompressed; the
-  loopback port never compresses. `npx duskbot logout` releases the
-  address. The account credentials live in
-  `~/.duskbot/tunnel-account.json` (mode 0600).
+- **No domain, no proxy, no open port:** use [the app's one line](#from-the-app-one-line-any-way-in)
+  instead of `npx`. It links the server to your app through the dusk bot
+  relay or a Cloudflare quick tunnel, with no account or sign-in.
+  `npx duskbot login` and `npx duskbot serve --tunnel` sign in to a secure
+  access service that dusk.bot does not run today, so they fail and say so.
 - **Your own domain, still one command:**
 
   ```sh
@@ -190,7 +176,7 @@ implicitly download a new release.
 ## Connect ChatGPT from the browser
 
 A browser paired with Full access can connect an installed Codex CLI without opening a
-terminal: **Settings → Engines → Codex → Connect ChatGPT**. dusk bot starts
+terminal: **Settings → Models → ChatGPT → Connect ChatGPT**. dusk bot starts
 `codex login --device-auth` on the server and shows a one-time code. Choose
 **Open ChatGPT sign-in**, enter the code on OpenAI's page, and complete sign-in
 with your own account. dusk bot checks for completion and refreshes the model list.
@@ -309,7 +295,7 @@ DUSK_DATA_DIR="$HOME/.duskbot" DUSK_PORT=8799 \
 For something durable, let the CLI write the service for you:
 
 ```sh
-npx duskbot service install --domain maus.example.com   # or --tunnel, --tailscale, or nothing
+npx duskbot service install --domain maus.example.com   # or --tailscale, or nothing
 ```
 
 It renders a systemd unit (Linux) or a launchd agent (macOS) that runs the
@@ -322,13 +308,13 @@ permanently first (`npm install -g duskbot`): a service must not point
 at an `npx` cache that npm may prune.
 
 Engine CLIs read their logins from the service user's home: sign them in
-from Settings → Engines (below), or as that user in a terminal, before you
+from Settings → Models (below), or as that user in a terminal, before you
 rely on routines running unattended.
 
 ## Installing the engines without a terminal
 
 Engines whose installer is an npm package (Claude Code, Codex, OpenCode,
-MiniMax, pi) can be installed and updated from **Settings → Engines** when
+MiniMax, pi) can be installed and updated from **Settings → Models** when
 npm is on the server's PATH. dusk bot runs `npm install -g` as its own user into
 `<data dir>/tools/npm`, so nothing needs sudo and nothing touches a global
 prefix; that folder goes ahead of everything else on the engines' PATH, so
@@ -338,14 +324,14 @@ by a `curl | bash` script still need the command on the server.
 
 ## Provider keys, billed per token
 
-**Settings → Connections → Model providers** takes the keys a whole workspace
+**Settings → API keys → AI providers** takes the keys a whole workspace
 runs on, for people who would rather pay per token than have every user sign
 in. Keys are write-only: the page shows connected-or-not and a **Test** button
 that makes one read-only request to the provider from the server.
 
 - **Anthropic API key**: while one is saved, every Claude bot runs on it and
   Claude Code reports the real cost per turn to the usage ledger. Nobody has
-  to sign in, and Settings → Engines shows "workspace API key" instead of a
+  to sign in, and Settings → Models shows "workspace API key" instead of a
   person. Remove the key to go back to personal logins. The server's own
   `ANTHROPIC_API_KEY` environment variable is deliberately ignored; use the
   page, `config.json`, or `DUSK_ANTHROPIC_API_KEY`.
@@ -370,7 +356,7 @@ Providers added with `opencode auth login` work everywhere.
 
 ## Signing the engines in without a terminal
 
-On a hosted server, the engine CLIs sign in from Settings → Engines:
+On a hosted server, the engine CLIs sign in from Settings → Models:
 
 - **Codex**: "Connect ChatGPT" shows a one-time code to enter on OpenAI's
   device page. Once connected, Settings names the account and offers
@@ -837,6 +823,12 @@ pair --phone android --public-url https://your-domain`, since a scripted run
 never reaches the question the interactive command asks. Nothing extra to install, and the phone becomes a
 session like any other.
 
+Push to a closed app goes through the public relay at `link.dusk.bot` unless the
+server has APNs or FCM keys of its own. Today that relay sends to iPhones only:
+an Android phone paired with a self-hosted server gets notifications only while
+the app is open, and the server log says so once. Details and what fixes it:
+[`docs/phone-push.md`](phone-push.md#what-a-self-hosted-server-does-today).
+
 Older way, still supported, and only useful on a LAN or a tailnet: run the
 companion sidecar next to the harness and pair by its own QR. It advertises
 on your private networks (Tailscale-aware) and issues its own per-device
@@ -1212,7 +1204,7 @@ settings do not change it.
 
 For the npm service, [install the chosen new version](deploy-vps.md#update)
 as the service user while the server is stopped, then start it again.
-For a foreground invocation, `npx --yes duskbot@X.Y.Z serve --tunnel`
+For a foreground invocation, `npx --yes duskbot@X.Y.Z serve --tailscale`
 selects a particular published release; replace `X.Y.Z` with that version.
 
 ```sh

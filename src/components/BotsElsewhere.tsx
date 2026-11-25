@@ -147,7 +147,7 @@ export function PlacesHub({ places, counts, lit, opening = null, failed = null, 
   const counted = places.some((place) => !place.active && (counts[place.id] ?? 0) > 0);
   const holds = (place: RailPlace) => (counted ? (counts[place.id] ?? 0) > 0 : place.id === lit);
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="elsewhere-title" aria-busy={busy || undefined} data-elsewhere="bots-on"
+    <div role="dialog" aria-modal="true" aria-labelledby="elsewhere-title" aria-busy={busy || undefined} data-elsewhere="bots-on" data-screen=""
       className="fixed inset-0 z-[60] flex overflow-y-auto bg-app">
       <WindowDragStrip />
       <div className="m-auto w-full max-w-[480px] px-6 py-12">

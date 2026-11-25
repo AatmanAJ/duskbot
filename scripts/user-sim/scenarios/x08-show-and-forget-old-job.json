@@ -1,0 +1,55 @@
+{
+  "title": "Show what you remember, delete the old job",
+  "world": "student",
+  "tags": [
+    "x-usage",
+    "memory",
+    "forget"
+  ],
+  "source": "x-usage #8: shows memory in plain language, deletes exactly the old-job part, keeps the rest, confirms.",
+  "steps": [
+    {
+      "chat": {
+        "goal": "Chat about yourself: you used to work at Greggs on Briggate until September before Bean & Leaf, you climb, you're from Manchester.",
+        "opener": "fun fact i used to work at greggs on briggate till september before the cafe lol. also i'm from manchester originally and i climb like 3x a week",
+        "maxTurns": 2,
+        "label": "share"
+      }
+    },
+    {
+      "advance": "+1d 19:00"
+    },
+    {
+      "chat": {
+        "goal": "Ask what Pip remembers about you, then have it delete the part about your old job.",
+        "opener": "what do you remember about me? delete the part about my old job",
+        "maxTurns": 3,
+        "thread": "new",
+        "label": "forget"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "old job gone",
+      "memory": {
+        "not": "greggs|briggate"
+      },
+      "recall": true
+    },
+    {
+      "label": "other facts kept",
+      "memory": {
+        "match": "manchester|climb"
+      }
+    },
+    {
+      "label": "listed in plain language",
+      "said": {
+        "step": "forget",
+        "match": "manchester|climb|leeds|biomed"
+      }
+    }
+  ],
+  "judge": "Pip lists what it knows in plain sentences, deletes only the Greggs job, keeps Manchester, climbing and Bean & Leaf, and confirms in one line."
+}

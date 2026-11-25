@@ -1,0 +1,62 @@
+{
+  "title": "Twice-weekly low-stock check",
+  "world": "creator",
+  "tags": [
+    "routine"
+  ],
+  "start": "wed 08:40",
+  "steps": [
+    {
+      "chat": {
+        "goal": "Set up a stock check every Monday and Thursday at 7am that tells you anything under 5 left, so you know what to throw next.",
+        "opener": "every monday and thursday 7am can you check stock and tell me anything under 5? so i know what to throw",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "advance": "+1d 07:05"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      },
+      "label": "stock"
+    }
+  ],
+  "checks": [
+    {
+      "label": "routine exists",
+      "routine": {
+        "where": {
+          "prompt": "stock"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "it ran Thursday",
+      "routine": {
+        "ran": true
+      },
+      "min": 1
+    },
+    {
+      "label": "low stock named",
+      "proactive": {
+        "after": "stock",
+        "match": "bud vase|espresso|VASE-CEL|CUP-ESP"
+      },
+      "min": 1
+    },
+    {
+      "label": "healthy items not flagged as low",
+      "proactive": {
+        "after": "stock",
+        "match": "serving bowl.{0,20}(low|under)|speckled mug.{0,20}(low|under)"
+      },
+      "max": 0
+    }
+  ],
+  "judge": "Wren makes a Mon/Thu 7am routine and Thursday's message lists only the Celadon Bud Vase (3) and Espresso Cup (2), short and useful."
+}

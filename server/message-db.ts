@@ -10,7 +10,7 @@ import type { Message } from "./store.ts";
 import type { UsageTrigger } from "./usage-ledger.ts";
 import { ensureFactStore, ensureMemoryIndex } from "./message-db-memory-index.ts";
 import { MessageSearchWorker } from "./message-search-worker.ts";
-import { rowToMessage, threadPreviewRows, type ThreadRows, type ThreadTailRows } from "./message-db-rows.ts";
+import { rowToMessage, threadPreviewRows, threadRowsBefore, type ThreadRows, type ThreadTailRows } from "./message-db-rows.ts";
 import { searchMessagesInDatabase, type SearchHit } from "./message-search-query.ts";
 import { rollbackKeeping } from "./sqlite-rollback.ts";
 import type { Notification, NotificationLogEntry } from "../shared/notification.ts";
@@ -386,6 +386,7 @@ export function cancelledChatFollowup(kind: ChatFollowup["kind"], ownerId: strin
 }
 
 export const readThreadPreview = (threadId: string, limit: number): Message[] => threadPreviewRows(db(), threadId, limit);
+export const readThreadBefore = (threadId: string, beforeId: string, limit: number) => threadRowsBefore(db(), threadId, beforeId, limit);
 
 export function readThread(threadId: string, legacyFile: string): ThreadRows {
   const rows = prepared("SELECT json FROM messages WHERE thread_id = ? ORDER BY rowid").all(threadId) as Array<{ json: string }>;

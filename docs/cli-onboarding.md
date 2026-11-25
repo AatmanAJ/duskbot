@@ -37,7 +37,7 @@ A phone cannot connect to this computer's `localhost` address. The harness also 
 
 Choose one connection method:
 
-- **Managed HTTPS address:** setup asks explicit permission for a public endpoint through Cloudflare and a possible connector download. Device pairing protects chat and settings; the pairing page and basic server identity remain publicly reachable. Sign in to a **dusk bot account** using an emailed code, or reuse this machine's saved account. This account is separate from ChatGPT, Claude, or an API-provider account. The connection stays active while dusk bot runs.
+- **Managed HTTPS address:** setup asks explicit permission for a public endpoint through Cloudflare and a possible connector download. Device pairing protects chat and settings; the pairing page and basic server identity remain publicly reachable. Sign in to a **dusk bot account** using an emailed code, or reuse this machine's saved account. This account is separate from ChatGPT, Claude, or an API-provider account. The connection stays active while dusk bot runs. Setup offers this option only when the secure access service answers, and dusk.bot does not run it today, so it is hidden; for a server, link it with the app's one line instead ([self-hosting](self-hosting.md#from-the-app-one-line-any-way-in)).
 - **Existing Tailscale:** both computer and phone must already be signed in to the same tailnet, with HTTPS certificates enabled. Setup asks before enabling HTTPS serving to that tailnet; it does not install or sign in to Tailscale for you.
 - **Existing HTTPS address (advanced):** supply the origin of a reverse proxy you already configured, such as `https://maus.example.com`. Do not paste a password, path, query, or pairing code. Entering an address does not create the proxy or open a LAN listener.
 
@@ -64,9 +64,9 @@ The examples below assume a global install; prefix them with `npx` otherwise.
 | `duskbot pair` | Create another phone invitation while the configured workspace and HTTPS connection are running. |
 | `duskbot sessions` | List paired devices; `duskbot sessions revoke ID` signs one out. |
 | `duskbot serve` | Start without onboarding prompts or automatic browser opening; specify remote-access flags explicitly for a service. |
-| `duskbot login` | Sign in to a dusk bot account for `--tunnel`; this does not sign in to an AI provider or start the tunnel. |
+| `duskbot login` | Sign in to a dusk bot account for `--tunnel`; this does not sign in to an AI provider or start the tunnel. dusk.bot does not run the service behind it today, so it says so and points to the app's one line, `--tailscale` or `--domain`. |
 
-`start` accepts the same server options as `serve`, including `--port`, `--data-dir`, `--tailscale`, `--tunnel`, and `--public-url`. Keep using your custom data directory and port when starting or pairing:
+`start` accepts the same server options as `serve`, including `--port`, `--data-dir`, `--tailscale`, `--domain`, and `--public-url`. Keep using your custom data directory and port when starting or pairing:
 
 ```sh
 duskbot setup --data-dir /path/to/dusk-data --port 8799

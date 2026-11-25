@@ -302,7 +302,7 @@ export function createAdmin(options: AdminOptions) {
     ]).then(([daily, previousDaily, ...rows]) => {
       // test accounts and harness installs stay out of every per-person read; the kept daily totals can't be split
       const ids = v.hidden(), real = <T extends { accountId?: string | null; workspaceId?: string }>(list: T[]) => !clean ? list
-        : list.filter(row => !isTestInstall(row.workspaceId) && !(row.accountId && ids.has(row.accountId)));
+        : list.filter(row => !(row as { test?: true }).test && !isTestInstall(row.workspaceId) && !(row.accountId && ids.has(row.accountId)));
       const [people, previousPeople, snapshots, frustrations, digests, recentPeople, signals, spans, events] = rows;
       return [daily, previousDaily, real(people), real(previousPeople), real(snapshots), real(frustrations), real(digests), real(recentPeople), real(signals), real(spans), events] as const;
     });
@@ -521,13 +521,13 @@ export function createAdmin(options: AdminOptions) {
       else if (action === "resume") { if (cloud.suspended !== null) await billing.clouds.resume(cloud.id); else await billing.clouds.power(cloud.accountId, cloud.id, "on"); }
       else {
         const reason = typeof input.reason === "string" && /^[a-z_]{3,40}$/.test(input.reason) ? input.reason : "admin_panel";
-        billing.clouds.managed!.operatorDelete(cloud, reason);
-        void billing.clouds.reconcile().catch(() => {});
+        billing.operatorDelete(cloud, reason, { allowAdminOwned: input.allowAdminOwned === true });
       }
     } catch (error) {
       await audit(owner.id, `cloud.${action}`, cloud.id, { ok: false, code: (error as { code?: string }).code ?? "failed" });
       const status = (error as { status?: number }).status;
-      throw new AdminError(status && status < 500 ? status : 502, (error as { code?: string }).code ?? "failed", "The cloud refused that action. Check its state and try again.");
+      const code = (error as { code?: string }).code ?? "failed";
+      throw new AdminError(status && status < 500 ? status : 502, code, code === "admin_owned" ? "This cloud belongs to an admin account, so nothing was deleted. Send allowAdminOwned to delete it anyway." : "The cloud refused that action. Check its state and try again.");
     }
     await audit(owner.id, `cloud.${action}`, cloud.id, { ok: true, from: row.status });
     return { cloud: cloudRow(cloud, emailMap()) };
@@ -680,7 +680,7 @@ export function createAdmin(options: AdminOptions) {
         const kind = url.searchParams.get("kind"), before = url.searchParams.get("before");
         const hidden = ownViewOf(req).hidden();
         return send(await feedbackAnswer(options.usage.store, { now: now(), kind: FEEDBACK_KINDS.find(one => one === kind) ?? null, before: before ? int(before, now(), 0, Number.MAX_SAFE_INTEGER) : null,
-          ...(showTests(req) ? {} : { hidden: (record: { accountId: string; workspaceId: string }) => isTestInstall(record.workspaceId) || (!!record.accountId && hidden.has(record.accountId)) }) }));
+          ...(showTests(req) ? {} : { hidden: (record: { accountId: string; workspaceId: string; test?: true }) => !!record.test || isTestInstall(record.workspaceId) || (!!record.accountId && hidden.has(record.accountId)) }) }));
       }
       if (route === "/revenue/infra") return send(await infraAnswer());
       if (route === "/ops") {

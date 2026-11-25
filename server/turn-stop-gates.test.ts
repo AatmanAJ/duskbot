@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bareAck, claimsDone, MAX_STOP_GATES, TurnGates, openChecklist, promisesFollowUp, ranTool, readBackWrite, schedulesWork, settleAsks, stopGateFor, stopGateNote, type Ask, type StopGate, type TurnForAsks, type TurnSoFar } from "./turn-stop-gates.ts";
+import { bareAck, claimsDone, MAX_STOP_GATES, TurnGates, openChecklist, promisesFollowUp, ranTool, readBackWrite, schedulesCall, schedulesWork, settleAsks, stopGateFor, stopGateNote, type Ask, type StopGate, type TurnForAsks, type TurnSoFar } from "./turn-stop-gates.ts";
 
 const turn = (over: Partial<TurnSoFar>): TurnSoFar => ({ reply: "", applied: new Set(), canSchedule: true, scheduled: false, effectful: 0, unconfirmed: null, ...over });
 
@@ -20,8 +20,53 @@ describe("promisesFollowUp", () => {
     "Let me know if I should check back later.",
     "The price is $420. Nothing else to do.",
     "I'll be here if you need anything.",
+    "I reminded you about it yesterday.",
+    "You said \"I'll remind you tomorrow\" was what the old bot told you.",
+    "Type `I'll check back tomorrow` to test it.",
+    "I checked it yesterday and again this morning: still pending.",
+    "Si quieres, te aviso cuando llegue.",
+    "I'll send it now.",
   ])("leaves offers and plain answers alone: %s", (text) => {
     expect(promisesFollowUp(text)).toBe(false);
+  });
+
+  it.each([
+    "I've set a reminder for 9:00 tomorrow.",
+    "Reminder set for Friday at 5 PM.",
+    "I'll check on the delivery tomorrow morning.",
+    "I'll send you the summary in 2 hours.",
+    "Got it. I'll ping you at 5pm.",
+    "I'll keep you posted.",
+    "I'll come back to this next week.",
+    "Ich melde mich morgen.",
+    "Te aviso cuando llegue el paquete.",
+    "Te recordaré mañana a las 9.",
+  ])("hears an intention promised or claimed with nothing behind it: %s", (text) => {
+    expect(promisesFollowUp(text)).toBe(true);
+  });
+});
+
+describe("schedulesCall", () => {
+  it("counts a trigger only when it sets something up, through the bridge too", () => {
+    expect(schedulesCall("trigger", '{"action":"create","when":"schedule"}')).toBe(true);
+    expect(schedulesCall("mcp__agents__trigger", '{"action":"resume","trigger_id":"r1"}')).toBe(true);
+    expect(schedulesCall("wait_until", '{"label":"the build"}')).toBe(true);
+    expect(schedulesCall("trigger", '{"action":"pause","trigger_id":"r1"}')).toBe(false);
+    expect(schedulesCall("trigger", '{"action":"note","note":"x"}')).toBe(false);
+    expect(schedulesCall("use_tool", '{"name":"trigger","arguments":{"action":"fail"}}')).toBe(false);
+    expect(schedulesCall("use_tool", '{"name":"trigger","arguments":{"action":"create"}}')).toBe(true);
+    expect(schedulesCall("read_file", "{}")).toBe(false);
+  });
+
+  it("does not let a paused automation stand in for the reminder it promised", () => {
+    const gates = new TurnGates();
+    gates.mount(["trigger", "wait_until"]);
+    gates.ran("trigger", '{"action":"pause","trigger_id":"r1"}', true, "Paused");
+    expect(gates.gate("Paused it. I'll remind you tomorrow to turn it back on.")).toContain("promises to do something later");
+    const scheduled = new TurnGates();
+    scheduled.mount(["trigger", "wait_until"]);
+    scheduled.ran("wait_until", '{"label":"the deck","kind":"time","minutes":1440}', true, "Waiting");
+    expect(scheduled.gate("I'll remind you tomorrow.")).toBeNull();
   });
 });
 

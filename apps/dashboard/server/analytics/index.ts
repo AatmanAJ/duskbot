@@ -29,8 +29,12 @@ interface RouteHelpers {
   /** a signed-in admin's browser */
   isOwner(req: IncomingMessage): boolean;
 }
-/** `optOut`: accounts that turned "help improve dusk bot" off: no usage counts, notes or events from them are kept */
-interface OptOutState { v: 1; optOut: string[] }
+/** `optOut`: accounts that turned "help improve dusk bot" off: no usage counts, notes or events from them are kept.
+ * `answered`: accounts that chose about usage counts themselves, which is what lets them through where counts need a yes
+ * first. `notesYes` and `notesNo`: a person's own session notes answer. `carriedOver`: accounts whose earlier
+ * setting kept session notes on, given once (`carryOverAt`); such an account with no answer of its own keeps notes on,
+ * until it reports from where counts need a yes first. */
+interface OptOutState { v: 1; optOut: string[]; answered?: string[]; notesYes?: string[]; notesNo?: string[]; carriedOver?: string[]; carryOverAt?: number }
 
 export const MAX_BATCH = 20;
 export const VISIT_IDLE_MS = 30 * 60_000;
@@ -63,6 +67,11 @@ export function createAnalytics(options: AnalyticsOptions) {
   const store = createJsonStore<OptOutState>(join(options.dataDir, "analytics.json"), () => ({ v: 1, optOut: [] }),
     (value): value is OptOutState => !!value && typeof value === "object" && Array.isArray((value as OptOutState).optOut));
   const optOut = new Set(store.state.optOut);
+  const answered = new Set(store.state.answered ?? []), notesYes = new Set(store.state.notesYes ?? []), notesNo = new Set(store.state.notesNo ?? []), carried = new Set(store.state.carriedOver ?? []);
+  const commitSets = () => {
+    Object.assign(store.state, { optOut: [...optOut], answered: [...answered], notesYes: [...notesYes], notesNo: [...notesNo], carriedOver: [...carried] });
+    store.commit();
+  };
   const forgetters: Array<(accountId: string) => void> = [];
   const stats = { written: 0, failed: 0, dropped: 0, lastFailureAt: null as number | null };
   // a visitor's daily id is an HMAC under a key that lives only in memory and changes every day: it counts unique
@@ -134,10 +143,35 @@ export function createAnalytics(options: AnalyticsOptions) {
     replied.add(accountId);
     void sink.once(`first_bot_reply|${accountId}`, null).then(fresh => { if (fresh) track("first_bot_reply", { accountId }); }, () => { replied.delete(accountId); stats.failed++; });
   }
+  /** a person's own answer about usage counts, made in an app or on the account page */
+  function answerUsage(accountId: string, on: boolean) {
+    const fresh = !answered.has(accountId);
+    answered.add(accountId);
+    if (optOut.has(accountId) !== !on) return setOptOut(accountId, !on);
+    if (fresh) commitSets();
+  }
+  /** usage counts are kept from this account: not turned off, and answered where counts need a yes first */
+  const usageAllowed = (accountId: string, strict: boolean) => !optOut.has(accountId) && (!strict || answered.has(accountId));
+  /** the account's session notes: its own answer, else its carried-over setting, else off */
+  const notesOf = (accountId: string): boolean => notesYes.has(accountId) || (!notesNo.has(accountId) && carried.has(accountId));
+  const notesAnswered = (accountId: string) => notesYes.has(accountId) || notesNo.has(accountId);
+  function setNotes(accountId: string, value: boolean) {
+    if (value) { notesYes.add(accountId); notesNo.delete(accountId); } else { notesNo.add(accountId); notesYes.delete(accountId); }
+    carried.delete(accountId);
+    commitSets();
+  }
+  /** a report or page from where counts need a yes first: a carried-over setting goes off */
+  function strictSeen(accountId: string) { if (carried.delete(accountId)) commitSets(); }
+  /** applies carried-over session notes settings once; nothing is marked done until a list was given */
+  function carryOver(ids: readonly string[] | null) {
+    if (store.state.carryOverAt !== undefined || !ids) return;
+    for (const id of ids) if (!notesYes.has(id) && !notesNo.has(id) && !optOut.has(id)) carried.add(id);
+    store.state.carryOverAt = now();
+    commitSets();
+  }
   function setOptOut(accountId: string, value: boolean) {
     if (value) optOut.add(accountId); else optOut.delete(accountId);
-    store.state.optOut = [...optOut];
-    store.commit();
+    commitSets();
     if (value) { for (const fn of forgetters) try { fn(accountId); } catch { stats.failed++; } return sink.forget(accountId).catch(() => { stats.failed++; }); }
   }
   /** an AI assistant's crawler asking the site for a page (robots.txt and llms.txt included) */
@@ -155,7 +189,9 @@ export function createAnalytics(options: AnalyticsOptions) {
   }
   async function forget(accountId: string) {
     replied.delete(accountId);
-    if (optOut.delete(accountId)) { store.state.optOut = [...optOut]; store.commit(); }
+    let changed = optOut.delete(accountId);
+    for (const set of [answered, notesYes, notesNo, carried]) changed = set.delete(accountId) || changed;
+    if (changed) commitSets();
     await sink.forget(accountId).catch(() => { stats.failed++; });
   }
 
@@ -198,18 +234,25 @@ export function createAnalytics(options: AnalyticsOptions) {
     if (path === "/v1/account/analytics" && (method === "GET" || method === "PUT")) {
       const owner = helpers.account(req, method === "PUT");
       if (!owner) { helpers.json(res, 401, { error: "Sign in to continue.", code: "signed_out" }); return true; }
+      const strict = anonymous(req);
+      if (strict) strictSeen(owner.id);
       if (method === "PUT") {
         const input = helpers.bodyObject(await helpers.readBody(req));
-        if (typeof input.optOut !== "boolean") { helpers.json(res, 400, { error: "Invalid request.", code: "invalid_request" }); return true; }
-        await setOptOut(owner.id, input.optOut);
+        const valid = (input.optOut === undefined || typeof input.optOut === "boolean") && (input.notes === undefined || typeof input.notes === "boolean") && (input.optOut !== undefined || input.notes !== undefined);
+        if (!valid) { helpers.json(res, 400, { error: "Invalid request.", code: "invalid_request" }); return true; }
+        if (typeof input.optOut === "boolean") await answerUsage(owner.id, !input.optOut);
+        if (typeof input.notes === "boolean") setNotes(owner.id, input.notes);
       }
-      helpers.json(res, 200, { optOut: optOut.has(owner.id) });
+      const askUsage = strict && !answered.has(owner.id) && !optOut.has(owner.id);
+      helpers.json(res, 200, { optOut: optOut.has(owner.id), notes: notesOf(owner.id), askUsage });
       return true;
     }
     return false;
   }
 
-  return { sink, presence, track, record, identify, crawlerVisit, onTrack: (fn: (name: EventName, input: Parameters<typeof record>[1]) => void) => { listeners.push(fn); }, appActive, botReplied, setOptOut, forget, handle, stats, optedOut: (accountId: string) => optOut.has(accountId),
+  return { sink, presence, track, record, identify, crawlerVisit, onTrack: (fn: (name: EventName, input: Parameters<typeof record>[1]) => void) => { listeners.push(fn); }, appActive, botReplied, setOptOut, answerUsage, usageAllowed, notesOf, notesAnswered, setNotes, strictSeen, carryOver, forget, handle, stats, optedOut: (accountId: string) => optOut.has(accountId),
+    /** where a request comes from needs a yes first for usage counts (the EU, the EEA, the UK, Switzerland, or nowhere Cloudflare can tell) */
+    strict: (req: IncomingMessage) => anonymous(req),
     onForget: (fn: (accountId: string) => void) => { forgetters.push(fn); }, rollups, close: () => { rollups.stop(); return store.close(); } };
 }
 export type Analytics = ReturnType<typeof createAnalytics>;

@@ -66,7 +66,7 @@ it("answers a bot's yes-or-no question with a 👍, and the bot goes on by itsel
     evidence.push({ reactionPrompt });
     expect(reactionPrompt).toContain("The current message is the person's reaction: they reacted 👍 to your earlier message instead of typing a reply.");
     expect(reactionPrompt).toContain("👍 means yes, go ahead. If that message asked them something, this is their answer: continue without asking again.");
-    expect(reactionPrompt).toContain("--- quoted excerpt ---\nI drafted the email to Sam. Shall I send it?\n--- end quoted excerpt ---\nCurrent message:\n👍");
+    expect(reactionPrompt).toContain("--- quoted message ---\nI drafted the email to Sam. Shall I send it?\n--- end quoted message ---\nCurrent message:\n👍");
 
     expect(await react(asked.id, "👍", true)).toMatchObject({ delivery: "none" });
     expect(await react(asked.id, "👍", false)).toMatchObject({ delivery: "none", message: { id: asked.id } });

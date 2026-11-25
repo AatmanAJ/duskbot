@@ -177,7 +177,7 @@ describe("connecting an AI", () => {
   });
 
   it("shows connected AIs as connected, not to be pressed again, with continue ready and more still to add", async () => {
-    f.state = { ...f.state, instances: nothingSignedIn() };
+    f.state = { ...f.state, instances: [freeOpenCode, ...nothingSignedIn()] };
     await show();
     await press("Get started");
     await choose("[data-funnel-plan]");
@@ -219,6 +219,28 @@ describe("connecting an AI", () => {
     expect(document.body.querySelector("[data-funnel-own]")).toBeNull();
     await choose("[data-funnel-plan]");
     expect(document.body.querySelector("[role=alert]")?.textContent).toContain("Claude");
+  });
+
+  it("offers free models only once they can answer: getting ready while they download, gone when none is coming", async () => {
+    f.state = { ...f.state, instances: nothingSignedIn(), config: { ...(f.state.config as object), freeBackupDownloading: true } };
+    await show();
+    await press("Get started");
+    const tile = () => document.body.querySelector<HTMLButtonElement>("[data-funnel-free]");
+    expect(tile()?.disabled, "not pickable while the free models download").toBe(true);
+    expect(tile()?.textContent).toContain("Getting them ready");
+    expect(tile()?.textContent).not.toContain("Ready now");
+    f.state = { ...f.state, instances: [freeOpenCode, ...nothingSignedIn()], config: { ...(f.state.config as object), freeBackupDownloading: undefined } };
+    await show();
+    expect(tile()?.disabled).toBe(false);
+    expect(tile()?.textContent).toContain("Ready now");
+
+    f.state = { ...f.state, instances: nothingSignedIn() };
+    await show();
+    expect(tile(), "no free models on their way: not offered").toBeNull();
+    expect(text()).not.toContain("Start free right now");
+    await choose("[data-funnel-plan]");
+    expect(button("Use free models instead")).toBeUndefined();
+    expect(f.onDone).not.toHaveBeenCalled();
   });
 
   it("Use on an AI the app only found on this computer records it as chosen before the chat opens, so the first send has an AI", async () => {

@@ -9,16 +9,20 @@ export const RemoteAgentSettingsPanel = lazyScreen("RemoteAgentSettingsPanel", a
 export const RoomPanel = lazyScreen("RoomPanel", async () => (await import("./room-panel/RoomPanel")).RoomPanel);
 export const SettingsModal = lazyScreen("SettingsModal", async () => (await import("./SettingsModal")).SettingsModal);
 export const VoiceSetupDialog = lazyScreen("VoiceSetupDialog", async () => (await import("./VoiceSetupDialog")).VoiceSetupDialog);
+export const InboxPanel = lazyScreen("InboxPanel", async () => (await import("./inbox/InboxPanel")).InboxPanel);
+export const EngineSetupCard = lazyScreen("EngineSetup", async () => (await import("./EngineSetup")).EngineSetup);
 
 // Rarely opened, so never fetched ahead. The team library is what brings the YAML parser in.
 export const CloudAddDialog = lazyScreen("CloudAddDialog", async () => (await import("./CloudAddDialog")).CloudAddDialog);
 export const PhoneAppDialog = lazyScreen("PhoneAppDialog", async () => (await import("./PhoneAppDialog")).PhoneAppDialog);
 export const TeamLibraryPanel = lazyScreen("TeamLibraryPanel", async () => (await import("./TeamLibraryPanel")).TeamLibraryPanel);
+export const TraceDialog = lazyScreen("TraceDialog", async () => (await import("./usage/TraceView")).TraceDialog);
+export const PlaceSetupSheet = lazyScreen("PlaceSetup", async () => (await import("./PlaceSetup")).PlaceSetup);
 
 // Most opened first: a Cloud page fetches these in this order.
 const SCREENS = [
   SettingsModal, KeyboardShortcutsModal,
-  RemoteAgentSettingsPanel, RoomPanel,
+  RemoteAgentSettingsPanel, RoomPanel, InboxPanel, EngineSetupCard,
 ];
 const DEV_SCREENS = [
   ...SCREENS,

@@ -10,7 +10,7 @@ const response = (body: unknown, status = 200) => new Response(JSON.stringify(bo
 function mount(request: typeof fetch) {
   vi.useFakeTimers();
   vi.stubGlobal("fetch", request);
-  vi.stubGlobal("window", {});
+  vi.stubGlobal("window", new EventTarget());
   let dispatch!: Dispatch<Action>;
   function Capture() { dispatch = useStore().dispatch; return null; }
   renderToStaticMarkup(createElement(StoreProvider, null, createElement(Capture)));
@@ -76,7 +76,7 @@ it("asks again with the same sendId when an edit's answer timed out at the gatew
   });
   vi.useFakeTimers();
   vi.stubGlobal("fetch", requests);
-  vi.stubGlobal("window", {});
+  vi.stubGlobal("window", new EventTarget());
   let dispatch!: Dispatch<Action>;
   function Capture() { dispatch = useStore().dispatch; return null; }
   renderToStaticMarkup(createElement(StoreProvider, null, createElement(Capture)));

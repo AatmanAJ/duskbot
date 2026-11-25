@@ -1,11 +1,18 @@
 import { useState } from "react";
 
-import { t } from "@/lib/i18n";
+import { t, tPreferred } from "@/lib/i18n";
 import { deleteMemoryDoc, fetchMemoryDoc, MEMORY_INDEX, saveMemoryDoc, type MemoryDoc } from "@/lib/memory";
 import type { Bot } from "@/state/store";
 import { panelMemoryNotes, withMemoryNote, withoutMemoryNote, type PanelMemoryNote } from "../memory-notes";
 import { useMemoryDoc } from "../use-memory-doc";
 import { friendlyError } from "@/lib/plain-error";
+
+const FORGET_LABEL_MAX = 60;
+
+export function forgetLabel(note: string): string {
+  const text = note.length > FORGET_LABEL_MAX ? `${note.slice(0, FORGET_LABEL_MAX - 1).trimEnd()}…` : note;
+  return tPreferred("botPanel.memory.forgetNote", "botPanel.memory.forget", { note: text });
+}
 
 function errorText(error: unknown, fallback: string): string {
   return friendlyError(error, fallback);
@@ -80,5 +87,5 @@ export function useMemoryEditor(bot: Bot) {
   };
 
   const settleForgotten = () => setForgotten(null);
-  return { memoryOn, readError: memory.error, notes, index, draft, setDraft, saving, error, forget, add, forgotten, settleForgotten };
+  return { memoryOn, readError: memory.error, readAgain: memory.reload, notes, index, draft, setDraft, saving, error, forget, add, forgotten, settleForgotten };
 }

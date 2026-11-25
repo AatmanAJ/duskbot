@@ -9,6 +9,8 @@ import {
   memoryOverview,
   openMemoryLocation,
   readMemoryDoc,
+  type MemoryDoc,
+  type MemoryOverview,
 } from "../memory-store.ts";
 import {
   flushMemoryJournal,
@@ -23,7 +25,14 @@ import { listLearnedFacts, removeLearned } from "../profile-learned.ts";
 import { listGeneralHistory, restoreGeneralHistory } from "../general-memory.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import { importDistillBody, type ImportDistill } from "../import-distill.ts";
+import { isArchiveTopic } from "../../shared/memory-topics.ts";
 import { PASS, type RouteHandler } from "./table.ts";
+
+/** MEMORY.md, then every topic file but the archive: the notes the bot panel lists. */
+function memoryNotes(id: string, overview: MemoryOverview): MemoryDoc[] {
+  const topics = overview.topics.filter((topic) => !isArchiveTopic(topic.name)).map((topic) => topic.path);
+  return [MEMORY_INDEX, ...topics].map((path) => readMemoryDoc(id, path));
+}
 
 export interface BotMemoryRouteDeps {
   bot(id: string): { id: string; memoryUpkeep?: boolean } | null | undefined;
@@ -59,6 +68,8 @@ export function createBotMemoryRoutes(deps: BotMemoryRouteDeps): RouteHandler {
 
   return async ({ req, res, url, path, method, auth, json, readBody }) => {
     let m: RegExpMatchArray | null = null;
+    const withNotes = (id: string, overview: MemoryOverview) =>
+      url.searchParams.has("notes") ? { ...overview, notes: memoryNotes(id, overview) } : overview;
     const write = <T>(_botId: string, change: () => T): T => change();
     /** One memory file of `id`, a bot's own folder or a layer of it. */
     const serveFile = async (id: string, guarded: <T>(change: () => T) => T) => {
@@ -99,7 +110,7 @@ export function createBotMemoryRoutes(deps: BotMemoryRouteDeps): RouteHandler {
       try {
         const overview = memoryOverview(m[1]);
         // `text` and `truncated` stay one release for clients of the old whole-file shape.
-        return json(res, 200, { ...overview, text: readMemoryDoc(m[1], MEMORY_INDEX).text, truncated: overview.index.truncated });
+        return json(res, 200, { ...withNotes(m[1], overview), text: readMemoryDoc(m[1], MEMORY_INDEX).text, truncated: overview.index.truncated });
       } catch (error) {
         return replyMemoryError(res, error);
       }
@@ -129,7 +140,13 @@ export function createBotMemoryRoutes(deps: BotMemoryRouteDeps): RouteHandler {
     if (m && (method === "GET" || m[2])) {
       const layer = deps.bot(m[1]) ? deps.ownLayer?.(auth, m[1]) ?? null : null;
       if (!layer) return json(res, 404, { error: "no such bot" });
-      if (!m[2]) return json(res, 200, memoryOverview(layer));
+      if (!m[2]) {
+        try {
+          return json(res, 200, withNotes(layer, memoryOverview(layer)));
+        } catch (error) {
+          return replyMemoryError(res, error);
+        }
+      }
       if (!["GET", "PUT", "DELETE"].includes(method)) return PASS;
       return serveFile(layer, (change) => change());
     }

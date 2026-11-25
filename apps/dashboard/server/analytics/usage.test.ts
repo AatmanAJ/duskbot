@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { UsageReport, UsageTurn } from "../../../../shared/usage-signals.ts";
-import { createUsage, latencyBucket, memoryUsageStore } from "./usage.ts";
+import { UNLINK_BATCH, createUsage, latencyBucket, memoryUsageStore, mongoUsageStore, noteKey, notesOnly, sweepExpired, ttlIndex, unlinkNotes, unlinkedDoc } from "./usage.ts";
 import { focusRules, summarize, themesOf, type UsageAnswer } from "./usage-summary.ts";
 import { dayOf } from "./events.ts";
 
@@ -67,7 +67,7 @@ describe("usage rollups", () => {
     await usage.ingest("acct_quiet", "ws_3", report({ frustrations: [f], sessions: [s], digests: [{ id: "digest0001", at: NOW - 1000, turns: 40, days: 4, summary: "they use it for email." }] }));
     const [stored] = await store.records("frustration", 0, NOW + 1, 10);
     expect((stored!.data as { summary?: string }).summary).toBe(f.summary);
-    expect((await store.records("session", 0, NOW + 1, 10))[0]!.data).toEqual(s);
+    expect((await store.records("session", 0, NOW + 1, 10))[0]!.data).toEqual({ ...s, id: noteKey(s.id) });
     expect(await store.records("digest", 0, NOW + 1, 10)).toHaveLength(1);
     expect((await store.daily(dayOf(NOW), dayOf(NOW)))[0]!.c.sessions).toBe(1);
     expect(problems).toEqual(["claude|email|gmail"]);
@@ -143,5 +143,149 @@ describe("usage answer and focus", () => {
       adoption: [], categories: [], themes: [], people: { topShare: null } } as unknown as UsageAnswer;
     expect(focusRules(empty)).toEqual([]);
     expect(themesOf([])).toEqual([]);
+  });
+});
+
+describe("session notes kept apart from people", () => {
+  const f = { id: "frust00001", at: NOW - 1000, engine: "claude" as const, category: "email" as const, tools: ["app" as const], apps: ["gmail"], signals: ["retried" as const], retries: 2, summary: "gmail would not connect." };
+  it("keeps notes only with a yes, under a hashed id with no account or workspace, while the account's day still counts them", async () => {
+    const store = memoryUsageStore(() => NOW);
+    const usage = createUsage({ store, now: () => NOW, optedOut: () => false, notesOn: id => id === "acct_yes", isTest: (_, ws) => ws.startsWith("qatest") });
+    await usage.ingest("acct_no", "ws_1", report({ frustrations: [f] }));
+    expect(await store.records("frustration", 0, NOW + 1, 10)).toEqual([]);
+    await usage.ingest("acct_yes", "ws_2", report({ turns: [turn()], frustrations: [f] }));
+    await usage.ingest("acct_yes", "qatest_ws", report({ frustrations: [{ ...f, id: "frust00002" }] }));
+    const notes = await store.records("frustration", 0, NOW + 1, 10);
+    expect(notes).toHaveLength(2);
+    for (const note of notes) {
+      expect(note).toMatchObject({ accountId: "", workspaceId: "" });
+      expect(note.id).toBe((note.data as { id: string }).id);
+      expect(JSON.stringify(note)).not.toMatch(/acct_yes|ws_2|frust0000/);
+    }
+    expect(notes.filter(note => note.test)).toHaveLength(1);
+    expect((await store.records("turn", 0, NOW + 1, 10))[0]).toMatchObject({ accountId: "acct_yes", workspaceId: "ws_2" });
+    expect((await store.people(dayOf(NOW), dayOf(NOW)))[0]).toMatchObject({ accountId: "acct_yes", frustrations: 2, turns: 1 });
+    await usage.ingest("acct_yes", "ws_2", report({ frustrations: [f] }));
+    expect(await store.records("frustration", 0, NOW + 1, 10)).toHaveLength(2);
+  });
+  it("deletes a workspace's notes by the ids it sent and, when asked, its records; another workspace's stay", async () => {
+    const store = memoryUsageStore(() => NOW), usage = createUsage({ store, now: () => NOW, optedOut: () => false, notesOn: () => true });
+    await usage.ingest("acct_a", "ws_1", report({ turns: [turn()], frustrations: [f] }));
+    await usage.ingest("acct_a", "ws_2", report({ turns: [turn()], frustrations: [{ ...f, id: "frust00002" }] }));
+    await usage.forgetShared("ws_1", { notes: ["frust00001"], records: true });
+    expect((await store.records("frustration", 0, NOW + 1, 10)).map(note => note.id)).toEqual([noteKey("frust00002")]);
+    expect((await store.records("turn", 0, NOW + 1, 10)).map(record => record.workspaceId)).toEqual(["ws_2"]);
+  });
+  it("strips a report down to its notes", () => {
+    expect(notesOnly(report({ turns: [turn()], frustrations: [f], snapshot: { bots: 1, rooms: 0, routines: 0, webhooks: 0, appEvents: 0, skills: 0 } }))).toEqual({ turns: [], runs: [], frustrations: [f] });
+  });
+});
+
+describe("moving stored notes away from their account", () => {
+  type Doc = Record<string, unknown> & { _id: string };
+  function collection(docs: Doc[]) {
+    const all = new Map(docs.map(doc => [doc._id, doc]));
+    const matches = (doc: Doc) => ["frustration", "session", "digest"].includes(doc.kind as string) && ("accountId" in doc || "workspaceId" in doc);
+    return {
+      all,
+      find: () => ({ limit: (n: number) => ({ toArray: async () => [...all.values()].filter(matches).slice(0, n) }) }),
+      insertMany: async (list: Doc[]) => {
+        const writeErrors: Array<{ index: number; code: number }> = [];
+        list.forEach((doc, index) => { if (all.has(doc._id)) writeErrors.push({ index, code: 11000 }); else all.set(doc._id, doc); });
+        if (writeErrors.length) throw Object.assign(new Error("dup"), { writeErrors });
+      },
+      deleteMany: async (filter: { _id: { $in: string[] } }) => { for (const id of filter._id.$in) all.delete(id); },
+    };
+  }
+  const note = (n: number): Doc => ({ _id: `ws_1:frust${String(n).padStart(5, "0")}`, kind: "frustration", at: new Date(NOW), accountId: "acct_a", workspaceId: "ws_1", ran: { place: "desktop" },
+    data: { id: `frust${String(n).padStart(5, "0")}`, at: NOW, summary: "x" } });
+  it("re-keys every note by its hashed id without account or workspace, in batches, and leaves turns alone", async () => {
+    const turnDoc: Doc = { _id: "ws_1:turn000001", kind: "turn", at: new Date(NOW), accountId: "acct_a", workspaceId: "ws_1", data: { id: "turn000001" } };
+    const docs = [...Array.from({ length: UNLINK_BATCH + 3 }, (_, i) => note(i)), turnDoc];
+    const events = collection(docs);
+    expect(await unlinkNotes(events as never)).toBe(UNLINK_BATCH + 3);
+    expect(events.all.get(turnDoc._id)).toEqual(turnDoc);
+    const moved = events.all.get(noteKey("frust00001"))!;
+    expect(moved).toEqual({ _id: noteKey("frust00001"), kind: "frustration", at: new Date(NOW), ran: { place: "desktop" }, data: { id: noteKey("frust00001"), at: NOW, summary: "x" } });
+    expect([...events.all.values()].filter(doc => doc.kind === "frustration").every(doc => !("accountId" in doc) && !("workspaceId" in doc))).toBe(true);
+    expect(await unlinkNotes(events as never)).toBe(0);
+  });
+  it("finishes a run that stopped after inserting but before deleting", async () => {
+    const old = note(7), events = collection([old, { ...unlinkedDoc(old as never) } as Doc]);
+    expect(await unlinkNotes(events as never)).toBe(1);
+    expect([...events.all.keys()]).toEqual([noteKey("frust00007")]);
+  });
+  it("changes the TTL of an index made with another one, and leaves a matching one alone", async () => {
+    const commands: unknown[] = [];
+    const run = async (command: Record<string, unknown>) => { commands.push(command); };
+    const events = (expire: number) => ({ indexes: async () => [{ key: { _id: 1 } }, { key: { at: 1 }, expireAfterSeconds: expire }], collectionName: "usage_events" });
+    expect(await ttlIndex(events(90 * 86_400) as never, 30 * 86_400, run)).toBe("changed");
+    expect(await ttlIndex(events(30 * 86_400) as never, 30 * 86_400, run)).toBe("ok");
+    expect(await ttlIndex({ indexes: async () => { throw Object.assign(new Error("ns"), { codeName: "NamespaceNotFound" }); } } as never, 30 * 86_400, run)).toBe("ok");
+    expect(commands).toEqual([{ collMod: "usage_events", index: { keyPattern: { at: 1 }, expireAfterSeconds: 30 * 86_400 } }]);
+  });
+
+  // the service's mongo user is readWrite: collMod (dbAdmin) is refused with code 13, and on some setups dropIndex too
+  const unauthorized = () => Object.assign(new Error("not authorized"), { code: 13, codeName: "Unauthorized" });
+  type Spec = { key: Record<string, number>; name?: string; expireAfterSeconds?: number };
+  function fakeDb({ dropRefused, docs = [] }: { dropRefused: boolean; docs?: Array<{ _id: string; at: Date }> }) {
+    const indexes = new Map<string, Spec[]>([["usage_events", [{ key: { _id: 1 }, name: "_id_" }, { key: { at: 1 }, name: "at_1", expireAfterSeconds: 90 * 86_400 }]]]);
+    const rows = new Map(docs.map(doc => [doc._id, doc]));
+    const nameOf = (key: Record<string, number>) => Object.entries(key).map(([field, dir]) => `${field}_${dir}`).join("_");
+    const make = (spec: Spec, list: Spec[]) => {
+      const same = list.find(item => nameOf(item.key) === nameOf(spec.key));
+      if (same && same.expireAfterSeconds !== spec.expireAfterSeconds) throw Object.assign(new Error("conflict"), { code: 85, codeName: "IndexOptionsConflict" });
+      if (!same) list.push({ ...spec, name: nameOf(spec.key) });
+    };
+    const db = {
+      command: async () => { throw unauthorized(); },
+      collection: (name: string) => {
+        const list = indexes.get(name) ?? (indexes.set(name, []), indexes.get(name)!);
+        return {
+          collectionName: name, db: undefined as unknown,
+          indexes: async () => list.map(spec => ({ ...spec })),
+          createIndexes: async (specs: Spec[]) => { for (const spec of specs) make(spec, list); },
+          createIndex: async (key: Record<string, number>, options: { expireAfterSeconds?: number }) => make({ key, ...options }, list),
+          dropIndex: async (index: string) => { if (dropRefused) throw unauthorized(); list.splice(list.findIndex(spec => spec.name === index), 1); },
+          find: (filter: { at?: { $lt: Date } }) => ({ limit: (n: number) => ({ toArray: async () =>
+            name !== "usage_events" ? [] : [...rows.values()].filter(doc => filter.at ? doc.at < filter.at.$lt : false).slice(0, n) }) }),
+          deleteMany: vi.fn(async (filter: { _id: { $in: string[] } }) => { let deletedCount = 0; for (const id of filter._id.$in) if (rows.delete(id)) deletedCount++; return { deletedCount }; }),
+          insertMany: async () => {},
+        };
+      },
+    };
+    return { db, indexes, rows };
+  }
+  it("starts when collMod is refused, and makes the TTL again with dropIndex and createIndex", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {}), log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const { db, indexes } = fakeDb({ dropRefused: false });
+      await expect(mongoUsageStore(db as never)).resolves.toBeTruthy();
+      expect(indexes.get("usage_events")!.find(spec => spec.name === "at_1")!.expireAfterSeconds).toBe(30 * 86_400);
+      expect(warn).not.toHaveBeenCalled();
+    } finally { warn.mockRestore(); log.mockRestore(); }
+  });
+  it("starts when collMod and dropIndex are both refused, warns once and deletes records past 30 days itself", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const old = (i: number) => ({ _id: `old${i}`, at: new Date(Date.now() - 31 * 86_400_000) }), fresh = { _id: "fresh", at: new Date(Date.now() - 86_400_000) };
+      const { db, indexes, rows } = fakeDb({ dropRefused: true, docs: [old(1), old(2), old(3), fresh] });
+      await expect(mongoUsageStore(db as never, { batch: 2 })).resolves.toBeTruthy();
+      // the 90 day index stays (it cannot be changed) and the other indexes are still made
+      expect(indexes.get("usage_events")!.map(spec => spec.name)).toEqual(["_id_", "at_1", "kind_1_at_-1", "accountId_1", "workspaceId_1"]);
+      await vi.waitFor(() => expect([...rows.keys()]).toEqual(["fresh"]));
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]![0])).toContain("deleted hourly");
+    } finally { warn.mockRestore(); }
+  });
+  it("sweeps in capped batches and stops when nothing is left", async () => {
+    const at = new Date(NOW - 40 * 86_400_000), rows = new Map(Array.from({ length: 7 }, (_, i) => [`r${i}`, { _id: `r${i}`, at }]));
+    const events = {
+      find: (filter: { at: { $lt: Date } }) => ({ limit: (n: number) => ({ toArray: async () => [...rows.values()].filter(doc => doc.at < filter.at.$lt).slice(0, n) }) }),
+      deleteMany: async (filter: { _id: { $in: string[] } }) => { for (const id of filter._id.$in) rows.delete(id); return { deletedCount: filter._id.$in.length }; },
+    };
+    expect(await sweepExpired(events as never, 30 * 86_400, { batch: 2, maxBatches: 3, now: () => NOW })).toBe(6);
+    expect(await sweepExpired(events as never, 30 * 86_400, { batch: 2, maxBatches: 3, now: () => NOW })).toBe(1);
+    expect(await sweepExpired(events as never, 30 * 86_400, { batch: 2, maxBatches: 3, now: () => NOW })).toBe(0);
   });
 });

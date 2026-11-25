@@ -80,6 +80,11 @@ describe("curateModelCatalog", () => {
     });
   });
 
+  it("never adds a model the signed-in account refused", () => {
+    expect(curateModelCatalog(live, CURATED, ["gpt-6.2-sol"]).options.map((option) => option.id))
+      .toEqual(["gpt-6.2-astra", "gpt-6.1-terra", "gpt-6-astra", "gpt-6-sol", "gpt-7-nova", "omlx::qwen"]);
+  });
+
   it("puts additions with no later curated row before the custom rows", () => {
     const out = curateModelCatalog({ default: "x", options: [{ id: "x", label: "x" }, { id: "p::y", label: "y", custom: true }] }, { models: [{ id: "new", label: "New", add: true }] });
     expect(out.options.map((option) => option.id)).toEqual(["x", "new", "p::y"]);
@@ -213,13 +218,16 @@ describe("DuskModelCatalog", () => {
     expect(first.options.map((option) => option.id)).toEqual(["gpt-6.2-sol", "gpt-6.2-astra", "gpt-6-sol"]);
     expect(a.curate("codex", live)).toBe(first);
     expect(a.curate("grok", live)).toBe(live);
+    const refused = a.curate("codex", live, ["gpt-6.2-sol"]);
+    expect(refused.options.map((option) => option.id)).toEqual(["gpt-6.2-astra", "gpt-6-sol"]);
+    expect(a.curate("codex", live, ["gpt-6.2-sol"])).toBe(refused);
   });
 });
 
 describe("the registry and stale engine lists", () => {
   afterEach(() => rmSync(join(DATA_DIR, "providers", "engine-models"), { recursive: true, force: true }));
 
-  function fakeDriver(kind: string, key: string | undefined, models: () => ModelCatalog, refreshModels?: () => Promise<void>): ProviderDriver<Record<string, unknown>> {
+  function fakeDriver(kind: string, key: string | undefined, models: () => ModelCatalog, refreshModels?: () => Promise<void>, refusedModels?: () => string[]): ProviderDriver<Record<string, unknown>> {
     return {
       driverKind: kind,
       metadata: { displayName: kind },
@@ -235,6 +243,7 @@ describe("the registry and stale engine lists", () => {
           get models() { return models(); },
           ...(key ? { modelCatalogKey: key } : {}),
           ...(refreshModels ? { refreshModels } : {}),
+          ...(refusedModels ? { refusedModels } : {}),
           snapshot: async () => ({ state: "available", version: "0" }),
           adapter: {
             provider: kind,
@@ -271,6 +280,23 @@ describe("the registry and stale engine lists", () => {
       list = { default: "gpt-6.2-astra", options: [{ id: "gpt-6.2-astra", label: "GPT-6.2-Astra" }] };
       expect(registry.get("a")!.models.default).toBe("gpt-6.2-astra");
       expect(registry.get("a")!.models.options.map((option) => option.id)).toEqual(["gpt-6.2-sol", "gpt-6.2-astra"]);
+      await registry.disposeAll();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a curated addition out once the engine's account refused it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "dusk-models-reg-"));
+    try {
+      const catalog = new DuskModelCatalog({ dataDir: dir, bundled: doc("2026-11-18T00:00:00Z"), env: {}, log: () => {} });
+      const list: ModelCatalog = { default: "gpt-6-sol", options: [{ id: "gpt-6-sol", label: "GPT-6-Sol" }] };
+      const refused: string[] = [];
+      const registry = new ProviderRegistry([fakeDriver("curated", "codex", () => list, undefined, () => refused)], { modelCatalog: catalog, npmAvailable: () => false });
+      await registry.load({ a: { driver: "curated" } });
+      expect(registry.get("a")!.models.options.map((option) => option.id)).toEqual(["gpt-6.2-sol", "gpt-6.2-astra", "gpt-6-sol"]);
+      refused.push("gpt-6.2-sol");
+      expect(registry.get("a")!.models.options.map((option) => option.id)).toEqual(["gpt-6.2-astra", "gpt-6-sol"]);
       await registry.disposeAll();
     } finally {
       rmSync(dir, { recursive: true, force: true });

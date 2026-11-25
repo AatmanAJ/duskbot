@@ -1,11 +1,11 @@
 {
  "/": {
-  "hash": "c51edad08ee53063",
-  "lastmod": "2026-11-22"
+  "hash": "3da29666f64c9e2c",
+  "lastmod": "2026-11-25"
  },
  "/download": {
-  "hash": "466315e03558f4ab",
-  "lastmod": "2026-11-24"
+  "hash": "6584c6d5fd133b7b",
+  "lastmod": "2026-11-25"
  },
  "/waitlist": {
   "hash": "799f5ae949bf1d86",
@@ -40,8 +40,8 @@
   "lastmod": "2026-11-15"
  },
  "/privacy": {
-  "hash": "90b6dd90346c2159",
-  "lastmod": "2026-11-16"
+  "hash": "861a127bcd89565b",
+  "lastmod": "2026-11-25"
  },
  "/cookies": {
   "hash": "6b87097921163557",
@@ -68,8 +68,8 @@
   "lastmod": "2026-11-12"
  },
  "/docs/getting-started": {
-  "hash": "5e69336a5b4dd5f8",
-  "lastmod": "2026-11-12"
+  "hash": "562aa82e721bef5d",
+  "lastmod": "2026-11-25"
  },
  "/docs/dusk-cloud": {
   "hash": "6d57d759fc68049e",
@@ -92,8 +92,8 @@
   "lastmod": "2026-11-12"
  },
  "/docs/routines": {
-  "hash": "acfef2ceec030726",
-  "lastmod": "2026-11-12"
+  "hash": "67c57d6235f230d0",
+  "lastmod": "2026-11-23"
  },
  "/docs/group-chats": {
   "hash": "8bba7c074231606b",
@@ -120,12 +120,12 @@
   "lastmod": "2026-11-12"
  },
  "/docs/troubleshooting": {
-  "hash": "f1051e928f847e4e",
-  "lastmod": "2026-11-12"
+  "hash": "4f40999dbd68d6d5",
+  "lastmod": "2026-11-23"
  },
  "/docs/faq": {
-  "hash": "17d28d6ce36fcf7d",
-  "lastmod": "2026-11-19"
+  "hash": "592f7945ab633c06",
+  "lastmod": "2026-11-25"
  },
  "/docs": {
   "hash": "dbdb89858b859687",
@@ -176,8 +176,8 @@
   "lastmod": "2026-11-20"
  },
  "/alternatives/grok-bot": {
-  "hash": "85e18f1391df2a24",
-  "lastmod": "2026-11-20"
+  "hash": "1bba26ee174a9c1f",
+  "lastmod": "2026-11-23"
  },
  "/alternatives/gumloop": {
   "hash": "b67d9c975c239200",
@@ -272,16 +272,16 @@
   "lastmod": "2026-11-20"
  },
  "/glossary/ai-routine": {
-  "hash": "4904b92a5d062d16",
-  "lastmod": "2026-11-20"
+  "hash": "0a98702bf38f08bd",
+  "lastmod": "2026-11-23"
  },
  "/glossary/always-on-ai-agent": {
   "hash": "0712f9be4dbb7f51",
   "lastmod": "2026-11-20"
  },
  "/glossary/background-agent": {
-  "hash": "dcca5a05123b9e96",
-  "lastmod": "2026-11-20"
+  "hash": "fdb74acd42b71e5d",
+  "lastmod": "2026-11-23"
  },
  "/glossary/browser-agent": {
   "hash": "755fe23f37af7a30",
@@ -360,8 +360,8 @@
   "lastmod": "2026-11-20"
  },
  "/guides/grok-tasks": {
-  "hash": "766df837924e061d",
-  "lastmod": "2026-11-20"
+  "hash": "2f57b1c9f1ccb412",
+  "lastmod": "2026-11-23"
  },
  "/guides/how-much-does-an-ai-agent-cost": {
   "hash": "d859c6605d03fb11",
@@ -376,8 +376,8 @@
   "lastmod": "2026-11-20"
  },
  "/guides/move-from-grok-bot": {
-  "hash": "b6c5a2ee491357db",
-  "lastmod": "2026-11-20"
+  "hash": "4ae632f5a1c63ed3",
+  "lastmod": "2026-11-23"
  },
  "/guides/openclaw-clawdbot-moltbot-explained": {
   "hash": "23be5f230f7d3d33",
@@ -528,8 +528,8 @@
   "lastmod": "2026-11-12"
  },
  "/integrations/gmail/search-people": {
-  "hash": "64ba3be598c261dc",
-  "lastmod": "2026-11-12"
+  "hash": "8e949cf2d926bc04",
+  "lastmod": "2026-11-23"
  },
  "/integrations/gmail/send-draft": {
   "hash": "b447754dff8e4950",
@@ -952,8 +952,8 @@
   "lastmod": "2026-11-20"
  },
  "/routines/github-issue-triage": {
-  "hash": "73777d53e0536ac8",
-  "lastmod": "2026-11-12"
+  "hash": "1bb20491cf57266e",
+  "lastmod": "2026-11-23"
  },
  "/routines/github-pr-review-reminder": {
   "hash": "a54b641d70603dda",
@@ -1024,8 +1024,8 @@
   "lastmod": "2026-11-20"
  },
  "/routines/weekly-calendar-preview": {
-  "hash": "0b46abd4c6e6bc70",
-  "lastmod": "2026-11-12"
+  "hash": "495391f02d70ca43",
+  "lastmod": "2026-11-23"
  },
  "/routines/weekly-receipts-sweep": {
   "hash": "30b56dbefbcb9ca6",
@@ -1056,8 +1056,8 @@
   "lastmod": "2026-11-20"
  },
  "/use-cases/competitor-monitoring": {
-  "hash": "7fb3a2f9fba282e8",
-  "lastmod": "2026-11-12"
+  "hash": "f01cf8c8ccc102c0",
+  "lastmod": "2026-11-23"
  },
  "/use-cases/content-repurposing": {
   "hash": "85d307567748640d",
@@ -1072,8 +1072,8 @@
   "lastmod": "2026-11-20"
  },
  "/use-cases/daily-briefing": {
-  "hash": "568f3b977e4a9020",
-  "lastmod": "2026-11-12"
+  "hash": "ee055d9b2e639c88",
+  "lastmod": "2026-11-23"
  },
  "/use-cases/email-triage": {
   "hash": "3b29e104f4ff0ff5",

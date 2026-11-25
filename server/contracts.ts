@@ -7,6 +7,7 @@ import type {
   DriverKind, InstanceId, ModelVariantOption, RuntimeEventListener, ThreadId, TurnId,
 } from "../shared/runtime-events.ts";
 import type { ProviderIcon } from "../shared/provider-icon.ts";
+import type { ChatBackup, ChatCompletion } from "./drivers/chat-fallback.ts";
 
 export type { CloudBackend, EffortLevel, ModelSelection } from "../shared/wire.ts";
 export type {
@@ -180,7 +181,7 @@ export interface SendTurnInput {
     /** The built-in browser's MCP proxy: one tab per bot, in its own persistent partition. */
     browser?: { command: string; args: string[]; env: Record<string, string> };
     /** This computer's shell (run_command, find_files) for an engine with none of its own, on the desktop app's own server. */
-    shell?: { command: string; args: string[]; env: Record<string, string> };
+    shell?: { command: string; args: string[]; env: Record<string, string>; box?: { rw: string[]; botId?: string } };
     /** The Data tools' MCP proxy: DuckDB on this bot's own database. */
     data?: { command: string; args: string[]; env: Record<string, string> };
     /** The Email tools' MCP proxy: the harness holds the passwords and the per-bot verdict. */
@@ -209,8 +210,12 @@ export interface SendTurnInput {
   botSettingsFile?: string;
   /** Per-call ceiling (ms) for this turn's MCP tools; absent is the driver's default (10 min). */
   mcpCallTimeoutMs?: number;
-  /** Times an API-model turn that answers after a failed tool call is sent back to re-run it (`loopGuard.correctiveRounds`); never after a denial. */
+  /** Times an API-model turn that answers after a failed tool call, without saying what failed, is sent back to fix it
+   * (`loopGuard.correctiveRounds`); absent is the driver's default (2); never after a denial. */
   toolErrorCorrectiveRounds?: number;
+  /** The chat-completions AIs a chat-engine turn falls back to, best first, when its own AI's provider refuses or drops a
+   * request after its retries; read only on such a failure: `limit` for a usage or rate limit, `outage` for anything else. */
+  chatBackups?: (why: "limit" | "outage") => readonly ChatBackup[];
 }
 
 /** An MCP server this machine starts and talks to over stdio. */
@@ -294,6 +299,8 @@ export interface ProviderAdapter {
     askTool?: ToolIdentity;
   };
   sendTurn(input: SendTurnInput): Promise<TurnStartResult>;
+  /** A chat-completions engine's one streamed request, for another chat engine's turn to fall back to. */
+  chatCompletion?: ChatCompletion;
   interruptTurn(threadId: ThreadId, turnId?: TurnId): Promise<void>;
   /** Never throws for a vanished ask: `unavailable` means nobody could take the answer, and the caller treats it as a deny. */
   respondToRequest(
@@ -563,6 +570,8 @@ export interface ProviderInstance {
   /** The engine in dusk.bot's model catalog (server/model-catalog/dusk-models.json) whose names and additions apply to
    * `models`; unset where the list is fixed by someone else (a company's models, a ChatGPT plan's own list). */
   readonly modelCatalogKey?: string;
+  /** Models the signed-in account refused although its engine or dusk.bot's catalog lists them; never added back to `models`. */
+  readonly refusedModels?: () => readonly string[];
   /** False while the sign-in can refuse a model its catalog lists (Codex on a ChatGPT account): a short message and background text then stay on the bot's own model. */
   readonly quickModelsUsable?: () => boolean;
   /** Refresh a live catalog without recreating the provider instance. */

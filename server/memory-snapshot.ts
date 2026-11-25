@@ -69,3 +69,8 @@ export function takeMemoryDelta(key: string): string {
   known.pending = [];
   return `Saved to your memory since this conversation started (your instructions show the older list):\n${notes.join("\n")}`;
 }
+
+/** A summarized conversation starts its next turn from memory as it is now, the way a fresh session would. */
+export function releaseHeldMemory(key: string): void {
+  held.delete(key);
+}

@@ -32,7 +32,7 @@ the one you already have: claude, chatgpt, gemini, grok and others. or an api ke
 
 ### do i need a paid ai plan?
 
-you need some ai: a subscription, an api key or a local model. dusk bot doesn't come with one, and ai usage is billed by your provider.
+no. the desktop app and dusk cloud come with free models (through opencode), so you can start with no ai account and no card. on [your own server](/docs/your-own-server) you bring the ai yourself. for heavier work, sign in with a plan you already have, add an api key or run a model yourself; that usage is billed by your provider.
 
 ### does dusk bot see what i say to my bots?
 

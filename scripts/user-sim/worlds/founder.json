@@ -1,0 +1,109 @@
+{
+  "persona": {
+    "id": "founder",
+    "name": "Daniel Reyes",
+    "email": "daniel@loomware.co",
+    "tz": "America/New_York",
+    "about": "You are the 38-year-old co-founder and CEO of Loomware, a 14-person B2B SaaS company in New York that sells dock and yard scheduling software to warehouses and distributors. You are raising a small extension round, juggling a board meeting next Monday, a big renewal with Northwind Freight, and an overdue invoice from Halvorsen Logistics. Your co-founder and CTO is Priya Natarajan, Marcus Bell runs sales, Hana Kobayashi runs finance and ops. Your partner is Leah.",
+    "style": "Types fast on his phone between meetings, lowercase, terse, skips greetings, occasional typos, uses 'pls' and 'thx'. Gets impatient with long answers or repeated confirmation questions.",
+    "aboutMe": "CEO at Loomware. Mornings are for deep work, meetings after 11 when possible."
+  },
+  "botName": "Juniper",
+  "apps": ["gmail", "google_calendar", "slack", "notes", "crm"],
+  "start": "mon 08:40",
+  "profile": { "name": "Daniel Reyes", "email": "daniel@loomware.co", "aliases": ["billing@loomware.co"], "slack": "daniel" },
+  "mail": [
+    { "from": "Sam Whitaker <sam.whitaker@northwindfreight.com>", "subject": "Re: Northwind renewal, next steps", "date": "@-1d 16:10", "body": "Daniel,\n\nWe're good to move forward on the renewal in principle, but procurement wants a walkthrough of the new dock appointment module before we sign the 2-year. Could you and Marcus do 45 minutes later this week? Thursday or Friday works best for me, ideally after 11am Eastern. Please also bring whoever can speak to SSO, our IT lead Corinne will join.\n\nThanks,\nSam Whitaker\nVP Operations, Northwind Freight\n(617) 555-0142" },
+    { "from": "Hana Kobayashi <hana@loomware.co>", "subject": "Overdue: Halvorsen INV-2031", "date": "@-1d 09:12", "body": "Hi Daniel,\n\nHalvorsen Logistics still hasn't paid INV-2031: $8,400, net 30, now 21 days overdue. Ingrid said last week their AP moved to a new system. I'd like it chased this week since it affects the December cash number for the board deck.\n\nAlso FYI INV-2038 for Cedar & Pine ($2,150) is due this Friday, not overdue yet.\n\nPayment link for Halvorsen: https://pay.loomware.co/i/INV-2031\n\nHana", "labels": ["INBOX", "IMPORTANT"] },
+    { "from": "Ingrid Halvorsen <ingrid@halvorsenlogistics.com>", "subject": "Re: INV-2031", "date": "@-6d 10:45", "body": "Hi Daniel, apologies for the delay. Our AP team moved to a new ERP and some invoices got stuck in approval. It should clear soon. Best, Ingrid", "read": true },
+    { "from": "Rachel Kim <rachel@fieldstone.vc>", "subject": "Board deck: draft by Tuesday?", "date": "@-2d 18:40", "body": "Hi Daniel, could you send me a draft of the board deck by Tuesday EOD? Mostly want to see the pipeline slide and the runway number before we meet. Our prep call is Tuesday at 2. Thanks! Rachel", "read": true },
+    { "from": "Marcus Bell <marcus@loomware.co>", "subject": "C&P demo clash tomorrow", "date": "@0d 07:55", "body": "Heads up, you have the Cedar & Pine demo sitting on top of the board prep with Rachel tomorrow afternoon. I can run the first 15 min of the demo solo if that helps, Olu mostly wants the NetSuite part anyway.\n\nM" },
+    { "from": "Sam Delgado <sam.delgado@brightpathgrocers.com>", "subject": "Onboarding kickoff tomorrow: our attendees", "date": "@-1d 11:20", "body": "Hi Daniel, for tomorrow's kickoff we'll have me, Tasha Greene (DC manager, Columbus) and Ravi Shah from IT. Could you send the agenda ahead of time? Cheers, Sam Delgado, Brightpath Grocers" },
+    { "from": "Olu Adeyemi <olu@cedarandpine.com>", "subject": "Questions before the demo", "date": "@-1d 13:05", "body": "Hi Daniel, before tomorrow: does Loomware sync dock appointments back into NetSuite, or only read POs? And is there a per-site price or per-dock? We're looking at adding the Reno warehouse. Olu" },
+    { "from": "Ben Adler <ben@gradientcap.com>", "subject": "Coffee Wednesday?", "date": "@-3d 12:30", "body": "Still good for Wednesday 4pm at Blue Bottle Bryant Park? Keen to hear how the renewal season is going. Ben", "read": true },
+    { "from": "Zainab Yusuf <zainab.yusuf@gmail.com>", "subject": "Looking forward to Thursday", "date": "@-1d 20:02", "body": "Hi Daniel, thanks for the invite to the final round on Thursday at 3. Is there anything I should prepare beyond the system design discussion? Best, Zainab" },
+    { "from": "Leah Reyes <leah.reyes@gmail.com>", "subject": "fri dinner", "date": "@-1d 21:15", "body": "booked Lilia for friday 7:30, don't schedule anything late pls :) x" , "read": true },
+    { "from": "Gusto <no-reply@gusto.com>", "subject": "Payroll will run Wednesday", "date": "@-1d 06:00", "body": "Loomware Inc. payroll of $61,240.55 for 14 employees will be debited from your account ending 4471 on Wednesday." },
+    { "from": "AWS Billing <aws-billing@amazon.com>", "subject": "Your AWS invoice is available", "date": "@-2d 03:10", "body": "Your invoice for account 4410-2291-7783 is available. Amount due: $3,412.18. This will be charged to your card on file." },
+    { "from": "Figma <billing@figma.com>", "subject": "Receipt for your Figma Professional plan", "date": "@-2d 09:00", "body": "Thanks for your payment. Figma Professional, 3 editors: $45.00. Receipt #FG-88213.", "read": true },
+    { "from": "SaaS Weekly <newsletter@saasweekly.io>", "subject": "Pricing pages that convert in 2026", "date": "@-1d 07:00", "body": "This week: why per-seat pricing is dying in vertical SaaS, 6 pricing pages we love, and a founder AMA on net revenue retention.", "labels": ["INBOX", "CATEGORY_PROMOTIONS"] },
+    { "from": "Meera Pillai <meera@ostaracold.com>", "subject": "Intro via Ben: cold chain scheduling", "date": "@0d 06:48", "body": "Hi Daniel, Ben Adler suggested we talk. We run 6 cold storage sites across NJ and PA and our dock scheduling is still spreadsheets. Do you have 30 min next week? Meera Pillai, COO, Ostara Cold Chain" }
+  ],
+  "events": [
+    { "title": "Run with Kenji", "start": "@-2d 07:00", "end": "@-2d 08:00", "location": "Hudson River Park" },
+    { "title": "Weekly team sync", "start": "@0d 10:00", "end": "@0d 10:45", "attendees": ["priya@loomware.co", "marcus@loomware.co", "hana@loomware.co", "tomas@loomware.co"], "location": "Zoom" },
+    { "title": "Brightpath Grocers onboarding kickoff", "start": "@+1d 11:00", "end": "@+1d 12:00", "attendees": ["sam.delgado@brightpathgrocers.com", "marcus@loomware.co"], "location": "Google Meet" },
+    { "title": "Board prep w/ Rachel (Fieldstone)", "start": "@+1d 14:00", "end": "@+1d 15:00", "attendees": ["rachel@fieldstone.vc"], "location": "Zoom" },
+    { "title": "Demo: Cedar & Pine Furniture", "start": "@+1d 14:30", "end": "@+1d 15:15", "attendees": ["olu@cedarandpine.com", "marcus@loomware.co"], "location": "Google Meet", "description": "Olu wants the NetSuite sync and Reno site pricing." },
+    { "title": "1:1 Priya", "start": "@+2d 09:30", "end": "@+2d 10:00", "attendees": ["priya@loomware.co"] },
+    { "title": "Coffee: Ben Adler (Gradient Capital)", "start": "@+2d 16:00", "end": "@+2d 16:45", "attendees": ["ben@gradientcap.com"], "location": "Blue Bottle, Bryant Park" },
+    { "title": "Dentist", "start": "@+3d 08:00", "end": "@+3d 09:00", "location": "Dr. Feldman, 220 W 26th St" },
+    { "title": "Pipeline review w/ Marcus", "start": "@+3d 13:00", "end": "@+3d 13:45", "attendees": ["marcus@loomware.co"] },
+    { "title": "Final round: Zainab Yusuf (Staff Eng)", "start": "@+3d 15:00", "end": "@+3d 16:00", "attendees": ["zainab.yusuf@gmail.com", "priya@loomware.co"], "location": "Office, 4th floor" },
+    { "title": "Dinner with Leah", "start": "@+4d 19:30", "end": "@+4d 21:30", "location": "Lilia" },
+    { "title": "Board meeting", "start": "@+7d 10:00", "end": "@+7d 12:00", "attendees": ["rachel@fieldstone.vc", "priya@loomware.co", "hana@loomware.co"], "location": "Loomware office" }
+  ],
+  "slack": {
+    "channels": {
+      "general": { "topic": "Company-wide", "members": ["daniel", "priya", "marcus", "hana", "tomas", "jordan", "aiko"], "messages": [
+        { "user": "hana", "text": "reminder: expense reports for November due Friday", "at": "@-1d 09:30" },
+        { "user": "tomas", "text": "new dock calendar designs are in Figma, feedback welcome before Wed", "at": "@-1d 11:02" },
+        { "user": "priya", "text": "v4.12 shipped. SSO for Okta is live for all customers", "at": "@-1d 17:45" },
+        { "user": "jordan", "text": "who has the office key this week? locked out lol", "at": "@0d 08:05" },
+        { "user": "aiko", "text": "I do, coming down", "at": "@0d 08:07" },
+        { "user": "marcus", "text": "Brightpath kickoff tomorrow 11am, Daniel + me", "at": "@0d 08:20" }
+      ]},
+      "sales": { "topic": "Pipeline and deals", "members": ["daniel", "marcus", "hana"], "messages": [
+        { "user": "marcus", "text": "Northwind wants a walkthrough before signing the 2-yr. $96k ACV if it lands", "at": "@-1d 16:30" },
+        { "user": "marcus", "text": "Ruiz Produce went quiet after the proposal, going to nudge Joaquín wed", "at": "@-1d 16:34" },
+        { "user": "hana", "text": "Halvorsen still unpaid on INV-2031, holding the upsell until it clears", "at": "@-1d 17:02" },
+        { "user": "daniel", "text": "agree, no upsell till they pay", "at": "@-1d 17:10" },
+        { "user": "marcus", "text": "Ostara Cold Chain (Meera) came in via Ben, 6 sites. could be big", "at": "@0d 07:40" }
+      ]},
+      "dm:priya": { "members": ["daniel", "priya"], "messages": [
+        { "user": "priya", "text": "can you cover SSO questions on the Northwind call or want me there?", "at": "@-1d 18:00" },
+        { "user": "daniel", "text": "want you there if you can", "at": "@-1d 18:20" },
+        { "user": "priya", "text": "ok. I'm free thu after 12 and most of fri", "at": "@-1d 18:22" },
+        { "user": "priya", "text": "also Zainab's take-home was strong, excited for thursday", "at": "@0d 08:01" }
+      ]},
+      "dm:marcus": { "members": ["daniel", "marcus"], "messages": [
+        { "user": "marcus", "text": "want me to take the first part of the C&P demo tmrw?", "at": "@0d 07:58" },
+        { "user": "marcus", "text": "also I'm out friday afternoon, kid's recital", "at": "@0d 08:02" }
+      ]}
+    }
+  },
+  "notes": [
+    { "title": "Runway & burn (Nov)", "folder": "Finance", "updated": "@-3d 17:20", "body": "Cash in bank: $1.42M\nNet burn: ~$118k/month\nRunway: ~12 months\nNorthwind renewal would add $8k/month MRR\nHalvorsen INV-2031 ($8,400) outstanding\nExtension round target: $1.5M at current terms" },
+    { "title": "Board update draft (Dec)", "folder": "Board", "updated": "@-2d 22:10", "body": "Highlights: Brightpath closed ($54k), Okta SSO shipped, NRR 112%.\nLowlights: Halvorsen late payment, Ruiz deal stalled.\nAsks: intros to cold chain operators, feedback on Q1 hiring plan.\nTODO: pipeline slide, runway slide" },
+    { "title": "Northwind renewal notes", "folder": "Deals", "updated": "@-1d 16:40", "body": "Sam Whitaker = VP Ops (decision maker). Corinne = IT lead, cares about SSO + audit logs.\nThey want 2-year at $96k/yr, asked for 5% multi-year discount.\nWalkthrough needed: dock appointment module, SSO.\nMarcus + Priya to join." },
+    { "title": "Pricing v3 thoughts", "folder": "Strategy", "updated": "@-8d 23:00", "body": "Move from per-dock to per-site + volume tier? Cedar & Pine asking the same question. Keep annual prepay discount at 10%." },
+    { "title": "Q1 hiring plan", "folder": "Team", "updated": "@-5d 19:30", "body": "1. Staff engineer (final round: Zainab Yusuf)\n2. AE #2 for Marcus\n3. Part-time support lead\nBudget: +$41k/month fully loaded" },
+    { "title": "Offsite ideas", "folder": "Team", "updated": "@-12d 21:00", "body": "Hudson Valley in March? 2 nights. Budget ~$9k. Ask Aiko to price options." }
+  ],
+  "crm": {
+    "contacts": [
+      { "name": "Sam Whitaker", "email": "sam.whitaker@northwindfreight.com", "company": "Northwind Freight", "phone": "(617) 555-0142", "notes": "VP Ops. Renewal owner." },
+      { "name": "Sam Delgado", "email": "sam.delgado@brightpathgrocers.com", "company": "Brightpath Grocers", "phone": "(614) 555-0187", "notes": "Director of Logistics. Onboarding kickoff Tue." },
+      { "name": "Ingrid Halvorsen", "email": "ingrid@halvorsenlogistics.com", "company": "Halvorsen Logistics", "phone": "(312) 555-0110", "notes": "CFO. INV-2031 overdue." },
+      { "name": "Olu Adeyemi", "email": "olu@cedarandpine.com", "company": "Cedar & Pine Furniture", "phone": "(775) 555-0166", "notes": "Head of Supply Chain. Adding Reno warehouse." },
+      { "name": "Rachel Kim", "email": "rachel@fieldstone.vc", "company": "Fieldstone Ventures", "notes": "Lead investor, board member." },
+      { "name": "Ben Adler", "email": "ben@gradientcap.com", "company": "Gradient Capital", "notes": "Potential extension investor." },
+      { "name": "Meera Pillai", "email": "meera@ostaracold.com", "company": "Ostara Cold Chain", "phone": "(201) 555-0193", "notes": "COO, 6 sites NJ/PA. Intro via Ben." },
+      { "name": "Joaquín Ruiz", "email": "joaquin@ruizproduce.com", "company": "Ruiz Produce Distributors", "notes": "Owner. Proposal sent, quiet since." }
+    ],
+    "deals": [
+      { "id": "d1", "name": "Northwind 2-year renewal", "company": "Northwind Freight", "stage": "Negotiation", "amount": 96000, "next_step": "Walkthrough of dock appointment module + SSO", "updated": "@-1d 16:40" },
+      { "id": "d2", "name": "Brightpath Grocers new logo", "company": "Brightpath Grocers", "stage": "Closed won", "amount": 54000, "next_step": "Onboarding kickoff", "updated": "@-9d 15:00" },
+      { "id": "d3", "name": "Cedar & Pine Reno expansion", "company": "Cedar & Pine Furniture", "stage": "Demo scheduled", "amount": 18000, "next_step": "Demo Tue 2:30", "updated": "@-2d 11:00" },
+      { "id": "d4", "name": "Ostara Cold Chain", "company": "Ostara Cold Chain", "stage": "Discovery", "amount": 72000, "next_step": "Intro call", "updated": "@0d 07:45" },
+      { "id": "d5", "name": "Ruiz Produce starter", "company": "Ruiz Produce Distributors", "stage": "Proposal sent", "amount": 12000, "next_step": "Follow up with Joaquín", "updated": "@-6d 14:20" },
+      { "id": "d6", "name": "Halvorsen yard module upsell", "company": "Halvorsen Logistics", "stage": "On hold", "amount": 24000, "next_step": "Wait for INV-2031 payment", "updated": "@-1d 17:05" }
+    ]
+  },
+  "files": {
+    "Documents/pipeline-q4.csv": "deal,company,stage,amount,owner,close_target\nNorthwind 2-year renewal,Northwind Freight,Negotiation,96000,Daniel,Dec\nBrightpath Grocers new logo,Brightpath Grocers,Closed won,54000,Marcus,Nov\nCedar & Pine Reno expansion,Cedar & Pine Furniture,Demo scheduled,18000,Marcus,Jan\nOstara Cold Chain,Ostara Cold Chain,Discovery,72000,Daniel,Feb\nRuiz Produce starter,Ruiz Produce Distributors,Proposal sent,12000,Marcus,Dec\nHalvorsen yard module upsell,Halvorsen Logistics,On hold,24000,Marcus,Q1\n",
+    "Documents/board-update-draft.md": "# Loomware board update, December\n\n## Highlights\n- Brightpath Grocers closed, $54k ACV\n- Okta SSO shipped (v4.12)\n- NRR 112%\n\n## Lowlights\n- Halvorsen INV-2031 ($8,400) 3 weeks late\n- Ruiz Produce stalled after proposal\n\n## Runway\nCash $1.42M, net burn ~$118k/mo, ~12 months\n\n## Asks\n- Intros to cold chain operators\n- Feedback on Q1 hiring plan\n",
+    "Downloads/INV-2031-halvorsen.txt": "LOOMWARE INC. INVOICE INV-2031\nBill to: Halvorsen Logistics, Attn: Ingrid Halvorsen\nItem: Loomware Dock Scheduling, annual, 3 sites\nAmount: $8,400.00\nTerms: Net 30\nPay online: https://pay.loomware.co/i/INV-2031\n",
+    "Documents/offsite-agenda.txt": "Offsite (draft)\nDay 1: 2026 retro, customer stories\nDay 2: product roadmap, hiring, pricing v3\nDinner: somewhere with a fireplace\n"
+  }
+}

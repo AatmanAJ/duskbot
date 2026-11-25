@@ -6,7 +6,9 @@ const KEY = "sk-ant-api03-ZZtestSECRET0123456789";
 const fixture = vi.hoisted(() => ({
   values: [] as unknown[], index: 0, refs: [] as Array<{ current: unknown }>, refIndex: 0,
   api: vi.fn(), dispatch: vi.fn(), track: vi.fn(), config: {} as Record<string, unknown>,
+  ask: vi.fn(async (_request: { title: string; body?: unknown }) => true),
 }));
+vi.mock("../ConfirmDialog", () => ({ askConfirm: fixture.ask }));
 vi.mock("react", async (original) => ({
   ...await original<typeof import("react")>(),
   useState: (initial: unknown) => {
@@ -65,7 +67,8 @@ beforeEach(() => {
   fixture.values = [];
   fixture.refs = [];
   fixture.config = { anthropic: { configured: false }, composio: { configured: false } };
-  vi.stubGlobal("window", { confirm: () => true });
+  fixture.ask.mockResolvedValue(true);
+  vi.stubGlobal("window", {});
   vi.stubGlobal("document", { activeElement: null });
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -160,11 +163,10 @@ describe("a key saved in Settings → API keys", () => {
 
   it("asks before removing a saved key, and keeps it when the person says no", async () => {
     fixture.config = { anthropic: { configured: true, last4: "6789" } };
-    const confirm = vi.fn(() => false);
-    vi.stubGlobal("window", { confirm });
+    fixture.ask.mockResolvedValue(false);
     render({ id: "anthropic" }).find((node) => node.type === "button" && node.props["data-key-remove"])!.props.onClick!();
     await flush();
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("stops working until you paste it again"));
+    expect(fixture.ask).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining("stops working until you paste it again") }));
     expect(fixture.api).not.toHaveBeenCalled();
     expect(fixture.track).not.toHaveBeenCalled();
   });

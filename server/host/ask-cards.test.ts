@@ -4,7 +4,7 @@ import type { HandoffView } from "../coordinator.ts";
 import type { Notification } from "../notify.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import type { BotRecord, Message } from "../store.ts";
-import { askToolName, createAskCards, type AskCardsDeps } from "./ask-cards.ts";
+import { askToolName, createAskCards, TYPED_WHILE_ASKED_NOTE, type AskCardsDeps } from "./ask-cards.ts";
 
 const AUTH = { kind: "session", scopes: ["client"], session: { id: "s", email: "cleo@acme.test" } } as unknown as RequestAuth;
 const QUESTION = "What wording should the new footer text use?";
@@ -42,7 +42,7 @@ function world(options: { inboxThread?: string; live?: string[] } = {}) {
   const nodes = new Map<string, HandoffView>();
   const answered: Array<{ id: string; text: string }> = [];
   const notified: Notification[] = [];
-  const answers: Array<{ threadId: string; requestId: string; message: string }> = [];
+  const answers: Array<{ threadId: string; requestId: string; message: string; engineMessage?: string }> = [];
   let refuse: { status: number; error: string } | null = null;
   const deps: AskCardsDeps = {
     store: store as unknown as AskCardsDeps["store"],
@@ -53,7 +53,7 @@ function world(options: { inboxThread?: string; live?: string[] } = {}) {
     live: (_threadId, requestId) => (options.live ?? []).includes(requestId),
     answerCard: vi.fn(async (input) => {
       if (refuse) return { ok: false as const, ...refuse };
-      answers.push({ threadId: input.threadId, requestId: input.requestId, message: input.message });
+      answers.push({ threadId: input.threadId, requestId: input.requestId, message: input.message, ...(input.engineMessage ? { engineMessage: input.engineMessage } : {}) });
       return { ok: true as const };
     }),
     answeredIn: (threadId, requestId) => (threadId === "inbox" && requestId.startsWith("req") ? "work" : threadId),
@@ -333,7 +333,8 @@ describe("a typed line answers a question card", () => {
     const w = world({ live: ["req-1"] });
     const asked = question(w, "work");
     const result = await w.cards.typed(AUTH, "work", "Just the footer text, please", undefined, { sendId: "send-1" });
-    expect(w.answers).toEqual([{ threadId: "work", requestId: "req-1", message: "Just the footer text, please" }]);
+    expect(w.answers).toEqual([{ threadId: "work", requestId: "req-1", message: "Just the footer text, please",
+      engineMessage: `Just the footer text, please ${TYPED_WHILE_ASKED_NOTE}` }]);
     expect(result).toMatchObject({ status: 202, message: { role: "user", text: "Just the footer text, please", replyToId: asked.id, sendId: "send-1" } });
     const again = await w.cards.typed(AUTH, "work", "Just the footer text, please", undefined, { sendId: "send-1" });
     expect(again?.message?.id).toBe(result?.message?.id);
@@ -345,6 +346,24 @@ describe("a typed line answers a question card", () => {
     question(w, "work", { questionRequest: { version: 1, questions: [{ question: "Should I?", options: [{ label: "Yes" }, { label: "No" }] }] } });
     await w.cards.typed(AUTH, "work", "Not until tomorrow", undefined, {});
     expect(w.answers[0]!.message).toBe("The user answered your questions.\n\nQ: Should I?\nA: Not until tomorrow");
+    expect(w.answers[0]!.engineMessage).toBe(`The user answered your questions.\n\nQ: Should I?\nA: Not until tomorrow ${TYPED_WHILE_ASKED_NOTE}`);
+  });
+
+  it("tells the engine a line typed while its question waited may be about something else, and shows the card only the words", async () => {
+    const w = world({ live: ["req-1"] });
+    question(w, "chat", { questionRequest: { version: 1, questions: [{ question: "Ship today?", options: [{ label: "Yes" }, { label: "No" }] }] } });
+    await w.cards.typed(AUTH, "chat", "Actually, what is the weather in Leeds tomorrow?", undefined, {});
+    expect(TYPED_WHILE_ASKED_NOTE).toMatch(/may not answer it.*new message.*ask your question again/);
+    expect(w.answers).toEqual([{ threadId: "chat", requestId: "req-1",
+      message: "The user answered your questions.\n\nQ: Ship today?\nA: Actually, what is the weather in Leeds tomorrow?",
+      engineMessage: `The user answered your questions.\n\nQ: Ship today?\nA: Actually, what is the weather in Leeds tomorrow? ${TYPED_WHILE_ASKED_NOTE}` }]);
+  });
+
+  it("sends a reply made on the card itself as a plain answer", async () => {
+    const w = world({ live: ["req-1"] });
+    const asked = question(w, "chat");
+    await w.cards.typed(AUTH, "chat", "Take the second one", asked, {});
+    expect(w.answers).toEqual([{ threadId: "chat", requestId: "req-1", message: "Take the second one" }]);
   });
 
   it("answers the original through the copy a reply in the inbox is to, whether or not its turn still waits", async () => {
@@ -374,8 +393,23 @@ describe("a typed line answers a question card", () => {
     expect(fixed.answers).toEqual([]);
   });
 
-  it("leaves a line in a chat no teammate handed on to be steered or queued, even while its question card waits", async () => {
+  it("answers the card a bot's turn waits on in the person's own chat with it, as the composer says it will", async () => {
     const w = world({ live: ["req-1"] });
+    const asked = question(w, "chat");
+    const result = await w.cards.typed(AUTH, "chat", "Take the second one", undefined, { sendId: "send-3" });
+    expect(w.answers).toEqual([{ threadId: "chat", requestId: "req-1", message: "Take the second one", engineMessage: `Take the second one ${TYPED_WHILE_ASKED_NOTE}` }]);
+    expect(result).toMatchObject({ status: 202, message: { role: "user", text: "Take the second one", replyToId: asked.id, sendId: "send-3" } });
+  });
+
+  it("leaves a line with an attachment to the usual send, even while a question waits", async () => {
+    const w = world({ live: ["req-1"] });
+    question(w, "chat");
+    expect(await w.cards.typed(AUTH, "chat", 'see this\n\n<attached-image path="/a/b.png" name="b.png" />', undefined, {})).toBeNull();
+    expect(w.answers).toEqual([]);
+  });
+
+  it("leaves a line in the person's own chat to the usual send once no turn waits on its question", async () => {
+    const w = world();
     const asked = question(w, "chat");
     expect(await w.cards.typed(AUTH, "chat", "Take the second one", undefined, {})).toBeNull();
     expect(await w.cards.typed(AUTH, "chat", "Take the second one", asked, {})).toBeNull();

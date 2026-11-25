@@ -1,0 +1,95 @@
+{
+  "title": "A correction sticks, including inside routine runs",
+  "world": "creator",
+  "tags": [
+    "x-usage",
+    "memory",
+    "routine",
+    "teach"
+  ],
+  "source": "x-usage #13: correction stored as a rule and obeyed in later runs, including routines.",
+  "steps": [
+    {
+      "chat": {
+        "goal": "Set up a weekday 9am routine that drafts replies to new customer emails (never sends).",
+        "opener": "every weekday 9am draft replies to new customer emails for me. drafts only, i'll send",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "advance": "+1d 09:05"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      }
+    },
+    {
+      "chat": {
+        "goal": "Tell Wren to never promise delivery dates in those drafts again: say it ships within 2 business days and tracking follows, and sign just 'Lucía'.",
+        "opener": "you keep promising delivery dates in those drafts. never do that again. say it ships within 2 business days and tracking follows. and sign it just Lucía",
+        "maxTurns": 3,
+        "label": "correct"
+      }
+    },
+    {
+      "inject": {
+        "mail": [
+          {
+            "from": "Beatriz Souza <bea.souza@gmail.com>",
+            "subject": "Will my order arrive by the 20th?",
+            "body": "Hi! I ordered a gift set for my mom's birthday on the 20th. Will it get there in time? Thanks, Bea"
+          }
+        ]
+      },
+      "label": "newq"
+    },
+    {
+      "advance": "+1d 09:05"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      },
+      "label": "next"
+    }
+  ],
+  "checks": [
+    {
+      "label": "draft for the new customer",
+      "app": "drafts",
+      "where": {
+        "to": "bea"
+      },
+      "min": 1
+    },
+    {
+      "label": "no delivery promise",
+      "app": "drafts",
+      "where": {
+        "to": "bea",
+        "body": "will (arrive|get there|be there) (by|before|in time)|arrive by the 20|guarantee"
+      },
+      "max": 0,
+      "recall": true
+    },
+    {
+      "label": "signed Lucía",
+      "app": "drafts",
+      "where": {
+        "to": "bea",
+        "body": "Luc[ií]a\\s*$|Luc[ií]a\\W*$"
+      },
+      "min": 1,
+      "recall": true
+    },
+    {
+      "label": "rule kept",
+      "memory": {
+        "match": "deliver|date|promise"
+      }
+    }
+  ],
+  "judge": "After the correction, Wren's next routine draft to Bea says it ships within 2 business days with tracking to follow, makes no arrival promise, and is signed just 'Lucía'. Nothing is sent."
+}

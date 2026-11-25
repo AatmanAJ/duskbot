@@ -356,17 +356,18 @@ function sinkOf(db: Db, key: string): AnalyticsSink {
         browser: row.browser ?? null, platform: row.platform ?? null, appVersion: row.appVersion ?? null })) };
     },
     async fleet(since, until) {
-      const [out] = await events.aggregate<{ installs: Array<{ _id: string; n: number }>; errors: Array<{ _id: string; n: number }> }>([
+      const [out] = await events.aggregate<{ installs: Array<{ _id: string; n: number }>; errors: Array<{ _id: string; n: number; installs: number }> }>([
         { $match: { name: { $in: ["app_open", "app_error"] }, at: { $gte: new Date(since), $lt: new Date(until) }, "ctx.app.version": { $type: "string" } } },
         { $project: { name: 1, at: 1, install: "$ctx.install", version: "$ctx.app.version" } },
         { $facet: {
           installs: [{ $match: { name: "app_open", install: { $type: "string" } } }, { $sort: { at: 1 } }, { $group: { _id: "$install", version: { $last: "$version" } } }, { $group: { _id: "$version", n: { $sum: 1 } } }],
-          errors: [{ $match: { name: "app_error" } }, { $group: { _id: "$version", n: { $sum: 1 } } }],
+          errors: [{ $match: { name: "app_error" } }, { $group: { _id: { version: "$version", install: "$install" }, n: { $sum: 1 } } },
+            { $group: { _id: "$_id.version", n: { $sum: "$n" }, installs: { $sum: { $cond: [{ $eq: [{ $type: "$_id.install" }, "string"] }, 1, 0] } } } }],
         } },
       ], { maxTimeMS: READ_TIMEOUT_MS, allowDiskUse: true }).toArray();
-      const installs = new Map((out?.installs ?? []).map(row => [row._id, row.n])), errors = new Map((out?.errors ?? []).map(row => [row._id, row.n]));
+      const installs = new Map((out?.installs ?? []).map(row => [row._id, row.n])), errors = new Map((out?.errors ?? []).map(row => [row._id, row]));
       return [...new Set([...installs.keys(), ...errors.keys()])].filter(version => /^\d+\.\d+\.\d+$/.test(version))
-        .map(version => ({ version, installs: installs.get(version) ?? 0, errors: errors.get(version) ?? 0 }))
+        .map(version => ({ version, installs: installs.get(version) ?? 0, errors: errors.get(version)?.n ?? 0, errorInstalls: errors.get(version)?.installs ?? 0 }))
         .sort((a, b) => { const x = a.version.split(".").map(Number), y = b.version.split(".").map(Number); return (y[0]! - x[0]!) || (y[1]! - x[1]!) || (y[2]! - x[2]!); });
     },
     async health() {

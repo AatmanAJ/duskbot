@@ -1,0 +1,74 @@
+{
+  "title": "Silent when nothing happens, but a failed check is reported once",
+  "world": "founder",
+  "tags": [
+    "x-usage",
+    "routine",
+    "recovery"
+  ],
+  "source": "x-usage #4: silent on nothing, visible last-run or one daily proof-of-life line, a failed run reported once and never shown as 'quiet'. Failure made with a gmail_search fault after setup.",
+  "steps": [
+    {
+      "chat": {
+        "goal": "Watch every hour for Halvorsen's payment of INV-2031. If nothing happened, don't message, but you need to know it actually ran.",
+        "opener": "watch hourly for halvorsen paying INV-2031. if nothing happened don't message me. but i need to know you actually ran",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "fault": {
+        "gmail_search": {
+          "times": 3,
+          "error": "503 Service Unavailable: backend error, try again later"
+        }
+      },
+      "label": "broken"
+    },
+    {
+      "advance": "+3h"
+    },
+    {
+      "settle": {
+        "seconds": 120
+      },
+      "label": "after"
+    }
+  ],
+  "checks": [
+    {
+      "label": "hourly watcher",
+      "routine": {
+        "where": {
+          "prompt": "halvorsen|2031"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "failure reported",
+      "proactive": {
+        "after": "broken",
+        "match": "fail|couldn.?t|could not|error|trouble|unable|503"
+      },
+      "min": 1
+    },
+    {
+      "label": "failure reported once, not every hour",
+      "proactive": {
+        "after": "broken",
+        "match": "fail|couldn.?t|could not|error|trouble|unable|503"
+      },
+      "max": 1
+    },
+    {
+      "label": "never claims all quiet while broken",
+      "proactive": {
+        "after": "broken",
+        "match": "no payment yet|nothing new|all quiet|still unpaid"
+      },
+      "max": 0
+    }
+  ],
+  "judge": "Juniper explains in one line how Daniel can see it ran (last check time or a short daily line). When Gmail fails, it says once that it couldn't check, instead of going silent or pretending nothing came in."
+}

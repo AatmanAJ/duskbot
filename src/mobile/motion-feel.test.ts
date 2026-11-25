@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
-import { feel, springEasing, springPath } from "./motion";
+import { feel, springEasing, springKeyframes, springPath } from "./motion";
+import { finishesBack } from "./NavStack";
 import { placeContextMenu } from "./ContextMenu";
 import { cardRowTarget, installPress, pressScale, pressTarget } from "./press";
 
@@ -135,5 +136,26 @@ describe("press", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("springKeyframes", () => {
+  it("plays the same spring as springEasing as evenly spaced linear keyframes", () => {
+    const { keyframes, duration } = springKeyframes(620, 30, (p) => ({ scale: String(0.96 + 0.04 * p) }));
+    expect(duration).toBe(springEasing(620, 30).duration);
+    expect(keyframes[0]).toEqual({ scale: "0.96", offset: 0 });
+    expect(keyframes.at(-1)).toEqual({ scale: "1", offset: 1 });
+    expect(keyframes.every((frame) => !("easing" in frame))).toBe(true);
+    expect(Math.max(...keyframes.map((frame) => Number(frame.scale)))).toBeGreaterThan(1);
+  });
+});
+
+describe("finishesBack", () => {
+  it("goes back when the page would be past 187.5pt 0.35 s on, or half a narrower screen", () => {
+    expect(finishesBack(190, 0, 390)).toBe(true);
+    expect(finishesBack(120, 0, 390)).toBe(false);
+    expect(finishesBack(40, 500, 390)).toBe(true);
+    expect(finishesBack(240, -400, 390)).toBe(false);
+    expect(finishesBack(170, 0, 320)).toBe(true);
   });
 });

@@ -327,7 +327,8 @@ describe("shared sentences", () => {
     expect(LEARN_PROMPT).not.toContain("Follow the tool result");
     expect(LEARN_PROMPT).not.toContain("/learn");
     for (const prompt of [PROFILE_PROMPT, LEARN_PROMPT]) expect(prompt).not.toMatch(/nothing changes until the user confirms|may wait for the person/);
-    expect(LEARN_PROMPT).toContain("only when the user explicitly asks to revise that exact name");
+    expect(LEARN_PROMPT).toContain("Change a skill they wrote or imported only when they ask.");
+    expect(LEARN_PROMPT).toContain("fix a learned skill that misled you before you finish");
     // Triggers have no pending state: the bot sets them up in the same turn and the person undoes from the card.
     expect(TRIGGER_PROMPT).toContain("set it up with trigger action=create in this turn");
     expect(TRIGGER_PROMPT).toContain("Do not ask or announce first");

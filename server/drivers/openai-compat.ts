@@ -6,6 +6,7 @@ import { isLoopback } from "../provider-key-check.ts";
 import { lmStudioV1Catalog } from "./local-inject.ts";
 import { isContextName, isOllama, serveWithWindow } from "./ollama-context.ts";
 import { createOpenAIChatRuntime } from "./openai-chat.ts";
+import { intendedModel } from "./model-intent.ts";
 import { geminiEffortLevels, openAiEffortLevels, type ModelEffort } from "./api-effort.ts";
 import { EFFORT_LEVELS, isEffortLevel, type EffortLevel } from "../../shared/wire.ts";
 import { isOpenAIAddress } from "./openai-responses.ts";
@@ -45,6 +46,11 @@ const DEFAULT_MODELS: ModelCatalog = {
     { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B (Groq)", custom: true },
   ],
 };
+
+/** Groq's name for the same model; any other server's models are unknown until its /models answers. */
+const GROQ_MODELS: ModelCatalog = { default: "llama-3.3-70b-versatile", options: [DEFAULT_MODELS.options[1]!] };
+const NO_MODELS: ModelCatalog = { default: "", options: [] };
+const seedFor = (url: string): ModelCatalog => isOpenRouterOrigin(url) ? DEFAULT_MODELS : url.startsWith("https://api.groq.com/") ? GROQ_MODELS : NO_MODELS;
 
 const DEFAULT_KEY_ENV = "OPENAI_COMPAT_API_KEY";
 /** A provider's own key: such an instance never falls back to the workspace OpenAI-compatible key, URL,
@@ -220,7 +226,8 @@ export const OpenAICompatDriver: ProviderDriver<OpenAICompatConfig> = {
     const missingKey = !ownKeyVariable || OWN_KEY_ENVS.has(config.apiKeyEnv)
       ? "No API key: open Settings → API keys."
       : `no API key: set ${config.apiKeyEnv} or add it to the instance config`;
-    const seeded = config.catalog === "openai" ? OPENAI_MODELS : DEFAULT_MODELS;
+    const seeded = config.catalog === "openai" ? OPENAI_MODELS : seedFor(config.url);
+    let listed: string[] | null = null;
     let catalog: ModelCatalog = config.managedModels
       ? { default: config.managedModels[0], options: config.managedModels.map(id => ({ id, label: id })) }
       : config.model
@@ -256,6 +263,7 @@ export const OpenAICompatDriver: ProviderDriver<OpenAICompatConfig> = {
                 parsed = null;
               }
               if (parsed?.ids.length) {
+                listed = [...parsed.ids];
                 const options = parsed.ids.map((id) => ({ id, label: id, custom: true as const }));
                 if (config.model && !options.some((model) => model.id === config.model)) {
                   options.unshift({ id: config.model, label: config.model, custom: true });
@@ -317,6 +325,7 @@ export const OpenAICompatDriver: ProviderDriver<OpenAICompatConfig> = {
             if (window && option) option.contextWindow = window;
           } catch {}
         }
+        listed = options.map((option) => option.id);
         const freeTools = await freeTier() ? freeToolModels(rows) : [];
         const ordered = freeToolsFirst(options, freeTools);
         if (config.model && !ordered.some((model) => model.id === config.model)) {
@@ -352,6 +361,10 @@ export const OpenAICompatDriver: ProviderDriver<OpenAICompatConfig> = {
       nudgeAnnouncedAction: true,
       models: () => catalog,
       refreshModels: fetchModels,
+      resolveModel: config.managedModels ? undefined : async (model) => {
+        await fetchModels();
+        return listed ? { use: intendedModel(model, listed), listed } : null;
+      },
       ...(effort ? { effort } : {}),
       requestBody: (model, messages, stream) => ({
         model,

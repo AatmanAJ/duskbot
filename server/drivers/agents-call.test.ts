@@ -3,6 +3,7 @@ import { createAboutMe } from "../about-me.ts";
 import { botMemoryUpdate } from "../memory-forget.ts";
 import { isForgotten } from "../profile-learned.ts";
 import { MEMORY_MAX_LINES, readMemoryFile, readMemoryTopic, writeMemoryFile, writeMemoryTopic } from "../workspace.ts";
+import { parseThreadRefUrl } from "../../src/lib/thread-refs.ts";
 import { callTool, type ToolCallContext } from "./agents-call.ts";
 import { availableTools, catalogProfileFromEnv } from "./agents-catalog.ts";
 
@@ -376,6 +377,25 @@ describe("X research tools", () => {
       },
     }));
     expect(result).toEqual({ text: "X research is off for this bot. Turn it on in this bot's settings under Access.", isError: true });
+  });
+});
+
+describe("session_search", () => {
+  const search = (hits: object[]) => callTool("session_search", { query: "dashboard" }, context({
+    client: { api: async () => ({ hits }), apiResponse: async () => ({ ok: true, status: 200, body: {} }) },
+  }));
+  const hit = { at: Date.now() - 86_400_000, task: "make me a dashboard [Q3]", threadId: "2b8a4810-9165-4a04-b1f0-0c6eb870aab9", messageId: "m-1", role: "bot", snippet: "Q3 client hours dashboard" };
+
+  it("gives each earlier conversation of the bot's own a link the person can click, and says to copy it", async () => {
+    const { text } = await search([hit]);
+    expect(text).toContain("link [#make me a dashboard \\[Q3\\]](duskbot://thread/2b8a4810-9165-4a04-b1f0-0c6eb870aab9)]");
+    expect(text).toContain("copy that hit's link into your reply exactly as it is");
+    expect(parseThreadRefUrl(/\]\((duskbot:\/\/thread\/[^)]+)\)/.exec(text)![1]!)).toEqual({ threadId: hit.threadId });
+  });
+
+  it("links neither this conversation, a room, nor a conversation private to the person", async () => {
+    const { text } = await search([{ ...hit, current: true }, { ...hit, room: "Studio" }, { ...hit, crossed: true }]);
+    expect(text).not.toContain("duskbot://thread/");
   });
 });
 

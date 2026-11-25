@@ -15,10 +15,15 @@ export interface ImportedSoulFacts {
   topics: readonly string[];
   skills: readonly string[];
   routines: readonly string[];
+  /** Routines it ran there that were not made here (they start on an event, or their schedule couldn't be read), and the
+   * memory topic that keeps each one's trigger and steps. */
+  notSetUp?: { routines: readonly string[]; topic: string };
   /** Apps it used there, to connect again here. */
   apps: readonly string[];
   /** Facts about the person went to About me rather than its notebook. */
   aboutMe?: boolean;
+  /** The memory topic quoting what it wrote beside its export, such as what it couldn't bring. */
+  exportNote?: string;
 }
 
 const MAX_LISTED = 12;
@@ -55,10 +60,14 @@ export function importedSoul(facts: ImportedSoulFacts, max: number): string {
     `- MEMORY.md is your notebook: what you remembered in ${facts.from}. Read it before you start and keep it current.`,
     ...(facts.topics.length ? [`- Topics: ${list(facts.topics)}. Open one when the work touches it.`] : []),
     ...(facts.aboutMe ? ["- What you knew about the person is in their about me, which every bot reads. Keep facts about them there, not in your notebook."] : []),
+    ...(facts.exportNote ? [`- ${facts.exportNote} has what you wrote beside your export, such as what you couldn't bring. Tell the person what didn't come over when they ask what came, or when the work needs it, and offer to set it up again with them.`] : []),
   ].join("\n");
   const tools = [
     ...(facts.skills.length ? [`## Skills\nYou brought these skills: ${list(facts.skills)}. Use the one that fits the task. A skill that is switched off stays off until the person has read it and switched it on.`] : []),
-    ...(facts.routines.length ? [`## Routines\nThese came over paused: ${list(facts.routines)}. Never switch one on yourself. When asked, say what each does and when it would run, and let the person turn it on.`] : []),
+    ...(facts.routines.length || facts.notSetUp?.routines.length ? [["## Routines",
+      ...(facts.routines.length ? [`These came over paused: ${list(facts.routines)}. Never switch one on yourself. When asked, say what each does and when it would run, and let the person turn it on.`] : []),
+      ...(facts.notSetUp?.routines.length ? [`These were not set up here: ${list(facts.notSetUp.routines)}. They start on something happening, or their schedule couldn't be read; each one's trigger and steps are in ${facts.notSetUp.topic}. When asked about your routines, name these too, and offer to set each one up again with the person.`] : []),
+    ].join("\n")] : []),
     ...(facts.apps.length ? [`## Apps\nIn ${facts.from} you used ${list(facts.apps)}. Until one is connected here in apps, say so in one line and work with what you have.`] : []),
   ];
   const tail = [

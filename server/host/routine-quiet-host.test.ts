@@ -22,7 +22,7 @@ function harness() {
     createTask: () => ({ threadId: `t-${++thread}` }), startTurn: async () => {},
     held: (run) => host.allowanceHeld(run, "en-US"),
   });
-  const make = () => createRoutineHost({ dataDir, cloudHome: false, spend, routines: () => manager, botName: () => "Bot", model: () => undefined, tell: () => {}, language: () => "en-US" });
+  const make = () => createRoutineHost({ dataDir, cloudHome: false, workspace: (botId) => join(dataDir, "workspaces", botId), spend, routines: () => manager, botName: () => "Bot", model: () => undefined, tell: () => {}, language: () => "en-US" });
   host = make();
   const book = (usd: number, runId?: string, routineId?: string) => {
     const row: UsageRow = { at: new Date().toISOString(), botId: "b", botName: "Bot", threadId: "t", instanceId: "claude", driverKind: "claudeAgent", model: "m", input: 1, output: 1, costUsd: usd,

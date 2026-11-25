@@ -6,8 +6,9 @@ import { ProviderMark } from "../ui/BrandMarks";
 import { useCloud } from "../data/cloud";
 import type { IdentityProvider, NotificationPrefs } from "../data/contracts";
 import { useSession } from "../data/session";
-import { api, ApiError } from "../lib/api";
+import { api, ApiError, type DataSharing as DataSharingState } from "../lib/api";
 import { ANDROID_APP_URL, API_DOCS, IOS_APP_URL, PHONE_APP } from "../lib/usage";
+import { siteUrl } from "../lib/site";
 import { ago } from "../lib/format";
 import { setTheme, useTheme, type ThemePref } from "../lib/theme";
 import { Field, Modal, Switch } from "../ui/controls";
@@ -155,21 +156,25 @@ export function AccountPage() {
   </div>;
 }
 
-/** the one "help improve dusk bot" switch, on unless turned off here */
+/** "help improve dusk bot" (usage counts and crash reports) and "session summaries", which runs only while the first is on */
 function DataSharing() {
-  const [state, setState] = useState<{ optOut: boolean } | null>(null);
+  const [state, setState] = useState<DataSharingState | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { void api.dataSharing().then(setState, () => setError("could not load this setting.")); }, []);
-  const save = async (on: boolean) => {
+  const save = async (next: { optOut?: boolean; notes?: boolean }) => {
     setError(null);
-    try { setState(await api.setDataSharing({ optOut: !on })); } catch { setError("could not save that. try again."); }
+    try { setState(await api.setDataSharing(next)); } catch { setError("could not save that. try again."); }
   };
   const label = "help improve dusk bot";
+  const notesLabel = "session summaries";
+  const counts = state ? !state.optOut && !state.askUsage : false;
   return (
     <section className="mt-10" aria-labelledby="data-sharing-title">
       <SectionTitle id="data-sharing-title">privacy</SectionTitle>
-      {state ? <div className="flex items-center gap-4 rounded-[14px] py-3"><div className="min-w-0 flex-1"><label htmlFor="sharing-improve" className="text-14 text-ink">{label}</label><p className="mt-0.5 text-13 text-ink-3">share anonymous usage info, like which features you use and where things get stuck. we never see your messages or files, and names are removed.</p></div><Switch id="sharing-improve" label={label} checked={!state.optOut} onChange={(on) => void save(on)} /></div>
-        : !error && <Skeleton className="h-16 !rounded-card" />}
+      {state ? <>
+        <div className="flex items-center gap-4 rounded-[14px] py-3"><div className="min-w-0 flex-1"><label htmlFor="sharing-improve" className="text-14 text-ink">{label}</label><p className="mt-0.5 text-13 text-ink-3">share usage stats and crash reports to help us fix problems. these never include your messages or files. <a href={siteUrl("/privacy#what-we-collect-in-short")} target="_blank" rel="noreferrer" className="rounded-sm text-ink-3 underline-offset-2 hover:underline focus-visible:underline">privacy policy</a></p>{state.askUsage && <p className="text-13 text-ink-3">off until you turn it on.</p>}</div><Switch id="sharing-improve" label={label} checked={counts} onChange={(on) => void save({ optOut: !on })} /></div>
+        <div className="flex items-center gap-4 rounded-[14px] py-3"><div className="min-w-0 flex-1"><label htmlFor="sharing-notes" className="text-14 text-ink">{notesLabel}</label><p className="mt-0.5 text-13 text-ink-3">share anonymous summaries of how sessions went, so we can see what to improve. personal and identifying details, like names, emails and links, are removed. summaries aren't linked to your account.</p><p className="mt-1 text-13 text-ink-3">{counts ? "turning this off also deletes summaries already shared." : "turn on help improve dusk bot to use this."}</p></div><Switch id="sharing-notes" label={notesLabel} disabled={!counts} checked={counts && state.notes === true} onChange={(on) => void save({ notes: on })} /></div>
+      </> : !error && <Skeleton className="h-16 !rounded-card" />}
       {error && <p role="alert" className="mt-2 text-13 text-bad">{error}</p>}
     </section>
   );

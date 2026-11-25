@@ -9,6 +9,7 @@ import { greetingName } from "../../../shared/greeting-name";
 import { usePlaceSetupOpen } from "@/lib/place-setup";
 import { api, useStore, type ModelSelection } from "@/state/store";
 import { engineReady } from "@/components/EngineLibrary";
+import { trapTab } from "./trap-tab";
 import { useNotesIntake } from "../NotesWaiting";
 import { WindowDragStrip } from "../DesktopCapabilities";
 import { AccountStep } from "./AccountStep";
@@ -44,24 +45,6 @@ async function nameFromComputer(config: Config, done: (config: NonNullable<Confi
 }
 
 export { cloudBought } from "./funnel";
-
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-/** Tab and Shift+Tab stay inside `root`, the way a modal dialog keeps them. */
-export function trapTab(event: ReactKeyboardEvent<HTMLElement>, root: HTMLElement | null): void {
-  if (event.key !== "Tab" || !root) return;
-  const focusable = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.getClientRects().length > 0);
-  if (!focusable.length) return;
-  const first = focusable[0]!;
-  const last = focusable[focusable.length - 1]!;
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first.focus();
-  }
-}
 
 /** The first run, two calm screens: the hello (the free model gets ready meanwhile), then one choice, free models or a
  * plan the person already has. It ends in Dusk's chat (Dusk made the Chief of Staff where no other bot is one), where Dusk
@@ -334,6 +317,7 @@ export function WelcomeFlow({
       onClickCapture={swallowDoubleClick}
       onPaste={onPaste}
       data-welcome={at}
+      data-screen=""
       className={cn("welcome-screen flex overflow-y-auto bg-app outline-none", embedded ? "relative h-full w-full" : "fixed inset-y-0 left-[var(--rail-beside,0px)] right-0 z-50")}
     >
       {/* first, so the back button and every control after it stay clickable (styles.css) */}

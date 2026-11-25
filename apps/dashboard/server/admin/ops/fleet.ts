@@ -4,8 +4,9 @@
 import type { HomeUpdateState } from "../../../../cloud-service/src/home-update.ts";
 import type { StoredEvent } from "../../analytics/sink.ts";
 
-/** one desktop version: installs whose newest app_open in the window named it, and the app_error events it sent */
-export interface DesktopVersionRow { version: string; installs: number; errors: number }
+/** one desktop version: installs whose newest app_open in the window named it, the app_error events it sent, and how many
+ * distinct installs sent them */
+export interface DesktopVersionRow { version: string; installs: number; errors: number; errorInstalls: number }
 export interface CloudVersionRow { version: string; clouds: number; onTrial: number }
 /** a canary cloud as the release tool watches it */
 export interface CanaryCloud { id: string; version: string | null; trial: "pending" | "passed" | null; rolledBack: string | null; refused: string | null; stuck: boolean }
@@ -28,17 +29,21 @@ const byVersion = (a: { version: string }, b: { version: string }) => {
 
 /** the desktop rows from raw events (the memory sink, and the shape the database's aggregation returns) */
 export function desktopFleetOf(events: readonly StoredEvent[], since: number, until: number): DesktopVersionRow[] {
-  const newest = new Map<string, { at: number; version: string }>(), errors = new Map<string, number>();
+  const newest = new Map<string, { at: number; version: string }>(), errors = new Map<string, number>(), erring = new Map<string, Set<string>>();
   for (const e of events) {
     const version = e.ctx?.app?.version;
     if (e.at < since || e.at >= until || typeof version !== "string" || !SEMVER.test(version)) continue;
-    if (e.name === "app_error") errors.set(version, (errors.get(version) ?? 0) + 1);
     const install = e.ctx?.install;
+    if (e.name === "app_error") {
+      errors.set(version, (errors.get(version) ?? 0) + 1);
+      if (install) (erring.get(version) ?? erring.set(version, new Set()).get(version)!).add(install);
+    }
     if (e.name === "app_open" && install && (newest.get(install)?.at ?? -1) <= e.at) newest.set(install, { at: e.at, version });
   }
   const installs = new Map<string, number>();
   for (const { version } of newest.values()) installs.set(version, (installs.get(version) ?? 0) + 1);
-  return [...new Set([...installs.keys(), ...errors.keys()])].map(version => ({ version, installs: installs.get(version) ?? 0, errors: errors.get(version) ?? 0 })).sort(byVersion);
+  return [...new Set([...installs.keys(), ...errors.keys()])].map(version => ({ version, installs: installs.get(version) ?? 0, errors: errors.get(version) ?? 0,
+    errorInstalls: erring.get(version)?.size ?? 0 })).sort(byVersion);
 }
 
 interface CloudLike { id: string; status: string; backend?: unknown; managed?: { update?: HomeUpdateState } | null }

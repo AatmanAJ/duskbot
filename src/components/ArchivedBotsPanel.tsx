@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, Trash2, X } from "../icons";
 
-import { t } from "@/lib/i18n";
+import { activeLocale, t } from "@/lib/i18n";
 import { api, openBot, useStore, type Bot } from "@/state/store";
 
 import { BotAvatar } from "./Avatar";
@@ -112,6 +112,17 @@ export function ArchivedBotRow({
   );
 }
 
+function keepTabInside(event: KeyboardEvent, root: HTMLElement | null) {
+  if (!root || event.defaultPrevented) return;
+  const controls = [...root.querySelectorAll<HTMLElement>("button:not([disabled]), a[href], input:not([disabled])")];
+  const first = controls[0], last = controls.at(-1);
+  if (!first || !last) { event.preventDefault(); root.focus(); return; }
+  const at = document.activeElement;
+  if (!root.contains(at) || at === root) { event.preventDefault(); (event.shiftKey ? last : first).focus(); return; }
+  if (event.shiftKey && at === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && at === last) { event.preventDefault(); first.focus(); }
+}
+
 export function ArchivedBotsPanel({
   bots,
   onClose,
@@ -128,20 +139,27 @@ export function ArchivedBotsPanel({
   const [pendingDelete, setPendingDelete] = useState<Bot | "all" | null>(null);
   const [error, setError] = useState("");
   const deleting = bots.some((bot) => Boolean(state.deletingBots[bot.id]));
-  const locked = restoringAll || Boolean(busyId) || deleting || Boolean(pendingDelete);
+  const confirming = pendingDelete !== null;
+  const locked = restoringAll || Boolean(busyId) || deleting || confirming;
 
   useEffect(() => {
     if (bots.length === 0) onClose();
   }, [bots.length, onClose]);
 
   useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     dialogRef.current?.focus();
+    return () => { if (opener?.isConnected) opener.focus(); };
+  }, []);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !locked) onClose();
+      if (event.key === "Tab" && !confirming) keepTabInside(event, dialogRef.current);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [locked, onClose]);
+  }, [confirming, locked, onClose]);
 
   const restore = async (bot: Bot) => {
     setBusyId(bot.id);
@@ -165,29 +183,29 @@ export function ArchivedBotsPanel({
   const restoreAll = async () => {
     setRestoringAll(true);
     setError("");
-    try {
-      const responses = await Promise.all(
-        bots.map((bot) =>
-          api(`/api/bots/${bot.id}`, {
-            method: "PATCH",
-            body: JSON.stringify({ hidden: false }),
-          }),
-        ),
-      );
-      for (const response of responses) dispatch({ type: "botPatched", bot: response.bot });
-      const first = responses[0]?.bot;
-      if (first) openBot(dispatch, first);
-      onRestored(
-        bots.length === 1
-          ? t("sidebar.archived.restoredOne")
-          : t("sidebar.archived.restoredMany", { count: bots.length }),
-      );
-      onClose();
-    } catch (cause) {
-      setError(friendlyError(cause));
-    } finally {
-      setRestoringAll(false);
+    const results = await Promise.allSettled(
+      bots.map((bot) =>
+        api(`/api/bots/${bot.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ hidden: false }),
+        }),
+      ),
+    );
+    const restored = results.flatMap((result) => (result.status === "fulfilled" ? [result.value.bot as Bot] : []));
+    const left = bots.filter((_, index) => results[index]!.status === "rejected");
+    for (const bot of restored) dispatch({ type: "botPatched", bot });
+    setRestoringAll(false);
+    if (restored[0]) openBot(dispatch, restored[0]);
+    if (restored.length > 0) {
+      onRestored(restored.length === 1 ? t("sidebar.archived.restoredOne") : t("sidebar.archived.restoredMany", { count: restored.length }));
     }
+    if (left.length === 0) {
+      onClose();
+      return;
+    }
+    const reason = results.find((result): result is PromiseRejectedResult => result.status === "rejected")!.reason;
+    const names = new Intl.ListFormat(activeLocale(), { type: "conjunction" }).format(left.map((bot) => bot.name));
+    setError(t("sidebar.archived.restoreFailed", { names, reason: friendlyError(reason) }));
   };
 
   return createPortal(

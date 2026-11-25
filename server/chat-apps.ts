@@ -149,7 +149,7 @@ function placePage(
   const existing = appRow(store, threadId, value.appId);
   if (!existing || (existing.from && existing.from.botId !== bot.id)) return { ok: false, status: 404, error: NO_SUCH_PAGE };
   if (existing.app.source !== "html") return { ok: false, status: 409, error: NOT_A_PAGE };
-  const patched = replacePage(store, docs, threadId, existing, made, value.frameless);
+  const patched = replacePage(store, docs, threadId, existing, made, value);
   if (!patched) return { ok: false, status: 404, error: NO_SUCH_PAGE };
   args.authored?.(patched.id);
   return { ok: true, messageId: patched.id, ...(made.masked ? { masked: true as const } : {}) };
@@ -157,7 +157,8 @@ function placePage(
 
 /** The next version of a row's page; the row is unchanged when the page is the same document. */
 function replacePage(
-  store: Pick<AgentCardStore, "patchMessage">, docs: AppDocs, threadId: string, existing: Message & { app: AppPayload }, made: MadePage, frameless?: boolean,
+  store: Pick<AgentCardStore, "patchMessage">, docs: AppDocs, threadId: string, existing: Message & { app: AppPayload }, made: MadePage,
+  { frameless, fallbackText }: { frameless?: boolean; fallbackText?: string },
 ): Message | null {
   const { page } = made;
   const stored = storePage(docs, page);
@@ -179,7 +180,7 @@ function replacePage(
     ...(page.format ? { format: page.format } : {}),
     ...(stored.ok ? {} : { blocked: "too-large" as const }),
   };
-  return store.patchMessage(threadId, existing.id, { text: pageFallback(made.title, page), app: payload });
+  return store.patchMessage(threadId, existing.id, { text: pageFallback(made.title, page, fallbackText), app: payload });
 }
 
 export type McpAppAccess = (row: Message & { app: AppPayload }, threadId: string) => { can: AppCan; blocked?: AppDocument["blocked"] };
@@ -280,7 +281,7 @@ export function showPublishedPage(args: {
   if (shown) {
     const videos = docs.read(shown.app.doc)?.data?.videos;
     if (videos) made.page.videos = videos;
-    const replaced = replacePage(store, docs, threadId, shown, made);
+    const replaced = replacePage(store, docs, threadId, shown, made, {});
     return replaced && store.patchMessage(threadId, shown.id, { publishedPage: card }) ? shown.id : null;
   }
   const stored = storePage(docs, made.page);

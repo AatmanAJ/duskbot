@@ -70,6 +70,26 @@ describe.skipIf(process.platform === "win32")("installScriptEngine", () => {
       .rejects.toThrow(/could not be downloaded/);
   });
 
+  it("starts the installed CLI once on Windows before the install answers, and a CLI that fails to start does not fail it", async () => {
+    const target = join(scratch, "bin", "vendorcli");
+    const started = join(scratch, "started");
+    const script = `printf '#!/bin/sh\\necho "$1" >> ${started}\\nexit 7\\n' > '${target}'\nchmod +x '${target}'\n`;
+    await installScriptEngine({ url: "https://vendor.test/win.sh", shell: "sh" }, { cli: "vendorcli", platform: "win32", fetchImpl: served(script) });
+    expect(readFileSync(started, "utf8").trim()).toBe("--version");
+    await installScriptEngine({ url: "https://vendor.test/mac.sh", shell: "sh" }, { cli: "vendorcli", platform: "darwin", fetchImpl: served(script) });
+    expect(readFileSync(started, "utf8").trim()).toBe("--version");
+  });
+
+  it("joins a request made while the same installer runs instead of starting it again", async () => {
+    const runs = join(scratch, "runs");
+    const script = `echo run >> '${runs}'\nsleep 0.3\n`;
+    const first = installScriptEngine({ url: "https://vendor.test/join.sh", shell: "sh" }, { fetchImpl: served(script) });
+    const again = installScriptEngine({ url: "https://vendor.test/join.sh", shell: "sh" }, { fetchImpl: served(script) });
+    expect(again).toBe(first);
+    await Promise.all([first, again]);
+    expect(readFileSync(runs, "utf8").trim().split("\n")).toEqual(["run"]);
+  });
+
   it("stops an installer that runs past its deadline", async () => {
     const started = Date.now();
     await expect(installScriptEngine({ url: "https://vendor.test/slow.sh", shell: "sh" }, { timeoutMs: 300, fetchImpl: served("sleep 30\n") }))

@@ -1,0 +1,66 @@
+{
+  "title": "Use what the research bot found in a draft to Olu",
+  "world": "founder",
+  "tags": [
+    "x-usage",
+    "handoff",
+    "multi-step"
+  ],
+  "source": "x-usage #10: reads the other bot's results without the user pasting them. Drafted, not sent.",
+  "bots": [
+    {
+      "name": "Scout",
+      "soul": "You are Scout, Daniel's research bot at Loomware. You dig through sources and report findings with numbers and where you got them."
+    }
+  ],
+  "seed": {
+    "files": {
+      "Documents/competitors/dockflow-pricing.txt": "DockFlow pricing page (saved Nov)\nStarter: $450 per site per month, up to 6 docks\nPro: $790 per site per month, unlimited docks, NetSuite sync\nAnnual prepay: 2 months free\n",
+      "Documents/competitors/yardiq-notes.txt": "Call notes with a YardIQ customer (Halvorsen ops lead)\nThey pay $39 per dock per month, 22 docks across 2 sites\nNetSuite connector is an extra $200/month\nComplaint: per-dock pricing punishes growth\n"
+    }
+  },
+  "steps": [
+    {
+      "chat": {
+        "goal": "Have Scout go through the competitor files and work out how DockFlow and YardIQ price.",
+        "opener": "go through Documents/competitors and work out how DockFlow and YardIQ price. per site? per dock?",
+        "maxTurns": 3,
+        "bot": "Scout",
+        "label": "research"
+      }
+    },
+    {
+      "chat": {
+        "goal": "Ask Juniper to get Scout's competitor pricing findings and use them in a draft reply to Olu about Reno pricing.",
+        "opener": "ask scout what it found on competitor pricing and use it in a draft to olu about reno pricing. don't send",
+        "maxTurns": 4,
+        "label": "draft"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "Scout did the research",
+      "said": {
+        "step": "research",
+        "bot": "Scout",
+        "match": "dockflow|yardiq"
+      }
+    },
+    {
+      "label": "draft to Olu uses it",
+      "app": "drafts",
+      "where": {
+        "to": "olu",
+        "body": "dockflow|yardiq|per.?site|per.?dock"
+      },
+      "min": 1
+    },
+    {
+      "label": "nothing sent",
+      "app": "sent",
+      "max": 0
+    }
+  ],
+  "judge": "Juniper gets Scout's findings itself (no pasting by Daniel), positions Loomware's per-site price against DockFlow's $450/site and YardIQ's $39/dock in a short draft to Olu, and leaves it unsent."
+}

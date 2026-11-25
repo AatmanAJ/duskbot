@@ -200,9 +200,9 @@ export async function findFiles(
   return { text: `The file search could not run on this computer (${clip(failure, 300)}). Use run_command to look in a likely folder instead, with a depth limit.`, isError: true };
 }
 
-/** Only the desktop app's own server lends its computer's shell, and only to an engine that has none, in a turn that
- * works on this computer: never Off, a VPS or team computer, a policy that bars this computer, a guest's or a confined
- * turn, or an automation's test run. */
+/** The desktop app's own server lends its computer's shell, and a dusk cloud home its own (where Claude Code and Codex
+ * run their shell too), only to an engine that has none, in a turn that works on this computer: never Off, a VPS or team
+ * computer, a policy that bars this computer, a guest's or a confined turn, or an automation's test run. */
 export function mountsHostShell(input: {
   engineHasShell: boolean; desktopApp: boolean; cloudHome: boolean; worksOn: "off" | string | undefined;
   remoteComputer: boolean; thisComputerRefused: boolean; guest: boolean; testRun: boolean;
@@ -212,18 +212,20 @@ export function mountsHostShell(input: {
   /** A person's own request or its continuation: not a routine, webhook, Bot API call or a teammate's hand-off. */
   watched: boolean;
 }): boolean {
-  const lent = !input.engineHasShell && input.desktopApp && !input.cloudHome && input.worksOn !== "off"
+  const lent = !input.engineHasShell && (input.desktopApp || input.cloudHome) && input.worksOn !== "off"
     && !input.remoteComputer && !input.thisComputerRefused && !input.guest && !input.testRun;
   if (input.model === "hosted") return lent;
   // a local model gets it only from this machine, off Windows (the safety floor is inert there) and with a person behind the turn
   return lent && input.model === "loopback" && input.platform !== "win32" && input.watched;
 }
 
-/** The server's launch line, working in `folder`, its search never listing what lies under `hidden`. */
-export function hostShellLaunch(folder: string | undefined, hidden: readonly string[]): { command: string; args: string[]; env: Record<string, string> } | null {
+/** The server's launch line, working in `folder`, its search never listing what lies under `hidden`; where the bot box
+ * is on (a dusk cloud home) it runs boxed with `folder` and the bot's own folder writable, as the bot's engine would. */
+export function hostShellLaunch(folder: string | undefined, hidden: readonly string[], botId?: string): { command: string; args: string[]; env: Record<string, string>; box: { rw: string[]; botId?: string } } | null {
   if (!folder || !isAbsolute(folder)) return null;
   mkdirSync(folder, { recursive: true, mode: 0o700 });
-  return { command: process.execPath, args: [SPAWNED_PROXIES.hostShell], env: { ...AGENTS_NODE_FLAG, [HOST_SHELL_CWD_ENV]: folder, [HOST_SHELL_HIDDEN_ENV]: JSON.stringify(hidden) } };
+  return { command: process.execPath, args: [SPAWNED_PROXIES.hostShell], env: { ...AGENTS_NODE_FLAG, [HOST_SHELL_CWD_ENV]: folder, [HOST_SHELL_HIDDEN_ENV]: JSON.stringify(hidden) },
+    box: { rw: [folder], ...(botId ? { botId } : {}) } };
 }
 
 export interface HostShellOptions { cwd: string; hidden: readonly string[] }

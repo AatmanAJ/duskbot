@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto"; import { shapeNewRoutine } from "./routine-shape.ts"; import { duplicateOf, duplicateRefusal, guardAgainst, jitter } from "./routine-bot-guard.ts"; const withJitter = (changes: RoutineRequestChanges, current: Routine): RoutineRequestChanges => (changes.schedule ? { ...changes, schedule: jitter(changes.schedule, changes.name ?? current.name, changes.instructions ?? current.prompt) } : changes); import { cleanProbe } from "./routine-quiet.ts"; import { serverLine } from "./server-lines.ts"; import { plainCronWhen } from "./routine-cron-words.ts";
+import { createHash } from "node:crypto"; import { shapeNewRoutine } from "./routine-shape.ts"; import { duplicateOf, duplicateRefusal, guardAgainst, jitter } from "./routine-bot-guard.ts"; const withJitter = (changes: RoutineRequestChanges, current: Routine): RoutineRequestChanges => (changes.schedule ? { ...changes, schedule: jitter(changes.schedule, changes.name ?? current.name, changes.instructions ?? current.prompt) } : changes); import { cleanProbe } from "./routine-quiet.ts";
+import { cleanChain } from "./routine-chain.ts"; import { chainLines, consequenceLine } from "./routine-request-copy.ts"; export { consequenceLine } from "./routine-request-copy.ts"; import { serverLine } from "./server-lines.ts";
 import { isDeepStrictEqual } from "node:util";
 
 import { cronScheduleLabel } from "../shared/cron-label.ts";
@@ -7,6 +8,7 @@ import { normalizeCronSchedule, nextCronRuns } from "../shared/routine-schedule.
 import { newId } from "./contracts.ts";
 import { UNDO_STALE, type DirectApply, type DirectApplyCheck } from "./direct-apply.ts";
 import { redactSecretsInText } from "./redact.ts";
+import { MAX_CATCH_UP_MINUTES, runMinutesOf } from "../shared/routines.ts";
 import { parseJson, schemaIssue, type JsonObject, type JsonValue } from "./schema.ts";
 import {
   cronRule, ENGINE_ID, intervalWindowMinutes, namedTime, jsonObjectSchema, MAX_DATE_MS, ROUTINE_ID, routineProposalSchema, routineRequestCardDataSchema, storedScheduleSchema,
@@ -203,21 +205,16 @@ function runOn(value: RoutineRequestRunOn | undefined): RoutineRequestRunOn {
   return value ?? "maus";
 }
 
-function duration(value: number | undefined): number {
-  const normalized = value ?? 30;
-  if (!Number.isInteger(normalized) || normalized < 5 || normalized > 240) {
-    throw new RoutineRequestError("durationMinutes must be a whole number from 5 to 240");
-  }
-  return normalized;
-}
-
-function timeout(value: number | null | undefined): number | null | undefined {
-  if (value == null) return value;
-  if (!Number.isInteger(value) || value < 5 || value > 240) {
-    throw new RoutineRequestError("timeoutMinutes must be a whole number from 5 to 240");
+function wholeMinutes<T extends number | null | undefined>(value: T, field: string, min: number, max: number): T {
+  if (value != null && (!Number.isInteger(value) || value < min || value > max)) {
+    throw new RoutineRequestError(`${field} must be a whole number from ${min} to ${max}`);
   }
   return value;
 }
+
+const duration = (value: number | undefined): number => wholeMinutes(value ?? 30, "durationMinutes", 5, 240);
+const timeout = (value: number | null | undefined) => wholeMinutes(value, "timeoutMinutes", 5, 240);
+const catchUp = (value: number | null | undefined) => wholeMinutes(value, "catchUpMinutes", 0, MAX_CATCH_UP_MINUTES);
 
 function intervalWeekdays(values: string[]): number[] {
   const weekdays = values.map((day) => {
@@ -358,19 +355,20 @@ function normalizeScheduleChanges(
     ...(schedule.endsAt === null ? { endsAt: null } : {}),
   };
 }
+const requestChain = (value: unknown) => { try { return cleanChain(value) ?? {}; } catch (error) { throw new RoutineRequestError(error instanceof Error ? error.message : String(error)); } };
 const requestProbe = (value: unknown) => { try { return cleanProbe(value)!; } catch (error) { throw new RoutineRequestError(error instanceof Error ? error.message : String(error)); } };
 function normalizeDefinition(input: RoutineToolDefinitionInput, now: number, ownEngine?: string): RoutineRequestDefinition {
-  const timeoutMinutes = timeout(input.timeoutMinutes);
   return {
     name: text(input.name, "name", 80),
     instructions: text(input.instructions, "instructions", 20_000),
     schedule: normalizeSchedule(input.schedule, now, ownEngine),
     runOn: runOn(input.runOn),
     durationMinutes: duration(input.durationMinutes),
-    ...(timeoutMinutes == null ? {} : { timeoutMinutes }),
+    ...runMinutesOf({ timeoutMinutes: timeout(input.timeoutMinutes), catchUpMinutes: catchUp(input.catchUpMinutes) }),
     ...(input.continuity === true ? { continuity: true } : {}),
     ...(input.overlap === "queue" ? { overlap: "queue" as const } : {}),
     ...(input.runOnStartup === true ? { runOnStartup: true } : {}), ...(input.probe ? { probe: requestProbe(input.probe) } : {}),
+    ...(input.chain ? { chain: requestChain(input.chain) } : {}),
   };
 }
 
@@ -382,9 +380,11 @@ function normalizeChanges(input: RoutineToolChangesInput, now: number, ownEngine
   if (input.runOn !== undefined) changes.runOn = runOn(input.runOn);
   if (input.durationMinutes !== undefined) changes.durationMinutes = duration(input.durationMinutes);
   if (input.timeoutMinutes !== undefined) changes.timeoutMinutes = timeout(input.timeoutMinutes);
+  if (input.catchUpMinutes !== undefined) changes.catchUpMinutes = catchUp(input.catchUpMinutes);
   if (input.continuity !== undefined) changes.continuity = input.continuity === true;
   if (input.overlap !== undefined) changes.overlap = input.overlap;
   if (input.runOnStartup !== undefined) changes.runOnStartup = input.runOnStartup === true; if (input.probe !== undefined) changes.probe = input.probe === null ? null : requestProbe(input.probe);
+  if (input.chain !== undefined) changes.chain = input.chain === null ? null : requestChain(input.chain);
   return changes;
 }
 
@@ -591,28 +591,6 @@ export function scheduleText(schedule: RoutineRequestSchedule, timeZone: string,
   return `${plainWeekdays(schedule.weekdays)} at ${plainClock(schedule.time)} ${zone}`;
 }
 
-export function consequenceLine(schedule: RoutineRequestSchedule, continuity = false): string {
-  const session = continuity ? "each run starts a fresh session with the previous run's report" : "each run starts a fresh session";
-  if (schedule.type === "cron") return `${plainCronWhen(schedule) ?? `Will run at matching calendar times, ${plainTimeZone(schedule.timeZone)}`}; ${session}.`;
-  if (schedule.type === "once") return "Will run once; that run starts a fresh session.";
-  if (schedule.type === "limit_reset") {
-    return schedule.repeat === "every_reset"
-      ? "Will run a minute after each time that usage limit resets, in this conversation."
-      : "Will run once, a minute after that usage limit resets, and continue in this conversation.";
-  }
-  if (schedule.type === "interval") {
-    if (intervalHasRestrictions(schedule)) {
-      return `Will run every ${schedule.everyMinutes} minutes when its day, time, and end restrictions allow; ${session}.`;
-    }
-    const runsPerDay = Math.round(1440 / schedule.everyMinutes);
-    const cadence = runsPerDay <= 1 ? "about once a day" : `about ${runsPerDay} times a day`;
-    return `Will run ${cadence}; ${session}.`;
-  }
-  const days = schedule.weekdays.length;
-  const cadence = days === 7 ? "every day" : days === 1 ? "one day a week" : `${days} days a week`;
-  return `Will run ${cadence}; ${session}.`;
-}
-
 function effectiveDefinition(operation: RoutineRequestOperation, manager: RoutineManager): RoutineRequestDefinition | null {
   if (operation.action === "create") return operation.routine;
   const existing = manager.listRoutines().find((routine) => routine.id === operation.routineId);
@@ -623,20 +601,23 @@ function effectiveDefinition(operation: RoutineRequestOperation, manager: Routin
     schedule: requestSchedule(existing.schedule),
     runOn: existing.runOn,
     durationMinutes: existing.durationMinutes,
-    ...(existing.timeoutMinutes === undefined ? {} : { timeoutMinutes: existing.timeoutMinutes }),
+    ...runMinutesOf(existing),
     ...(existing.continuity ? { continuity: true } : {}),
     ...(existing.overlap ? { overlap: existing.overlap } : {}),
-    ...(existing.runOnStartup ? { runOnStartup: true } : {}), ...(existing.probe ? { probe: existing.probe } : {}),
+    ...(existing.runOnStartup ? { runOnStartup: true } : {}), ...(existing.probe ? { probe: existing.probe } : {}), ...(existing.chain ? { chain: existing.chain } : {}),
   };
   if (operation.action !== "update") return base;
-  const { schedule, timeoutMinutes, probe, ...changes } = operation.changes;
+  const { schedule, timeoutMinutes, catchUpMinutes, probe, chain, ...changes } = operation.changes;
   const merged: RoutineRequestDefinition = {
     ...base,
     ...changes,
     ...(schedule === undefined ? {} : { schedule: effectiveSchedule(base.schedule, schedule) }),
   };
   if (timeoutMinutes === null) delete merged.timeoutMinutes;
-  else if (timeoutMinutes !== undefined) merged.timeoutMinutes = timeoutMinutes; if (probe === null) delete merged.probe; else if (probe !== undefined) merged.probe = probe;
+  else if (timeoutMinutes !== undefined) merged.timeoutMinutes = timeoutMinutes;
+  if (catchUpMinutes === null) delete merged.catchUpMinutes; else if (catchUpMinutes !== undefined) merged.catchUpMinutes = catchUpMinutes;
+  if (probe === null) delete merged.probe; else if (probe !== undefined) merged.probe = probe;
+  if (chain === null) delete merged.chain; else if (chain !== undefined) merged.chain = chain;
   if (runsOnce(merged.schedule)) delete merged.runOnStartup;
   return merged;
 }
@@ -703,13 +684,15 @@ function cardCopy(
       `Name: ${name}`,
       ...(forBot ? [`For: @${redactSecretsInText(forBot.name)}, each run uses that bot's AI and permissions`] : []),
       `Schedule: ${when}`,
+      ...chainLines(definition.chain, manager),
       `Next run: ${nextDescription}`,
       ...(definition.schedule.type === "cron" && nextRunAt !== null && operation.action !== "run_now"
         ? [`Next 3 runs (${plainTimeZone(scheduleTimeZone)}): ${nextCronRuns(definition.schedule, now, 3).map((at) => formatInstant(at, scheduleTimeZone)).join(" · ")}`]
         : []),
       `Runs on: ${destination}`,
       `Run limit: ${definition.timeoutMinutes === undefined ? "No limit" : `${definition.timeoutMinutes} minutes`}`,
-      `Continuity: ${definition.continuity ? "Carries the previous run's report into the next run" : "Each run starts fresh"}`, ...(definition.probe?.kind === "script" ? [serverLine(undefined, "server.routine.scriptCheck", { command: redactSecretsInText(definition.probe.command ?? "") })] : []),
+      ...(definition.catchUpMinutes === undefined ? [] : [definition.catchUpMinutes === 0 ? serverLine(undefined, "server.routine.lateStartNever") : serverLine(undefined, "server.routine.lateStartUpTo", { minutes: definition.catchUpMinutes })]),
+      `Continuity: ${definition.continuity ? "Carries the previous run's report into the next run" : "Each run starts fresh"}`, ...(definition.probe?.kind === "script" ? [(definition.probe.post ? serverLine(undefined, "server.routine.scriptPost", { command: redactSecretsInText(definition.probe.command ?? "") }) : serverLine(undefined, "server.routine.scriptCheck", { command: redactSecretsInText(definition.probe.command ?? "") })), ...(definition.probe.access === "full" ? [serverLine(undefined, "server.routine.scriptFullAccess")] : [])] : []),
       `While busy: ${definition.overlap === "queue" ? "Queue one scheduled run; skip further occurrences until it starts" : "Skip overlapping scheduled occurrences"}`,
       ...(definition.runOnStartup || (operation.action === "update" && operation.changes.runOnStartup !== undefined)
         ? [`On startup: ${definition.runOnStartup ? "Also runs once each time dusk bot starts" : "Runs only on its schedule"}`]
@@ -735,10 +718,10 @@ function inputFromDefinition(definition: RoutineRequestDefinition, botId: string
     enabled: true,
     schedule: asSchedule(definition.schedule, now),
     durationMinutes: definition.durationMinutes,
-    ...(definition.timeoutMinutes === undefined ? {} : { timeoutMinutes: definition.timeoutMinutes }),
+    ...runMinutesOf(definition),
     ...(definition.continuity ? { continuity: true } : {}),
     ...(definition.overlap === "queue" ? { overlap: "queue" as const } : {}),
-    ...(definition.runOnStartup ? { runOnStartup: true } : {}), ...(definition.probe ? { probe: definition.probe } : {}),
+    ...(definition.runOnStartup ? { runOnStartup: true } : {}), ...(definition.probe ? { probe: definition.probe } : {}), ...(definition.chain ? { chain: definition.chain } : {}),
   };
 }
 
@@ -754,9 +737,11 @@ function updateFromChanges(
   if (changes.runOn !== undefined) patch.runOn = changes.runOn;
   if (changes.durationMinutes !== undefined) patch.durationMinutes = changes.durationMinutes;
   if (changes.timeoutMinutes !== undefined) patch.timeoutMinutes = changes.timeoutMinutes;
+  if (changes.catchUpMinutes !== undefined) patch.catchUpMinutes = changes.catchUpMinutes;
   if (changes.continuity !== undefined) patch.continuity = changes.continuity;
   if (changes.overlap !== undefined) patch.overlap = changes.overlap;
   if (changes.runOnStartup !== undefined) patch.runOnStartup = changes.runOnStartup; if (changes.probe !== undefined) patch.probe = changes.probe;
+  if (changes.chain !== undefined) patch.chain = changes.chain;
   return patch;
 }
 
@@ -827,10 +812,10 @@ function revalidateOperation(operation: RoutineRequestOperation, manager: Routin
       if (!routine.enabled || routine.target !== "bot" || routine.botId !== owner
         || routine.runOn !== definition.runOn || routine.prompt !== definition.instructions
         || routine.durationMinutes !== definition.durationMinutes
-        || routine.timeoutMinutes !== definition.timeoutMinutes
+        || routine.timeoutMinutes !== definition.timeoutMinutes || routine.catchUpMinutes !== definition.catchUpMinutes
         || Boolean(routine.continuity) !== Boolean(definition.continuity)
         || (routine.overlap ?? "skip") !== (definition.overlap ?? "skip")
-        || Boolean(routine.runOnStartup) !== Boolean(definition.runOnStartup) || !isDeepStrictEqual(routine.probe ?? null, definition.probe ?? null)
+        || Boolean(routine.runOnStartup) !== Boolean(definition.runOnStartup) || !isDeepStrictEqual(routine.probe ?? null, definition.probe ?? null) || !isDeepStrictEqual(routine.chain ?? null, definition.chain ?? null)
         || (routine.attachments?.length ?? 0) > 0) return false;
       if (schedule.type === "limit_reset" || routine.schedule.type === "limit_reset") {
         return schedule.type === routine.schedule.type && isDeepStrictEqual(requestSchedule(schedule), requestSchedule(routine.schedule));
@@ -912,10 +897,10 @@ function routineSnapshot(routine: Routine): RoutineRequestSnapshot | undefined {
     schedule: requestSchedule(routine.schedule),
     runOn: routine.runOn,
     durationMinutes: routine.durationMinutes,
-    ...(routine.timeoutMinutes === undefined ? {} : { timeoutMinutes: routine.timeoutMinutes }),
+    ...runMinutesOf(routine),
     ...(routine.continuity ? { continuity: true } : {}),
     ...(routine.overlap === "queue" ? { overlap: "queue" as const } : {}),
-    ...(routine.runOnStartup ? { runOnStartup: true } : {}), ...(routine.probe ? { probe: routine.probe } : {}),
+    ...(routine.runOnStartup ? { runOnStartup: true } : {}), ...(routine.probe ? { probe: routine.probe } : {}), ...(routine.chain ? { chain: routine.chain } : {}),
     enabled: routine.enabled,
     ...(routine.target === "room-goal" ? { target: "room-goal" as const } : {}),
     ...(routine.groupId ? { groupId: routine.groupId } : {}),
@@ -934,10 +919,10 @@ function restorePatch(before: RoutineRequestSnapshot, now: number): Partial<Rout
       ? { ...schedule, weekdays: schedule.weekdays ?? null, window: schedule.window ?? null, endsAt: schedule.endsAt ?? null }
       : schedule,
     durationMinutes: before.durationMinutes,
-    timeoutMinutes: before.timeoutMinutes ?? null,
+    timeoutMinutes: before.timeoutMinutes ?? null, catchUpMinutes: before.catchUpMinutes ?? null,
     continuity: before.continuity === true,
     overlap: before.overlap ?? "skip",
-    runOnStartup: before.runOnStartup === true, probe: before.probe ?? null,
+    runOnStartup: before.runOnStartup === true, probe: before.probe ?? null, chain: before.chain ?? null,
   };
 }
 
@@ -1166,10 +1151,10 @@ export class RoutineRequestService {
             enabled: before.enabled,
             schedule: asSchedule(before.schedule, now),
             durationMinutes: before.durationMinutes,
-            ...(before.timeoutMinutes === undefined ? {} : { timeoutMinutes: before.timeoutMinutes }),
+            ...runMinutesOf(before),
             ...(before.continuity ? { continuity: true } : {}),
             ...(before.overlap === "queue" ? { overlap: "queue" as const } : {}),
-            ...(before.runOnStartup ? { runOnStartup: true } : {}),
+            ...(before.runOnStartup ? { runOnStartup: true } : {}), ...(before.chain ? { chain: before.chain } : {}),
             ...(before.resultsThreadId ? { resultsThreadId: before.resultsThreadId } : {}),
           }).id;
           break;

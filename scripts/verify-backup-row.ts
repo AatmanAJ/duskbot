@@ -1,4 +1,4 @@
-// The Backup model row (closed and open) and the Connect an AI note, photographed light and dark with a headless Chrome in
+// The bot panel's Details tab (no backup row) and the Connect an AI note, photographed light and dark with a headless Chrome in
 // a throwaway profile against a disposable fake-engine server. Run: node --experimental-strip-types scripts/verify-backup-row.ts <dir>
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -12,10 +12,8 @@ const shots = resolve(process.argv[2] ?? "backup-row-shots");
 const CHROME = process.env.DUSK_CDP_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const [WIDTH, HEIGHT, CLIP] = [1280, 800, 720];
 const VIEWS: Array<{ name: string; view: string; act?: string; ready?: string }> = [
-  { name: "backup-row", view: "row", ready: "[data-panel-row='backup-model']" },
-  { name: "backup-row-menu", view: "row", act: "document.querySelector('[data-panel-action=\"backup-model\"]').click()", ready: "[data-backup-modes]" },
+  { name: "details-tab", view: "details", ready: "[data-panel-tabpanel='details'] [data-panel-row='model']" },
   { name: "connect-ai-note", view: "note", ready: "[data-connect-ai-note]" },
-  { name: "backup-row-picked", view: "row", ready: "[data-panel-row='backup-model']" },
 ];
 
 async function openChrome(profile: string) {
@@ -82,20 +80,12 @@ try {
   const { bots } = await api("GET", "/api/bots?messages=0") as { bots: Array<{ id: string; color?: string }> };
   console.log(`fixture bot colour was ${bots[0]!.color ?? "unset"}`);
   await api("PATCH", `/api/bots/${bots[0]!.id}`, { color: "blue" });
-  ui = await mountPreview(fixture, { entry: "/scripts/testing/backup-row-preview.tsx", route: "/__backup-row.html", title: "Backup model row", logLevel: "warn" });
+  ui = await mountPreview(fixture, { entry: "/scripts/testing/backup-row-preview.tsx", route: "/__backup-row.html", title: "Details tab", logLevel: "warn" });
   mkdirSync(shots, { recursive: true });
   const profile = mkdtempSync(join(tmpdir(), "dusk-backup-row-chrome-"));
   const chrome = await openChrome(profile);
   try {
     for (const view of VIEWS) for (const skin of ["daylight", "midnight"]) {
-      if (view.name === "backup-row-picked" && skin === "daylight") {
-        const api = fixtureApi(fixture.info.url, { headers: { origin: fixture.info.url } });
-        const { bots } = await api("GET", "/api/bots?messages=0") as { bots: Array<{ id: string; modelSelection: { instanceId: string; model: string } }> };
-        const { instances } = await api("GET", "/api/instances") as { instances: Array<{ instanceId: string; models: { options: Array<{ id: string }> } }> };
-        const bot = bots[0]!;
-        const model = instances.find((entry) => entry.instanceId === bot.modelSelection.instanceId)!.models.options.find((option) => option.id !== bot.modelSelection.model)!.id;
-        await api("PATCH", `/api/bots/${bot.id}`, { fallback: [{ instanceId: bot.modelSelection.instanceId, model }] });
-      }
       const file = join(shots, `${view.name}-${skin === "daylight" ? "light" : "dark"}.png`);
       await chrome.shoot(`${ui.previewUrl}?view=${view.view}&skin=${skin}`, file, view.act, view.ready, {});
       console.log(file);

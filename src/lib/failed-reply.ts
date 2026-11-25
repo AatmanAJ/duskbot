@@ -1,5 +1,5 @@
 // grok's failed-reply card: what stopped the newest replies, one card above the composer, never a row in the chat.
-import { offersSignIn } from "@/components/EngineSetup";
+import { offersSignIn } from "@/lib/engine-needs";
 import { statusActivity } from "@/lib/activity-runs";
 import { t } from "@/lib/i18n";
 import { peerLine } from "@/lib/peer-message";
@@ -10,6 +10,7 @@ import { failedTurnCause, type BrowserBlocker } from "../../shared/failed-turn";
 import { isCancelledTranscriptRow } from "../../shared/client-cancel";
 import { freeFallback } from "../../shared/ai-ranking";
 import { errorKind, rowFailureKind, type ErrorKind, type FailureKind } from "../../shared/failure-plan";
+import { failureOf, type UsageReason } from "../../shared/usage-signals";
 
 export type FailedReplyKind = FailureKind;
 
@@ -91,9 +92,11 @@ export function failedReplyKind(tool: NonNullable<Message["tool"]>, engine: Inst
   return !ownAi && FREE_BACKUP_DOWN.has(errorKind(kind)) && (!engine || freeFallback(engine)) ? "no_ai" : kind;
 }
 
+const ENGINE_EXITS: ReadonlySet<UsageReason> = new Set(["cli_exit_early", "crashed"]);
+
 /** What stopped a reply, in the card's plain words, when its engine words say a reason; null for any other failure. */
 export function plainFailureWords(cause: string): string | null {
-  const kind = errorKind(rowFailureKind({ name: cause }));
+  const kind = errorKind(rowFailureKind({ name: cause, reason: ENGINE_EXITS.has(failureOf(cause).reason) ? "cli_exit" : undefined }));
   return kind === "busy" || kind === "no_reply" ? t(WORDS[kind], { engine: t("failedReply.yourAi") }) : null;
 }
 

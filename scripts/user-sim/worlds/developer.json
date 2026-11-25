@@ -1,0 +1,114 @@
+{
+  "persona": {
+    "id": "developer",
+    "name": "Arjun Mehta",
+    "email": "arjun@tidepool.dev",
+    "tz": "Asia/Kolkata",
+    "about": "You are Arjun, 29, a backend engineer at Tidepool, a 12-person startup in Bengaluru that builds a payments reconciliation API. You also maintain a small open source cron library called quickcron. Your manager is Neha Kapoor, teammates are Rohan Iyer (backend), Fatima Sheikh (frontend) and Wei Chen (staff engineer), plus Diego Alvarez, a contractor in Madrid. Your sister Kavya's wedding is next weekend in Jaipur.",
+    "style": "Precise, terse, developer shorthand (PR, CI, lgtm, nit). Lowercase, no greetings. Pastes PR numbers like #214. Dislikes fluff and being asked things he already said.",
+    "aboutMe": "Backend at Tidepool. GitHub: arjunm. Prefer Slack for team stuff, email only for external."
+  },
+  "botName": "Kiran",
+  "apps": ["github", "slack", "gmail", "google_calendar", "notes"],
+  "start": "mon 09:40",
+  "profile": { "name": "Arjun Mehta", "email": "arjun@tidepool.dev", "slack": "arjun", "github": "arjunm" },
+  "github": {
+    "repos": [
+      {
+        "name": "tidepool-hq/api",
+        "description": "Tidepool reconciliation API (Node 22, Postgres)",
+        "issues": [
+          { "number": 198, "title": "Webhook retries double-post settlements when Razorpay times out", "body": "When the Razorpay webhook times out after 10s we retry, but the first request still commits. Seen 3 times last week for merchant m_7741. Need an idempotency key on settlement inserts.", "state": "open", "labels": ["bug", "p1"], "author": "neha-k", "assignee": "arjunm", "created": "@-6d 11:00", "comments": [{ "author": "rohan-iyer", "body": "#214 should fix this", "at": "@-2d 15:00" }] },
+          { "number": 203, "title": "Add CSV export for reconciliation report", "body": "Finance teams want a CSV of the daily report with matched/unmatched counts.", "state": "open", "labels": ["feature"], "author": "fatima-s", "assignee": "fatima-s", "created": "@-5d 10:20", "comments": [] },
+          { "number": 207, "title": "Flaky: settlement_sync spec times out on CI", "body": "settlement_sync.spec.ts times out roughly 1 in 6 runs on CI, never locally. Probably the Postgres container cold start.", "state": "open", "labels": ["flaky", "ci"], "author": "arjunm", "assignee": "arjunm", "created": "@-4d 18:30", "comments": [] },
+          { "number": 209, "title": "Upgrade pg driver to 8.13", "body": "Security advisory on 8.11. Low risk.", "state": "open", "labels": ["chore", "security"], "author": "wei-chen", "created": "@-3d 09:15", "comments": [] },
+          { "number": 211, "title": "Rate limit /v2/match per API key", "body": "One merchant is sending 400 rps during month-end. Need per-key token bucket.", "state": "open", "labels": ["feature", "p2"], "author": "neha-k", "assignee": "rohan-iyer", "created": "@-2d 12:00", "comments": [] },
+          { "number": 190, "title": "Docs: wrong example for /v2/settlements pagination", "body": "cursor param is called after, not cursor.", "state": "closed", "labels": ["docs"], "author": "diego-alv", "created": "@-14d 16:00", "comments": [] }
+        ],
+        "pulls": [
+          { "number": 214, "title": "Idempotency key on settlement inserts (fixes #198)", "body": "Adds settlement_idempotency table, unique on (merchant_id, provider_ref). Retries now no-op.\n\nMigration: 0042_settlement_idempotency.sql", "state": "open", "author": "rohan-iyer", "checks": [{ "name": "lint", "status": "failure", "summary": "src/settlements/insert.ts:88:7 error 'existing' is assigned a value but never used (no-unused-vars)" }, { "name": "unit (node 22)", "status": "failure", "summary": "1 failing: settlement insert > retries with same provider_ref > returns existing row. Expected status 200, received 409. src/settlements/insert.ts:91 throws ConflictError instead of returning the existing row" }, { "name": "build", "status": "success" }, { "name": "migrations", "status": "success" }], "reviewers": ["arjunm", "wei-chen"], "files": ["migrations/0042_settlement_idempotency.sql", "src/settlements/insert.ts", "src/settlements/insert.spec.ts"], "created": "@-2d 14:40", "comments": [{ "author": "wei-chen", "body": "approach looks right, will review once CI is green", "at": "@-1d 10:00" }] },
+          { "number": 217, "title": "CSV export for daily reconciliation report", "body": "Implements #203. New endpoint GET /v2/reports/daily.csv streaming rows with matched/unmatched counts. Adds report_exports table for audit.", "state": "open", "author": "fatima-s", "checks": [{ "name": "lint", "status": "success" }, { "name": "unit (node 22)", "status": "success" }, { "name": "build", "status": "success" }, { "name": "migrations", "status": "success" }], "reviewers": ["arjunm"], "files": ["migrations/0043_report_exports.sql", "src/reports/daily-csv.ts", "src/reports/routes.ts", "src/reports/daily-csv.spec.ts"], "created": "@-1d 18:20", "comments": [] },
+          { "number": 215, "title": "Bump pg to 8.13", "body": "Closes #209.", "state": "open", "author": "wei-chen", "checks": [{ "name": "lint", "status": "success" }, { "name": "unit (node 22)", "status": "success" }, { "name": "build", "status": "success" }], "reviewers": ["arjunm"], "files": ["package.json", "pnpm-lock.yaml"], "created": "@-1d 11:00", "comments": [] }
+        ]
+      },
+      {
+        "name": "arjunm/quickcron",
+        "description": "Tiny cron expression parser and scheduler for Node",
+        "issues": [
+          { "number": 41, "title": "DST transition skips 02:30 jobs in Europe/London", "body": "On the March DST change a job at 30 2 * * * never runs. Expected: run at 03:30 or document it.", "state": "open", "labels": ["bug"], "author": "hannah-lowe", "created": "@-9d 08:00", "comments": [] },
+          { "number": 43, "title": "Support L (last day of month)", "body": "Would love 0 9 L * * for month-end jobs.", "state": "open", "labels": ["enhancement"], "author": "tomasz-w", "created": "@-5d 20:00", "comments": [] },
+          { "number": 44, "title": "TypeScript types missing for nextRuns()", "body": "nextRuns returns any[].", "state": "open", "labels": ["good first issue"], "author": "ibrahim-o", "created": "@-2d 13:00", "comments": [] },
+          { "number": 39, "title": "README typo", "body": "", "state": "closed", "labels": [], "author": "ibrahim-o", "created": "@-20d 13:00", "comments": [] }
+        ],
+        "pulls": [
+          { "number": 45, "title": "Add nextRuns() return types", "body": "Fixes #44.", "state": "open", "author": "ibrahim-o", "checks": [{ "name": "ci", "status": "success" }], "reviewers": ["arjunm"], "files": ["src/index.ts", "src/types.ts"], "created": "@-1d 09:00", "comments": [] }
+        ]
+      }
+    ]
+  },
+  "slack": {
+    "channels": {
+      "eng": { "topic": "Engineering chatter", "members": ["arjun", "neha", "rohan", "fatima", "wei", "diego"], "messages": [
+        { "user": "neha", "text": "reminder: #198 is the top priority this week, merchants are noticing double settlements", "at": "@-2d 10:05" },
+        { "user": "rohan", "text": "PR for it is up: #214", "at": "@-2d 14:45" },
+        { "user": "fatima", "text": "CSV export PR #217 ready for review, @arjun you're on it", "at": "@-1d 18:25" },
+        { "user": "wei", "text": "#214 CI is red btw, lint + one unit spec", "at": "@-1d 10:02" },
+        { "user": "diego", "text": "I'm offline wed-thu, Madrid holiday", "at": "@-1d 16:00" },
+        { "user": "neha", "text": "planning on wed moved to 4pm IST", "at": "@0d 09:10" }
+      ]},
+      "deploys": { "topic": "Deploy notifications from the pipeline", "members": ["arjun", "neha", "rohan", "wei", "deploybot"], "messages": [
+        { "user": "deploybot", "text": "api v2.31.0 deployed to staging (sha 8e1c2fa) by rohan", "at": "@-1d 15:10" },
+        { "user": "deploybot", "text": "api v2.31.0 deployed to production (sha 8e1c2fa) by wei", "at": "@-1d 17:30" },
+        { "user": "deploybot", "text": "worker v1.9.4 deployed to production (sha 41bd0e9) by arjun", "at": "@0d 09:05" }
+      ]},
+      "dm:neha": { "members": ["arjun", "neha"], "messages": [
+        { "user": "neha", "text": "can you make sure #214 lands before wednesday? I promised Razorpay ops", "at": "@-1d 19:00" },
+        { "user": "arjun", "text": "yep, waiting on rohan to fix CI", "at": "@-1d 19:12" },
+        { "user": "neha", "text": "also heads up, org changes announced tomorrow, nothing scary", "at": "@-1d 19:15" }
+      ]},
+      "dm:rohan": { "members": ["arjun", "rohan"], "messages": [
+        { "user": "rohan", "text": "will look at the CI fail on #214 tonight", "at": "@-1d 20:30" },
+        { "user": "rohan", "text": "ok didn't get to it, sick today, will check messages later", "at": "@0d 08:50" }
+      ]}
+    }
+  },
+  "mail": [
+    { "from": "GitHub <notifications@github.com>", "subject": "[tidepool-hq/api] Idempotency key on settlement inserts (fixes #198) (PR #214)", "date": "@-1d 10:01", "body": "Some checks were not successful: lint failed, unit (node 22) failed, build passed, migrations passed.", "labels": ["INBOX", "CATEGORY_UPDATES"] },
+    { "from": "GitHub <notifications@github.com>", "subject": "[tidepool-hq/api] fatima-s requested your review on #217", "date": "@-1d 18:21", "body": "fatima-s requested your review on: CSV export for daily reconciliation report.", "labels": ["INBOX", "CATEGORY_UPDATES"] },
+    { "from": "AWS <no-reply-aws@amazon.com>", "subject": "AWS Billing Alert: forecast exceeds budget", "date": "@-1d 04:00", "body": "Your forecasted spend for account tidepool-prod is $2,940, above your budget of $2,500. Top service: RDS (ap-south-1)." },
+    { "from": "DevConf Bengaluru <cfp@devconfblr.in>", "subject": "Your talk proposal: accepted!", "date": "@-2d 12:30", "body": "Hi Arjun, your talk 'Idempotency in payment APIs: lessons from production' has been accepted for 14 February. Please confirm by Friday and send a 2-line speaker bio." },
+    { "from": "Kavya Mehta <kavya.mehta.jpr@gmail.com>", "subject": "wedding stuff!!", "date": "@-1d 21:40", "body": "bhaiya, mehendi is Friday evening, wedding Saturday. pls be in Jaipur by Friday 2pm latest. also you're in charge of the playlist for sangeet, no arguments" },
+    { "from": "IndiGo <noreply@goindigo.in>", "subject": "Booking confirmed: BLR to JAI", "date": "@-6d 13:00", "body": "PNR K7H2QX. Friday 06:45 BLR to JAI, 6E 2135. Return Monday 19:20.", "read": true },
+    { "from": "Priya Raman <priya.raman@talentsprout.in>", "subject": "Senior backend role at a Series B fintech", "date": "@-1d 11:00", "body": "Hi Arjun, I came across your quickcron work. Open to a chat about a senior backend role? Remote-friendly, strong comp.", "labels": ["INBOX", "CATEGORY_PROMOTIONS"] },
+    { "from": "Hannah Lowe <hannah.lowe@fastmail.com>", "subject": "quickcron DST bug (#41)", "date": "@-1d 08:30", "body": "Hi, I opened #41 a week ago. We rely on quickcron for 02:30 jobs in London and the March change will bite us. Happy to send a PR if you can point me at where the next-run calc lives. Thanks, Hannah" },
+    { "from": "Node Weekly <newsletter@nodeweekly.com>", "subject": "Node Weekly #612", "date": "@-2d 07:00", "body": "Node 24 LTS plans, a deep dive into undici, and pg 8.13 performance notes.", "labels": ["INBOX", "CATEGORY_PROMOTIONS"] },
+    { "from": "HDFC Bank <alerts@hdfcbank.net>", "subject": "Credit card statement", "date": "@-3d 06:30", "body": "Statement for card ending 2209: total due Rs 38,412, minimum due Rs 1,921, due date 18th.", "read": true },
+    { "from": "Neha Kapoor <neha@tidepool.dev>", "subject": "Q1 goals doc", "date": "@-2d 17:00", "body": "Arjun, please add your Q1 goals to the doc by Thursday. Focus areas: settlement reliability, on-call tooling. Neha", "read": true },
+    { "from": "Swiggy <noreply@swiggy.in>", "subject": "Your order from Meghana Foods", "date": "@-1d 21:10", "body": "Rs 486 paid. Chicken biryani, raita.", "read": true }
+  ],
+  "events": [
+    { "title": "Standup", "start": "@0d 10:30", "end": "@0d 10:45", "attendees": ["neha@tidepool.dev", "rohan@tidepool.dev", "fatima@tidepool.dev", "wei@tidepool.dev"], "location": "Google Meet" },
+    { "title": "Standup", "start": "@+1d 10:30", "end": "@+1d 10:45", "attendees": ["neha@tidepool.dev", "rohan@tidepool.dev", "fatima@tidepool.dev", "wei@tidepool.dev"], "location": "Google Meet" },
+    { "title": "1:1 Neha", "start": "@+1d 15:00", "end": "@+1d 15:30", "attendees": ["neha@tidepool.dev"] },
+    { "title": "Sprint planning", "start": "@+2d 16:00", "end": "@+2d 17:00", "attendees": ["neha@tidepool.dev", "rohan@tidepool.dev", "fatima@tidepool.dev", "wei@tidepool.dev", "diego@tidepool.dev"], "location": "Google Meet" },
+    { "title": "Dentist", "start": "@+2d 18:30", "end": "@+2d 19:15", "location": "Smile Studio, Indiranagar" },
+    { "title": "Razorpay ops sync", "start": "@+2d 12:00", "end": "@+2d 12:30", "attendees": ["neha@tidepool.dev", "ops-sync@razorpay.com"] },
+    { "title": "Badminton", "start": "@+3d 07:00", "end": "@+3d 08:00", "location": "Koramangala Indoor Stadium" },
+    { "title": "Flight BLR to JAI", "start": "@+4d 06:45", "end": "@+4d 09:20", "description": "PNR K7H2QX" },
+    { "title": "Kavya's mehendi", "start": "@+4d 18:00", "end": "@+4d 23:00", "location": "Jaipur" },
+    { "title": "Kavya's wedding", "start": "@+5d 11:00", "end": "@+5d 23:00", "location": "Rambagh, Jaipur" }
+  ],
+  "notes": [
+    { "title": "On-call handoff", "folder": "Work", "updated": "@-1d 20:00", "body": "On call this week: Arjun (Mon-Wed), Wei (Thu-Sun).\nKnown issues: #198 double settlements, worker memory creep (restart if > 1.5GB).\nRunbook: notion/tidepool/oncall" },
+    { "title": "Standup notes", "folder": "Work", "updated": "@-3d 10:45", "body": "Fri: merged retry backoff, reviewed #212. Today: #207 flaky spec. Blockers: none" },
+    { "title": "DevConf talk outline", "folder": "Talks", "updated": "@-2d 22:30", "body": "1. the double-settlement incident\n2. idempotency keys: where to store them\n3. retries vs timeouts\n4. what we'd do differently" },
+    { "title": "Sangeet playlist", "folder": "Personal", "updated": "@-1d 23:00", "body": "London Thumakda, Gallan Goodiyaan, Kala Chashma, Nachde Ne Saare, ... need 20 more" },
+    { "title": "quickcron roadmap", "folder": "OSS", "updated": "@-10d 21:00", "body": "v1.4: L support, DST fix, typed nextRuns\nv2: drop Node 18" },
+    { "title": "Things to buy before Jaipur", "folder": "Personal", "updated": "@-2d 21:00", "body": "kurta from Fabindia, gift for Kavya (budget Rs 15k), phone charger" }
+  ],
+  "files": {
+    "Documents/flaky-runs.csv": "date,job,spec,result,duration_s\nmon,unit (node 22),settlement_sync.spec.ts,timeout,120\ntue,unit (node 22),settlement_sync.spec.ts,pass,14\nwed,unit (node 22),settlement_sync.spec.ts,pass,15\nthu,unit (node 22),settlement_sync.spec.ts,timeout,120\nfri,unit (node 22),settlement_sync.spec.ts,pass,13\n",
+    "Documents/oncall-handoff.md": "# on-call handoff\n\n- Arjun Mon-Wed, Wei Thu-Sun\n- #198 double settlements: PR #214 pending\n- worker memory creep: restart if > 1.5GB\n- deploy freeze from Friday for month-end\n",
+    "Documents/speaker-bio.txt": "Arjun Mehta is a backend engineer at Tidepool, where he works on payment reconciliation. He maintains quickcron.\n"
+  }
+}

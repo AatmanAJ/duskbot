@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import {
@@ -24,6 +25,7 @@ import { antigravityRuntimesRoot } from "../engine-roots.ts";
 import { augmentedPath } from "../env-path.ts";
 import { downloadMeter, type ProgressSink } from "../install-progress.ts";
 import {
+  compareSemver,
   fetchAntigravityCliRelease,
   resolveAntigravityReleaseAsset,
   type AntigravityReleaseAsset,
@@ -196,6 +198,60 @@ async function externalRuntime(candidate: string, source: "override" | "path"): 
   return { executablePath, source, version: null };
 }
 
+// `agy acp` and `acp --login` arrived in 1.5.0; 1.3 and older read `acp` as a stray prompt ("unexpected argument").
+export const ANTIGRAVITY_MIN_ACP_VERSION = "1.5.0";
+// The Windows build unpacks its runtime into TEMP on every start, which antivirus can stretch.
+const VERSION_PROBE_MS = 60_000;
+const versionProbes = new Map<string, Promise<string | null>>();
+const warnedOld = new Set<string>();
+
+export function parseAntigravityVersion(output: string): string | null {
+  return /^\s*v?(\d+\.\d+\.\d+)\b/u.exec(output)?.[1] ?? null;
+}
+
+export type AntigravityVersionProbe = (executablePath: string, env: NodeJS.ProcessEnv) => Promise<string | null>;
+
+/** `--version` of a CLI dusk bot did not install, cached per file; null when it could not be read. */
+const probeVersion: AntigravityVersionProbe = async (executablePath, env) => {
+  let key = executablePath;
+  try {
+    const info = await stat(executablePath);
+    key = `${executablePath}\0${info.size}\0${info.mtimeMs}`;
+  } catch {}
+  const cached = versionProbes.get(key);
+  if (cached) return cached;
+  const running = new Promise<string | null>((resolveProbe) => {
+    execFile(executablePath, ["--version"], {
+      env: { ...env, AGY_CLI_DISABLE_AUTO_UPDATE: "1" },
+      timeout: VERSION_PROBE_MS,
+      windowsHide: true,
+      maxBuffer: 64 * 1024,
+    }, (error, stdout) => resolveProbe(error ? null : parseAntigravityVersion(String(stdout))));
+  });
+  versionProbes.set(key, running);
+  return running;
+};
+let versionProbe: AntigravityVersionProbe = probeVersion;
+
+/** For tests. */
+export function setAntigravityVersionProbe(probe: AntigravityVersionProbe | null): void {
+  versionProbe = probe ?? probeVersion;
+  versionProbes.clear();
+}
+
+/** A CLI found on PATH that reports a version older than `agy acp` is skipped; one whose version cannot be read is still tried. */
+async function usableExternal(runtime: AntigravityRuntime, env: NodeJS.ProcessEnv): Promise<AntigravityRuntime | null> {
+  const version = await versionProbe(runtime.executablePath, env);
+  if (version && compareSemver(version, ANTIGRAVITY_MIN_ACP_VERSION) < 0) {
+    if (!warnedOld.has(runtime.executablePath)) {
+      warnedOld.add(runtime.executablePath);
+      console.warn(`antigravity: skipping ${runtime.executablePath} (version ${version}, needs ${ANTIGRAVITY_MIN_ACP_VERSION} or newer for acp)`);
+    }
+    return null;
+  }
+  return { ...runtime, version };
+}
+
 /** Legacy `agy` commands (saved absolute paths, Windows shims) migrate without editing user config. */
 export async function resolveAntigravityRuntime(
   binaryPath?: string,
@@ -204,6 +260,7 @@ export async function resolveAntigravityRuntime(
 ): Promise<AntigravityRuntime> {
   const override = binaryPath?.trim();
   const legacyCli = override !== undefined && /(?:^|[\\/])agy(?:\.(?:cmd|bat|exe|ps1))?$/iu.test(override);
+  let tooOld = false;
   if (override && override !== "agy" && override !== "antigravity") {
     for (const candidate of pathCandidates(override, env)) {
       const found = await externalRuntime(candidate, "override");
@@ -222,7 +279,10 @@ export async function resolveAntigravityRuntime(
   for (const name of pathExecutableNames()) {
     for (const candidate of pathCandidates(name, env)) {
       const found = await externalRuntime(candidate, "path");
-      if (found) return found;
+      if (!found) continue;
+      const usable = await usableExternal(found, env);
+      if (usable) return usable;
+      tooOld = true;
     }
   }
 
@@ -231,7 +291,7 @@ export async function resolveAntigravityRuntime(
       `Google does not publish an Antigravity runtime for ${process.platform}-${process.arch}. Set a custom executable path.`,
     );
   }
-  const hadLegacy = legacyCli || (await hasLegacyManagedInstall(baseDir));
+  const hadLegacy = legacyCli || tooOld || (await hasLegacyManagedInstall(baseDir));
   throw new AntigravitySetupError(hadLegacy
     ? "Antigravity now uses Google's official Antigravity CLI. Choose Install official Antigravity, then Sign in with Google."
     : "Antigravity is not installed. Install the official Google runtime to continue.");

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DATA_DIR } from "./config.ts";
+import { CAPTURE_MARKER } from "./memory-capture.ts";
 import { DREAM_MARKER } from "./memory-dream.ts";
 import { ORGANIZE_MARKER } from "./memory-organize.ts";
 import { TIDY_MARKER } from "./memory-tidy.ts";
@@ -34,6 +35,30 @@ describe("scheduled memory upkeep", () => {
     await loop.idle();
     vi.restoreAllMocks();
     vi.useRealTimers();
+  });
+
+  it("drops a capture call when the bot gets a new message, and captures those turns once it is free again", async () => {
+    let busy = false;
+    const generateText = vi.fn((prompt: string, options?: { signal?: AbortSignal }) => prompt.startsWith(CAPTURE_MARKER) && generateText.mock.calls.length === 1
+      ? new Promise<string>((_, reject) => options?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true }))
+      : Promise.resolve(prompt.startsWith(CAPTURE_MARKER) ? JSON.stringify([{ text: "Plays the cello on Sundays", kind: "fact", evidence: "I play the cello every Sunday", confidence: 0.9 }]) : "{}"));
+    loop = createMemoryUpkeep({
+      bots: () => [BOT], bot: () => BOT, engine: () => ({ generateText }), busy: () => busy,
+      addToAboutMe: () => 0, sourceLabel: () => "chat", quietMs: () => 60_000, tidyHour: () => 3,
+    });
+    const first = loop.capture({ botId: BOT.id, threadId: "t-yield", turns: [{ person: "I play the cello every Sunday", bot: "Nice!" }] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(generateText).toHaveBeenCalledTimes(1);
+    busy = true;
+    loop.yieldTo(BOT.id);
+    expect(await first).toMatchObject({ added: 0, note: expect.stringContaining("deferred") });
+    await loop.tick();
+    expect(generateText).toHaveBeenCalledTimes(1);
+    busy = false;
+    await loop.tick();
+    await loop.idle();
+    expect(generateText.mock.calls.filter(([prompt]) => prompt.startsWith(CAPTURE_MARKER))).toHaveLength(2);
+    expect(memory()).toContain("Plays the cello on Sundays");
   });
 
   it("keeps a moved desktop's memory unchanged when frozen before the first tick", async () => {

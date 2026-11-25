@@ -156,3 +156,12 @@ export function createProactivePrefs(deps: ProactivePrefsDeps) {
 }
 
 export type ProactivePrefsStore = ReturnType<typeof createProactivePrefs>;
+
+/** The night a routine's reports stay silent in when the person set no quiet hours of their own. */
+export const NIGHT: QuietHours = { from: "23:00", to: "07:00" };
+
+/** A routine's plain report waits in its chat, unread, while the person's quiet hours last (the night when they set
+ * none); a question, a failure or an approval still notifies at once. */
+export function routineNewsHeld(kind: string, quiet: QuietHours | null, minute: number): boolean {
+  return kind === "done" && isQuiet(quiet ?? NIGHT, minute);
+}

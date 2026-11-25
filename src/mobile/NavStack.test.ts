@@ -109,10 +109,9 @@ describe("going back", () => {
     await opened();
     frames = [];
     render(false);
-    expect(log).toEqual(["leave"]);
+    expect(log, "the slide starts in the frame the back lands in").toEqual(["leave", `slide ${innerWidth}`]);
     expect(shown()).toBe("chat");
     nextFrame();
-    expect(log).toEqual(["leave", `slide ${innerWidth}`]);
     const page = pageSlide();
     expect(page.to).toBe(`translateX(${innerWidth}px)`);
     expect(slides.some((slide) => slide.to === "translateX(0px)" && !slide.el.classList.contains("mobile-page"))).toBe(true);
@@ -145,15 +144,16 @@ describe("going back", () => {
     expect(log).not.toContain("out");
   });
 
-  it("never pops at all when the chat is opened again before the pop's first frame", async () => {
+  it("turns straight back without leaving when the chat is opened again before the pop's first frame", async () => {
     await opened();
     frames = [];
     render(false);
     render(true);
     nextFrame();
-    expect(log.filter((line) => line.startsWith("slide"))).toEqual(["slide 0"]);
+    expect(log.filter((line) => line.startsWith("slide"))).toEqual([`slide ${innerWidth}`, "slide 0"]);
     land();
     expect(shown()).toBe("chat");
+    expect(log).not.toContain("out");
   });
 
   it("brings in another chat opened while one leaves, instead of leaving an empty list", async () => {

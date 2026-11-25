@@ -7,8 +7,9 @@
 // stopped turn and a person's own next message all leave it alone.
 import type { RuntimeEvent } from "../contracts.ts";
 import { effectfulCall } from "../drivers/openai-chat-habits.ts";
+import { callEvidence, claimedDeeds, unbackedClaimNote, unbackedDeeds, type Deed } from "../claim-check.ts";
 import { DELIVERABLE_TOOL, deliverableCheckNote } from "./deliverable-check.ts";
-import { claimsDone, openChecklist, promisesFollowUp, ranTool, readBackWrite, schedulesWork, stopGateNote, type TurnForAsks } from "../turn-stop-gates.ts";
+import { claimsDone, openChecklist, promisesFollowUp, ranTool, readBackWrite, schedulesCall, schedulesWork, stopGateNote, type TurnForAsks } from "../turn-stop-gates.ts";
 
 export const MAX_CONTINUES = 2;
 export const MAX_PLAN_CONTINUES = 6;
@@ -25,7 +26,7 @@ const AGREED = /\b(?:you'?re|you are)\s+(?:absolutely\s+|completely\s+|totally\s
 
 export type PlanSteps = { open: number; total: number; steps?: string[] };
 export type FinishReason = { kind: "plan"; open: number; total: number; steps?: string[] } | { kind: "ack" } | { kind: "next" }
-  | { kind: "promise" } | { kind: "checklist"; items: string[] } | { kind: "unread"; tool: string } | { kind: "asks"; items: string[] };
+  | { kind: "promise" } | { kind: "checklist"; items: string[] } | { kind: "unread"; tool: string } | { kind: "asks"; items: string[] } | { kind: "claim"; deeds: Deed[] };
 
 const lastParagraph = (text: string) => text.trim().split(/\n\s*\n/).at(-1)!.trim();
 const lastSentence = (paragraph: string) => paragraph.split("\n").at(-1)!.trim().split(/(?<=[.!])\s+/).at(-1)!;
@@ -86,7 +87,7 @@ export function planSignature(plan: PlanSteps): string {
 const endsOnQuestion = (text: string) => /\?\s*[)"'”]?\s*$/.test(text.trim());
 
 /** Why a finished turn should carry on, or null. */
-export function finishReason(turn: { text: string; tools: number; plan: PlanSteps | null; toolsAfterText?: number; scheduled?: boolean; effectful?: number; gated?: readonly string[]; unread?: string | null; asks?: readonly string[] }): FinishReason | null {
+export function finishReason(turn: { text: string; tools: number; plan: PlanSteps | null; toolsAfterText?: number; scheduled?: boolean; effectful?: number; gated?: readonly string[]; unread?: string | null; asks?: readonly string[]; evidence?: ReadonlySet<string> }): FinishReason | null {
   if (!turn.text.trim()) return null;
   // a tool run after the last words (a choice card, a file, the very step it named) answers them
   const lastWords = !turn.toolsAfterText;
@@ -95,6 +96,8 @@ export function finishReason(turn: { text: string; tools: number; plan: PlanStep
   if (endsOnQuestion(turn.text)) return null;
   if (turn.plan && turn.plan.open > 0) return { kind: "plan", ...turn.plan };
   if (!turn.scheduled && !turn.gated?.includes("follow_up") && promisesFollowUp(turn.text)) return { kind: "promise" };
+  const deeds = turn.evidence && !turn.gated?.includes("unbacked_claim") ? unbackedDeeds(claimedDeeds(turn.text), turn.evidence) : [];
+  if (deeds.length) return { kind: "claim", deeds };
   const items = turn.effectful && !turn.gated?.includes("checklist") ? openChecklist(turn.text) : null;
   if (items) return { kind: "checklist", items };
   if (turn.tools === 0 && AGREED.test(turn.text)) return { kind: "ack" };
@@ -106,6 +109,7 @@ export function finishReason(turn: { text: string; tools: number; plan: PlanStep
 
 export function continueNote(reason: FinishReason): string {
   if (reason.kind === "promise") return stopGateNote("follow_up");
+  if (reason.kind === "claim") return unbackedClaimNote(reason.deeds);
   if (reason.kind === "checklist") return stopGateNote("checklist", { items: reason.items });
   if (reason.kind === "unread") return stopGateNote("unconfirmed_write", { tool: reason.tool });
   if (reason.kind === "asks") return stopGateNote("open_items", { items: reason.items });
@@ -136,7 +140,8 @@ export interface FinishGuardDeps {
   review?: (botId: string, threadId: string, turn: { said: readonly string[]; startedAt: number }) => Promise<string[] | null>;
 }
 
-interface Turn { text: string; said: string[]; tools: number; toolsAfterText: number; plan: PlanSteps | null; carriable: boolean; scheduled: boolean; handedOff: boolean; effectful: number; unread: string | null; made: boolean; startedAt: number }
+interface Turn { text: string; said: string[]; tools: number; toolsAfterText: number; plan: PlanSteps | null; carriable: boolean; scheduled: boolean; handedOff: boolean; effectful: number; unread: string | null; made: boolean; startedAt: number;
+  calls: Map<string, { title?: string; input?: string; summary?: string }>; evidence: Set<string> }
 
 export function createFinishGuard(deps: FinishGuardDeps) {
   const later = deps.later ?? ((run: () => void, ms: number) => { setTimeout(run, ms).unref?.(); });
@@ -160,7 +165,7 @@ export function createFinishGuard(deps: FinishGuardDeps) {
         const state = carried.get(threadId);
         if (state?.ours) state.ours = false;
         else carried.delete(threadId);
-        turns.set(threadId, { text: "", said: [], tools: 0, toolsAfterText: 0, plan: null, carriable: deps.botOf(threadId) !== null, scheduled: false, handedOff: false, effectful: 0, unread: null, made: false, startedAt: Date.now() });
+        turns.set(threadId, { text: "", said: [], tools: 0, toolsAfterText: 0, plan: null, carriable: deps.botOf(threadId) !== null, scheduled: false, handedOff: false, effectful: 0, unread: null, made: false, startedAt: Date.now(), calls: new Map(), evidence: new Set() });
         return;
       }
       const turn = turns.get(threadId);
@@ -170,13 +175,19 @@ export function createFinishGuard(deps: FinishGuardDeps) {
         turn.toolsAfterText += 1;
         turn.plan = planSteps(event.title, event.input) ?? turn.plan;
         const tool = ranTool(event.title ?? "", event.input);
+        if (event.itemId && turn.calls.size < 256 && !NATIVE_LOOKUP.test(tool.toLowerCase()) && effectfulCall(tool.toLowerCase(), "{}")) turn.calls.set(event.itemId, { title: event.title, input: event.input, summary: event.summary });
         if (HANDS_OFF.test(tool)) turn.handedOff = true;
         if (DELIVERABLE_TOOL.test(tool)) turn.made = true;
-        if (schedulesWork(tool)) turn.scheduled = true;
+        if (schedulesCall(event.title ?? "", event.input)) turn.scheduled = true;
+        else if (schedulesWork(tool)) turn.unread = null;
         else if (!NATIVE_LOOKUP.test(tool.toLowerCase()) && effectfulCall(tool.toLowerCase(), "{}")) {
           turn.effectful += 1;
           turn.unread = readBackWrite(tool) ? tool : null;
         } else turn.unread = null;
+      } else if (event.type === "item.completed" && event.itemType === "tool" && event.itemId) {
+        const call = turn.calls.get(event.itemId);
+        turn.calls.delete(event.itemId);
+        if (call && event.ok) for (const proof of call.summary ? ["shell"] : callEvidence(call.title ?? "", call.input)) turn.evidence.add(proof);
       } else if (event.type === "item.completed" && event.itemType === "assistant_text") {
         turn.text = event.text;
         if (event.text.trim()) turn.said.push(event.text);
@@ -189,7 +200,7 @@ export function createFinishGuard(deps: FinishGuardDeps) {
         if ((event.type === "session.exited" || !event.ok) && turn.carriable) deps.asks?.failed?.(threadId);
         if (event.type !== "turn.completed" || !event.ok || event.stopReason === "cancelled" || event.stopReason === "interrupted") return;
         const asks = turn.carriable ? deps.asks?.settle(threadId, { said: turn.said, scheduled: turn.scheduled, handedOff: turn.handedOff }) ?? [] : [];
-        const reason = finishReason({ ...turn, asks, ...(event.stopGates ? { gated: event.stopGates } : {}) });
+        const reason = finishReason({ ...turn, asks, ...(event.claimsChecked ? { evidence: undefined } : {}), ...(event.stopGates ? { gated: event.stopGates } : {}) });
         const botId = reason && turn.carriable ? deps.botOf(threadId) : null;
         const state = carried.get(threadId) ?? { count: 0, plans: 0, ours: false };
         if (!reason && turn.made && turn.carriable && !state.reviewed && deps.review) {

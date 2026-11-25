@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, ExternalLink, LoaderCircle } from "../../icons";
 import { openExternalLink } from "@/lib/app-links";
 import { cloudAsleep, cloudWaking } from "@/lib/cloud-power";
@@ -76,12 +76,14 @@ function useSeconds(since: number | null): number {
   return since === null ? 0 : Math.max(0, Math.floor((now - since) / 1_000));
 }
 
-export function PasteSlot({ name, onSubmit, address = false, problem = null }: { name: string; onSubmit: (code: string) => void; address?: boolean; problem?: string | null }) {
+export function PasteSlot({ name, onSubmit, address = false, problem = null, guide = "" }: { name: string; onSubmit: (code: string) => void; address?: boolean; problem?: string | null; guide?: string }) {
   const [code, setCode] = useState("");
+  const guideId = useId();
   const label = address ? t("connect.redirect.paste") : t("onboarding.meet.paste", { name });
   return (
     <form data-sign-in={address ? "redirect" : "paste"} className="flex w-[288px] max-w-full flex-col items-center gap-2" onSubmit={(event) => { event.preventDefault(); onSubmit(code); }}>
-      <input autoFocus value={code} onChange={(event) => setCode(event.target.value)} aria-label={label} placeholder={label} aria-invalid={problem ? true : undefined}
+      {guide && <p id={guideId} data-connect-guide="" className="m-0 mb-1 w-[360px] max-w-[90vw] text-center text-[14px] leading-5 text-ink">{guide}</p>}
+      <input autoFocus value={code} onChange={(event) => setCode(event.target.value)} aria-label={label} aria-describedby={guide ? guideId : undefined} placeholder={label} aria-invalid={problem ? true : undefined}
         className="h-9 w-full rounded-[18px] border-0 bg-ink/[0.06] px-4 text-[14px] leading-5 text-ink outline-none placeholder:text-ink-tertiary focus-visible:bg-ink/[0.08]" spellCheck={false} autoCorrect="off" autoCapitalize="off" />
       {problem && <p role="alert" data-paste-problem="" className="m-0 max-w-[400px] text-center text-[13px] leading-[18px] text-danger">{problem}</p>}
       <button type="submit" disabled={!code.trim()} className={SECONDARY}>{t(address ? "connect.redirect.submit" : "onboarding.meet.pasteSubmit")}</button>
@@ -245,8 +247,9 @@ export function ConnectPanel({ flow, name, driverKind, onTrouble }: {
     case "waiting":
       if (state.kind === "paste" || state.kind === "redirect") {
         body = <>
-          <PasteSlot name={name} onSubmit={flow.submit} address={state.kind === "redirect"} problem={state.problem ?? null} />
-          <WaitHelp guide={t(state.kind === "redirect" ? "connect.guide.redirect" : "connect.guide.paste", { site })} seconds={seconds} />
+          <PasteSlot name={name} onSubmit={flow.submit} address={state.kind === "redirect"} problem={state.problem ?? null}
+            guide={t(state.kind === "redirect" ? "connect.guide.redirect" : "connect.guide.paste", { site })} />
+          <WaitHelp guide="" seconds={seconds} />
           <div className="flex items-center gap-1">
             {state.link && <button type="button" onClick={() => void flow.openAgain()} className={QUIET}>{t("connect.openAgain")}</button>}
             {cancel}

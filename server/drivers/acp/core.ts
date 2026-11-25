@@ -27,7 +27,7 @@ import {
 import { readSessionReport } from "./session-reports.ts";
 import { pickSessionModel, SessionModelControls, type AcpModelSelection } from "./session-model-controls.ts";
 import { acpVariantOption } from "./config-options.ts";
-import { advertisedVariant, coolFreeRung, FREE_POOL_LIMIT, FREE_PROBE_MS, FREE_PROBE_PROMPT, freeFailure, freeLadder, probeFreeLadder, warmFreeModel, warmFreeRung, type FreeFailure, type FreeRung } from "./free-ladder.ts";
+import { advertisedVariant, coolFreeRung, FREE_POOL_LIMIT, FREE_PROBE_MS, FREE_PROBE_PROMPT, freeFailure, freeLadder, freeOneShot, probeFreeLadder, warmFreeModel, warmFreeRung, type FreeFailure, type FreeRung } from "./free-ladder.ts";
 import { trail } from "../../trail.ts";
 import { versionFromProbe } from "./version-probe.ts"; import { engineHomes } from "../../engine-homes/engine-homes.ts";
 
@@ -155,6 +155,8 @@ export interface AcpSupport {
     config: AcpConfig,
     instanceId: string,
   ): Promise<{ command: string; args?: string[]; env?: Record<string, string | undefined> }>;
+  /** How long `--version` may take before the engine reads as unavailable; 8 seconds unless set. */
+  versionProbeTimeoutMs?: number;
   /** Snapshot override for agents whose binary has no conventional --version. */
   snapshot?(
     env: Record<string, string | undefined>,
@@ -1728,7 +1730,8 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         const env = childEnv();
         if (support.snapshot) return support.snapshot(env, config, instanceId);
         const probe = await new Promise<{ version?: string; reason?: string }>((resolve) => {
-          execCli(config.cli, ["--version"], { timeout: 8000, env }, (err, stdout, stderr) => {
+          const timeout = support.versionProbeTimeoutMs ?? 8000;
+          execCli(config.cli, ["--version"], { timeout, env }, (err, stdout, stderr) => {
             if (err) {
               const failure = err as NodeJS.ErrnoException & { killed?: boolean };
               const reason = failure.code === "ENOENT"
@@ -1736,7 +1739,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
                 : failure.code === "EACCES" || failure.code === "EPERM"
                   ? `\`${config.cli}\` isn't executable. Check its file permissions, then check again.`
                   : failure.killed && failure.code == null
-                    ? `\`${config.cli}\` version check timed out after 8 seconds. Try again in a moment.`
+                    ? `\`${config.cli}\` version check timed out after ${Math.round(timeout / 1000)} seconds. Try again in a moment.`
                     : `\`${config.cli}\` version check failed. Run it with --version on the server to diagnose the installation, then check again.`;
               // Do not echo arbitrary CLI output or its environment into Settings.
               resolve({ reason });
@@ -1752,7 +1755,11 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
 
     /** Memory upkeep's one-shot: a fresh process and session, no MCP servers, an empty folder, and
      * every tool, file or permission request refused. */
-      const generateMemoryText = (prompt: string, options: TextGenerationOptions = {}): Promise<string> => oneShotText(prompt, options);
+      const generateMemoryText = (prompt: string, options: TextGenerationOptions = {}): Promise<string> => {
+        const asked = catalog.models.default, order = asked && support.selectModel ? support.freeModelOrder?.(asked, childEnv(), catalog.models) : null;
+        return asked && order ? freeOneShot(freeLadder({ model: asked }, order, catalog.models), (rung) => oneShotText(prompt, options, rung), options.signal, support.displayName)
+          : oneShotText(prompt, options);
+      };
       // `rung`: run on this model and lighter setting rather than the session's default (the free probe)
       const oneShotText = async (prompt: string, options: TextGenerationOptions, rung?: FreeRung): Promise<string> => {
         if (startupModelRefresh) await startupModelRefresh;

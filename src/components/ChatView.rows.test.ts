@@ -98,17 +98,20 @@ async function menuOf(mid: string) {
   if (!more) return [];
   flushSync(() => more.click());
   await settle();
-  const items = [...document.querySelectorAll<HTMLButtonElement>(`[data-mid="${mid}"] [role=menuitem]`)]
-    .map((item) => ({ label: item.textContent ?? "", title: item.title, disabled: item.disabled }));
+  const items = [...document.querySelectorAll<HTMLButtonElement>(`[data-mid="${mid}"] [role=menuitem]`)].map((item) => {
+    const describedBy = item.getAttribute("aria-describedby");
+    const note = (describedBy && document.getElementById(describedBy)?.textContent) || "";
+    return { label: (item.textContent ?? "").replace(note, ""), title: item.title, disabled: item.disabled, note };
+  });
   flushSync(() => more.click());
   await settle();
   return items;
 }
 async function menusWith(label: string) {
-  const found: { mid: string; title: string; disabled: boolean }[] = [];
+  const found: { mid: string; title: string; disabled: boolean; note: string }[] = [];
   for (const row of document.querySelectorAll("[data-mid]")) {
     const mid = row.getAttribute("data-mid")!;
-    for (const item of await menuOf(mid)) if (item.label === label) found.push({ mid, title: item.title, disabled: item.disabled });
+    for (const item of await menuOf(mid)) if (item.label === label) found.push({ mid, title: item.title, disabled: item.disabled, note: item.note });
   }
   return found;
 }
@@ -185,14 +188,14 @@ describe("chat transcript rows", () => {
     expect(await regenerate()).toEqual(["m5"]);
   });
 
-  it("follows this device's voice choice at the next store event", async () => {
+  it("follows this device's voice choice at the next store event, and an off Read this aloud says why under its name", async () => {
     const bridge = window.duskDesktop;
     window.duskDesktop = { ...bridge, platform: "darwin", remoteClient: { active: true } } as typeof window.duskDesktop;
     const kept = new Map<string, string>();
     vi.stubGlobal("localStorage", { getItem: (key: string) => kept.get(key) ?? null, setItem: (key: string, value: string) => kept.set(key, value) });
     vi.stubGlobal("speechSynthesis", { getVoices: () => [] });
     vi.stubGlobal("SpeechSynthesisUtterance", class {});
-    const speak = async () => (await menusWith(t("chat.speak.read"))).map((item) => `${item.title}${item.disabled ? " (off)" : ""}`);
+    const speak = async () => (await menusWith(t("chat.speak.read"))).map((item) => `${item.title}${item.disabled ? ` (off: ${item.note})` : item.note}`);
     const switchTo = async (provider: "host" | "system") => {
       await rowRendersAfter((current) => reducer(current, { type: "toggleSettings", open: true }));
       setRemoteVoiceProvider(provider);
@@ -202,7 +205,8 @@ describe("chat transcript rows", () => {
       await switchTo("system");
       expect(await speak()).toEqual([t("chat.speak.read"), t("chat.speak.read")]);
       await switchTo("host");
-      expect(await speak()).toEqual([`${t("chat.speak.needsKey")} (off)`, `${t("chat.speak.needsKey")} (off)`]);
+      const off = `${t("chat.speak.needsKey")} (off: ${t("chat.speak.needsKey")})`;
+      expect(await speak()).toEqual([off, off]);
     } finally {
       window.duskDesktop = bridge;
     }

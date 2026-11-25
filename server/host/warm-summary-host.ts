@@ -49,6 +49,8 @@ export interface WarmSummaryHostDeps {
   routines(): { listRoutines(): Routine[]; listRuns(): RoutineRun[] } | null;
   /** dusk bot's fold, now: true when it wrote a summary, false when the conversation does not need one yet. */
   fold(target: WarmSummaryTarget, signal: AbortSignal): Promise<boolean>;
+  /** Called before the engine summarizes on its own: what the conversation taught is saved first. */
+  summarizing?(target: WarmSummaryTarget): void;
   /** The summary call's usage, booked like a keep-warm ping. */
   book(target: WarmSummaryTarget, result: Extract<IdleCompactResult, { ok: true }>): void;
   /** Until when keep-warm already holds this conversation's process. */
@@ -113,6 +115,7 @@ export function createWarmSummaryHost(deps: WarmSummaryHostDeps) {
     const compact = deps.instance(instanceId)?.adapter.cacheKeepWarm?.compact;
     const session = store.taskByThread(botId, threadId)?.resumeCursors[instanceId];
     if (!compact || typeof session !== "string") return { ok: false, reason: "the conversation has no session to summarize" };
+    deps.summarizing?.(target);
     const result = await compact(threadId, { instructions: summaryInstructions(store.activePath(threadId)), session, signal: control.signal });
     if (!result.ok) return { ok: false, reason: result.reason, retry: result.busy === true && !control.signal.aborted };
     deps.book(target, result);

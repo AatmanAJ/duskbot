@@ -1,0 +1,86 @@
+{
+  "title": "Check mail every 15 minutes in work hours, stay asleep when nothing's new",
+  "world": "student",
+  "tags": [
+    "x-usage",
+    "routine",
+    "proactive"
+  ],
+  "source": "x-usage #3: mail preflight check so empty ticks wake no model and send nothing; one ping when something real arrives; 'checked at' visible.",
+  "steps": [
+    {
+      "chat": {
+        "goal": "Have the inbox checked every 15 minutes during the day, but only bother you (or wake the AI) when something new actually came in.",
+        "opener": "can you check my inbox every 15 min during the day but don't wake yourself up unless something new actually came in",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "advance": "+1h"
+    },
+    {
+      "settle": {
+        "seconds": 60
+      },
+      "label": "empty"
+    },
+    {
+      "inject": {
+        "mail": [
+          {
+            "from": "Dr Eleanor Marsh <e.marsh@leeds.ac.uk>",
+            "subject": "Can we move Monday?",
+            "body": "Aisha, I've been called to an exam board on Monday at 1. Could we do Tuesday 2pm instead? Eleanor"
+          }
+        ]
+      },
+      "label": "newmail"
+    },
+    {
+      "advance": "+30m"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      },
+      "label": "seen"
+    }
+  ],
+  "checks": [
+    {
+      "label": "every 15 minutes",
+      "routine": {
+        "where": {
+          "schedule": "\\*/15|0,15,30,45|everyMinutes\\W+15|15"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "uses a mail check, not blind wakes",
+      "routine": {
+        "where": {
+          "checks": "mail"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "silent while nothing new",
+      "proactive": {
+        "after": "empty"
+      },
+      "max": 1
+    },
+    {
+      "label": "new mail flagged",
+      "proactive": {
+        "after": "newmail",
+        "match": "marsh|tuesday|move"
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Pip makes a 15-minute work-hours routine gated on new mail, says it will only speak up when something arrives, stays silent for the empty hour, then pings once about Dr Marsh's request with a short suggested reply."
+}

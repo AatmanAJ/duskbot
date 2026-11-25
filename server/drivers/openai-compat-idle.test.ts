@@ -26,7 +26,7 @@ it.each(["json", "http-error", "truncated", "interrupt"] as const)("settles a re
   if (!address || typeof address === "string") throw new Error("No fixture port");
   const inst = await OpenAICompatDriver.create({
     instanceId: `idle-${mode}`, displayName: "Loopback fixture", enabled: true,
-    config: { url: `http://127.0.0.1:${address.port}/v1`, apiKeyEnv: "FIXTURE_KEY" },
+    config: { url: `http://127.0.0.1:${address.port}/v1`, apiKeyEnv: "FIXTURE_KEY", model: "fixture" },
     environment: { FIXTURE_KEY: "synthetic-not-a-secret" },
   });
   const recorder = recordEvents(inst.adapter);

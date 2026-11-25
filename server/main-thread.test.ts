@@ -21,6 +21,14 @@ describe("a bot's main thread", () => {
     expect(mainThread(tasks, "later", "deleted")).toBe("later");
   });
 
+  it("stays the person's own chat when they last wrote from a chat app, unless the chat app's thread is all there is", () => {
+    const telegram = { threadId: "telegram", createdAt: 4, askedAt: 50, chatApp: true };
+    expect(mainThread([{ ...first, askedAt: 10 }, telegram], "first")).toBe("first");
+    expect(mainThread([first, telegram], "first")).toBe("first");
+    expect(mainThread([{ ...first, archivedAt: 5 }, telegram])).toBe("telegram");
+    expect(mainThread([{ ...first, askedAt: 10 }, telegram], "first", "telegram")).toBe("telegram");
+  });
+
   it("is never a routine run or an archived thread, however recently written in", () => {
     const tasks = [
       { ...latest, askedAt: 50, routineRunId: "run" },

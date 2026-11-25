@@ -8,7 +8,8 @@ import { createAllowance } from "../allowance.ts";
 import { writeFileAtomic } from "../atomic.ts";
 import { ledgerCost } from "../model-prices.ts";
 import { createRoutineProbes, withProbes } from "../routine-probe.ts";
-import { runCheckScript } from "../routine-script.ts";
+import { saveScriptOutput } from "../routine-save.ts";
+import { runCheckScript, scriptRunOptions, type ScriptBox } from "../routine-script.ts";
 import { flexOf, useFreeReruns } from "../routine-quiet.ts";
 import { nextOccurrence } from "../routine-schedules.ts";
 import { createRoutineSelfCap } from "../routine-self-cap.ts";
@@ -43,6 +44,10 @@ export interface RoutineHostDeps {
   model(botId: string): { driverKind: string; model: string } | undefined;
   tell(botId: string, threadId: string | undefined, text: string): void;
   language(threadId: string | undefined): string | undefined;
+  /** The bot's own folder (workspaces/<bot>). */
+  workspace(botId: string): string;
+  /** The bot box on a Cloud home, where script checks run. */
+  box?: ScriptBox;
   /** Only a verification fixture sets this (control-dusk): one loopback origin its probes may read. */
   probeLoopbackOrigin?: string;
 }
@@ -84,8 +89,18 @@ export function createRoutineHost(deps: RoutineHostDeps) {
   const probes = createRoutineProbes({
     dataDir: deps.dataDir,
     fetch: (url) => fetchPublicPage(url, loopback && url.startsWith(`${loopback}/`) ? { allow: () => true } : {}),
-    // Security: a Cloud home runs no script checks; its routines can be written by people who do not own the machine.
-    ...(deps.cloudHome ? {} : { script: (_routine: Routine, command: string) => runCheckScript(command) }),
+    // Security: on a Cloud home a script check runs only in its bot's box, as background jobs do there, never fenced by
+    // the server's own user alone; its routines can be written by people who do not own the machine.
+    script: async (routine: Routine, command: string, dryRun: boolean) => {
+      const result = await runCheckScript(command, deps.cloudHome
+        ? { box: { wrap: deps.box ?? (() => null), botId: routine.botId, home: join(deps.workspace(routine.botId), ".jobs", "home") }, timeoutMs: scriptRunOptions(routine, true).timeoutMs }
+        : scriptRunOptions(routine, dryRun));
+      if (result.ok && !dryRun && routine.probe?.saveTo) {
+        const saved = saveScriptOutput(deps.workspace(routine.botId), routine.probe.saveTo, result.output, routine.probe.saveMode);
+        if (saved) console.warn(`routines: ${routine.id} could not save its script's output: ${saved}`);
+      }
+      return result;
+    },
     failed: (routine, sentence, count) => {
       const thread = resultsThread(routine);
       deps.tell(routine.botId, thread, serverLine(deps.language(thread), "server.routine.probeStuck", { routine: routine.name, count, reason: sentence }));

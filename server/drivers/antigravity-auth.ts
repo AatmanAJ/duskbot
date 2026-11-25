@@ -65,6 +65,16 @@ function loginEnvironment(base: NodeJS.ProcessEnv, profileDirectory: string): No
   return env;
 }
 
+// Antigravity CLI 1.3 and older read `acp` as a stray prompt; 1.4 has `acp` without `--login`.
+const OUTDATED_CLI = /unexpected argument "acp|flags? provided but not defined: -+login|unknown (?:flag|command)[^\n]*(?:login|acp)/iu;
+
+/** The one plain sentence a failed sign-in shows; the CLI's own output goes to the log only. */
+export function antigravitySignInFailure(stderr: string): string {
+  return OUTDATED_CLI.test(stderr)
+    ? "The Antigravity app on this computer is too old for dusk bot. Install the current one, then sign in again."
+    : "Antigravity couldn't start Google sign-in. Try again in a moment.";
+}
+
 export class AntigravityAuthController {
   private flow: LoginFlow | null = null;
   private startingStop: (() => Promise<boolean>) | null = null;
@@ -173,7 +183,8 @@ export class AntigravityAuthController {
         rejectCompleted(error);
       } else {
         const detail = exitDetail(code, signal, stderrTail.text);
-        const error = new Error(`Antigravity could not finish Google sign-in${detail}. Start sign-in again.`);
+        console.warn(`antigravity: Google sign-in exited${detail}`);
+        const error = new Error(antigravitySignInFailure(stderrTail.text));
         failUrl(error);
         rejectCompleted(error);
       }
@@ -274,7 +285,9 @@ export class AntigravityAuthController {
       });
       flow.child.stdin!.write(`${validated}\n`);
       flow.child.stdin!.end();
-      await Promise.race([flow.completed, completeTimeout]);
+      await Promise.race([flow.completed.catch(() => {
+        throw new Error("Google didn't accept that code. Start sign-in again and paste the whole code from the Antigravity page.");
+      }), completeTimeout]);
       if (!(await antigravityProfileAuthenticated(flow.profile))) {
         throw new Error("Antigravity finished without saving a Google sign-in. Start sign-in again.");
       }

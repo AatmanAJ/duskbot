@@ -94,7 +94,8 @@ One optional step connects your phone, defaulting to Skip for now. Choose
 an explicitly approved managed public HTTPS endpoint protected by pairing,
 existing Tailscale, or an HTTPS reverse proxy you already configured.
 Managed access uses a separate dusk bot account and asks permission for
-the public endpoint and possible connector download. The pairing page and
+the public endpoint and possible connector download. Setup shows it only
+when that service answers; dusk.bot does not run it today. The pairing page and
 basic server identity are public; chat and settings require pairing.
 Tailscale must already be installed and signed in on both devices.
 
@@ -147,10 +148,12 @@ During the later phone step, it keeps the AI setup already saved and exits
 without starting a server. Completed installs and sign-ins remain; run
 \`duskbot setup\` to continue without deleting your data.
 
-For a service, use \`serve --tunnel\` after \`login\` for managed HTTPS,
-\`serve --tailscale\` for your tailnet, or your own reverse proxy. The
-\`login\` command signs in to a dusk bot account, not an AI provider;
-it does not start the tunnel itself.
+For a service, use \`serve --tailscale\` for your tailnet,
+\`serve --domain HOST\` for your own domain, or your own reverse proxy.
+For a server with no address of its own, paste the one line from the
+dusk bot app's Add a cloud or your own server sheet instead: it links the
+server through the dusk bot relay. \`login\` and \`serve --tunnel\` need
+a secure access service dusk.bot does not run today.
 
 Scripts, CI and other agents can drive a running workspace without a screen:
 set a team up from a file, give a bot one job and wait until it and every

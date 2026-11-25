@@ -30,7 +30,7 @@ import {
   awayFromMainThread,
   openBot,
 } from "@/state/store";
-import { EngineSetup } from "./EngineSetup";
+import { EngineSetupCard } from "@/components/lazy-screens";
 import { CHATGPT_USAGE_URL, ManageUsageLink } from "./ChatGptPlanStatus";
 import { CODEX_USAGE_URL, codexUsageLimitReached } from "../../shared/codex-usage-limit";
 import { ClaudeUpdatePrompt } from "./ClaudeUpdatePrompt";
@@ -76,7 +76,7 @@ import { enterFromComposer, growFromMascot, hasSendLaunch } from "./bubble-entra
 import { STATUS_MOUNT_MS, useReached } from "@/hooks/use-reached";
 import { lifeDraw } from "@/lib/reply-life";
 import { lastNonReceipt } from "@/lib/receipts";
-import { routineStartName } from "./RoutineStartLine"; import { SILENT_LINE } from "../../shared/routine-run.ts"; import { useRoutineRetry } from "@/lib/routine-retry"; import { useTurnLive } from "@/state/turn-status"; import { useLiveReplyActive } from "@/state/live-reply"; import { useTurnNow } from "./NowCard"; import { useThreadRoutineRun } from "@/state/older-routine-runs";
+import { routineStartName } from "./RoutineStartLine"; import { SILENT_LINE } from "../../shared/routine-run.ts"; import { routineToRun, useRoutineRetry } from "@/lib/routine-retry"; import { useTurnLive } from "@/state/turn-status"; import { useLiveReplyActive } from "@/state/live-reply"; import { useTurnNow } from "./NowCard"; import { useThreadRoutineRun } from "@/state/older-routine-runs";
 import { followSentTurn, sentTurn, useSentTurn } from "@/state/sent-turn";
 import { waitsForNetwork } from "@/state/network-wait";
 import { useOffline } from "@/mobile/network";
@@ -263,7 +263,7 @@ export function ErrorRow({
             <a href={PROVIDER_SAFETY_HELP_URL} target="_blank" rel="noreferrer" className="underline">{t("chat.error.providerSafetyLink")}</a>
           </p>
         ) : !usageUrl && setup ? (
-          <EngineSetup instance={setupInstance} className="mt-2 text-ink-secondary" />
+          <EngineSetupCard instance={setupInstance} className="mt-2 text-ink-secondary" />
         ) : null}
       </ChatErrorCard>
     </div>
@@ -1050,7 +1050,8 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   const lookups = useMemo(() => transcriptLookups(allMessages, messages), [allMessages, messages]);
   const liveTools = useLiveToolIds(messages, bot);
   const showToolCalls = showToolCallsEnabled(state.config);
-  const latestVisibleIndex = useMemo(() => messages.findLastIndex((message) => !hiddenChatRow(message, bot.id, showToolCalls)), [messages, bot.id, showToolCalls]);
+  const isVisibleRow = useCallback((message: Message) => !hiddenChatRow(message, bot.id, showToolCalls), [bot.id, showToolCalls]);
+  const latestVisibleIndex = useMemo(() => messages.findLastIndex(isVisibleRow), [messages, isVisibleRow]);
   const focus = state.focusMessage?.threadId === bot.threadId ? state.focusMessage : null;
 
   const {
@@ -1073,7 +1074,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
     messages,
     pinOn: [bot.busy, composerDock.pad],
     hasMore: bot.hasMore,
-    latestVisibleIndex: latestVisibleIndex >= 0 ? latestVisibleIndex : undefined,
+    isVisible: isVisibleRow,
   });
   useTimestampPeek(scrollRef);
 
@@ -1212,7 +1213,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   // the bot's own label stays on the line while it leaves, after the turn's end has cleared it
   const shownLabel = useRef<{ chat: string; seed: string; label?: string }>({ chat: chatKey, seed: presenceSeed });
   // a new turn starts clean; the end of this one (busySince gone) keeps it
-  if (shownLabel.current.chat !== chatKey || (busySince !== null && shownLabel.current.seed !== presenceSeed)) shownLabel.current = { chat: chatKey, seed: presenceSeed };
+  if (shownLabel.current.chat !== chatKey || ((turnBusy || busySince !== null) && shownLabel.current.seed !== presenceSeed)) shownLabel.current = { chat: chatKey, seed: presenceSeed };
   if (live.label) shownLabel.current.label = live.label;
   const turnLabel = live.label ?? shownLabel.current.label;
   const waitingOnSomeone = teammatesWorking || pendingApprovals(messages).length > 0;
@@ -1234,7 +1235,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   const { retry: routineRetry, known: routineRetryKnown, canRetry: canRegenerate } = useRoutineRetry(lastUserMessage, state.routines, state.routinesLoadState);
   const regenerate = useCallback(() => {
     if (bot.busy) return;
-    if (routineRetry) { if (routineRetry.state === "ready") dispatch({ type: "runRoutine", routineId: routineRetry.routineId }); return; }
+    if (routineRetry) { const routineId = routineToRun(routineRetry); if (routineId) dispatch({ type: "runRoutine", routineId }); return; }
     if (lastUserMessage?.text && !lastUserMessage.id.startsWith("optimistic-")) {
       dispatch({ type: "editMessage", botId: bot.id, threadId: bot.threadId, messageId: lastUserMessage.id, text: lastUserMessage.text });
     }

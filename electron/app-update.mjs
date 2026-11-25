@@ -68,14 +68,17 @@ export function verifiedPolicy(doc, keys = RELEASE_KEYS) {
   }
 }
 
-/** why the policy holds `version` back from this install (`bucket`: 0 to 99, fixed per install), or null */
-export function policyHolds(policy, version, bucket) {
+/** why the policy holds `version` back from this install (`bucket`: 0 to 99, fixed per install), or null; a staged
+ * rollout never holds back a version the person's own linked server (`serverRuns`) already runs */
+export function policyHolds(policy, version, bucket, serverRuns = () => null) {
   if (!policy) return null;
   if (policy.paused) return "paused";
   if (policy.blocked.includes(version)) return "blocked";
   if (policy.floor && newer(policy.floor, version)) return "below_floor";
   const share = policy.rollout?.[version];
-  return share !== undefined && bucket() >= share ? "rollout" : null;
+  if (share === undefined || bucket() < share) return null;
+  const server = serverRuns();
+  return typeof server === "string" && SEMVER.test(server) && !newer(version, server) ? null : "rollout";
 }
 
 /** this install's fixed rollout bucket, 0 to 99, kept beside the update folder */
@@ -258,7 +261,7 @@ export async function installerUrl(version, name, fetchImpl = fetch) {
  */
 export function createAppUpdater({ current, arch, dir, fetchImpl = fetch, keys = RELEASE_KEYS, installs = true, platform = "darwin", appImage = false, signed, blocked = async () => null,
   asset = (sums, version) => zipIn(sums, version, arch), sources = zipSources, keep = [], installer, quiet, fallback, onState = () => {}, onFailed = () => {}, log = () => {}, firstDelayMs = 20_000, intervalMs = CHECK_EVERY_MS, jitterMs = JITTER_MS, random = Math.random,
-  quietEveryMs = 60_000, timers = globalThis, download = {}, policySources = POLICY_SOURCES, bucket = () => storedBucket(join(dirname(dir), "update-bucket.json")) }) {
+  quietEveryMs = 60_000, timers = globalThis, download = {}, policySources = POLICY_SOURCES, bucket = () => storedBucket(join(dirname(dir), "update-bucket.json")), serverRuns = () => null }) {
   let ready = null, available = null, progress = null, timer = null, quietTimer = null, checking = null, installing = false, failed = false, retrying = false, stuck = null, manual = null, kick = null, again = false;
   const toldBlocked = new Set();
   const state = () => ({ ready, available, progress, checking: checking !== null, failed, retrying, blocked: stuck, manual });
@@ -334,7 +337,7 @@ export function createAppUpdater({ current, arch, dir, fetchImpl = fetch, keys =
       } catch { /* the next source */ }
     }
   }
-  const holds = (version) => policyHolds(policy, version, bucketOf);
+  const holds = (version) => policyHolds(policy, version, bucketOf, serverRuns);
 
   async function run() {
     if (ready) { await refreshPolicy(); return ready; }

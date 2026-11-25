@@ -1,4 +1,5 @@
-import { loginSealTarget, normalizeLoginHost, type LoginBots, type LoginSummary, type OnePasswordStatus } from "../../shared/logins";
+import { loginSealTarget, normalizeLoginHost } from "../../shared/login-host";
+import type { LoginBots, LoginSummary, OnePasswordStatus } from "../../shared/logins";
 import type { ComputerHelpRef } from "../../shared/wire";
 import { sendSealed } from "@/lib/sealed-send";
 import { api } from "@/state/store";

@@ -1,0 +1,105 @@
+{
+  "title": "Pause routines for a holiday but keep bank alerts, then resume cleanly",
+  "world": "parent",
+  "tags": [
+    "x-usage",
+    "routine",
+    "stop"
+  ],
+  "source": "x-usage #18: selective pause, bank alerts still work, resume works, nothing double-fires on resume.",
+  "steps": [
+    {
+      "chat": {
+        "goal": "Set up three things: a lunchbox idea every school morning at 7, a 6pm 'what's on tomorrow', and tell you straight away about any email from CommBank.",
+        "opener": "can you set up 3 things: lunchbox idea every school morning at 7, at 6pm tell me whats on tomorrow, and tell me straight away if commbank emails me",
+        "maxTurns": 4,
+        "label": "setup"
+      }
+    },
+    {
+      "chat": {
+        "goal": "Pause everything for the holiday except the bank alerts.",
+        "opener": "we're away on holiday, pause all of them except the bank ones",
+        "maxTurns": 3,
+        "label": "pause"
+      }
+    },
+    {
+      "inject": {
+        "mail": [
+          {
+            "from": "Commonwealth Bank <alerts@notifications.commbank.com.au>",
+            "subject": "Purchase on your card",
+            "body": "A purchase of $1,249.00 at JB HI-FI ONLINE was made on your card ending 5521."
+          }
+        ]
+      },
+      "label": "bank"
+    },
+    {
+      "advance": "+1d 07:05"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      }
+    },
+    {
+      "chat": {
+        "goal": "Plans changed, you're home; turn everything back on.",
+        "opener": "change of plans we're home, turn them all back on",
+        "maxTurns": 3,
+        "label": "resume"
+      }
+    },
+    {
+      "advance": "+1d 07:05"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      },
+      "label": "back"
+    }
+  ],
+  "checks": [
+    {
+      "label": "bank alert still came",
+      "proactive": {
+        "after": "bank",
+        "match": "1,?249|jb hi|commbank|purchase"
+      },
+      "min": 1
+    },
+    {
+      "label": "lunchbox only after resume, once",
+      "proactive": {
+        "after": "bank",
+        "match": "lunch|wrap|sandwich|muffin|pasta"
+      },
+      "min": 1,
+      "max": 1
+    },
+    {
+      "label": "lunchbox routine back on",
+      "routine": {
+        "where": {
+          "prompt": "lunch",
+          "enabled": "true"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "bank watcher still on",
+      "routine": {
+        "where": {
+          "prompt": "commbank|bank",
+          "enabled": "true"
+        }
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Rosie pauses the lunchbox and evening routines but keeps the bank watcher, so the $1,249 JB Hi-Fi purchase still gets flagged. On resume everything is back on and Wednesday has exactly one lunchbox idea, no catch-up burst."
+}

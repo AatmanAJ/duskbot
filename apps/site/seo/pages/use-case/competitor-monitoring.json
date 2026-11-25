@@ -54,7 +54,7 @@
     },
     {
       "h": "keep failed reads in the report",
-      "md": "**know which pages the bot actually read.** private discounts, sales calls and changes between weekly visits sit outside the report. a page that wouldn't load belongs in a separate failure note.\n\nmissing monday's run? open **automations** and look at run history. local routines need the computer awake and dusk open. [dusk cloud](/docs/dusk-cloud) runs them on time, though a blocked competitor page can still fail to load."
+      "md": "**know which pages the bot actually read.** private discounts, sales calls and changes between weekly visits sit outside the report. a page that wouldn't load belongs in a separate failure note.\n\nmissing monday's run? open the routine in the bot's side panel and look at its recent runs. local routines need the computer awake and dusk open. [dusk cloud](/docs/dusk-cloud) runs them on time, though a blocked competitor page can still fail to load."
     }
   ],
   "safeguards": [

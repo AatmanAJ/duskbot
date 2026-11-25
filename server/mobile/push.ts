@@ -63,6 +63,9 @@ export function activityApnsBody(push: ActivityPush): object {
   };
 }
 
+/** How long a relay that said it has no keys for a service is left alone before it is asked again. */
+export const RELAY_RECHECK_MS = 30 * 60_000;
+
 /** DUSK_PUSH_RELAY: where a server with no APNs or FCM keys of its own sends pushes ("off" for nowhere); unset, `fallback` */
 export function pushRelayBase(env: NodeJS.ProcessEnv, fallback: string | null): string | null {
   const value = env.DUSK_PUSH_RELAY?.trim().replace(/\/+$/, "");
@@ -239,7 +242,7 @@ export function createPushSender(env: NodeJS.ProcessEnv = process.env, deps: {
       method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: JSON.stringify({ message: {
         token: target.token, notification: { title: message.botName, body: "New message" }, data: messageData(message),
-        android: { collapse_key: message.threadId, priority: "high" },
+        android: { collapse_key: message.threadId, priority: "high", notification: { channel_id: "messages" } },
       } }),
       signal: AbortSignal.timeout(10_000),
     });
@@ -260,17 +263,40 @@ export function createPushSender(env: NodeJS.ProcessEnv = process.env, deps: {
       signal: AbortSignal.timeout(10_000),
     });
     const answer = await response.json().catch(() => null) as { outcome?: unknown; code?: unknown } | null;
-    if (response.status === 503 && answer?.code === "not_configured") return "skipped";
+    if (response.status === 503 && answer?.code === "not_configured") {
+      lacking.set(`${base}\n${target.service}`, now());
+      if (!told.has(target.service)) {
+        told.add(target.service);
+        log(target.service === "fcm"
+          ? `mobile push: the push relay at ${base} has no FCM keys, so Android phones get notifications only while the app is open; set DUSK_FCM_SERVICE_ACCOUNT_FILE on this server (docs/phone-push.md)`
+          : `mobile push: the push relay at ${base} has no APNs keys, so iPhones get notifications only while the app is open; set DUSK_APNS_* on this server (docs/phone-push.md)`);
+      }
+      return "skipped";
+    }
     if (!response.ok) return "failed";
     return answer?.outcome === "sent" || answer?.outcome === "gone" ? answer.outcome : "failed";
   }
 
+  /** relay and service pairs the relay answered not_configured for, and when: asked again after RELAY_RECHECK_MS */
+  const lacking = new Map<string, number>();
+  const told = new Set<PushService>();
+  const relayLacks = (base: string, service: PushService) => {
+    const at = lacking.get(`${base}\n${service}`);
+    return at !== undefined && now() - at < RELAY_RECHECK_MS;
+  };
+  const relayFor = (service: PushService) => {
+    if (configured.includes(service)) return null;
+    const base = deps.relay?.() ?? null;
+    return base && !relayLacks(base, service) ? base : null;
+  };
   let warned = false;
   return {
     configured,
-    delivers: (service) => configured.includes(service) || Boolean(deps.relay?.()),
+    delivers: (service) => configured.includes(service) || relayFor(service) !== null,
     async send(target, message) {
-      const relay = configured.includes(target.service) ? null : deps.relay?.() ?? null;
+      const base = configured.includes(target.service) ? null : deps.relay?.() ?? null;
+      if (base && relayLacks(base, target.service)) return "skipped";
+      const relay = base;
       if (!configured.length && !relay && !warned) {
         warned = true;
         log("mobile push: no APNs or FCM credentials and no push relay on this server; phones get notifications only while the app is open");
@@ -286,7 +312,7 @@ export function createPushSender(env: NodeJS.ProcessEnv = process.env, deps: {
     },
     async sendActivity(target, activity) {
       if (target.service !== "apns") return "skipped";
-      const relay = configured.includes("apns") ? null : deps.relay?.() ?? null;
+      const relay = relayFor("apns");
       if (!configured.includes("apns") && !relay) return "skipped";
       try {
         if (relay) return await sendRelay(relay, target, { activity });

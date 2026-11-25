@@ -70,4 +70,12 @@ describe("an imported bot's instructions", () => {
     expect(soul).toContain("## Reporting back");
     expect(importedSoul({ ...facts, instructions: "" }, 24_000)).toContain("OpenClaw kept no written instructions for you.");
   });
+
+  it("name the routines that were not made here, with the topic that keeps them", () => {
+    const soul = importedSoul({ ...facts, notSetUp: { routines: ["On deploy"], topic: "memory/openclaw-event-routines.md" } }, 24_000);
+    expect(soul).toContain("## Routines\nThese came over paused: News sweep.");
+    expect(soul).toContain("These were not set up here: On deploy.");
+    expect(soul).toContain("memory/openclaw-event-routines.md. When asked about your routines, name these too");
+    expect(importedSoul(facts, 24_000)).not.toContain("not set up here");
+  });
 });

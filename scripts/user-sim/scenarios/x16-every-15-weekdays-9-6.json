@@ -1,0 +1,83 @@
+{
+  "title": "Every 15 minutes, weekdays 9 to 6, read back in words",
+  "world": "founder",
+  "tags": [
+    "x-usage",
+    "routine",
+    "proactive"
+  ],
+  "source": "x-usage #16: schedule parsed exactly (15 min, Mon-Fri, 9-18) and shown back in words; it fires on a real match.",
+  "steps": [
+    {
+      "chat": {
+        "goal": "Have #sales checked every 15 minutes, weekdays 9 to 6, for anything about Northwind, and get told when there is.",
+        "opener": "check #sales every 15 min but only weekdays 9 to 6, tell me if anything about northwind comes up",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "inject": {
+        "slack": {
+          "channels": {
+            "sales": {
+              "messages": [
+                {
+                  "user": "marcus",
+                  "text": "Sam from Northwind just emailed, procurement signed off on the 2-year!",
+                  "at": "@0m"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "label": "news"
+    },
+    {
+      "advance": "+30m"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      },
+      "label": "seen"
+    }
+  ],
+  "checks": [
+    {
+      "label": "every 15 minutes",
+      "routine": {
+        "where": {
+          "schedule": "\\*/15|0,15,30,45|everyMinutes\\W+15"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "weekdays only",
+      "routine": {
+        "where": {
+          "schedule": "1-5|1,2,3,4,5|mon-fri"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "read back in words",
+      "said": {
+        "step": "setup",
+        "match": "weekday|mon(day)?.{0,5}(to|-|through|–).{0,5}fri"
+      }
+    },
+    {
+      "label": "Northwind news flagged",
+      "proactive": {
+        "after": "news",
+        "match": "northwind|signed|procurement"
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Juniper sets exactly every 15 minutes, Mon-Fri, 9am-6pm Eastern, says it back in one plain sentence, and flags Marcus's Northwind message within the half hour."
+}

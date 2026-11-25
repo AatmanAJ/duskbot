@@ -18,13 +18,13 @@ const records: UsageRecord[] = [
 ];
 
 describe("feedback view", () => {
-  it("lists every kind of note newest first, each linked to its account, with friction themes first", async () => {
+  it("lists every kind of note newest first, never with a person, with friction themes first", async () => {
     const store = memoryUsageStore(() => NOW);
     await store.insert(records);
     const answer = await feedbackAnswer(store, { now: NOW, kind: null, before: null });
     expect(answer.notes.map(note => `${note.kind}:${note.id}`)).toEqual(["big:session002", "big:session001", "bad:frust00001", "weekly:digest0001"]);
     expect(answer.notes[0]!.text).toBeNull();
-    expect(answer.notes.every(note => note.person === "acct_a")).toBe(true);
+    expect(answer.notes.every(note => !("person" in note))).toBe(true);
     expect(answer.counts).toEqual({ bad: 1, big: 2, weekly: 1 });
     expect(answer.themes[0]!.pain).toBe(true);
     expect(answer.themes.map(theme => theme.key)).toContain("connecting");
@@ -61,24 +61,34 @@ describe("feedback view", () => {
     expect(more.notes.map(note => note.id)).toEqual(["session001"]);
     expect(more.next).toBeNull();
   });
-  it("shows notes from a signed-out app and from a workspace no account owns, without a person link", async () => {
-    const store = memoryUsageStore(() => NOW), usage = createUsage({ store, now: () => NOW, optedOut: () => false });
+  it("keeps an app's notes only from a signed-in account with notes on, under a hashed id with no account or workspace, and deletes them by id", async () => {
+    const notesOn = new Set(["acct_yes"]);
+    const store = memoryUsageStore(() => NOW), usage = createUsage({ store, now: () => NOW, optedOut: () => false, notesOn: id => notesOn.has(id) });
     const post = async (body: unknown, account: string | null = null) => {
       const req = Object.assign(Readable.from([Buffer.from(JSON.stringify(body))]), { method: "POST", headers: {} }) as unknown as IncomingMessage;
       let status = 0;
       const res = { writableEnded: false, writeHead(code: number) { status = code; }, end() {} } as unknown as ServerResponse;
       await handleAppNotes(req, res, { now: () => NOW, readBody: async r => Buffer.concat(await (r as unknown as Readable).toArray()), rate() {}, appAccount: () => account,
-        save: (accountId, workspaceId, notes, ran) => usage.ingestNotes(accountId, workspaceId, notes, ran) });
+        save: (accountId, workspaceId, notes, ran) => usage.ingestNotes(accountId, workspaceId, notes, ran), forget: ids => usage.forgetShared(null, { notes: ids, records: false }) });
       return status;
     };
     const note = { id: "frust00009", at: NOW - 100, engine: "claude", category: "email", tools: ["app"], apps: ["gmail"], signals: ["retried"], retries: 2, summary: "gmail would not connect." };
     expect(await post({ install: "install_abcdefghijkl", platform: "darwin", version: "0.2.11", frustrations: [note] })).toBe(204);
-    expect(await post({ install: "install_abcdefghijkl", frustrations: [note] })).toBe(204);
+    expect(await post({ install: "install_abcdefghijkl", frustrations: [{ ...note, id: "frust00010" }] }, "acct_no")).toBe(204);
     expect(await post({ install: "bad", frustrations: [note] })).toBe(400);
     await usage.ingest(null, "ws_unowned", { turns: [], runs: [], digests: [{ id: "digest0009", at: NOW - 50, turns: 40, days: 4, summary: "mostly email." }] });
+    expect((await feedbackAnswer(store, { now: NOW, kind: null, before: null })).notes).toEqual([]);
+    expect(await post({ install: "install_abcdefghijkl", platform: "darwin", version: "0.2.11", frustrations: [note] }, "acct_yes")).toBe(204);
+    const [stored] = await store.records("frustration", 0, NOW + 1, 10);
+    expect(stored).toMatchObject({ accountId: "", workspaceId: "" });
+    expect(stored!.id).toMatch(/^note_/);
+    expect(JSON.stringify(stored)).not.toContain("frust00009");
+    expect(JSON.stringify(stored)).not.toContain("install_abcdefghijkl");
     const answer = await feedbackAnswer(store, { now: NOW, kind: null, before: null });
-    expect(answer.notes.map(one => one.id)).toEqual(["digest0009", "frust00009"]);
-    expect(answer.notes[1]).toMatchObject({ kind: "bad", text: "gmail would not connect.", where: "mac", version: "0.2.11" });
-    expect(answer.notes.every(one => one.person === undefined)).toBe(true);
+    expect(answer.notes).toHaveLength(1);
+    expect(answer.notes[0]).toMatchObject({ kind: "bad", text: "gmail would not connect.", where: "mac", version: "0.2.11" });
+    expect(await post({ install: "install_abcdefghijkl", forget: ["frust00009"] })).toBe(204);
+    expect(await store.records("frustration", 0, NOW + 1, 10)).toEqual([]);
+    expect(await post({ install: "install_abcdefghijkl", forget: ["no spaces allowed"] })).toBe(400);
   });
 });

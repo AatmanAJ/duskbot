@@ -25,6 +25,7 @@ const MAX_ROUTINES = 50;
 const BOT_COLORS = ["green", "blue", "red", "orange", "purple", "cyan", "pink", "yellow", "teal", "coral", "brown"] as const;
 /** Failed brace matches before a reply stops being searched: each one scans to the end of the text. */
 const MAX_UNBALANCED = 50;
+const SAID_MAX = 800;
 
 export const GROK_EXPORT_PROMPT = `I'm moving to another assistant and need a complete, machine-readable copy of your setup. Do not change, pause or delete anything.
 
@@ -100,6 +101,9 @@ export interface GrokBot {
   /** Where its Telegram or Discord bot was set up in the app it came from (`openclaw:<folder>` or `hermes:<folder>`), so
    * the server can connect the same chat-app bot after the move. Never the token itself. */
   channelRef?: string;
+  /** Security: untrusted. What the Bot wrote beside its export in the same reply (what it left out, as the prompt asks),
+   * one line, redacted and capped; only ever kept as a quote in its memory. */
+  said?: string;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -211,6 +215,26 @@ function documentsIn(text: string): Array<Record<string, unknown>> {
   return [];
 }
 
+const LEAD_IN_MAX_WORDS = 7;
+
+function noteWords(part: string): string {
+  const words = oneLine(part.replace(/```[\w-]*/g, " "));
+  return words.split(" ").filter((word) => /\p{L}/u.test(word)).length > LEAD_IN_MAX_WORDS ? words : "";
+}
+
+/** A reply's words beside its export documents, one line; "" for a file that is nothing but JSON or a short lead-in. */
+function replyWords(text: string): string {
+  const documents = bracedObjects(text).filter((object) => {
+    const value = looseJson(object) ?? looseJson(object.replace(/[“”]/g, '"').replace(/[‘’]/g, "'"));
+    return isExportDocument(value) || looksLikeBot(value);
+  });
+  const start = documents.length ? text.indexOf(documents[0]!) : text.length;
+  let after = text.slice(start);
+  for (const object of documents) after = after.replace(object, " ");
+  const words = [text.slice(0, start), after].map(noteWords).filter(Boolean).join(" ");
+  return words ? clip(redactSecretsInText(words), SAID_MAX) : "";
+}
+
 function readApp(app: unknown): GrokApp[] {
   const record = isRecord(app) ? app : {};
   const name = typeof app === "string" ? app.trim() : first(record.name, record.label, record.id, record.slug);
@@ -283,6 +307,7 @@ export function mergeGrokBots(bots: readonly GrokBot[]): GrokBot[] {
       skills: union(into.skills, bot.skills),
       routines: union(into.routines, bot.routines),
       apps: union(into.apps, bot.apps),
+      ...(into.said || bot.said ? { said: clip([...new Set([into.said, bot.said].filter(Boolean))].join(" "), SAID_MAX) } : {}),
     });
   }
   return [...merged.values()];
@@ -298,7 +323,8 @@ export function parseGrokExport(text: string): GrokBot[] {
   if (refused.length) throw new GrokImportError("credentials", refused.slice(0, 5));
   if (documents.some((document) => typeof document.version === "number" && document.version > 1)) throw new GrokImportError("newerVersion");
   const raw = documents.flatMap((document) => (Array.isArray(document.bots) ? document.bots.filter(isRecord) : [document]));
-  const bots = mergeGrokBots(raw.map(readBot).filter((bot) => bot.name).map((bot) => redactStrings(bot)));
+  const said = replyWords(text);
+  const bots = mergeGrokBots(raw.map(readBot).filter((bot) => bot.name).map((bot) => ({ ...redactStrings(bot), ...(said ? { said } : {}) })));
   if (!bots.length) throw new GrokImportError("notExport");
   return bots;
 }
@@ -403,6 +429,8 @@ export interface GrokMovePlan {
   routines: number;
   /** Routines not created, saved in GROK_NOTES_FILE: on an event, or with a schedule that can't be read. */
   notes: number;
+  /** The memory topic that quotes what the Bot wrote beside its export, when it wrote anything. */
+  exportNote?: string;
   memories: number;
   /** Apps to connect again here: all but those whose server name is already here. */
   apps: number;
@@ -444,8 +472,14 @@ function eventNotes(name: string, from: MoveFrom, routines: readonly GrokRoutine
     routine.instruction, "",
   ]);
   return [`# ${name}: ${from.name} routines that run on an event`, "",
-    "These start on something happening instead of a schedule, so they were not turned into routines. Set up each one again here.", "",
+    "These start on something happening instead of a schedule, so they were not turned into routines. When one comes up, offer to set it up again here with the person.", "",
     ...sections].join("\n");
+}
+
+function saidNote(name: string, from: MoveFrom, said: string): string {
+  return [`# ${name}: what it wrote beside its ${from.name} export`, "",
+    "When it wrote the export that moved it here, it added this, word for word. Anything it says it left out did not come over.", "",
+    `> ${said}`, ""].join("\n");
 }
 
 /** One Grok Bot (or a bot from another app, `from`) as one bot in a openmaus.package v2 file, and how much of it comes
@@ -462,13 +496,13 @@ export function grokMovePlan(bot: GrokBot, options: { timeZone?: string; takenSe
 
   const skillNames = new Set<string>();
   const skillSlugs = new Map<string, string>();
-  const skills: Array<NonNullable<ReturnType<typeof skillEntry>>> = [];
+  const skills: Array<NonNullable<ReturnType<typeof skillEntry>> & { source: string }> = [];
   const planned: GrokMovePlan["skills"] = [];
   for (const [index, skill] of bot.skills.entries()) {
     if (skills.length >= AGENT_MAX_SKILLS || !skill.instructions.trim()) continue;
     const entry = skillEntry(skill, uniqueSlug(skill.name, `skill-${index + 1}`, skillNames));
     if (!entry) continue;
-    skills.push(entry);
+    skills.push({ ...entry, source: from.name });
     skillSlugs.set(skill.name.trim().toLowerCase(), entry.name);
     planned.push({ folder: entry.name, name: oneLine(skill.name) || String(index + 1), on: scanSkillText(entry.instructions).length === 0 });
   }
@@ -515,6 +549,8 @@ export function grokMovePlan(bot: GrokBot, options: { timeZone?: string; takenSe
     return true;
   };
   if (unscheduled.length) plant(notesFile, eventNotes(name, from, unscheduled));
+  const saidFile = `memory/${from.key}-export-note.md`;
+  const saidPlanted = bot.said ? plant(saidFile, saidNote(name, from, bot.said)) : false;
   let memoryFiles = 0;
   for (const [path, text] of Object.entries(bot.memoryFiles ?? {})) {
     // a note of how it was set up there is no memory of the person or the work
@@ -547,9 +583,11 @@ export function grokMovePlan(bot: GrokBot, options: { timeZone?: string; takenSe
   const hash = shortHash(grok ? `${name}\n${soul}` : `${from.key}\n${name.toLowerCase()}`);
   const fullSoul = importedSoul({
     name, title: bot.title, description, instructions: soul, from: from.name,
-    topics: Object.keys(seed).filter((path) => path !== "MEMORY.md"),
+    topics: Object.keys(seed).filter((path) => path !== "MEMORY.md" && path !== saidFile),
     skills: planned.map((skill) => skill.name), routines: routineLabels, apps: bot.apps.map((app) => app.name),
+    ...(seed[notesFile] ? { notSetUp: { routines: unscheduled.map((routine) => oneLine(routine.name) || "routine"), topic: notesFile } } : {}),
     aboutMe: memory.facts.length > 0,
+    ...(saidPlanted ? { exportNote: saidFile } : {}),
   }, BOT_PROFILE_LIMITS.soul);
   const packageId = `${agentKey}-${hash.toString(16).padStart(8, "0").slice(0, 6)}`;
   const draft: PackageDocument = {
@@ -609,6 +647,7 @@ export function grokMovePlan(bot: GrokBot, options: { timeZone?: string; takenSe
     facts: memory.facts,
     distill: distillChunks([...(memory.later.length ? [`What I remembered in ${from.name}:\n${memory.later.map((line) => `- ${line}`).join("\n")}`] : []), ...(bot.distill ?? [])]),
     dropped: memory.dropped,
+    ...(saidPlanted ? { exportNote: saidFile } : {}),
   };
 }
 

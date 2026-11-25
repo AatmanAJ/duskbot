@@ -6,6 +6,7 @@
 // replaced, closes, so nothing stale waits on the person.
 import { formatQuestionAnswers, isPersistentQuestionCard } from "../../shared/ask-question.ts";
 import { liveCardKind } from "../../shared/live-approval.ts";
+import { splitTranscriptAttachments } from "../../src/lib/composer-attachments.ts";
 import { personWait } from "../../shared/person-wait.ts";
 import { allowsTool, type ToolIdentity } from "../../shared/tool-scope.ts";
 import type { OptionCardData } from "../../shared/wire.ts";
@@ -36,8 +37,9 @@ export interface AskCardsDeps {
   live(threadId: string, requestId: string): boolean;
   /** The parked node's next turn carries the person's answer. */
   answerNode(id: string, text: string): boolean;
-  /** Answers a card as a tap on it would, with the same checks on who may answer, through an inbox copy too. */
-  answerCard(input: { auth: RequestAuth; threadId: string; requestId: string; behavior: "answer"; message: string }): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
+  /** Answers a card as a tap on it would, with the same checks on who may answer, through an inbox copy too. The card
+   * shows `message`; the engine reads `engineMessage` when there is one. */
+  answerCard(input: { auth: RequestAuth; threadId: string; requestId: string; behavior: "answer"; message: string; engineMessage?: string }): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
   /** The conversation a card in `threadId` was asked in: an inbox copy's original. */
   answeredIn(threadId: string, requestId: string): string;
 }
@@ -56,6 +58,14 @@ export function answerableInWords(card: OptionCardData | undefined): card is Opt
   const questions = card!.questionRequest?.questions;
   return !questions || (questions.length === 1 && !questions[0]!.multiSelect && questions[0]!.custom !== false);
 }
+
+const carriesAttachments = (text: string): boolean => {
+  const { images, files } = splitTranscriptAttachments(text);
+  return images.length > 0 || files.length > 0;
+};
+
+/** What the engine reads after a line typed in the chat while its question waited, which may be about something else. */
+export const TYPED_WHILE_ASKED_NOTE = "[dusk bot: the person typed this in the chat while your question waited, so it may not answer it. If it does not, take it as a new message, and ask your question again if you still need to know.]";
 
 const typedAnswer = (card: OptionCardData, text: string): string => {
   const questions = card.questionRequest?.questions;
@@ -258,23 +268,23 @@ export function createAskCards(deps: AskCardsDeps) {
     return true;
   }
 
-  /** A person's line answers an inbox copy it replies to, or, in work a teammate handed on, the question card the bot's
-   * turn waits on, as a tap would; null leaves the line to be sent (steered or queued) as usual. */
+  /** A person's line answers an inbox copy it replies to, or the question card the bot's turn in that conversation waits
+   * on, as a tap would; a line carrying an attachment is not an answer. A line that replies to no card reaches the engine
+   * marked as possibly about something else. Null leaves the line to be sent (steered or queued) as usual. */
   async function typed(auth: RequestAuth, threadId: string, text: string, target: Message | undefined,
     line: { sendId?: string; sender?: Message["sender"] }): Promise<{ status: number; message?: Message; error?: string } | null> {
-    if (store.groupByThread(threadId) || isStopCommand(text)) return null;
-    const delegator = delegatorOf(threadId);
-    const handedOn = Boolean(delegator && delegator.threadId !== threadId);
+    if (store.groupByThread(threadId) || isStopCommand(text) || carriesAttachments(text)) return null;
     const asked = target
       ? answerableInWords(target.card) ? target : undefined
-      : handedOn ? store.messagesFor(threadId).findLast((message) => answerableInWords(message.card) && deps.live(threadId, message.card!.requestId!)) : undefined;
+      : store.messagesFor(threadId).findLast((message) => answerableInWords(message.card) && deps.live(threadId, message.card!.requestId!));
     if (!asked?.card?.requestId) return null;
     const requestId = asked.card.requestId;
     const origin = deps.answeredIn(threadId, requestId);
-    if (origin === threadId && !(handedOn && deps.live(threadId, requestId))) return null;
+    if (origin === threadId && !deps.live(threadId, requestId)) return null;
     const again = line.sendId ? store.messagesFor(threadId).find((message) => message.sendId === line.sendId) : undefined;
     if (again) return { status: 202, message: again };
-    const answered = await deps.answerCard({ auth, threadId, requestId, behavior: "answer", message: typedAnswer(asked.card, text) });
+    const answered = await deps.answerCard({ auth, threadId, requestId, behavior: "answer", message: typedAnswer(asked.card, text),
+      ...(target ? {} : { engineMessage: typedAnswer(asked.card, `${text} ${TYPED_WHILE_ASKED_NOTE}`) }) });
     if (!answered.ok) return { status: answered.status, error: answered.error };
     const posted = store.appendMessage(threadId, { role: "user", kind: "text", text, replyToId: asked.id,
       ...(line.sendId ? { sendId: line.sendId } : {}), ...(line.sender ? { sender: line.sender } : {}) });

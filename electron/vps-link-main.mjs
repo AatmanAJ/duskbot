@@ -19,7 +19,11 @@ import { loadDataChannel, rtcConnector } from "./vps-link-rtc.mjs";
 function rtcWay(screenIce) {
   const ndc = loadDataChannel();
   if (!ndc) return null;
-  return { connector: ({ signal }) => rtcConnector({ ndc, signal, turn: async () => (await screenIce?.()) ?? [] }) };
+  return {
+    connector: ({ signal }) => rtcConnector({ ndc, signal, turn: async () => (await screenIce?.()) ?? [] }),
+    // closes every peer and channel left before node tears down, where node-datachannel 0.33 can deadlock the exit
+    release: () => { try { ndc.cleanup?.(); } catch { /* already gone */ } },
+  };
 }
 import { createEgressDialer, createEgressEndpoint, seenAsCache } from "./vps-link-egress.mjs";
 import { createVpsLink } from "./vps-link.mjs";
@@ -166,6 +170,7 @@ export function installVpsLink(deps) {
   const macHost = process.env.DUSK_MAC_CONTROL === "off" || !servesMacJobs() ? null
     : createMacControlHost({ fetch: (...args) => session.defaultSession.fetch(...args), name: deps.label, execute: (job, io) => (awake ? awake.busy(execute(job, io)) : execute(job, io)), log });
   const followMac = (view) => macHost?.follow(view?.server?.origin ?? null);
+  const rtc = process.env.DUSK_LINK_DIRECT === "off" ? null : rtcWay(deps.screenIce);
   const link = createVpsLink({
     base,
     appVersion: deps.appVersion,
@@ -237,7 +242,7 @@ export function installVpsLink(deps) {
     relaunch: deps.relaunch,
     dataSize: async () => { const dir = deps.dataDir(); return dir ? folderSize(dir) : null; },
     // the direct path to a relay-linked server, over ssh or https on 443, then the cloud relay (vps-link-direct.mjs); DUSK_LINK_DIRECT=off keeps every link on the relay
-    ...(process.env.DUSK_LINK_DIRECT === "off" ? {} : { direct: { newKey: newDirectKey, connector: sshConnector, wssConnector, cloud: { url: cloudRelayUrl(), connector: cloudConnector, register: cloudRegister }, rtc: rtcWay(deps.screenIce) } }),
+    ...(process.env.DUSK_LINK_DIRECT === "off" ? {} : { direct: { newKey: newDirectKey, connector: sshConnector, wssConnector, cloud: { url: cloudRelayUrl(), connector: cloudConnector, register: cloudRegister }, rtc } }),
     onChange: (view) => { deps.tell(view); followMac(view); },
     log,
   });
@@ -301,6 +306,6 @@ export function installVpsLink(deps) {
     log,
   }) : null;
   const closeLink = link.close;
-  link.close = () => { closedLink = true; stopNetwork(); macHost?.close(); homeEgress?.close(); awake?.close(); return closeLink(); };
+  link.close = () => { closedLink = true; stopNetwork(); macHost?.close(); homeEgress?.close(); awake?.close(); return Promise.resolve(closeLink()).finally(() => rtc?.release()); };
   return link;
 }

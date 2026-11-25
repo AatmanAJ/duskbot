@@ -40,12 +40,18 @@ public class SpeechRecognizerPlugin extends Plugin {
     private boolean active;
     private boolean finishing;
     private String language;
+    private boolean preferOffline;
     private String committed = "";
     private String current = "";
     private int failures;
     private long listenStarted;
     private long lastLevel;
     private Runnable finishTimeout;
+
+    /** A phone without the offline pack for the language says so as a language error; the online recognizer may have it. */
+    static boolean retryOnline(int error, boolean preferOffline, int sdk) {
+        return preferOffline && sdk >= 31 && (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED || error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE);
+    }
 
     private static String join(String left, String right) {
         if (!left.isEmpty() && !right.isEmpty()) return left + " " + right;
@@ -79,6 +85,7 @@ public class SpeechRecognizerPlugin extends Plugin {
             committed = "";
             current = "";
             failures = 0;
+            preferOffline = true;
             active = true;
             try {
                 listen();
@@ -127,7 +134,7 @@ public class SpeechRecognizerPlugin extends Plugin {
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-        intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
+        intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, preferOffline);
         intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getContext().getPackageName());
         if (language != null) intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, language);
         listenStarted = SystemClock.elapsedRealtime();
@@ -275,7 +282,14 @@ public class SpeechRecognizerPlugin extends Plugin {
                 complete();
                 return;
             }
-            if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+            if (retryOnline(error, preferOffline, Build.VERSION.SDK_INT)) {
+                preferOffline = false;
+                try {
+                    listen();
+                } catch (RuntimeException failure) {
+                    end(1, "recognition-error");
+                }
+            } else if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                 end(1, "microphone-blocked");
             } else if (error == SpeechRecognizer.ERROR_AUDIO) {
                 end(1, "microphone-failed");

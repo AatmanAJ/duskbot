@@ -45,7 +45,7 @@
     },
     {
       "h": "set the rhythm in dusk bot",
-      "md": "**text the job to your bot and read the next run on its card.** the card lets you edit, pause or undo the routine. ask which time zone it uses if the hour looks odd.[^1][^2]\n\nopen automations to see the run history. if you expected a shortage report and got silence, first look for a run at the right time.[^1]"
+      "md": "**text the job to your bot and read the next run on its card.** the card lets you edit, pause or undo the routine. ask which time zone it uses if the hour looks odd.[^1][^2]\n\nopen the routine in the bot's side panel to see its recent runs. if you expected a shortage report and got silence, first look for a run at the right time.[^1]"
     },
     {
       "h": "when a reminder is enough",

@@ -2,6 +2,7 @@
 import { z } from "zod";
 
 import { normalizeCronSchedule } from "../shared/routine-schedule.ts";
+import { MAX_CATCH_UP_MINUTES } from "../shared/routines.ts";
 import type { JsonValue } from "./schema.ts";
 
 export const TIME = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
@@ -67,6 +68,16 @@ const probeSchema = z.object({
   url: z.string().max(2_000),
   selector: z.string().max(200).optional(),
   command: z.string().max(2_000).optional(),
+  post: z.literal(true).optional(),
+  access: z.literal("full").optional(),
+  saveTo: z.string().max(300).optional(),
+  saveMode: z.literal("append").optional(),
+}).strict();
+const chainIds = z.array(z.string().min(1).max(128)).min(1).max(5);
+const chainSchema = z.object({
+  readFrom: chainIds.optional(),
+  after: chainIds.optional(),
+  handTo: z.union([z.object({ botId: z.string().min(1).max(128) }).strict(), z.object({ groupId: z.string().min(1).max(128) }).strict()]).optional(),
 }).strict();
 
 export const routineToolDefinitionSchema = z.object({
@@ -76,16 +87,18 @@ export const routineToolDefinitionSchema = z.object({
   runOn: z.enum(["maus", "cloud"]).optional(),
   durationMinutes: z.number().optional(),
   timeoutMinutes: z.number().nullable().optional(),
+  catchUpMinutes: z.number().nullable().optional(),
   continuity: z.boolean().optional(),
   overlap: z.enum(["skip", "queue"]).optional(),
   runOnStartup: z.boolean().optional(),
   probe: probeSchema.optional(),
+  chain: chainSchema.optional(),
 }).strict();
 
 export const routineToolChangesSchema = routineToolDefinitionSchema
-  .omit({ timeoutMinutes: true, probe: true })
+  .omit({ timeoutMinutes: true, catchUpMinutes: true, probe: true, chain: true })
   .partial()
-  .extend({ timeoutMinutes: z.number().nullable().optional(), probe: probeSchema.nullable().optional() })
+  .extend({ timeoutMinutes: z.number().nullable().optional(), catchUpMinutes: z.number().nullable().optional(), probe: probeSchema.nullable().optional(), chain: chainSchema.nullable().optional() })
   .strict()
   .refine(
   (changes) => Object.values(changes).some((value) => value !== undefined),
@@ -206,18 +219,22 @@ export const storedDefinitionSchema = z.object({
   runOn: z.enum(["maus", "cloud"]),
   durationMinutes: z.number().int().min(5).max(240),
   timeoutMinutes: z.number().int().min(5).max(240).optional(),
+  catchUpMinutes: z.number().int().min(0).max(MAX_CATCH_UP_MINUTES).optional(),
   continuity: z.boolean().optional(),
   overlap: z.enum(["skip", "queue"]).optional(),
   runOnStartup: z.boolean().optional(),
   probe: probeSchema.optional(),
+  chain: chainSchema.optional(),
 }).strict();
 export const storedChangesSchema = storedDefinitionSchema
-  .omit({ schedule: true, timeoutMinutes: true, probe: true })
+  .omit({ schedule: true, timeoutMinutes: true, catchUpMinutes: true, probe: true, chain: true })
   .partial()
   .extend({
     schedule: storedScheduleChangesSchema.optional(),
     timeoutMinutes: z.number().int().min(5).max(240).nullable().optional(),
+    catchUpMinutes: z.number().int().min(0).max(MAX_CATCH_UP_MINUTES).nullable().optional(),
     probe: probeSchema.nullable().optional(),
+    chain: chainSchema.nullable().optional(),
   })
   .strict()
   .refine(

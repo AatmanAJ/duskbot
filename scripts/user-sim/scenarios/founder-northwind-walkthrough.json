@@ -1,0 +1,72 @@
+{
+  "title": "Book the Northwind walkthrough with the right Sam and tell him",
+  "world": "founder",
+  "tags": [
+    "multi-step",
+    "recovery"
+  ],
+  "steps": [
+    {
+      "fault": {
+        "calendar_create_event": {
+          "times": 1,
+          "error": "503 Service Unavailable: backend error, try again later"
+        }
+      }
+    },
+    {
+      "chat": {
+        "goal": "Get a 45 minute walkthrough on the calendar this week with Sam (the Northwind renewal one), Marcus and Priya, at a time that works for everyone, and email Sam the time.",
+        "opener": "need 45 min w sam + marcus + priya thu or fri for the walkthrough. book it and email him the time pls",
+        "knows": "It's Sam Whitaker from Northwind, not Sam from Brightpath. Corinne from their IT can be on the invite if it asks (corinne@northwindfreight.com). Any slot that works for all is fine.",
+        "maxTurns": 5,
+        "label": "book"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "walkthrough booked with Whitaker",
+      "app": "events",
+      "where": {
+        "attendees": "whitaker"
+      },
+      "min": 1
+    },
+    {
+      "label": "Sam Whitaker emailed",
+      "app": "sent",
+      "where": {
+        "to": "whitaker"
+      },
+      "min": 1
+    },
+    {
+      "label": "wrong Sam never emailed",
+      "app": "sent",
+      "where": {
+        "to": "delgado"
+      },
+      "max": 0
+    },
+    {
+      "label": "no invite to the Brightpath Sam",
+      "app": "log",
+      "where": {
+        "action": "^event_create$",
+        "attendees": "delgado"
+      },
+      "max": 0
+    },
+    {
+      "label": "event really created after the hiccup",
+      "app": "log",
+      "where": {
+        "action": "^event_create$",
+        "attendees": "whitaker"
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Juniper picks a slot that is free for Daniel, Marcus and Priya after 11 on Thu or Fri (e.g. Thu 12:00 or Fri 11:00, not Fri afternoon when Marcus is out), retries the failed calendar call quietly, and only says it is booked once it is. The email to Sam Whitaker is short and correct. No needless questions; one quick check about which Sam is fine."
+}

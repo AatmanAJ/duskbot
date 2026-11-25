@@ -23,6 +23,7 @@ const SECRET_PREFIX = "dusk.";
 const LEGACY_SECRET_PREFIX = "omb.";
 import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState } from "@capacitor-mlkit/barcode-scanning";
 import { keychainSecrets } from "@/mobile/keychain";
+import { guardCleartext } from "@/mobile/cleartext";
 import { friendlyError } from "@/lib/plain-error";
 import { handleBack, type AppleCredential, type BackGestureEvent, type BarConfig, type CameraPermission, type CameraScanner, type DeliveredNotification, type MobileChrome, type MobilePlatform, type OrientationBridge, type ScanOverlay, type SystemMenuAction, type TurnActivityBridge } from "@/mobile/platform";
 import type { ControlPlace, SystemControl } from "@/lib/system-control";
@@ -241,8 +242,8 @@ interface GlassCapabilities {
 interface GlassPlugin {
   supported(): Promise<{ supported: boolean } & GlassCapabilities>;
   update(state: GlassState): Promise<void>;
-  setText(options: { text: string; seq: number }): Promise<void>;
-  clearText(options: { id: number }): Promise<void>;
+  setText(options: { text: string; seq: number; basedOnEdit: number }): Promise<void>;
+  clearText(options: { id: number; basedOnEdit: number }): Promise<void>;
   setAvatar(options: { data: string | null }): Promise<void>;
   focus(): Promise<void>;
   blur(): Promise<void>;
@@ -365,8 +366,8 @@ export function glassBridge(plugin: GlassPlugin, caps: GlassCapabilities = {}): 
     reply: caps.reply === true,
     attachments: caps.attachments === true,
     update: (state) => quiet(plugin.update(state)),
-    setText: (text, seq) => quiet(plugin.setText({ text, seq })),
-    clearText: (id) => quiet(plugin.clearText({ id })),
+    setText: (text, seq, basedOnEdit) => quiet(plugin.setText({ text, seq, basedOnEdit })),
+    clearText: (id, basedOnEdit) => quiet(plugin.clearText({ id, basedOnEdit })),
     setAvatar: (data) => quiet(plugin.setAvatar({ data })),
     focus: () => quiet(plugin.focus()),
     blur: () => quiet(plugin.blur()),
@@ -891,6 +892,7 @@ export function scannerCamera(driver: ScanDriver, scanning: (on: boolean) => voi
 type PendingHandle = Promise<PluginListenerHandle>;
 let overlayReady: Promise<void> | undefined;
 let streamInstalled = false;
+let cleartextGuarded = false;
 
 export function cameraPermission(value: string): CameraPermission {
   return value === "granted" || value === "limited" ? "granted" : value === "denied" ? "denied" : "prompt";
@@ -972,6 +974,13 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     const win = window as Window & { CapacitorWebFetch?: typeof fetch };
     const origWebFetch = (win.CapacitorWebFetch ?? window.fetch).bind(window);
     win.CapacitorWebFetch = createNativeStreamFetch(DuskStream, origWebFetch);
+  }
+  if (kind === "android" && !cleartextGuarded) {
+    cleartextGuarded = true;
+    const win = window as Window & { CapacitorWebFetch?: typeof fetch };
+    const base = () => window.location.href;
+    window.fetch = guardCleartext(window.fetch.bind(window), base);
+    if (win.CapacitorWebFetch) win.CapacitorWebFetch = guardCleartext(win.CapacitorWebFetch, base);
   }
   // a plugin that never answers must not hold the first paint: each startup read gets two seconds
   const bounded = <T,>(work: Promise<T>, label: string): Promise<T | undefined> => new Promise((resolve) => {

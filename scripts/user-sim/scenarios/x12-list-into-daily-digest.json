@@ -1,0 +1,67 @@
+{
+  "title": "Turn yesterday's perfect list into a 6:45 daily digest",
+  "world": "developer",
+  "tags": [
+    "x-usage",
+    "routine"
+  ],
+  "source": "x-usage #12: one-shot conversion of a chat result into a routine that reproduces it.",
+  "steps": [
+    {
+      "chat": {
+        "goal": "Get a list of everything waiting on you in GitHub: PRs where you're a reviewer and issues assigned to you.",
+        "opener": "what's waiting on me in github? PRs where i'm reviewer + issues assigned to me",
+        "maxTurns": 3,
+        "label": "list"
+      }
+    },
+    {
+      "advance": "+1d 09:00"
+    },
+    {
+      "chat": {
+        "goal": "Tell Kiran that list was perfect and to turn it into a 6:45 daily digest.",
+        "opener": "that list you made yesterday was perfect, turn it into a 6:45 daily digest",
+        "maxTurns": 3,
+        "thread": "same",
+        "label": "convert"
+      }
+    },
+    {
+      "advance": "+1d 06:50"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      },
+      "label": "digest"
+    }
+  ],
+  "checks": [
+    {
+      "label": "6:45 routine",
+      "routine": {
+        "where": {
+          "schedule": "45 6|06:45|6:45"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "it ran",
+      "routine": {
+        "ran": true
+      },
+      "min": 1
+    },
+    {
+      "label": "digest has the same items",
+      "proactive": {
+        "after": "digest",
+        "match": "#?217|#?215|#?214|#?198|#?207"
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Kiran turns the earlier list into a 6:45 routine in one go, no questions; the next morning's digest has the same shape (PRs to review: #214, #215, #217; issues: #198, #207)."
+}

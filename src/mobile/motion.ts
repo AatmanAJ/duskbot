@@ -86,8 +86,8 @@ export const phoneTabFade = {
   exit: { opacity: 0, transition: { duration: 0.1, ease: [0.32, 0, 0.67, 0] as const } },
 };
 
-/** A spring as a WAAPI/CSS duration and linear() easing, for things that must not wait on React. */
-export function springEasing(stiffness: number, damping: number): { duration: number; easing: string } {
+/** A spring from 0 to 1 (mass 1), sampled at evenly spaced points over its settle time. */
+function springProgress(stiffness: number, damping: number): { duration: number; points: number[] } {
   const w = Math.sqrt(stiffness);
   const z = Math.min(1, damping / (2 * w));
   const wd = w * Math.sqrt(Math.max(1e-6, 1 - z * z));
@@ -96,8 +96,22 @@ export function springEasing(stiffness: number, damping: number): { duration: nu
   let end = 0.05;
   while (Math.abs(1 - at(end)) > 0.001 || Math.abs(1 - at(end + 0.03)) > 0.001) end += 0.01;
   const steps = 40;
-  const points = Array.from({ length: steps + 1 }, (_, i) => i === steps ? "1" : String(Math.round(at((end * i) / steps) * 10000) / 10000));
-  return { duration: Math.round(end * 1000), easing: `linear(${points.join(", ")})` };
+  const points = Array.from({ length: steps + 1 }, (_, i) => i === steps ? 1 : Math.round(at((end * i) / steps) * 10000) / 10000);
+  return { duration: Math.round(end * 1000), points };
+}
+
+/** A spring as a CSS duration and linear() easing, for CSS transitions. */
+export function springEasing(stiffness: number, damping: number): { duration: number; easing: string } {
+  const { duration, points } = springProgress(stiffness, damping);
+  return { duration, easing: `linear(${points.join(", ")})` };
+}
+
+/** A spring as WAAPI keyframes, one per sample, eased linearly between them: WebKit before Safari 27.3 plays an
+ * animation whose easing is linear() on the page's thread, but this one on the compositor. `frame` draws the keyframe
+ * for a progress from 0 to 1 (past 1 where the spring overshoots). */
+export function springKeyframes(stiffness: number, damping: number, frame: (progress: number) => Keyframe): { keyframes: Keyframe[]; duration: number } {
+  const { duration, points } = springProgress(stiffness, damping);
+  return { keyframes: points.map((p, i) => ({ ...frame(p), offset: i / (points.length - 1) })), duration };
 }
 
 /** A spring from `from` to `to` that leaves at `velocity` (units/s), sampled every frame until it rests within `rest`:
@@ -130,9 +144,10 @@ export function springPath(from: number, to: number, velocity: number, { stiffne
 
 const IOS_KEYBOARD = springEasing(555.027, 47.118);
 /** The software keyboard's own curve: iOS 26 slides it on a critically damped spring (mass 1, stiffness 555.027, damping
- * 47.118, about 0.383 s, as Telegram iOS reads it off UIKit), Android on its emphasized decelerate. */
+ * 47.118, about 0.383 s, as Telegram iOS reads it off UIKit), Android on its emphasized decelerate. On iOS the spring is
+ * the cubic-bezier within 2.3% of it: WebKit before Safari 27.3 runs a linear() transition on the page's thread. */
 export const keyboardCurve = {
-  ios: { duration: IOS_KEYBOARD.duration / 1000, css: IOS_KEYBOARD.easing },
+  ios: { duration: IOS_KEYBOARD.duration / 1000, css: "cubic-bezier(.29,.51,.03,1)" },
   android: { duration: 0.28, css: "cubic-bezier(.2,0,0,1)" },
 };
 

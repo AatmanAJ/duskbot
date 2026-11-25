@@ -357,6 +357,10 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
         }
         patch.browser = body.browser;
       }
+      if (body.readsOtherChats !== undefined) {
+        if (typeof body.readsOtherChats !== "boolean") return json(res, 400, { error: "readsOtherChats must be true or false" });
+        patch.readsOtherChats = body.readsOtherChats;
+      }
       if (body.recordBrowserSteps !== undefined) {
         if (typeof body.recordBrowserSteps !== "boolean") return json(res, 400, { error: "recordBrowserSteps must be true or false" });
         patch.recordBrowserSteps = body.recordBrowserSteps;

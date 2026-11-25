@@ -98,12 +98,15 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
       onCreated: () => onClose(), onError: (message) => { setCreating(false); setError(message); } });
   };
 
+  const busy = useRef(false);
+  busy.current = creating;
+  const leave = () => { if (!busy.current) onClose(); };
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const onKey = (event: KeyboardEvent) => {
       const root = dialog.current;
       if (!root) return;
-      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); return; }
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); leave(); return; }
       if (event.key !== "Tab") return;
       const controls = [...root.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled])")];
       const first = controls[0], last = controls.at(-1);
@@ -122,7 +125,7 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
 
   return (
     <ModalLayer><div {...played.layer} className="fixed inset-0 z-[60]">
-      <ScrimMotion {...played.scrim} aria-hidden className="absolute inset-0 bg-black/50" onMouseDown={onClose} />
+      <ScrimMotion {...played.scrim} aria-hidden className="absolute inset-0 bg-black/50" onMouseDown={leave} />
       <SheetMotion
         {...played.sheet}
         ref={dialog}
@@ -135,13 +138,14 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
         <button
           type="button"
           aria-label={t("common.close")}
-          onClick={onClose}
-          className="absolute right-2.5 top-2.5 z-[1] flex size-8 items-center justify-center rounded-[9999px] text-ink-secondary hover:bg-ink/6 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          disabled={creating}
+          onClick={leave}
+          className="absolute right-2.5 top-2.5 z-[1] flex size-8 items-center justify-center rounded-[9999px] text-ink-secondary enabled:hover:bg-ink/6 enabled:hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-default disabled:opacity-50"
         >
           <Icon name="close" size={14} />
         </button>
         <div className="flex shrink-0 flex-col items-start gap-1 border-b border-transparent p-4">
-          <h2 id={titleId} className="m-0 text-[14px] font-semibold leading-[22px] tracking-[-0.15px]">Create new bot</h2>
+          <h2 id={titleId} className="m-0 text-[14px] font-semibold leading-[22px] tracking-[-0.15px]">{t("createBot.title")}</h2>
         </div>
         <div className="min-h-0 w-full overflow-auto p-4 leading-[18px] tracking-[-0.08px]">
           <div className="flex flex-col gap-3">
@@ -152,7 +156,7 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
               autoFocus
               type="text"
               aria-label={t("botPanel.nameField")}
-              placeholder="Name your bot"
+              placeholder={t("createBot.namePlaceholder")}
               value={name}
               maxLength={80}
               onChange={(event) => rename(event.target.value)}
@@ -201,7 +205,7 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
           >
             {t("createBot.groupInstead")}
           </button>
-          <button type="button" onClick={onClose} className={cn(KIT_BUTTON, "bg-ink/6 text-ink hover:bg-ink/10")}><span>Cancel</span></button>
+          <button type="button" disabled={creating} onClick={leave} className={cn(KIT_BUTTON, "bg-ink/6 text-ink enabled:hover:bg-ink/10 disabled:opacity-50")}><span>{t("common.cancel")}</span></button>
           <button
             type="button"
             disabled={!canCreate}
@@ -209,7 +213,7 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
             onClick={create}
             className={cn(KIT_BUTTON, "bg-ink text-app hover:bg-[color-mix(in_srgb,var(--color-ink)_88%,var(--color-app))] disabled:bg-ink/15 disabled:text-ink/30")}
           >
-            <span>{creating ? t("createBot.creating") : "Create"}</span>
+            <span>{creating ? t("createBot.creating") : t("createBot.create")}</span>
           </button>
         </div>
       </SheetMotion>

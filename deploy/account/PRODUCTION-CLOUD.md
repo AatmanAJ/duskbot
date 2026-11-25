@@ -144,3 +144,36 @@ curl -s https://link.dusk.bot/v1/push -H 'content-type: application/json' -d '{"
 ```
 
 `{"outcome":"sent"}` means APNs took it; the phone shows "dusk bot: New message".
+
+## 7. FCM on the link service
+
+The key is `~/.config/duskbot/fcm-service-account.json`: service account
+`fcm-sender@dusk-bot-514309.iam.gserviceaccount.com`, role Firebase Cloud Messaging API Admin only, Firebase project
+`dusk-bot-514309`. Both link nodes get it. A key the relay cannot read only turns FCM off (`push relay: could not load
+FCM credentials`); the node keeps running.
+
+```sh
+key=~/.config/duskbot/fcm-service-account.json
+# contabo (prozessor; the env file is the deploy cli's)
+scp -q "$key" contabo:/root/omb-link-data/fcm-service-account.json && ssh contabo 'chmod 600 /root/omb-link-data/fcm-service-account.json && cp -p /root/autorunner/envs/.env.omb-link /root/autorunner/envs/.env.omb-link.bak-fcm'
+echo DUSK_FCM_SERVICE_ACCOUNT_FILE=/root/omb-link-data/fcm-service-account.json | ssh contabo 'cat >> /root/autorunner/envs/.env.omb-link'
+deploy restart omb-link
+# oracle-in (systemd, runs as dusklink)
+scp -q "$key" oracle:/tmp/fcm.json && ssh oracle 'sudo install -m 600 -o dusklink /tmp/fcm.json /etc/dusk-link-node-fcm.json && rm /tmp/fcm.json && sudo cp -p /etc/dusk-link-node.env /etc/dusk-link-node.env.bak-fcm'
+echo DUSK_FCM_SERVICE_ACCOUNT_FILE=/etc/dusk-link-node-fcm.json | ssh oracle 'sudo tee -a /etc/dusk-link-node.env >/dev/null && sudo systemctl restart dusk-link-node'
+unset key
+```
+
+Check: `curl -s https://link.dusk.bot/v1/push` and `curl -s https://link-in.dusk.bot/v1/push` answer
+`{"services":["apns","fcm"]}` (done 2026-11-25).
+Rollback: `ssh contabo 'cp -p /root/autorunner/envs/.env.omb-link.bak-fcm /root/autorunner/envs/.env.omb-link' && deploy restart omb-link`
+and `ssh oracle 'sudo cp -p /etc/dusk-link-node.env.bak-fcm /etc/dusk-link-node.env && sudo systemctl restart dusk-link-node'`.
+A rotated key replaces the file on both nodes and needs the same restarts.
+
+A test push to an Android token (an app built with `google-services.json`; the token is in the workspace's push
+registrations):
+
+```sh
+curl -s https://link.dusk.bot/v1/push -H 'content-type: application/json' -d '{"service":"fcm","token":"<FCM_TOKEN>",
+  "message":{"id":"push-test-1","kind":"message","botId":"push-test","threadId":"push-test","botName":"dusk bot"}}'
+```

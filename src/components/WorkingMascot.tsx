@@ -10,6 +10,8 @@ import { bodyFit } from "./mascot-view";
 import { usePrefersReducedMotion } from "./mascot-clock";
 import { LivelyMascot } from "./LivelyMascot";
 import { MASCOT_MOTION, type MascotMotionPick } from "@/lib/mascot-motion";
+import { LINE_SPECS, WORKING_LINE, type WorkingLinePick } from "@/lib/working-line";
+import { WorkingLineMascot } from "./WorkingLineMascot";
 
 type WorkingBot = { id?: string; color: MausColor; mascotBody?: StoredBodyId | null; mascotFaceColor?: MascotFaceColor | null };
 
@@ -91,7 +93,7 @@ export function crispSize(wanted: number, grid: number, dpr = typeof window === 
  * Each part moves on its own HTML layer by transform alone, so the loop stays on the compositor. A `mood` (what the bot
  * is doing now) gives it the sprite's own expressions in turn (MOOD_FACES) and sets how those layers move, in whole
  * sprite pixels. */
-export function WorkingMascot({ bot, size, eyes, seed = "", mood, className, motion = MASCOT_MOTION, at }: {
+export function WorkingMascot({ bot, size, eyes, seed = "", mood, className, motion = MASCOT_MOTION, at, line = WORKING_LINE }: {
   bot: WorkingBot;
   size: number;
   eyes?: string;
@@ -102,6 +104,7 @@ export function WorkingMascot({ bot, size, eyes, seed = "", mood, className, mot
   motion?: MascotMotionPick;
   /** the lab's own clock for "flat-gentle", in ms */
   at?: number;
+  line?: WorkingLinePick;
 }) {
   const dressed = useHalloweenDressed();
   const reduced = usePrefersReducedMotion() || (typeof document !== "undefined" && document.documentElement.dataset.reducedMotion === "true");
@@ -115,6 +118,13 @@ export function WorkingMascot({ bot, size, eyes, seed = "", mood, className, mot
   const key = `${bot.id ?? ""}|${seed}`;
   const ink = MASCOT_INK[bot.color] ?? MASCOT_INK.green;
   const eyeInk = mascotFaceInk(bot.mascotFaceColor) ?? eyes ?? "var(--color-app)";
+  if (mood && line !== "shipped") {
+    return (
+      <span aria-hidden="true" data-working-mascot="" data-working-line={line} data-mood={mood} className={cn("relative inline-block shrink-0", className)} style={{ width: size, height: size }}>
+        <WorkingLineMascot variant={line} body={body} mood={mood} seed={key} reduced={reduced} box={box} ink={ink} eyeInk={eyeInk} thoughtDots={LINE_SPECS[line].thoughtDots} />
+      </span>
+    );
+  }
   if (mood && motion !== "current") {
     return (
       <span aria-hidden="true" data-working-mascot="" data-motion={motion} data-mood={mood} className={cn("relative inline-block shrink-0", className)} style={{ width: size, height: size }}>

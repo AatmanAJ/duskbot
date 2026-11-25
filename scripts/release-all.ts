@@ -6,7 +6,7 @@
 //
 //   node scripts/release-all.ts 0.2.26 [--dry-run] [--now] [--canary <cloud id,...>] [--desktop-steps 10,50,100] [--watch 30] [--skip-build]
 //   node scripts/release-all.ts status [--canary <cloud id,...>]
-//   node scripts/release-all.ts pause | resume | block <version> [--dry-run]
+//   node scripts/release-all.ts pause | resume | block <version> | unblock <version> [--dry-run]
 //
 // env (names only, never printed): DUSK_RELEASE_SIGNING_KEY (release key), DUSK_OPS_TOKEN (the account service's fleet
 // view), RELEASE_ACCOUNT_URL (https://dusk.bot), RELEASE_SSH (contabo), RELEASE_HOME_DIR (/var/lib/dusk-account-prod/home),
@@ -45,19 +45,20 @@ export function rolloutSteps(value: string | undefined, now: boolean): number[] 
 }
 
 /** the next policy: a serial past both the one served and any this tool signed, and `change` applied */
-export function nextPolicy(current: UpdatePolicy, lastSerial: number, change: { rollout?: [string, number | null]; paused?: boolean; block?: string }): UpdatePolicy {
+export function nextPolicy(current: UpdatePolicy, lastSerial: number, change: { rollout?: [string, number | null]; paused?: boolean; block?: string; unblock?: string }): UpdatePolicy {
   const rollout = { ...current.rollout };
   if (change.rollout) { const [version, share] = change.rollout; if (share === null || share >= 100) delete rollout[version]; else rollout[version] = share; }
   for (const version of Object.keys(rollout)) if (current.floor && compareVersions(version, current.floor) < 0) delete rollout[version];
   const paused = change.paused ?? current.paused ?? false;
-  return parsePolicy({ serial: Math.max(current.serial, lastSerial) + 1, floor: current.floor, blocked: change.block ? [...new Set([...current.blocked, change.block])] : current.blocked,
+  return parsePolicy({ serial: Math.max(current.serial, lastSerial) + 1, floor: current.floor, blocked: change.block ? [...new Set([...current.blocked, change.block])] : current.blocked.filter(version => version !== change.unblock),
     ...(paused ? { paused: true } : {}), ...(Object.keys(rollout).length ? { rollout } : {}) });
 }
 
 export interface Judgement { verdict: "healthy" | "wait" | "halt" | "timeout"; why: string }
 /**
  * the canary's health: halt at the first canary cloud that rolled `version` back or got stuck, or when desktops on
- * `version` send errors at `errorRatio` times the rate of the version before (once `minInstalls` run it); healthy once
+ * `version` send errors at `errorRatio` times the rate of the version before (once `minInstalls` run it, and never for
+ * errors from at most two installs against a version before that sent none); healthy once
  * `watchMs` went by with at least one canary cloud through its self-test on it (or no canary clouds), else a timeout
  * after `maxWaitMs`
  */
@@ -67,7 +68,9 @@ export function judge(fleet: Pick<FleetAnswer, "desktops" | "clouds">, o: { vers
   const rows = fleet.desktops.versions, mine = rows.find(r => r.version === o.version);
   const before = rows.filter(r => compareVersions(r.version, o.version) < 0 && r.installs > 0).sort((a, b) => compareVersions(b.version, a.version))[0];
   const rate = (r: { installs: number; errors: number }) => r.errors / Math.max(1, r.installs);
-  if (mine && mine.installs >= (o.minInstalls ?? 20) && rate(mine) > (o.errorRatio ?? 3) * Math.max(before ? rate(before) : 0, 0.05)) {
+  const baseline = before ? rate(before) : 0;
+  const few = baseline === 0 && mine?.errorInstalls !== undefined && mine.errorInstalls <= 2;
+  if (mine && !few && mine.installs >= (o.minInstalls ?? 20) && rate(mine) > (o.errorRatio ?? 3) * Math.max(baseline, 0.05)) {
     return { verdict: "halt", why: `desktops on ${o.version} send ${rate(mine).toFixed(2)} errors per install${before ? ` against ${rate(before).toFixed(2)} on ${before.version}` : ""}` };
   }
   const through = fleet.clouds.canary.filter(c => c.version === o.version && c.trial !== "pending").length;
@@ -296,8 +299,9 @@ async function main() {
   if (command === "pause") return r.publishPolicy(holder, { paused: true });
   if (command === "resume") return r.publishPolicy(holder, { paused: false });
   if (command === "block" && arg && SEMVER.test(arg)) return r.publishPolicy(holder, { block: arg, rollout: [arg, null] });
+  if (command === "unblock" && arg && SEMVER.test(arg)) return r.publishPolicy(holder, { unblock: arg });
   if (!command || !SEMVER.test(command)) {
-    console.error("usage: release-all.ts <x.y.z> [--dry-run] [--now] [--canary ids] [--desktop-steps 10,50,100] [--watch 30] [--skip-build] | status | pause | resume | block <x.y.z>");
+    console.error("usage: release-all.ts <x.y.z> [--dry-run] [--now] [--canary ids] [--desktop-steps 10,50,100] [--watch 30] [--skip-build] | status | pause | resume | block <x.y.z> | unblock <x.y.z>");
     process.exit(2);
   }
   const watchMs = Number(values.watch ?? 30) * 60_000;

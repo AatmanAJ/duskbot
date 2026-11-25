@@ -363,36 +363,3 @@ export function BackupAis({ bot, onChange }: { bot: Bot; onChange: (fallback: Ba
     </Card>
   );
 }
-
-/** The Model row's pill (ModelPicker's trigger under MODEL_PILL), so Backup model reads as its twin. */
-const MODEL_PILL_TRIGGER = "group -my-[3px] -me-[5px] flex h-6 min-w-0 max-w-[180px] items-center gap-1 rounded-lg border border-transparent py-0.5 ps-1.5 pe-1 text-[13px] leading-[18px] tracking-[-0.08px] text-ink inset-ring inset-ring-ink/[0.07] duration-100 focus-visible:outline-none";
-
-/** The bot's backup, picked beside its model: Automatic (absent: another AI the person has working takes over), No backup
- * (empty), or one model first in its list. The rest of the list stays on the Backup AIs page. */
-export function BackupModelRow({ bot, onChange }: { bot: Bot; onChange: (fallback: Backup[] | null) => void }) {
-  const { state } = useStore();
-  const chain = bot.fallback;
-  const first = chain?.[0] ?? null;
-  const instance = first ? state.instances.find((candidate) => candidate.instanceId === first.instanceId) : undefined;
-  const name = first ? modelName(instance, first.model) : t(chain ? "botPanel.backupModel.none" : "botPanel.backupModel.automatic");
-  return (
-    <div data-panel-row="backup-model" className="flex min-h-[30px] items-center gap-2 rounded-lg px-2 py-1.5">
-      <span className="min-w-0 flex-1 truncate text-[13px] leading-[18px] tracking-[0.015em] text-ink">{t("botPanel.backupModel")}</span>
-      <BackupChooser
-        bot={bot}
-        current={first}
-        exclude={new Set([modelKey(bot.modelSelection.instanceId, bot.modelSelection.model)])}
-        onPick={(picked) => onChange([picked, ...(chain ?? []).slice(1).filter((entry) => modelKey(entry.instanceId, entry.model) !== modelKey(picked.instanceId, picked.model))])}
-        modes={{ current: first ? null : chain ? "none" : "automatic", onPick: (mode) => onChange(mode === "none" ? [] : null) }}
-        label={t("botPanel.backupModel")}
-        data-panel-action="backup-model"
-        data-model-pill=""
-        className={MODEL_PILL_TRIGGER}
-      >
-        {instance && <span className="relative mr-1.5 flex shrink-0"><InstanceProviderMark instance={instance} size={14} /></span>}
-        <span className="min-w-0 max-w-[160px] truncate">{name}</span>
-        <ChevronDown size={12} strokeWidth={2} aria-hidden="true" className="ms-0 size-2.5 shrink-0 text-ink/[0.66]" />
-      </BackupChooser>
-    </div>
-  );
-}

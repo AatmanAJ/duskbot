@@ -31,6 +31,7 @@ import {
   describeTunnelState,
   ensureCloudflared,
   guardianEntry,
+  loginRefusal,
   startTunnel,
   tunnelAccess,
   type CompanionOriginEndpoint,
@@ -479,12 +480,9 @@ export async function runAccess(options: CliOptions, io: CliIo = defaultIo()): P
 
 export async function runLogin(options: CliOptions, io: CliIo = defaultIo()): Promise<number> {
   const account = createTunnelAccount({ dataDir: options.dataDir, version: serverVersion() });
-  if (account.credentials.status === "unavailable") {
-    io.error(`${account.credentials.file} exists but could not be read; fix or remove it, then try again`);
-    return 1;
-  }
-  if (!account.controlPlane) {
-    io.error("DUSK_CONTROL_PLANE_URL is set but is not an https address");
+  const refusal = await loginRefusal(account);
+  if (refusal) {
+    io.error(refusal);
     return 1;
   }
   const existing = describeTunnelAccount(account.credentials.read());
@@ -630,7 +628,7 @@ async function planTunnel(options: CliOptions, log: (line: string) => void, reco
   account = createTunnelAccount({ dataDir: options.dataDir, version: serverVersion(), recovery, log: (line) => log(`tunnel: ${line}`) });
   if (account.credentials.status === "unavailable") return fail(`${account.credentials.file} exists but could not be read; fix or remove it`);
   if (!describeTunnelAccount(account.credentials.read()).email) {
-    return fail("no account on this machine yet: run `duskbot login` first, then `duskbot serve --tunnel`");
+    return fail((await loginRefusal(account)) ?? "no account on this machine yet: run `duskbot login` first, then `duskbot serve --tunnel`");
   }
   try {
     const state = await account.service.retry();
@@ -928,6 +926,7 @@ export async function runOnboardingCommand(
       io.log("\nOne optional step: connect your phone. You can skip this and start chatting here.");
       const result = await (flow.phoneSetup ?? runPhoneSetup)(launch, prompts, {
         accountReady: (value) => !!describeTunnelAccount(createTunnelAccount({ dataDir: value.dataDir, version: serverVersion() }).credentials.read()).email,
+        managedAvailable: async (value) => (await loginRefusal(createTunnelAccount({ dataDir: value.dataDir, version: serverVersion() }))) === null,
         login: (value, ui) => runLogin(value, {
           log: ui.log, error: ui.log,
           ask: (question) => /code/i.test(question) ? ui.secret(question) : ui.ask(question),
