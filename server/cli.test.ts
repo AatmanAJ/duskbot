@@ -1,5 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +15,7 @@ import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { startControlPlaneStub } from "./testing/control-plane-stub.ts";
 import { freePortBlock } from "./testing/ports.ts";
 import { workerPort } from "./testing/worker-port.ts";
+import { SECURE_ACCESS_UNAVAILABLE } from "./tunnel.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const setup = vi.hoisted(() => ({ runSetup: vi.fn(), isSetupComplete: vi.fn(), readCliStartup: vi.fn(), saveCliStartup: vi.fn() }));
@@ -391,15 +394,15 @@ describe.skipIf(process.platform === "win32")("serve --tunnel", () => {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-  it("refuses without an account and says what to do; no local-only fallback", async () => {
+  const refusesWithoutAccount = async (controlPlane: string, expected: string) => {
     const home = mkdtempSync(join(tmpdir(), "dusk-cli-tunnel-none-"));
     const port = workerPort(21000, 9000);
-    const child = cli(["serve", "--tunnel", "--port", String(port), "--data-dir", join(home, "data")], { HOME: home, USERPROFILE: home });
+    const child = cli(["serve", "--tunnel", "--port", String(port), "--data-dir", join(home, "data")], { HOME: home, USERPROFILE: home, DUSK_CONTROL_PLANE_URL: controlPlane });
     let err = "";
     child.stderr?.on("data", (chunk) => (err += String(chunk)));
     try {
       expect(await exited(child)).toBe(1);
-      expect(err).toContain("run `duskbot login` first");
+      expect(err).toContain(expected);
       let dead = false;
       try {
         await fetch(`http://127.0.0.1:${port}/api/health`);
@@ -409,6 +412,25 @@ describe.skipIf(process.platform === "win32")("serve --tunnel", () => {
       expect(dead).toBe(true);
     } finally {
       await removeTempDir(home);
+    }
+  };
+
+  it("refuses without an account and says what to do; no local-only fallback", async () => {
+    const stub = await startControlPlaneStub();
+    try {
+      await refusesWithoutAccount(stub.url, "run `duskbot login` first");
+    } finally {
+      await stub.close();
+    }
+  }, 30_000);
+
+  it("points at the working path when the control plane is not the secure access service", async () => {
+    const plain = createServer((_req, res) => res.writeHead(200, { "content-type": "text/plain" }).end("ok"));
+    await new Promise<void>((done) => plain.listen(0, "127.0.0.1", done));
+    try {
+      await refusesWithoutAccount(`http://127.0.0.1:${(plain.address() as AddressInfo).port}`, SECURE_ACCESS_UNAVAILABLE);
+    } finally {
+      await new Promise((done) => plain.close(done));
     }
   }, 30_000);
 

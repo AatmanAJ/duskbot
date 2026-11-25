@@ -55,7 +55,8 @@ vps     read-only Linux VPS status, host resources, managed computers and
         bounded redacted logs, including when the server is stopped.
         Run on the VPS; no sudo, service changes or credential reads.
 login   signs this machine in to a dusk bot account (an emailed code)
-        and reserves its public address for --tunnel
+        and reserves its public address for --tunnel. dusk.bot does not run
+        that service today; link a server with the app's one line instead
 logout  releases that address and signs out
 access  who may sign in with an emailed code at /pair: an address or
         @domain; --chat-only gives chat and approvals without settings.
@@ -80,7 +81,9 @@ free-backup install: OpenCode's own build (pinned), the free backup AI, into
              and HTTPS certificates enabled for the tailnet)
 --tunnel     serve at a public https://c-… address through a
              Cloudflare tunnel: no domain, no proxy, no open port. Run
-             \`duskbot login\` once on this machine first.
+             \`duskbot login\` once on this machine first. dusk.bot does not
+             run that service today; use --tailscale, --domain or the app's
+             one line instead.
 --domain     serve at https://HOST on your own domain: a pinned Caddy is
              downloaded once and run alongside the server, and gets the
              certificate itself. Point the domain's DNS at this machine and
