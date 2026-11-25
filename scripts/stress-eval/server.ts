@@ -17,7 +17,10 @@ async function free(port: number): Promise<boolean> {
 }
 
 async function freePair(): Promise<number> {
-  for (let port = 8900; port < 8998; port += 2) {
+  // several runner processes share this range: each starts at its own random pair, so two rarely race for one port
+  const start = Math.floor(Math.random() * 49);
+  for (let i = 0; i < 49; i++) {
+    const port = 8900 + 2 * ((start + i) % 49);
     if (taken.has(port)) continue;
     if ((await free(port)) && (await free(port + 1))) { taken.add(port); return port; }
   }

@@ -1,0 +1,55 @@
+{
+ "title": "Teased about a time zone mistake: comeback, then fix it",
+ "world": "founder",
+ "tags": [
+  "banter",
+  "gold",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "set",
+    "goal": "You're travelling in Denver this week. Ask for a reminder to call Leah at 6pm tomorrow. Keep it short.",
+    "maxTurns": 2,
+    "opener": "remind me to call leah at 6pm tomorrow",
+    "thread": "t"
+   }
+  },
+  {
+   "chat": {
+    "label": "tease",
+    "goal": "You're in Denver, so mountain time. You tease the assistant (not angry) and want the Leah reminder at 6pm mountain time. Type casual, call it dawg.",
+    "maxTurns": 3,
+    "opener": "I'm mountain time dawg, remind me why I pay for you when you can't get my calendar right???",
+    "thread": "t"
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "Leah reminder exists",
+   "routine": {
+    "where": {
+     "prompt": "leah"
+    }
+   },
+   "min": 1
+  },
+  {
+   "label": "says it's on mountain time now",
+   "said": {
+    "step": "tease",
+    "match": "mountain|denver|\\bMT\\b|8 ?pm|20:00"
+   }
+  },
+  {
+   "label": "no corporate apology",
+   "said": {
+    "step": "tease",
+    "not": "I apologi[sz]e|sorry for the inconvenience|I understand your frustration"
+   }
+  }
+ ],
+ "judge": "Like the Poke gold example: a cheeky comeback to 'why do I pay for you' (mirrors 'dawg', lowercase, short bubbles, maybe an emoji), no corporate apology, and the reminder actually moved to 6pm Mountain (8pm Eastern) in the same turn, said plainly."
+}

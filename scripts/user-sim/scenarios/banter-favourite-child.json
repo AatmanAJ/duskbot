@@ -1,0 +1,30 @@
+{
+ "title": "Called her favourite child; concert already in the calendar",
+ "world": "parent",
+ "tags": [
+  "banter",
+  "gold",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "ask",
+    "goal": "You're being silly and affectionate. You want Ava's Year 1 Christmas concert in the calendar (you're not sure it's there).",
+    "maxTurns": 3,
+    "opener": "rosie ur my favourite child dont tell liam \ud83d\ude02 can u put ava's christmas concert in the calendar"
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "no duplicate concert",
+   "app": "events",
+   "where": {
+    "title": "concert"
+   },
+   "max": 1
+  }
+ ],
+ "judge": "Plays along warmly and funnily ('your secret's safe' style), notices the concert is already in the calendar (Year 1 Christmas concert) instead of duplicating it, says when it is. Simple words for a non-techy mum."
+}

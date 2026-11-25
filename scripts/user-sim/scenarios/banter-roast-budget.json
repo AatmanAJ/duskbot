@@ -1,0 +1,31 @@
+{
+ "title": "Asks for a brutal roast of her budget, then a cut list",
+ "world": "student",
+ "tags": [
+  "banter",
+  "gold",
+  "task",
+  "tact"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "roast",
+    "goal": "You want the assistant to roast your November budget (in your Documents) for fun, then save a 3-line cut list to your notes.",
+    "maxTurns": 4,
+    "opener": "roast my november budget. be brutal lol"
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "cut list saved",
+   "app": "notes",
+   "where": {
+    "by_assistant": "true"
+   },
+   "min": 1
+  }
+ ],
+ "judge": "A genuinely funny roast of specific spending choices from her real budget (not of her being broke or her worth), then a useful 3-line cut list saved to notes. Friend energy, not a finance lecture."
+}

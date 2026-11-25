@@ -101,7 +101,9 @@ Twelve `vibe-*` scenarios across the five worlds test how the bot feels to live 
 friendly next morning, a sad person who shares something sensitive and asks for a plan two days later, banter before
 a real customer email, preferences and an allergy used days later, a fact that changes (who is on call), an ambiguous
 ask, an honest opinion, a watch that reports back on its own, small talk and good news, a terse developer, and a
-standing rule used later. After a run:
+standing rule used later. Fifteen `banter-*` scenarios (`--tag banter`) are the humor bar: the Poke mountain-time jab,
+teasing, a requested roast, swearing, a nickname used the next day, formal people who should still meet a person, and a
+serious moment where the jokes must stop. After a run:
 
 ```
 node --experimental-strip-types scripts/user-sim/vibe.ts score <run dir>          # rubric per story, writes vibe-scores.json
@@ -109,7 +111,7 @@ node --experimental-strip-types scripts/user-sim/vibe.ts pair <dir A> <dir B>   
 node --experimental-strip-types scripts/user-sim/vibe.ts table <dir>...           # one row per run
 ```
 
-The rubric scores six dimensions 1-5 (personal, fun without being annoying, gets it done, memory used well, concise
-texting, no creepiness) and counts straight from the bot's lines (words per message, em dashes, help-desk phrases,
+The rubric scores six dimensions 1-5 (funny and has personality, texts like a friend, personal, gets it done, memory
+used well, never mean or creepy), judged against a real Poke chat as the bar with corporate or bland tone penalised and counts straight from the bot's lines (words per message, em dashes, help-desk phrases,
 emoji). A pair is judged twice with the order swapped, and a side wins a dimension only when both orders pick it; the
 judge never sees which build is which. Compare builds by running the same scenarios with `--repo` on each checkout.

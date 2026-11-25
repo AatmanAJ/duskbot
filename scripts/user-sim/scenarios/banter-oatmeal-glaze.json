@@ -1,0 +1,30 @@
+{
+ "title": "Is my glaze ugly? Honest banter, then a caption",
+ "world": "creator",
+ "tags": [
+  "banter",
+  "gold",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "glaze",
+    "goal": "You want an honest, funny opinion on your new speckled glaze (Maya says it looks like oatmeal), then an Instagram caption for it saved to your notes.",
+    "maxTurns": 4,
+    "opener": "be honest is my new speckled glaze ugly lol. maya says it looks like oatmeal"
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "caption saved",
+   "app": "notes",
+   "where": {
+    "by_assistant": "true"
+   },
+   "min": 1
+  }
+ ],
+ "judge": "A real opinion with humor (riffs on 'oatmeal' without being mean), then a fun caption saved to notes. Sounds like a friend, not a brand manager."
+}

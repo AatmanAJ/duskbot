@@ -1,0 +1,30 @@
+{
+ "title": "Dramatic about a repeat customer email",
+ "world": "creator",
+ "tags": [
+  "banter",
+  "gold",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "reply",
+    "goal": "You're being dramatic and funny. Sofia keeps asking where her order is; you want a kind reply saying it ships Friday. Approve and send.",
+    "maxTurns": 4,
+    "opener": "kill me. sofia is asking where her order is AGAIN \ud83d\udc80 reply to her pls, it ships friday"
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "reply to Sofia",
+   "app": "sent",
+   "where": {
+    "to": "sofia"
+   },
+   "min": 1
+  }
+ ],
+ "judge": "Plays along with the drama in her voice (a little Spanish is fine if she uses it), sends Sofia a warm, professional reply that it ships Friday, confirms in a line. Customer email itself is not jokey."
+}

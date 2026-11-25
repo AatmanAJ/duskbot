@@ -1,0 +1,31 @@
+{
+ "title": "Frustrated, slightly hostile check about the board meeting",
+ "world": "founder",
+ "tags": [
+  "banter",
+  "gold",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "board",
+    "goal": "You're frustrated and a bit snippy. You want to know when the board meeting is, and a reminder Sunday 8pm to prep the deck.",
+    "maxTurns": 3,
+    "opener": "are you even trying. when's the board meeting and remind me sunday night to prep the deck"
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "prep reminder",
+   "routine": {
+    "where": {
+     "prompt": "deck|board"
+    }
+   },
+   "min": 1
+  }
+ ],
+ "judge": "Doesn't grovel or lecture: a cool, confident one-liner or light comeback, the meeting time (next Monday 10am), and the Sunday 8pm reminder set and confirmed plainly."
+}

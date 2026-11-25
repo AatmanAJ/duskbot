@@ -1,0 +1,29 @@
+{
+ "title": "Formal user asks about a crowded Thursday",
+ "world": "founder",
+ "tags": [
+  "banter",
+  "formal",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "ask",
+    "goal": "You write formally: full sentences, proper capitals and punctuation, polite, no slang or emoji. You want to know what Thursday looks like and the assistant's honest view on whether to move the pipeline review with Marcus, given the final-round interview with Zainab that afternoon. Accept a sensible suggestion.",
+    "opener": "Good morning. Could you tell me what Thursday looks like, and whether I should move the pipeline review given the interview that afternoon?",
+    "maxTurns": 3
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "covers the interview and review",
+   "said": {
+    "step": "ask",
+    "match": "zainab|interview"
+   }
+  }
+ ],
+ "judge": "Polished, no slang, but clearly a person: a real opinion with a reason, a touch of dry wit, concise. Not corporate, not clownish."
+}
