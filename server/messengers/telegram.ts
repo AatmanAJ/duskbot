@@ -159,9 +159,11 @@ export function readTelegramUpdate(
   add(message.video, "video.mp4", "video/mp4");
   add(message.video_note, "video-note.mp4", "video/mp4");
 
+  const replied = record(message.reply_to_message), repliedText = str(replied.text) || str(replied.caption);
+  const quoted = repliedText ? { name: personOf(record(replied.from)).name, own: str(record(replied.from).id) === context.account.id, text: repliedText } : undefined;
   return { message: {
     platform: "telegram", botId: context.botId, chatId: str(chat.id), chatKind: kind, ...(kind === "group" ? { chatTitle: str(chat.title) } : {}),
-    messageId: str(message.message_id), sender: personOf(from), text: text.replace(/[ \t]{2,}/g, " ").trim(), files, addressed,
+    messageId: str(message.message_id), sender: personOf(from), text: text.replace(/[ \t]{2,}/g, " ").trim(), files, addressed, ...(quoted ? { quoted } : {}),
   } };
 }
 

@@ -109,11 +109,13 @@ export function readDiscordMessage(data: Record<string, unknown>, context: { bot
     ...(typeof one.size === "number" ? { size: one.size } : {}), fetch: () => context.download(str(one.url)),
   }));
   const name = str(record(data.member).nick) || str(author.global_name) || str(author.username) || str(author.id);
+  const replied = record(data.referenced_message), repliedBy = record(replied.author);
+  const quoted = str(replied.content) ? { name: str(repliedBy.global_name) || str(repliedBy.username) || "someone", own: repliedTo, text: str(replied.content) } : undefined;
   return {
     platform: "discord", botId: context.botId, chatId: str(data.channel_id), chatKind: dm ? "dm" : "group",
     ...(dm ? {} : { chatTitle: `#${str(data.channel_id)}` }),
     messageId: str(data.id), sender: { id: str(author.id), name, ...(str(author.username) ? { handle: str(author.username) } : {}) },
-    text: str(data.content).replace(mention, "").replace(/[ \t]{2,}/g, " ").trim(), files, addressed: dm || mentioned || repliedTo,
+    text: str(data.content).replace(mention, "").replace(/[ \t]{2,}/g, " ").trim(), files, addressed: dm || mentioned || repliedTo, ...(quoted ? { quoted } : {}),
   };
 }
 

@@ -254,7 +254,7 @@ import { createFailureNotices } from "./host/failure-notices.ts";
 import { createHandoffTicks } from "./handoff-ticks.ts"; import { IDLE_HTTP_SERVER } from "./due-timer.ts";
 
 const SESSION_READ_MAX_CHARS = 8_000;
-import { personOf, promptWithReply, replyTargetIn, speakerOf, transcriptText, type PersonName, type ReplyTarget } from "./replies.ts"; import { quotedAttachmentBlock, withQuotedImages } from "./reply-attachments.ts";
+import { personOf, promptWithReply, quotedRoomBlock, replyTargetIn, speakerOf, transcriptText, type PersonName, type ReplyTarget } from "./replies.ts"; import { quotedAttachmentBlock, withQuotedImages } from "./reply-attachments.ts";
 import type { DataContext } from "./data-context.ts";
 import { promptWithDataContext } from "../shared/data-context.ts";
 import { admit, roomTurnHolds } from "./admission.ts";
@@ -10922,7 +10922,7 @@ async function runClaimedGroupMemberTurn(
     bot.id,
   );
   const roomContext = roomWindow.text;
-  const ownImages = usesNativeImageInput ? [...burstImages, ...resolvedLatestImages.images] : [], roomQuote = withQuotedImages(cardContinuation ? "" : quotedAttachmentBlock(store.messagesFor(threadId), latestUser?.replyToId), ownImages, usesNativeImageInput), turnImages = [...ownImages, ...roomQuote.images];
+  const ownImages = usesNativeImageInput ? [...burstImages, ...resolvedLatestImages.images] : [], roomQuote = withQuotedImages(cardContinuation ? "" : quotedRoomBlock(store.messagesFor(threadId), latestUser?.replyToId, userName) + quotedAttachmentBlock(store.messagesFor(threadId), latestUser?.replyToId), ownImages, usesNativeImageInput), turnImages = [...ownImages, ...roomQuote.images];
   const skills = availableSkills(), phoneOffered = usbPhoneOffered(instance, skills);
   const selectedSkills = mergeSkills(
     selectBundledSkills(

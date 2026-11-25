@@ -722,6 +722,26 @@ A daily standup is then a room routine: the chief asks, each member answers
 from its brief and pulls detail with `session_search since`, and what was
 agreed shows up in each member's next 1:1 brief.
 
+## Replied-to messages
+
+A message that replies to another carries the one it replies to in full, up to
+6,000 characters (`MAX_QUOTED_CHARS`; a longer one keeps its start and its last
+1,500 characters with a note of how much was left out), with its line breaks,
+even when that message is also in the history above: it says which message the
+person means, as Hermes Agent's reply context does. It is fenced as untrusted
+conversation (`--- quoted message ---`), and nothing inside can close the fence.
+
+- **The app**, a reply or a 👍/👎 on a message: the turn's own message quotes it
+  whole. History lines keep naming earlier replies by their first 220
+  characters.
+- **Rooms**: when the latest message replies to one the room's history shows
+  only the start of, the full text is added to the turn.
+- **Telegram and Discord**: the replied-to message (`reply_to_message`,
+  `referenced_message`) is quoted in full above the person's words, as your
+  earlier message or as a message from its sender.
+- **Slack**: a thread reply carries the thread (8,000 characters, newest first)
+  and always keeps the thread's opening message, the one the thread replies to.
+
 ## The journal
 
 Every change to a memory file that the app can see is recorded — yours from

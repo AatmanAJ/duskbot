@@ -6,7 +6,7 @@ import { requestNeedsInput } from "../guarded-requests.ts";
 import type { Message } from "../store.ts";
 import type { MessengerLink } from "./secrets.ts";
 import { cardChoices, cardText, type CardChoice } from "./cards.ts";
-import { GroupContext, withGroupContext } from "./group-context.ts";
+import { GroupContext, withGroupContext, withQuoted } from "./group-context.ts";
 import type { MessengerOffer, MessengerPending, MessengerState } from "./state.ts";
 
 export interface MessengerPerson { id: string; name: string; handle?: string }
@@ -23,6 +23,8 @@ export interface InboundMessage {
   files: InboundFile[];
   /** A direct message, or a group message that mentions the bot, replies to it or is a command for it. */
   addressed: boolean;
+  /** The message this one replies to, as the chat app delivered it: `own` when the bot sent it. */
+  quoted?: { name: string; own: boolean; text: string };
 }
 export interface OutboundFile { bytes: Buffer; mime: string; name: string; kind: "image" | "file" | "audio" }
 /** A tap on one of a card's buttons: Telegram's callback query, or Discord's interaction (its id and token). */
@@ -406,7 +408,7 @@ export function createMessengerBridge(deps: MessengerBridgeDeps) {
       return;
     }
 
-    const said = [defuse(text), ...await files(message)].filter(Boolean).join("\n\n");
+    const said = withQuoted(message.quoted && { ...message.quoted, text: defuse(message.quoted.text) }, [defuse(text), ...await files(message)].filter(Boolean).join("\n\n"));
     const body = said && message.chatKind === "group" && deps.state.listens(key) ? withGroupContext(groupContext.take(key, now()), said) : said;
     if (!body || !active()) return;
     let mapping = deps.state.conversation(key);
