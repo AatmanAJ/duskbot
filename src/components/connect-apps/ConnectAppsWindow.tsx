@@ -32,6 +32,7 @@ import { useTokenApps } from "./use-token-apps";
 import { tokenApp, type TokenAppId } from "../../../shared/app-tokens";
 import type { OnePasswordStatus } from "../../../shared/logins";
 import { CategoryMenu } from "./CategoryMenu";
+import { useDialogExit } from "../dialog-exit";
 import {
   CATEGORY_LABEL, INLINE_CHIPS, SECTION_SIZE, fromCatalog, grokCategories, inCategory, matchRank, popularity, presentCategories, recommended, searchApps,
   type AppEntry, type Category, type Connection,
@@ -138,6 +139,7 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
   const layout = useRef<Layout | null>(null);
   const [scrolled, setScrolled] = useState(false);
   const dialog = useRef<HTMLDivElement>(null);
+  const scrim = useDialogExit<HTMLDivElement>(".ca-dialog");
   const scroller = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const pageKey = browsing ? "browse" : `${page.kind}:${"id" in page ? page.id : ""}`;
@@ -669,6 +671,7 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
 
   return (
     <div
+      ref={scrim}
       className="ca-scrim"
       data-connect-apps=""
       data-native-bar={nativeBar ? "" : undefined}
