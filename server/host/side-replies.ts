@@ -3,11 +3,11 @@
 // question is answered and the turn runs on untouched; a steer is acknowledged and passed into the running turn, or
 // first in the queue with the running turn paused when its engine cannot take input mid-turn (queued for the continuation
 // when the turn is already ending); a separate new ask (task) goes into the running turn to be done beside it, or the
-// same way; a stop or redirect ends the turn through the person's own Stop. When no quick reply comes, the message takes the old path (fallback): steered or queued as it was.
+// same way; a stop or redirect ends the turn through the person's own Stop. When no quick reply comes, the message is steered in with a note to keep the earlier ask going, or queued when the turn cannot take it.
 import type { RuntimeEvent, SteerOutcome } from "../contracts.ts";
 import type { Checklist } from "../batch-checklist.ts";
 import { derivedLabel } from "../harness/derived-status.ts";
-import { burstNote, continuationNote, parseSideDecision, queuedTaskNote, redirectNote, sideReplyPrompt, steerNote, taskNote, type SideDecision, type SideLine } from "../side-reply-prompt.ts";
+import { burstNote, continuationNote, parseSideDecision, queuedTaskNote, redirectNote, sideReplyPrompt, steerNote, taskNote, unsortedNote, type SideDecision, type SideLine } from "../side-reply-prompt.ts";
 
 export const SIDE_REPLY_TIMEOUT_MS = 12_000;
 /** How long a turn that has said and done nothing yet counts as just started: a message then is part of the same burst. */
@@ -87,7 +87,7 @@ export interface SideRepliesDeps<R extends SideRequest> {
   post(threadId: string, text: string): void;
   /** The message is a separate new ask of its own, for the chat's open-item ledger. */
   asked?(request: R): void;
-  /** The message's path without a quick reply. */
+  /** The message's path without a quick reply when the running turn cannot take it: queued as the person's next line. */
   fallback(request: R): Promise<void>;
   timeoutMs?: number;
   now?: () => number;
@@ -235,7 +235,10 @@ export function createSideReplies<R extends SideRequest>(deps: SideRepliesDeps<R
     if (justStarted(request)) return fold(request);
     const decision = await decide(request);
     if (!decision) {
-      await deps.fallback(request);
+      const outcome = deps.canSteer(request.threadId)
+        ? await deps.steer(request, `${request.prompt}\n\n${unsortedNote()}`).catch((): SteerOutcome => "indeterminate")
+        : "refused";
+      if (outcome === "refused") await deps.fallback(request);
       return "fallback";
     }
     const { botId, threadId } = request;

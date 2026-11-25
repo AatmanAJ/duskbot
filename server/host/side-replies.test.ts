@@ -282,26 +282,43 @@ describe("side reply routing", () => {
     expect(posts).toEqual(["Sure, switching to trains instead."]);
   });
 
-  it("takes the old path when the responder fails, times out or answers nonsense", async () => {
+  it("steers the message in with a note to keep the earlier ask going when the responder fails, times out or answers nonsense", async () => {
     const failing = setup({ reply: () => Promise.reject(new Error("boom")) });
-    expect(await failing.send("hi?")).toBe("fallback");
-    expect(failing.fallbacks).toEqual(["hi?"]);
+    expect(await failing.send("who are their two closest competitors?")).toBe("fallback");
+    expect(failing.turn.steered).toHaveLength(1);
+    expect(failing.turn.steered[0]).toContain("Person: who are their two closest competitors?");
+    expect(failing.turn.steered[0]).toContain("Keep the earlier task going unless they say to stop or drop it");
+    expect(failing.fallbacks).toEqual([]);
     expect(failing.posts).toEqual([]);
 
     const slow = setup({ reply: () => new Promise(() => {}), timeoutMs: 20 });
     expect(await slow.send("hi?")).toBe("fallback");
+    expect(slow.turn.steered[0]).toContain("Keep the earlier task going");
     expect(slow.posts).toEqual([]);
 
     const nonsense = setup({ reply: "Sure thing" });
     expect(await nonsense.send("hi?")).toBe("fallback");
-    expect(nonsense.turn).toMatchObject({ running: true, steered: [], queued: [], stopped: 0 });
+    expect(nonsense.turn).toMatchObject({ running: true, queued: [], stopped: 0 });
+    expect(nonsense.turn.steered[0]).toContain("Keep the earlier task going");
   });
 
-  it("takes the old path when nobody can write a quick reply", async () => {
-    const { replies, send, fallbacks, writer } = setup({ writer: false });
+  it("queues the message as the person's next line when no quick reply comes and the turn cannot take it", async () => {
+    const cannot = setup({ reply: () => Promise.reject(new Error("boom")), steers: false });
+    expect(await cannot.send("hi?")).toBe("fallback");
+    expect(cannot.fallbacks).toEqual(["hi?"]);
+    expect(cannot.turn.steered).toEqual([]);
+
+    const refused = setup({ reply: () => Promise.reject(new Error("boom")), steerOutcome: "refused" });
+    expect(await refused.send("hi?")).toBe("fallback");
+    expect(refused.fallbacks).toEqual(["hi?"]);
+  });
+
+  it("steers the message in with the same note when nobody can write a quick reply", async () => {
+    const { replies, send, fallbacks, writer, turn } = setup({ writer: false });
     expect(replies.available(BOT, THREAD)).toBe(false);
     expect(await send("hi?")).toBe("fallback");
-    expect(fallbacks).toEqual(["hi?"]);
+    expect(turn.steered[0]).toContain("it has had no reply yet");
+    expect(fallbacks).toEqual([]);
     expect(writer).not.toHaveBeenCalled();
   });
 

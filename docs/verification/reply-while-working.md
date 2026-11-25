@@ -24,7 +24,10 @@
   - **stop**: the reply, then the person's own Stop.
   - **redirect**: the reply, the new ask queued first, then Stop, so it runs next.
 - No quick reply (no writer, an error, a timeout after 12 s, an unreadable
-  answer): the message takes its old path, steered or queued, with person-first.
+  answer): the message goes into the running turn with a neutral note (take it
+  in, or do it as well if it is a separate ask, and keep the earlier task going
+  unless told to stop), or is queued first when the turn cannot take it, with
+  person-first.
 - Never in rooms: room messages keep queueing for the room's next turn and room
   routing picks who answers. Never for apps, teammates, routines, relayed
   lines, calls, images, an explicit queue or restart choice, a turn waiting on
@@ -96,3 +99,10 @@ reply are in `server/host/side-replies.test.ts`, and the writer choice in
 2026-11-17 against the fake engine: answer, steer and stop each 104 to 119 ms
 after the message (the fake responder answers at once); light and dark
 screenshots in the desktop chat. Not exercised against real engines.
+
+2026-11-24, no quick reply: on the fake engine with `FAKE_CLAUDE_TEXT_FILE`
+holding `__FAIL__` (log: `side reply: none ... the message takes its usual
+path`), a paired person's second ask reached the running turn with the neutral
+note. On Codex with the responder forced to time out, the old raw steer
+answered only the second ask and dropped the Word file the first one asked
+for; with the note, one reply carried both.

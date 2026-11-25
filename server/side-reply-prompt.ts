@@ -153,6 +153,11 @@ export function taskNote(reply: string): string {
   return `[dusk bot: this is a separate new task, sent while you work on the earlier one; you already answered it in the chat with ${JSON.stringify(reply)}. Keep the earlier task going and do this one alongside it, running independent steps at the same time where you can. Send each result as soon as it is ready, opening with which ask it finishes, and keep the other ask in view until both are done.]`;
 }
 
+/** The note the running turn reads with a message no quick reply could sort into a steer or a separate ask. */
+export function unsortedNote(): string {
+  return "[dusk bot: the person sent this while you work on their earlier ask, and it has had no reply yet. If it adds to or corrects that work, take it in; if it is a separate ask, do it as well and open each result with which ask it finishes. Keep the earlier task going unless they say to stop or drop it.]";
+}
+
 /** The note the next turn reads with a separate ask that waited for the running turn to end. */
 export function queuedTaskNote(reply: string): string {
   return `[dusk bot: the person sent this separate task while your last turn was running, and you answered in the chat with ${JSON.stringify(reply)}. Do it now; if the earlier task is not finished, finish that too, and open each result with which ask it finishes.]`;
