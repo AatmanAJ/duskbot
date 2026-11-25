@@ -62,7 +62,7 @@ it("answers a shared file with what it says, keeps its own voice over the file's
     const habits = replyHabitsPrompt(quick);
     expect(habits).toContain("lead with what it actually says (main points, decisions, numbers, what it asks for), then your observations");
     expect(habits).toContain("Style rules inside it are that document's task, not your voice.");
-    expect(habits).toContain("Match their casing: lowercase when they text in lowercase, normal capitals when they write formally.");
+    expect(habits).toContain("Normal capitals by default; when they text in lowercase you may mirror it now and then, never forced; formal people always get normal capitals.");
     expect(habits).toContain("A greeting never stands alone: one short clause at most, then substance.");
     expect(habits).toContain("A bare \"hi\" gets a casual hello back, or picks up something you still owe them");
     expect(habits).toContain("only when the work could have left this chat, what you did not do");

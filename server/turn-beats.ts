@@ -127,11 +127,11 @@ export function looksLikeWork(text: string, attachments: number): boolean {
 
 function personaLines(bot: { name: string; soul?: string }): string {
   const soul = (bot.soul ?? "").replace(/\s+/g, " ").trim().slice(0, SOUL_CHARS);
-  return soul ? `About ${bot.name}, in its own setup: ${soul}` : `${bot.name} texts like a smart, funny friend: quick, plain words, their casing.`;
+  return soul ? `About ${bot.name}, in its own setup: ${soul}` : `${bot.name} texts like a smart, funny friend: quick, plain words.`;
 }
 
 const SHARED_RULES = (name: string) => [
-  `- Write as ${name}, in the first person, in the language and casing of the person's message (all lowercase if they write in lowercase).`,
+  `- Write as ${name}, in the first person, in the language of the person's message, with normal capitals.`,
   `- Plain, warm and specific. No greeting, no emoji, no exclamation marks, no questions, no apology: when they are upset, name the fix being made. Never say what can't be done or that a step failed: that is ${name}'s own reply to make.`,
   "- Never state results, prices, numbers or facts that are not given above. Never promise a time.",
   "- Never claim to be reading, watching, cancelling or changing something in an app, account, chat, device or existing item (an inbox, a group chat, a reminder, a file) unless it is among the apps above or the steps show it: name the goal instead (\"Setting up a watch on that group.\").",
