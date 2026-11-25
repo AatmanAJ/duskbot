@@ -61,6 +61,10 @@ describe("GET /api/missions", () => {
     expect(requiredScope("GET", "/api/missions")).toBe("client");
     expect(requiredScope("GET", "/api/missions/m-abcdef")).toBe("client");
     expect(requiredScope("POST", "/api/missions/m-abcdef")).toBe("admin");
+    expect(requiredScope("GET", "/api/missions/m-abcdef/lanes/thread-1/diff")).toBe("client");
+    expect(requiredScope("DELETE", "/api/missions/m-abcdef/lanes/thread-1/worktree")).toBe("admin");
+    expect(requiredScope("GET", "/api/missions/m-abcdef/lanes/thread-1/worktree")).toBe("admin");
+    expect(requiredScope("GET", "/api/mission-repo")).toBe("admin");
   });
 
   it("groups tagged conversations into missions, newest first, and reads each lane's file changes since launch", async () => {

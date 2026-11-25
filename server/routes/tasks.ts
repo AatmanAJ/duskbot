@@ -1,8 +1,10 @@
 import { approvalModeFor, approvalModeWidens, isApprovalMode, type ApprovalMode } from "../../shared/approval-mode.ts";
-import { parseMissionTag } from "../../shared/mission.ts";
+import { parseMissionTag, parseWorktreeRequest } from "../../shared/mission.ts";
 import { threadLinkUrl } from "../../shared/thread-link.ts";
 import type { WireBot, WireTask } from "../../shared/wire.ts";
 import { validateBotCwd } from "../bot-cwd.ts";
+import { DATA_DIR } from "../config.ts";
+import { addLaneWorktree, removeLaneWorktree, type LaneWorktree } from "../mission-worktrees.ts";
 import type { ModelSelection, ProviderInstance } from "../contracts.ts";
 import type { Coordinator } from "../coordinator.ts";
 import type { Handoffs } from "../delta-context.ts";
@@ -183,9 +185,26 @@ export function createTaskRoutes(deps: TaskRouteDeps): RouteHandler & { deleteTa
       }
       const mission = body.mission === undefined ? undefined : parseMissionTag(body.mission, Date.now());
       if (mission && !mission.ok) return json(res, 400, { error: mission.error });
-      const made = store.createTask(bot.id, typeof body.title === "string" ? body.title : undefined, body.select !== false, body.projectId, undefined, body.approvalMode, undefined, cwd);
-      const task = made && mission ? store.patchTask(bot.id, made.threadId, { mission: mission.tag }) : made;
-      if (!task) return json(res, 500, { error: "couldn't create that task" });
+      const wanted = mission && body.mission.worktree !== undefined ? parseWorktreeRequest(body.mission.worktree) : undefined;
+      if (wanted && !wanted.ok) return json(res, 400, { error: wanted.error });
+      if (wanted && cwd !== undefined) return json(res, 400, { error: "a lane in a worktree works in that worktree: leave cwd out" });
+      if (wanted && !auth.scopes.includes("admin")) return json(res, 403, { error: "Working in a repository requires the admin scope" });
+      let worktree: LaneWorktree | undefined;
+      if (wanted && mission?.ok) {
+        try {
+          worktree = await addLaneWorktree({ dataDir: DATA_DIR }, { ...wanted.request, missionId: mission.tag.id, title: mission.tag.title, lane: mission.tag.lane, botName: bot.name });
+        } catch (error) {
+          return json(res, 400, { error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+      const made = store.createTask(bot.id, typeof body.title === "string" ? body.title : undefined, body.select !== false, body.projectId, undefined, body.approvalMode, undefined, worktree?.path ?? cwd);
+      const task = made && mission ? store.patchTask(bot.id, made.threadId, {
+        mission: { ...mission.tag, ...(worktree ? { worktree: { repo: worktree.repo, branch: worktree.branch, base: worktree.base } } : {}) },
+      }) : made;
+      if (!task) {
+        if (worktree) await removeLaneWorktree({ dataDir: DATA_DIR }, worktree).catch(() => {});
+        return json(res, 500, { error: "couldn't create that task" });
+      }
       // Who opened it decides who may answer its cards on a shared workspace.
       if (auth.kind === "session") threadStarters.set(task.threadId, actorKey(auth));
       return json(res, 201, { bot: publicBot(store.bot(bot.id)!), task: wireTask(task, store.bot(bot.id)!.modelSelection) });

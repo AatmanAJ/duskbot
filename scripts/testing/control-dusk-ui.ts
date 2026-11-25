@@ -424,7 +424,7 @@ export async function launchUi(
   io: { stdout: NodeJS.WritableStream; stderr: NodeJS.WritableStream } = process,
   fixtureOptions: { localVm?: Parameters<typeof launchVerificationServer>[2] } = {},
 ): Promise<void> {
-  const values = parse("ui launch", args, { entry: { type: "string" }, "tool-calls": { type: "string" }, script: { type: "string" }, mode: { type: "string" }, engine: { type: "string" }, "scripted-room": { type: "boolean" } });
+  const values = parse("ui launch", args, { entry: { type: "string" }, "tool-calls": { type: "string" }, script: { type: "string" }, mode: { type: "string" }, engine: { type: "string" }, "scripted-room": { type: "boolean" }, git: { type: "boolean" } });
   if (values.engine !== undefined && values.engine !== "codex") {
     throw new ControlDuskError(`unknown --engine ${JSON.stringify(values.engine)}`, "the fake Claude CLI always runs; --engine codex adds the fake Codex app-server beside it");
   }
@@ -459,6 +459,7 @@ export async function launchUi(
     if (!FAKE_MODES.includes(String(values.mode))) throw new ControlDuskError(`unknown --mode ${JSON.stringify(values.mode)}`, `fake engine modes: ${FAKE_MODES.join(", ")}`);
     fakeEnv.FAKE_CLAUDE_MODE = String(values.mode);
   }
+  if (values.git === true) fakeEnv.DUSK_VERIFY_GIT = "1";
   const note = (line: string) => io.stderr.write(`ui launch: ${line}\n`);
 
   // A Ctrl-C at any point after this stops the launch at its next step and

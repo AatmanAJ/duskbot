@@ -37,7 +37,7 @@ const EXCLUDED = new Set([
   "team-computers.json",
   SERVER_LEASE_NAME, "run-marker.json", "box-create-requests.lock", "messages.db-wal", "messages.db-shm",
   "runtime.db-wal", "runtime.db-shm",
-  "decider-log",
+  "decider-log", "mission-worktrees",
   "cloud-owner.json",
   "sync",
   // "Also use my Claude Code skills": a link to the person's own ~/.claude/skills, made again on each turn.

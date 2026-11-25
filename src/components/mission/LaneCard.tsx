@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 
 import type { MissionLane } from "../../../shared/mission";
 import { OPEN_LANE_STATES } from "../../../shared/mission";
-import { ArrowUpRight, FileText, Folder, Play, RotateCcw, Send, Square, Users, WandSparkles } from "@/icons";
+import { ArrowUpRight, FileText, Folder, GitBranch, Play, RotateCcw, Send, Square, Users, WandSparkles } from "@/icons";
 import { cn } from "@/lib/cn";
 import type { MausState } from "@/lib/mascot";
 import { t } from "@/lib/i18n";
@@ -38,7 +38,7 @@ function LiveStep({ threadId }: { threadId: string }) {
 
 type Composer = "steer" | "answer" | null;
 
-export function LaneCard({ lane, bot, now }: { lane: MissionLane; bot: Bot | undefined; now: number }) {
+export function LaneCard({ lane, bot, now, onReview }: { lane: MissionLane; bot: Bot | undefined; now: number; onReview?: (threadId: string) => void }) {
   const { dispatch } = useStore();
   const [composer, setComposer] = useState<Composer>(null);
   const [text, setText] = useState("");
@@ -79,7 +79,8 @@ export function LaneCard({ lane, bot, now }: { lane: MissionLane; bot: Bot | und
           <div className="truncate text-[13.5px] font-semibold text-ink">{name}</div>
           <div className="mc-mono flex min-w-0 gap-1 text-[11px] text-ink-tertiary">
             <span>#{String(lane.lane + 1).padStart(2, "0")}{elapsed > 0 && ` · ${clock(elapsed)}`}</span>
-            {lane.cwd && <span className="inline-flex min-w-0 items-center gap-0.5 truncate" title={lane.cwd}>· <Folder size={10} aria-hidden="true" />{lane.cwd.split(/[\\/]/).filter(Boolean).at(-1)}</span>}
+            {lane.worktree ? <span className="inline-flex min-w-0 items-center gap-0.5 truncate" title={`${lane.worktree.branch}\n${lane.cwd ?? ""}`} data-lane-branch>· <GitBranch size={10} aria-hidden="true" />{lane.worktree.branch.split("/").at(-1)}</span>
+              : lane.cwd && <span className="inline-flex min-w-0 items-center gap-0.5 truncate" title={lane.cwd}>· <Folder size={10} aria-hidden="true" />{lane.cwd.split(/[\\/]/).filter(Boolean).at(-1)}</span>}
           </div>
         </div>
         <div className="flex items-center gap-1.5"><LaneLed state={lane.state} /><LaneStateWord state={lane.state} /></div>
@@ -159,7 +160,12 @@ export function LaneCard({ lane, bot, now }: { lane: MissionLane; bot: Bot | und
             <RotateCcw size={12} aria-hidden="true" />{t("mission.lane.runAgain")}
           </button>
         )}
-        <button type="button" className="mc-btn ml-auto" aria-label={t("mission.lane.openNamed", { name })} onClick={openChat}>
+        {lane.worktree && onReview && (
+          <button type="button" className="mc-btn ml-auto" aria-label={t("mission.lane.reviewNamed", { name })} onClick={() => onReview(lane.threadId)}>
+            <GitBranch size={12} aria-hidden="true" />{t("mission.lane.review")}
+          </button>
+        )}
+        <button type="button" className={cn("mc-btn", !(lane.worktree && onReview) && "ml-auto")} aria-label={t("mission.lane.openNamed", { name })} onClick={openChat}>
           {t("mission.lane.open")}<ArrowUpRight size={12} aria-hidden="true" />
         </button>
       </footer>

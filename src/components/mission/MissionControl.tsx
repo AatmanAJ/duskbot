@@ -14,12 +14,14 @@ import { askConfirm } from "../ConfirmDialog";
 import { WindowDragStrip } from "../DesktopCapabilities";
 import { LaneCard } from "./LaneCard";
 import { MissionResults } from "./MissionResults";
+import { MissionReview } from "./MissionReview";
 import { MissionTimeline } from "./MissionTimeline";
 import { NewMissionSheet } from "./NewMissionSheet";
 import { clock, laneLed, laneWord, missionLed, missionWord } from "./mission-ui";
 import "./mission.css";
 
 const TICK_MS = 1_000;
+type MissionTab = "board" | "review" | "results";
 
 function useNow(running: boolean): number {
   const [now, setNow] = useState(() => Date.now());
@@ -110,18 +112,21 @@ function MissionHeader({ view, now }: { view: MissionView; now: number }) {
 
 function MissionBody({ view }: { view: MissionView }) {
   const { state } = useStore();
-  const [tab, setTab] = useState<"board" | "results">("board");
+  const [tab, setTab] = useState<MissionTab>("board");
+  const [focus, setFocus] = useState<string | null>(null);
+  const tabs: MissionTab[] = view.board.some((lane) => lane.worktree) ? ["board", "review", "results"] : ["board", "results"];
+  const review = (threadId: string) => { setFocus(threadId); setTab("review"); };
   const running = view.board.some((lane) => OPEN_LANE_STATES.has(lane.state));
   const now = useNow(running);
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <MissionHeader view={view} now={now} />
       <div role="tablist" aria-label={view.title} className="flex gap-4 border-b px-5" style={{ borderColor: "var(--mc-edge)" }}>
-        {(["board", "results"] as const).map((one) => (
+        {tabs.map((one) => (
           <button key={one} type="button" role="tab" aria-selected={tab === one} onClick={() => setTab(one)}
             className={cn("-mb-px border-b-2 py-2 text-[12.5px] font-medium", tab === one ? "text-ink" : "border-transparent text-ink-secondary hover:text-ink")}
             style={tab === one ? { borderColor: "var(--mc-led-live)" } : undefined}>
-            {t(one === "board" ? "mission.tab.board" : "mission.tab.results")}
+            {t(`mission.tab.${one}`)}
           </button>
         ))}
       </div>
@@ -130,7 +135,7 @@ function MissionBody({ view }: { view: MissionView }) {
           <div className="flex flex-col gap-5">
             <div data-mission-board className="grid min-w-0 gap-3 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]">
               {view.board.map((lane) => (
-                <LaneCard key={lane.threadId} lane={lane} now={now} bot={state.bots.find((bot) => bot.id === lane.botId)} />
+                <LaneCard key={lane.threadId} lane={lane} now={now} bot={state.bots.find((bot) => bot.id === lane.botId)} onReview={review} />
               ))}
             </div>
             <section className="mc-panel flex flex-col gap-2 p-3">
@@ -141,7 +146,7 @@ function MissionBody({ view }: { view: MissionView }) {
               <MissionTimeline view={view} now={now} />
             </section>
           </div>
-        ) : <MissionResults view={view} />}
+        ) : tab === "review" ? <MissionReview view={view} focus={focus} /> : <MissionResults view={view} />}
       </div>
     </div>
   );

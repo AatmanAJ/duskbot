@@ -13,7 +13,7 @@ import { runHeadlessCommand } from "../server/headless/main.ts";
 import type { handleToolCall, request } from "./mcp-server.ts";
 import { launchUi, runControlDuskUi } from "./testing/control-dusk-ui.ts";
 import { removeTempDir, waitForExit } from "../server/testing/cleanup.ts";
-import { nodeOnlyFolder } from "../server/testing/engine-free-path.ts";
+import { gitOnlyFolder, nodeOnlyFolder } from "../server/testing/engine-free-path.ts";
 import { hostTimeout } from "../server/testing/host-timeout.ts";
 import { freePortBlock } from "../server/testing/ports.ts";
 
@@ -36,7 +36,7 @@ export interface ControlDuskDependencies {
 }
 
 export const HELP_UI = `renderer (needs a ui launch handle; every verb takes --ui HANDLE, never discovery):
-  node --experimental-strip-types scripts/control-dusk.ts ui launch [--entry threads] [--tool-calls JSON] [--script JSON] [--mode happy] [--engine codex] [--scripted-room]
+  node --experimental-strip-types scripts/control-dusk.ts ui launch [--entry threads] [--tool-calls JSON] [--script JSON] [--mode happy] [--engine codex] [--scripted-room] [--git]
   ui snapshot --ui HANDLE [--interactive]
   ui click --ui HANDLE (--ref @eN | --name NAME)
   ui type --ui HANDLE (--ref @eN | --name NAME) --text TEXT
@@ -176,6 +176,9 @@ export function verificationServerEnvironment(parentEnv: NodeJS.ProcessEnv, data
     // FAKE_CLAUDE_DUMP stays the launcher's: assertions read fixtureDumpPath.
     if ((key.startsWith("FAKE_CLAUDE_") || key.startsWith("FAKE_CODEX_TEXT_") || key.startsWith("FAKE_CODEX_COMMAND") || key === "FAKE_ACP_HANG_ON") && key !== "FAKE_CLAUDE_DUMP" && value) childEnv[key] = value;
   }
+  // A recipe that needs git (mission worktrees, checkpoint diffs) gets git and nothing else beside node.
+  const gitFolder = parentEnv.DUSK_VERIFY_GIT === "1" ? gitOnlyFolder(fixtureTemp, parentEnv.PATH) : null;
+  if (gitFolder) childEnv.PATH = `${childEnv.PATH}${delimiter}${gitFolder}`;
   // Enables POST /api/testing/org-library; the route does not exist without it.
   if (parentEnv.DUSK_TEST_ORG_LIBRARY_KEY) childEnv.DUSK_TEST_ORG_LIBRARY_KEY = parentEnv.DUSK_TEST_ORG_LIBRARY_KEY;
   // One log line per browser call and preview frame.

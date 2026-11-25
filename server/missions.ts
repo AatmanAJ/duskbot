@@ -99,6 +99,7 @@ function boardLane(source: LaneSource): MissionLane {
     files: laneFiles(source.digests),
     ...(source.cwd ? { cwd: source.cwd } : {}),
     ...(source.tag.brief ? { brief: source.tag.brief } : {}),
+    ...(source.tag.worktree ? { worktree: source.tag.worktree } : {}),
   };
 }
 

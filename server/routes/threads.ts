@@ -6,6 +6,7 @@ import {
   parseAudioRange, readAttachment, saveFile, saveImageUpload, validateAttachmentUploadId, type SavedAttachment,
 } from "../attachments.ts";
 import { deliveredCopy } from "../bot-attachment.ts";
+import { DATA_DIR } from "../config.ts";
 import { attachmentImageSize } from "../media-size.ts";
 import { memberBot, memberGroup, type Viewer, type VisibleSet } from "../bot-visibility.ts";
 import type { ComputerControl } from "../computer-control.ts";
@@ -22,6 +23,7 @@ import { resolveRequestAuth, type RequestAuth, type ResolveOptions } from "../re
 import type { queuedSteerSnapshot } from "../steer-queue.ts";
 import type { BotRecord, GroupRecord, Message, Store } from "../store.ts";
 import { createJobRoutes } from "./jobs.ts";
+import { createMissionLaneRoutes } from "./mission-lanes.ts";
 import { createMissionRoutes } from "./missions.ts";
 import { PASS, type RouteContext, type RouteHandler } from "./table.ts";
 
@@ -106,6 +108,7 @@ export function createThreadRoutes(deps: ThreadRouteDeps): RouteHandler {
   } = deps;
   const jobs = createJobRoutes({ store, coordinator: deps.coordinator, groupThreadIsWorking: deps.groupThreadIsWorking, viewerFor, visibleTo, sessions });
   const missions = createMissionRoutes({ store, coordinator: deps.coordinator, groupThreadIsWorking: deps.groupThreadIsWorking, viewerFor, visibleTo, sessions });
+  const missionLanes = createMissionLaneRoutes({ store, host: { dataDir: DATA_DIR }, viewerFor, visibleTo });
   const handle = async ({ req, res, url, path, method, auth, json, readBody }: RouteContext): Promise<unknown> => {
     let m: RegExpMatchArray | null = null;
     const member = auth.kind === "session" && auth.session.membershipAuthority === "team" ? auth.session.email : undefined;
@@ -604,5 +607,5 @@ export function createThreadRoutes(deps: ThreadRouteDeps): RouteHandler {
     }
     return PASS;
   };
-  return async (ctx) => (await jobs(ctx) !== PASS || await missions(ctx) !== PASS || await handle(ctx) !== PASS ? undefined : PASS);
+  return async (ctx) => (await jobs(ctx) !== PASS || await missions(ctx) !== PASS || await missionLanes(ctx) !== PASS || await handle(ctx) !== PASS ? undefined : PASS);
 }

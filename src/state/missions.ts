@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 
-import { MISSION_TITLE_MAX, type MissionSummary, type MissionView } from "../../shared/mission";
+import { MISSION_TITLE_MAX, type LaneDiff, type MissionSummary, type MissionView, type RepoProbe } from "../../shared/mission";
 import { randomUuid } from "../lib/random-uuid";
 import { api } from "./api";
 
@@ -89,7 +89,7 @@ const summaryOf = ({ id, title, launchedAt, state, lanes, counts, finishedAt }: 
   ({ id, title, launchedAt, state, lanes, counts, ...(finishedAt !== undefined ? { finishedAt } : {}) });
 
 export interface LaneDraft { botId: string; note?: string }
-export interface MissionDraft { title: string; brief: string; lanes: LaneDraft[] }
+export interface MissionDraft { title: string; brief: string; lanes: LaneDraft[]; repo?: { root: string; head: string } }
 
 export function laneBrief(brief: string, note?: string): string {
   const extra = note?.trim();
@@ -107,7 +107,9 @@ export async function launchMission(draft: MissionDraft): Promise<LaunchResult> 
     try {
       const brief = laneBrief(draft.brief, lane.note);
       const made = await api<{ task: { threadId: string } }>(`/api/bots/${lane.botId}/tasks`, {
-        method: "POST", body: JSON.stringify({ title, select: false, mission: { id: missionId, title, lane: index, launchedAt, brief } }),
+        method: "POST", body: JSON.stringify({ title, select: false, mission: {
+          id: missionId, title, lane: index, launchedAt, brief, ...(draft.repo ? { worktree: { repo: draft.repo.root, base: draft.repo.head } } : {}),
+        } }),
       });
       await sendToLane(lane.botId, made.task.threadId, brief);
     } catch (error) {
@@ -128,3 +130,11 @@ export function sendToLane(botId: string, threadId: string, text: string, follow
 export function stopLane(botId: string, threadId: string): Promise<unknown> {
   return api(`/api/bots/${botId}/interrupt`, { method: "POST", body: JSON.stringify({ threadId }) });
 }
+
+export const probeRepo = (path: string): Promise<RepoProbe> => api<RepoProbe>(`/api/mission-repo?path=${encodeURIComponent(path)}`);
+
+export const readLaneDiff = (missionId: string, threadId: string): Promise<LaneDiff> =>
+  api<LaneDiff>(`/api/missions/${missionId}/lanes/${threadId}/diff`, { background: true });
+
+export const removeLaneFolder = (missionId: string, threadId: string): Promise<{ ok: true; branch: string }> =>
+  api(`/api/missions/${missionId}/lanes/${threadId}/worktree`, { method: "DELETE" });

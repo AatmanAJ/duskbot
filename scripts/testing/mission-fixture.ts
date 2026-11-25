@@ -1,8 +1,10 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 
-const { values } = parseArgs({ options: { ui: { type: "string" }, release: { type: "boolean" } } });
+const { values } = parseArgs({ options: { ui: { type: "string" }, release: { type: "boolean" }, repo: { type: "boolean" } } });
 if (!values.ui) throw new Error("usage: mission-fixture.ts --ui HANDLE [--release]");
 const handle = JSON.parse(readFileSync(values.ui, "utf8")) as { url: string; home: string };
 const dataDir = handle.home;
@@ -11,8 +13,8 @@ mkdirSync(gates, { recursive: true });
 const gate = (name: string) => join(gates, name);
 
 if (values.release) {
-  for (const name of ["atlas", "okra"]) writeFileSync(gate(name), "open");
-  console.log(JSON.stringify({ ok: true, released: ["atlas", "okra"] }));
+  for (const name of ["atlas", "okra", "juno"]) writeFileSync(gate(name), "open");
+  console.log(JSON.stringify({ ok: true, released: ["atlas", "okra", "juno"] }));
   process.exit(0);
 }
 
@@ -25,15 +27,23 @@ async function api(method: string, path: string, body?: unknown): Promise<any> {
   return text ? JSON.parse(text) : {};
 }
 
-const COLORS = ["coral", "teal", "purple", "yellow", "cyan", "pink"];
-const names = ["Atlas", "Ferro", "Lumen", "Pike", "Sable", "Okra"] as const;
+const COLORS = ["coral", "teal", "purple", "yellow", "cyan", "pink", "green", "blue", "orange"];
+const names = ["Atlas", "Ferro", "Lumen", "Pike", "Sable", "Okra", "Wren", "Cobalt", "Juno"] as const;
 const bots: Record<(typeof names)[number], { id: string }> = {} as never;
 for (const [index, name] of names.entries()) bots[name] = (await api("POST", "/api/bots", { name, color: COLORS[index] })).bot;
 
 const LAUNCH = "spring launch";
+const SITE = "shop site";
 const TEARDOWN = "competitor teardown";
 const HOUR = 3_600_000;
 writeFileSync(join(dataDir, "room-plan.json"), JSON.stringify({
+  [bots.Wren.id]: { reply: "Rewrote the About page around the studio's kiln and the two of you.", writeFiles: {
+    "about.md": "# About Juniper Lane\n\nTwo potters, one wood-fired kiln, and a shop on Juniper Lane since 2019.\nEvery piece is thrown, trimmed and glazed by hand.\n",
+  } },
+  [bots.Cobalt.id]: { reply: "Bundles added to the price list; the mug went up a dollar to cover glaze costs.", writeFiles: {
+    "prices.md": "# Prices\n\n| Piece | Price |\n| --- | --- |\n| Mug | $29 |\n| Bowl | $34 |\n| Three-glaze set | $64 |\n",
+  } },
+  [bots.Juno.id]: { gateFile: gate("juno"), timeoutMs: HOUR, reply: "Added a shipping page.", writeFiles: { "shipping.md": "# Shipping\n\nFree over $50 in the US.\n" } },
   [bots.Atlas.id]: { byPrompt: [
     { promptIncludes: LAUNCH, plan: { gateFile: gate("atlas"), timeoutMs: HOUR, progress: "Reading last spring's launch notes",
       reply: "Timeline drafted: soft launch on the 14th, press on the 16th, a two-week promo window." } },
@@ -63,12 +73,12 @@ writeFileSync(join(dataDir, "room-plan.json"), JSON.stringify({
   ] },
 }));
 
-async function launch(title: string, brief: string, lanes: Array<keyof typeof bots>, notes: Record<string, string> = {}): Promise<string> {
+async function launch(title: string, brief: string, lanes: Array<keyof typeof bots>, notes: Record<string, string> = {}, worktree?: { repo: string; base: string }): Promise<string> {
   const id = `m-${title.toLowerCase().replace(/[^a-z]+/g, "-")}`;
   const launchedAt = Date.now() - 1_000;
   for (const [lane, name] of lanes.entries()) {
     const text = notes[name] ? `${brief}\n\n${notes[name]}` : brief;
-    const { task } = await api("POST", `/api/bots/${bots[name].id}/tasks`, { title, select: false, mission: { id, title, lane, launchedAt, brief: text } });
+    const { task } = await api("POST", `/api/bots/${bots[name].id}/tasks`, { title, select: false, mission: { id, title, lane, launchedAt, brief: text, ...(worktree ? { worktree } : {}) } });
     await api("POST", `/api/bots/${bots[name].id}/messages`, { threadId: task.threadId, text, sendId: `${id}-${lane}` });
   }
   return id;
@@ -83,6 +93,21 @@ const until = async (id: string, done: (view: any) => boolean) => {
   throw new Error(`mission ${id} did not settle`);
 };
 
+if (values.repo) {
+  const repo = join(mkdtempSync(join(tmpdir(), "juniper-lane-site-")), "site");
+  mkdirSync(repo);
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8",
+    env: { ...process.env, GIT_AUTHOR_NAME: "Juniper Lane", GIT_AUTHOR_EMAIL: "studio@example.com", GIT_COMMITTER_NAME: "Juniper Lane", GIT_COMMITTER_EMAIL: "studio@example.com" } });
+  git("init", "--quiet", "--initial-branch=main");
+  writeFileSync(join(repo, "about.md"), "# About\n\nHandmade ceramics.\n");
+  writeFileSync(join(repo, "prices.md"), "# Prices\n\n| Piece | Price |\n| --- | --- |\n| Mug | $28 |\n| Bowl | $34 |\n");
+  git("add", ".");
+  git("commit", "--quiet", "-m", "Shop site");
+  const probe = await api("GET", `/api/mission-repo?path=${encodeURIComponent(repo)}`);
+  if (!probe.ok) throw new Error(probe.error);
+  await launch("Shop site refresh", `Refresh the ${SITE} for Juniper Lane Ceramics: tighten the copy and fix what a buyer trips on.`,
+    ["Wren", "Cobalt", "Juno"], {}, { repo: probe.root, base: probe.head });
+}
 const teardown = await launch("Competitor teardown", `Run a ${TEARDOWN} of the two shops closest to Juniper Lane Ceramics.`, ["Ferro", "Lumen", "Pike"]);
 await until(teardown, (view) => view.state === "done");
 const spring = await launch("Spring launch review", `Plan the ${LAUNCH} of the new glaze line for Juniper Lane Ceramics. Report back in a few lines.`,

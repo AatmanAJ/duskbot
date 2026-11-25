@@ -8,6 +8,20 @@ export interface MissionTag {
   launchedAt: number;
   /** What the lane was first sent, so a lane whose first message never went out, or that failed, can be run again. */
   brief?: string;
+  /** The lane works in a git worktree of its own, on `branch` from `base`, which the server made when the lane was. */
+  worktree?: LaneWorktreeTag;
+}
+
+export interface LaneWorktreeTag {
+  repo: string;
+  branch: string;
+  base: string;
+}
+
+/** A request's `mission.worktree`: the server makes the worktree and fills in the branch. */
+export interface LaneWorktreeRequest {
+  repo: string;
+  base: string;
 }
 
 /** A conversation's mission, set when the conversation is made and never changed. */
@@ -47,6 +61,7 @@ export interface MissionLane {
   files: LaneFile[];
   cwd?: string;
   brief?: string;
+  worktree?: LaneWorktreeTag;
 }
 
 export interface LaneFile {
@@ -136,4 +151,39 @@ export function parseMissionTag(raw: unknown, now: number): { ok: true; tag: Mis
     return { ok: false, error: `mission.brief must be text of at most ${MISSION_BRIEF_MAX} characters` };
   }
   return { ok: true, tag: { id, title: title.trim().slice(0, MISSION_TITLE_MAX), lane: lane as number, launchedAt: at, ...(brief?.trim() ? { brief: brief.trim() } : {}) } };
+}
+
+export type RepoProbe =
+  | { ok: true; root: string; head: string; branch?: string; dirty: boolean }
+  | { ok: false; error: string };
+
+export interface LaneDiffFile {
+  path: string;
+  change: "added" | "changed" | "deleted" | "renamed";
+  added: number;
+  removed: number;
+  from?: string;
+  binary?: true;
+}
+
+/** A lane's work against the commit its mission started from: committed and not, new files included. */
+export interface LaneDiff {
+  base: string;
+  branch: string;
+  /** Commits the lane made on its branch. */
+  commits?: number;
+  files: LaneDiffFile[];
+  /** Unified diff, cut at a line when it runs past the server's limit (`truncated`). */
+  patch: string;
+  truncated: boolean;
+  /** Its folder was removed; the branch keeps the work. */
+  gone?: true;
+}
+
+export function parseWorktreeRequest(raw: unknown): { ok: true; request: LaneWorktreeRequest } | { ok: false; error: string } {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: "mission.worktree must be an object" };
+  const { repo, base } = raw as Record<string, unknown>;
+  if (typeof repo !== "string" || !repo.trim()) return { ok: false, error: "mission.worktree.repo must be a folder" };
+  if (typeof base !== "string" || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(base)) return { ok: false, error: "mission.worktree.base must be a full commit id" };
+  return { ok: true, request: { repo: repo.trim(), base } };
 }

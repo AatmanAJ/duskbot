@@ -5,7 +5,8 @@ What [Mission control](../missions.md) shows and does, proven against an isolate
 ## Automated
 
 ```sh
-pnpm vitest run server/missions.test.ts server/routes/missions.test.ts server/missions.e2e.test.ts
+pnpm vitest run server/missions.test.ts server/routes/missions.test.ts server/missions.e2e.test.ts \
+  server/mission-worktrees.test.ts server/mission-worktrees.e2e.test.ts
 ```
 
 - `server/missions.test.ts`: lane states from a job, timeline spans from an assignment's log, failure words, a
@@ -16,6 +17,15 @@ pnpm vitest run server/missions.test.ts server/routes/missions.test.ts server/mi
   tag (a bad tag is refused), sent the brief, and read back: one done, one done after a real hand-off to a teammate
   (its row and hand-off mark on the timeline), one held working. A held read of the mission wakes when that lane is
   stopped, and it reads as stopped, and the mission as partly done.
+- `server/mission-worktrees.test.ts`: real git in a temporary folder. A repository's root, commit, branch and
+  uncommitted changes; a folder that is not one, or has no commits, refused. Two lanes get their own branches and
+  folders; a lane's diff holds a commit it made, a changed, a deleted and a new file, and the other lane's is empty;
+  the person's checkout stays clean; removing a folder keeps the branch; a folder the server did not make, or a commit
+  that is not whole, is refused; the repository's own hooks never run.
+- `server/mission-worktrees.e2e.test.ts`: a fixture with git (`DUSK_VERIFY_GIT=1`). Lanes made with
+  `mission.worktree` work in their own worktree; a lane's turn writes files there; the board lists them from the
+  turn's checkpoint, the diff route shows them, the other lane's diff is empty, and removing the folder keeps the
+  branch.
 
 ## In the app
 
@@ -44,5 +54,17 @@ morning**; Sable's says the supplier sheet answered 403; the timeline has a row 
 - **New mission**, a name, a brief, three bots, **Launch 3 lanes**: the page opens the new mission with three cards.
 - **Results**: one card per lane, Lumen's checklist in full; **Copy all as Markdown** says Copied.
 
-The fixture's `PATH` holds only `node`, so no checkpoint is taken and no lane lists changed files there;
-`server/routes/missions.test.ts` covers reading them from turn digests.
+Lanes in a repository: launch with `--git` (git, and nothing else, joins the fixture's `PATH`) and seed with `--repo`:
+
+```sh
+node --experimental-strip-types scripts/control-dusk.ts ui launch --scripted-room --git
+node --experimental-strip-types scripts/testing/mission-fixture.ts --ui $H --repo
+```
+
+This also makes an invented shop site repository in the temp folder and launches "Shop site refresh" on Wren, Cobalt
+and Juno, each in its own worktree. Expected: each card names its branch; Wren's and Cobalt's list one changed file;
+**Review** on Cobalt shows `mission/…/2-cobalt`, `prices.md` with `+2 −1`, and the diff; **Remove folder** then
+**Remove folder** in the dialog says the work is on that branch. In **New mission**, typing the repository's path and
+leaving the field says "Lanes branch from main at <commit>"; launching makes three lanes, each with its branch.
+
+Without `--git` the fixture's `PATH` holds only `node`: no checkpoint is taken and no lane lists changed files.

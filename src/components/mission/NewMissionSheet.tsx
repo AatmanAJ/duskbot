@@ -1,10 +1,10 @@
 import { useMemo, useState, type FormEvent } from "react";
 
-import { MISSION_BRIEF_MAX, MISSION_MAX_LANES, MISSION_TITLE_MAX } from "../../../shared/mission";
-import { Check, X, Zap } from "@/icons";
+import { MISSION_BRIEF_MAX, MISSION_MAX_LANES, MISSION_TITLE_MAX, type RepoProbe } from "../../../shared/mission";
+import { Check, FolderOpen, GitBranch, X, Zap } from "@/icons";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { composeMission, launchMission } from "@/state/missions";
+import { composeMission, launchMission, probeRepo } from "@/state/missions";
 import { useStore } from "@/state/store";
 import { BotAvatar } from "../Avatar";
 
@@ -16,17 +16,33 @@ export function NewMissionSheet() {
   const [picked, setPicked] = useState<string[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [launching, setLaunching] = useState(false);
+  const [repoPath, setRepoPath] = useState("");
+  const [repo, setRepo] = useState<RepoProbe | null>(null);
+  const [checking, setChecking] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
   const toggle = (id: string) => setPicked((now) => now.includes(id) ? now.filter((one) => one !== id)
     : now.length >= MISSION_MAX_LANES ? now : [...now, id]);
-  const ready = title.trim() && brief.trim() && picked.length > 0 && !launching;
+  const check = async (path: string) => {
+    setRepoPath(path);
+    if (!path.trim()) { setRepo(null); return; }
+    setChecking(true);
+    try { setRepo(await probeRepo(path.trim())); } catch (error) { setRepo({ ok: false, error: error instanceof Error ? error.message : String(error) }); }
+    finally { setChecking(false); }
+  };
+  const pick = async () => {
+    const chosen = await window.duskDesktop?.pickFolder?.(repoPath || undefined);
+    if (chosen) await check(chosen);
+  };
+  const repoBlocks = repoPath.trim() !== "" && (checking || !repo?.ok);
+  const ready = title.trim() && brief.trim() && picked.length > 0 && !launching && !repoBlocks;
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!ready) return;
     setLaunching(true);
     setProblem(null);
-    const result = await launchMission({ title, brief, lanes: picked.map((botId) => ({ botId, note: notes[botId] })) });
+    const result = await launchMission({ title, brief, lanes: picked.map((botId) => ({ botId, note: notes[botId] })),
+      ...(repo?.ok ? { repo: { root: repo.root, head: repo.head } } : {}) });
     setLaunching(false);
     if (result.failed.length) {
       const names = result.failed.map((one) => bots.find((bot) => bot.id === one.botId)?.name ?? one.botId).join(", ");
@@ -87,6 +103,23 @@ export function NewMissionSheet() {
           })}
         </div>
       )}
+      <div className="flex flex-col gap-1.5" data-mission-repo>
+        <span className="mc-eyebrow">{t("mission.compose.repo")} <span className="normal-case tracking-normal">· {t("mission.compose.repoHint")}</span></span>
+        <div className="flex gap-1.5">
+          <input className="mc-field mc-mono !text-[12px]" value={repoPath} placeholder={t("mission.compose.repoPlaceholder")} aria-label={t("mission.compose.repo")}
+            onChange={(event) => { setRepoPath(event.target.value); setRepo(null); }} onBlur={(event) => void check(event.target.value)} />
+          {window.duskDesktop?.pickFolder && <button type="button" className="mc-btn !h-auto" onClick={() => void pick()}><FolderOpen size={13} aria-hidden="true" />{t("mission.compose.repoPick")}</button>}
+        </div>
+        {checking && <span className="text-[12px] text-ink-tertiary">{t("mission.compose.repoChecking")}</span>}
+        {repo && !repo.ok && <span role="alert" className="text-[12px] text-danger">{repo.error}</span>}
+        {repo?.ok && (
+          <span className="mc-mono flex flex-wrap items-center gap-1.5 text-[11.5px] text-ink-secondary" data-repo-ok>
+            <GitBranch size={12} aria-hidden="true" style={{ color: "var(--mc-led-done)" }} />
+            {t("mission.compose.repoFrom", { branch: repo.branch ?? "HEAD", commit: repo.head.slice(0, 7) })}
+            {repo.dirty && <span className="text-warning">· {t("mission.compose.repoDirty")}</span>}
+          </span>
+        )}
+      </div>
       {problem && <p role="alert" className="text-[12.5px] text-warning">{problem}</p>}
       <div className="flex items-center justify-end gap-2">
         <button type="button" className="mc-btn" onClick={() => composeMission(false)}>{t("mission.compose.cancel")}</button>
