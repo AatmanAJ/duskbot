@@ -97,7 +97,7 @@ describe("what's been shared", () => {
         { id: "a", kind: "bad", at: now - 60_000, text: "Slow. A spreadsheet was too big to read." },
         { id: "b", kind: "weekly", at: now - 86_400_000 * 2, text: null },
       ],
-      counts: [{ kind: "events", count: 12, last: now, names: ["engine_sign_in"] }],
+      counts: [{ kind: "events", count: 12, last: now, names: ["engine_sign_in", "some_new_event"] }],
       removing: false,
     };
     await render(SharedDataPage);
@@ -105,7 +105,9 @@ describe("what's been shared", () => {
     expect(host.textContent).toContain("Slow. A spreadsheet was too big to read.");
     expect(host.textContent).toContain("Only counts were sent for this one.");
     expect(host.textContent).toContain("App events");
-    expect(host.textContent).toContain("engine_sign_in");
+    expect(host.textContent).toContain("AI sign-in");
+    expect(host.textContent).toContain("AI sign-in, Some new event");
+    expect(host.textContent).not.toContain("engine_sign_in");
   });
 
   it("Delete all asks first, then deletes and says it is being removed", async () => {

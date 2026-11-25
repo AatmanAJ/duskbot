@@ -63,7 +63,7 @@ describe("the session notes card", () => {
   it("shows on app open when the server asks, recording no at once; Share session notes turns notes on", async () => {
     await render();
     expect(card()).not.toBeNull();
-    expect(card()!.textContent).toContain("Help make dusk bot better?");
+    expect(card()!.textContent).toContain("Help improve dusk bot?");
     expect(puts()).toEqual([{ notes: false }]);
     await click("[data-notes-yes]");
     expect(puts()).toEqual([{ notes: false }, { notes: true }]);

@@ -10,7 +10,7 @@ import { useDialogKeys } from "../ui/GrokDialog";
 import { BRAND_LILAC, useCascade } from "./FunnelSteps";
 import { markNotesAskShown, shareSessionNotes } from "./notes-ask";
 
-/** The one ask about session notes, over the app. Notes stay off unless "Share session notes" is pressed. */
+/** The one ask about session summaries, over the app. They stay off unless "Share summaries" is pressed. */
 export function NotesAskCard({ onDone }: { onDone: (yes: boolean) => void }) {
   const reduced = usePrefersReducedMotion();
   const rise = useCascade();
@@ -40,11 +40,11 @@ export function NotesAskCard({ onDone }: { onDone: (yes: boolean) => void }) {
   return (
     <div data-notes-ask="" className="ui-scrim fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4">
       <div ref={sheet} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
-        className="ui-modal relative my-auto flex w-[400px] max-w-full flex-col items-center border-0 px-6 pb-4 pt-7 text-center text-ink outline-none">
-        <motion.div aria-hidden="true" className="flex h-14 items-end justify-center" {...rise(0)}>
-          <MausAvatar color="purple" gradient={BRAND_LILAC} size={56} state="excited" animated={!reduced} label={DEFAULT_BOT_NAME} />
+        className="ui-modal relative my-auto flex w-[360px] max-w-full flex-col items-center border-0 px-5 pb-3 pt-5 text-center text-ink outline-none">
+        <motion.div aria-hidden="true" className="flex h-11 items-end justify-center" {...rise(0)}>
+          <MausAvatar color="purple" gradient={BRAND_LILAC} size={44} state="excited" animated={!reduced} label={DEFAULT_BOT_NAME} />
         </motion.div>
-        <motion.h2 id={titleId} className="mt-4 text-balance text-[19px] font-semibold leading-6 tracking-[-0.012em]" {...rise(1)}>
+        <motion.h2 id={titleId} className="mt-3 text-balance text-[19px] font-semibold leading-6 tracking-[-0.012em]" {...rise(1)}>
           {t("notesAsk.title")}
         </motion.h2>
         <motion.div className="w-full" {...rise(2)}>
@@ -72,7 +72,7 @@ export function NotesAskCard({ onDone }: { onDone: (yes: boolean) => void }) {
         )}
         <motion.div className="flex w-full flex-col items-center" {...rise(3)}>
           <button type="button" data-autofocus="" data-notes-yes="" disabled={busy} aria-busy={busy || undefined} onClick={() => void share()}
-            className={cn(PRIMARY_BUTTON, "mt-4 w-full justify-center disabled:opacity-60")}>
+            className={cn(PRIMARY_BUTTON, "mt-3 w-full justify-center disabled:opacity-60")}>
             {t("notesAsk.yes")}
           </button>
           <button type="button" data-notes-no="" disabled={busy} onClick={close}

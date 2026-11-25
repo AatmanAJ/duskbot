@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { activeLocale, t } from "@/lib/i18n";
+import { activeLocale, t, tFromServer } from "@/lib/i18n";
 import { deleteUsageShared, readUsageShared, type SharedCount, type SharedNote, type UsageShared } from "@/lib/help-improve";
 import { localizedRelativeTime } from "@/lib/relative-time";
 import type { LocaleKey } from "@/locales";
@@ -18,6 +18,12 @@ const COUNT: Record<SharedCount["kind"], LocaleKey> = {
 };
 const RECHECK_MS = 5_000;
 
+/** an app event's readable name: its own string when there is one, else the id in words ("chat_deleted" to "Chat deleted") */
+function eventName(id: string): string {
+  const words = id.replace(/_/g, " ").trim();
+  return tFromServer(`settings.dataSharing.event.${id}`, words.charAt(0).toUpperCase() + words.slice(1)) ?? id;
+}
+
 const when = (at: number) => localizedRelativeTime(at, activeLocale());
 
 function Problem({ title, onRetry }: { title: LocaleKey; onRetry: () => void }) {
@@ -32,7 +38,7 @@ function Problem({ title, onRetry }: { title: LocaleKey; onRetry: () => void }) 
   );
 }
 
-/** Settings > Privacy > See what's been shared: the notes and the kinds of counts sent from here, and Delete all. */
+/** Settings > Privacy > See what's been shared: the summaries and the kinds of counts sent from here, and Delete all. */
 export function SharedDataPage() {
   const [shared, setShared] = useState<UsageShared | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -94,7 +100,7 @@ export function SharedDataPage() {
             <SettingsGroup label={t("settings.dataSharing.countsTitle")} block="shared-counts">
               <SettingsRows>
                 {shared.counts.map((count) => (
-                  <SettingRow key={count.kind} title={t(COUNT[count.kind])} subtitle={count.names?.length ? count.names.join(", ") : undefined}>
+                  <SettingRow key={count.kind} title={t(COUNT[count.kind])} subtitle={count.names?.length ? count.names.map(eventName).join(", ") : undefined}>
                     <span className="text-[13px] leading-[18px] whitespace-nowrap text-ink-secondary">
                       {t("settings.dataSharing.countValue", { count: count.count.toLocaleString(activeLocale()), when: when(count.last) })}
                     </span>
