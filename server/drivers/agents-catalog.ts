@@ -27,7 +27,7 @@ import { STATUS_TOOL_DEFINITION } from "./agents-status-tool.ts";
 import { SEND_MESSAGE_TOOL_DEFINITION } from "./agents-send-message-tool.ts";
 import type { CatalogProfile } from "./agents-catalog-profile.ts";
 import { advertisedSchema } from "./agents-schema.ts";
-import { OTHER_CHATS, withoutOtherChats } from "./other-chats-catalog.ts";
+import { OTHER_CHATS, withoutOtherChats } from "./other-chats-catalog.ts"; import { CHAIN_FIELDS_SCHEMA, SCRIPT_SAVE_SCHEMA } from "./trigger-chain-schema.ts";
 export { catalogProfileFromEnv, type CatalogProfile } from "./agents-catalog-profile.ts";
 
 export const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
@@ -196,17 +196,13 @@ const TRIGGER_FIELDS_SCHEMA = {
       command: { type: "string", description: "script: one shell command. Without post, the same output as last time = nothing new; last line {\"wakeAgent\":false} = skip, true = run." },
       post: { type: "boolean", enum: [true], description: "script only: true posts what the script prints as your reply with no AI turn (for \"run this script on a schedule and post what it prints\"). Empty output stays quiet." },
       access: { type: "string", enum: ["full"], description: "script only: full runs it outside the read-only fence, so it can write files (for \"it needs to write files\"). Always asks the person on a card." },
-      save_to: { type: "string", description: "script only: file in your folder its output is written to (no card needed)." },
-      save_mode: { type: "string", enum: ["append"] },
+      ...SCRIPT_SAVE_SCHEMA,
     },
     required: ["kind"],
     description: "Schedules: a plain check before each run, no AI; the run happens only when it found something new.",
   },
   clear_check: { type: "boolean", description: "Updates: true removes the check." },
-  read_from: { type: "array", maxItems: 5, items: { type: "string" }, description: "Schedules: trigger ids whose latest report each run reads." },
-  after: { type: "array", maxItems: 5, items: { type: "string" }, description: "Schedules: trigger ids to run after (chaining): runs when one finishes with news, given its report. schedule optional. Not with check." },
-  hand_to: { type: "object", additionalProperties: false, properties: { bot_id: { type: "string" }, room_id: { type: "string" } }, description: "Schedules: also send each report to another bot's chat (bot_id) or a room (room_id)." },
-  clear_chain: { type: "boolean", description: "Updates: removes read_from, after, hand_to; giving any replaces all three." },
+  ...CHAIN_FIELDS_SCHEMA,
 } as const;
 
 const CHIEF_PROFILE_TARGET = " A Chief of Staff may pass for_bot_id (from list_bots) for a requested change to another bot.";

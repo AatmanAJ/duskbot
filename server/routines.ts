@@ -10,12 +10,11 @@ import { withoutEchoedPrompt } from "../shared/failed-turn.ts";
 import { activeRunsOf, catchUpMsOf, enabledHereOf, missedError, nextDueOf, schedulerDueOf, upcomingOf, wakeHoldOf } from "./routine-due.ts"; import { dropQuietFields, nextTicks, quietPatch, stripOf } from "./routine-quiet.ts";
 import { startDueTimer, type DueTimer } from "./due-timer.ts";
 import type { GroupGoalRunStatus } from "../shared/group-goal-run.ts";
-import type { RoutineRequestOperation } from "../shared/routine-request.ts";
 import { intervalAllowsOccurrence, intervalHasRestrictions, isSameLocalDay, latestIntervalOccurrence } from "./routine-intervals.ts";
 import { initialOccurrence, limitResetOccurrence, mergeScheduleUpdate, nextOccurrence, RoutineScheduleError, type RoutineSchedule, type RoutineScheduleInput } from "./routine-schedules.ts";
 import { runsOnce } from "../shared/limit-reset.ts";
 import {
-  isRoutineProblemRun, MAX_CHAIN_HOPS, type RoutineQuietFields, type RoutineQuietInput, type RoutineAccess, type RoutineChain, type RoutineCheck, type RoutineContextAttachment, type RoutineDelivery, type RoutineIntervalWindow, type RoutineRetryCause,
+  isRoutineProblemRun, type RoutineQuietFields, type RoutineQuietInput, type RoutineAccess, type RoutineChain, type RoutineCheck, type RoutineContextAttachment, type RoutineDelivery, type RoutineIntervalWindow, type RoutineRetryCause,
   type RoutineHoldCause, type RoutinePause, type RoutineRunReport, type RoutineRunStatus, type RoutineRunTrigger,
 } from "../shared/routines.ts";
 import type { PartPair, RoutinePart } from "./package-parts.ts";
@@ -33,7 +32,9 @@ import { attachmentPathsOf, attachmentsMalformed } from "./routine-attachments.t
 import { loadInstalledPackage, loadRequestReceipts, loadRoutine, loadRun } from "./routine-load.ts";
 import { applyHolds, holdCauses, type AppliedHolds } from "./routine-holds.ts";
 import { sanitizeInput } from "./routine-input.ts";
-import { chainReads, handPrompt, reportedRun, roomPost, wokenBy } from "./routine-chain.ts";
+import { carryOn, chainReads, checksAfterChainPatch, type ChainHost } from "./routine-chain.ts";
+import type { RoutineRequestCommit, RoutineRequestCommitFor, RoutineRequestReceipt } from "./routine-request-receipt.ts";
+export type { RoutineRequestCommit, RoutineRequestReceipt } from "./routine-request-receipt.ts";
 import { checkHold, CHECK_BOOT_HOLD_MS, type CheckHold, type RoutineCheckContext } from "./routine-check-pacing.ts";
 import { cloneRoutine, cloneRun, ranApart, routineRequestOwnerKey, resolveRoutineResultsThread, routineRunDefinition, type ResultsThreadAllocation } from "./routine-run-definition.ts";
 
@@ -145,31 +146,6 @@ export interface RoutineRun {
   seenAt?: number;
 }
 
-export interface RoutineRequestReceipt {
-  requestId: string;
-  messageId: string;
-  botId: string;
-  threadId: string;
-  action: RoutineRequestOperation["action"];
-  fingerprintVersion: 1;
-  fingerprint: string;
-  resultId: string;
-  appliedAt: number;
-}
-
-export interface RoutineRequestCommit {
-  requestId: string;
-  messageId: string;
-  botId: string;
-  threadId: string;
-  action: RoutineRequestOperation["action"];
-  fingerprintVersion: 1;
-  fingerprint: string;
-}
-
-type RoutineRequestCommitFor<Action extends RoutineRequestOperation["action"]> =
-  Omit<RoutineRequestCommit, "action"> & { action: Action };
-
 export interface RoutineInput extends RoutineQuietInput {
   name: string;
   prompt: string;
@@ -277,19 +253,10 @@ export interface RoutineManagerOptions {
   skipStartupRuns?: boolean;
   checks?: RoutineChecks;
   /** Where a routine's report goes on to (RoutineChain.handTo). */
-  chainHost?: {
-    botName(botId: string): string | undefined;
-    /** The chat another bot gets a handed report in; undefined gives it a chat of its own. */
-    handThread(botId: string): string | undefined;
-    postToRoom(groupId: string, botId: string, text: string): void;
-  };
+  chainHost?: ChainHost;
   /** The computer woke and is not back on the network yet (server/wake-gate.ts): due runs wait, then each runs once. */
   heldAfterWake?: () => boolean; held?: (run: RoutineRun) => string | null; decorate?: (routine: Routine) => Partial<Routine>; /** How much earlier than its time a run may start (a Cloud home folding an "around" run into its wake). */ earlyMs?: (routine: Routine) => number;
 }
-
-/** `after` is the runs check: links that stop naming routines to run after take that check with them. */
-const afterDropped = (routine: Routine, patch: Partial<RoutineInput>) => Boolean(routine.chain?.after?.length) && Object.hasOwn(patch, "chain") && !patch.chain?.after?.length;
-const withoutRunsCheck = (checks: RoutineCheck[] | undefined) => { const left = checks?.filter((check) => check !== "runs"); return left?.length ? left : null; };
 
 const WAKE_HORIZON_MS = 60 * 60_000;
 export const ROUTINE_RESTARTED = "dusk bot restarted while this routine was running";
@@ -524,33 +491,9 @@ export class RoutineManager {
     return cloneRun(run);
   }
 
-  /** A run that just completed with something to say goes on down its chain: the routines that run after its routine
-   * check now, and its routine's hand_to gets its report. */
   private carryOn(run: RoutineRun): void {
-    if (!reportedRun(run)) return;
-    const woken = wokenBy(run, this.routines);
-    if (woken.length) {
-      const now = this.now();
-      for (const routine of woken) if (routine.wakeAt === undefined || routine.wakeAt > now) routine.wakeAt = now;
-      this.saveLater();
-      queueMicrotask(() => this.tickInBackground());
-    }
-    const routine = run.triggerSource === "webhook" || run.dryRun ? undefined : this.routines.find((candidate) => candidate.id === run.routineId);
-    const hand = routine?.chain?.handTo, host = this.options.chainHost;
-    if (!hand || !host) return;
-    if ((run.chainHops ?? 0) >= MAX_CHAIN_HOPS) return;
-    try {
-      if ("groupId" in hand) host.postToRoom(hand.groupId, run.botId, roomPost(run.routineName, run.output!));
-      else {
-        this.enqueueWebhook({
-          webhookId: `routine:${routine!.id}`, webhookName: routine!.name, botId: hand.botId, runOn: "maus", deliveryId: run.id, receivedAt: this.now(), eventSource: "routine",
-          prompt: handPrompt({ routine: routine!.name, bot: host.botName(run.botId) ?? "another bot", finishedAt: run.finishedAt ?? this.now(), output: run.output! }),
-          resultsThreadId: host.handThread(hand.botId), chainHops: (run.chainHops ?? 0) + 1,
-        });
-      }
-    } catch (error) {
-      console.warn(`routines: could not hand on the report of ${routine!.id}: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    const woken = carryOn(run, this.routines, this.options.chainHost, (input) => this.enqueueWebhook(input), this.now());
+    if (woken) { this.saveLater(); queueMicrotask(() => this.tickInBackground()); }
   }
 
   create(input: RoutineInput, request?: RoutineRequestCommitFor<"create">): Routine {
@@ -624,7 +567,7 @@ export class RoutineManager {
       continuity: patch.continuity ?? routine.continuity,
       overlap: Object.hasOwn(patch, "overlap") ? patch.overlap : routine.overlap,
       runOnStartup: patch.runOnStartup ?? routine.runOnStartup,
-      checks: Object.hasOwn(patch, "checks") ? patch.checks : afterDropped(routine, patch) ? withoutRunsCheck(routine.checks) : routine.checks,
+      checks: Object.hasOwn(patch, "checks") ? patch.checks : checksAfterChainPatch(routine, patch),
       access: Object.hasOwn(patch, "access") ? patch.access : routine.access,
       deliver: Object.hasOwn(patch, "deliver") ? patch.deliver : routine.deliver, ...quietPatch(patch, routine),
       chain: Object.hasOwn(patch, "chain") ? patch.chain : routine.chain,

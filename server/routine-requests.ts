@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"; import { shapeNewRoutine } from "./routine-shape.ts"; import { duplicateOf, duplicateRefusal, guardAgainst, jitter } from "./routine-bot-guard.ts"; const withJitter = (changes: RoutineRequestChanges, current: Routine): RoutineRequestChanges => (changes.schedule ? { ...changes, schedule: jitter(changes.schedule, changes.name ?? current.name, changes.instructions ?? current.prompt) } : changes); import { cleanProbe } from "./routine-quiet.ts";
-import { cleanChain } from "./routine-chain.ts"; import { serverLine } from "./server-lines.ts"; import { plainCronWhen } from "./routine-cron-words.ts";
+import { cleanChain } from "./routine-chain.ts"; import { chainLines, consequenceLine } from "./routine-request-copy.ts"; export { consequenceLine } from "./routine-request-copy.ts"; import { serverLine } from "./server-lines.ts";
 import { isDeepStrictEqual } from "node:util";
 
 import { cronScheduleLabel } from "../shared/cron-label.ts";
@@ -591,28 +591,6 @@ export function scheduleText(schedule: RoutineRequestSchedule, timeZone: string,
   return `${plainWeekdays(schedule.weekdays)} at ${plainClock(schedule.time)} ${zone}`;
 }
 
-export function consequenceLine(schedule: RoutineRequestSchedule, continuity = false): string {
-  const session = continuity ? "each run starts a fresh session with the previous run's report" : "each run starts a fresh session";
-  if (schedule.type === "cron") return `${plainCronWhen(schedule) ?? `Will run at matching calendar times, ${plainTimeZone(schedule.timeZone)}`}; ${session}.`;
-  if (schedule.type === "once") return "Will run once; that run starts a fresh session.";
-  if (schedule.type === "limit_reset") {
-    return schedule.repeat === "every_reset"
-      ? "Will run a minute after each time that usage limit resets, in this conversation."
-      : "Will run once, a minute after that usage limit resets, and continue in this conversation.";
-  }
-  if (schedule.type === "interval") {
-    if (intervalHasRestrictions(schedule)) {
-      return `Will run every ${schedule.everyMinutes} minutes when its day, time, and end restrictions allow; ${session}.`;
-    }
-    const runsPerDay = Math.round(1440 / schedule.everyMinutes);
-    const cadence = runsPerDay <= 1 ? "about once a day" : `about ${runsPerDay} times a day`;
-    return `Will run ${cadence}; ${session}.`;
-  }
-  const days = schedule.weekdays.length;
-  const cadence = days === 7 ? "every day" : days === 1 ? "one day a week" : `${days} days a week`;
-  return `Will run ${cadence}; ${session}.`;
-}
-
 function effectiveDefinition(operation: RoutineRequestOperation, manager: RoutineManager): RoutineRequestDefinition | null {
   if (operation.action === "create") return operation.routine;
   const existing = manager.listRoutines().find((routine) => routine.id === operation.routineId);
@@ -642,15 +620,6 @@ function effectiveDefinition(operation: RoutineRequestOperation, manager: Routin
   if (chain === null) delete merged.chain; else if (chain !== undefined) merged.chain = chain;
   if (runsOnce(merged.schedule)) delete merged.runOnStartup;
   return merged;
-}
-
-function chainLines(chain: RoutineRequestDefinition["chain"], manager: RoutineManager): string[] {
-  const name = (id: string) => redactSecretsInText(manager.listRoutines().find((routine) => routine.id === id)?.name ?? "a removed automation");
-  return [
-    ...(chain?.readFrom?.length ? [serverLine(undefined, "server.routine.chainReads", { routines: chain.readFrom.map(name).join(", ") })] : []),
-    ...(chain?.after?.length ? [serverLine(undefined, "server.routine.chainAfter", { routines: chain.after.map(name).join(", ") })] : []),
-    ...(chain?.handTo ? [serverLine(undefined, "botId" in chain.handTo ? "server.routine.chainToBot" : "server.routine.chainToRoom")] : []),
-  ];
 }
 
 function cardCopy(

@@ -6,7 +6,8 @@ import { canManage, canReach, type RosterMember } from "./peer-roster.ts";
 import { redactSecretsInText } from "./redact.ts";
 import { MAX_CHAIN_HOPS, MAX_CHAIN_LINKS, type RoutineChain } from "../shared/routines.ts";
 import { SILENT_LINE } from "../shared/routine-run.ts";
-import type { Routine, RoutineRun } from "./routines.ts";
+import type { Routine, RoutineInput, RoutineManager, RoutineRun } from "./routines.ts";
+import type { RoutineCheck } from "../shared/routines.ts";
 
 /** What a run reads of each routine it reads from, and how much of a finished run's report a chained run is shown. */
 export const CHAIN_READ_CHARS = 2_000;
@@ -199,4 +200,40 @@ export function routineChainHost(deps: { store: ChainStore; mainThread(botId: st
 export function requestedChain(proposal: { routine?: unknown; changes?: unknown }): unknown {
   const asked = (proposal.routine ?? proposal.changes) as { chain?: unknown } | undefined;
   return asked && typeof asked === "object" ? asked.chain : undefined;
+}
+
+/** `after` is the runs check: links that stop naming routines to run after take that check with them. */
+export function checksAfterChainPatch(routine: Pick<Routine, "chain" | "checks">, patch: Pick<RoutineInput, "chain">): RoutineCheck[] | null | undefined {
+  if (!routine.chain?.after?.length || !Object.hasOwn(patch, "chain") || patch.chain?.after?.length) return routine.checks;
+  const left = routine.checks?.filter((check) => check !== "runs");
+  return left?.length ? left : null;
+}
+
+export interface ChainHost {
+  botName(botId: string): string | undefined;
+  /** The chat another bot gets a handed report in; undefined gives it a chat of its own. */
+  handThread(botId: string): string | undefined;
+  postToRoom(groupId: string, botId: string, text: string): void;
+}
+
+/** A run that just completed with something to say goes on down its chain: the routines that run after its routine are
+ * woken (true when any was), and its routine's hand_to gets its report. */
+export function carryOn(run: RoutineRun, routines: readonly Routine[], host: ChainHost | undefined, enqueue: RoutineManager["enqueueWebhook"], now: number): boolean {
+  if (!reportedRun(run)) return false;
+  const woken = wokenBy(run, routines);
+  for (const routine of woken) if (routine.wakeAt === undefined || routine.wakeAt > now) routine.wakeAt = now;
+  const routine = run.triggerSource === "webhook" || run.dryRun ? undefined : routines.find((candidate) => candidate.id === run.routineId);
+  const hand = routine?.chain?.handTo;
+  if (!routine || !hand || !host || (run.chainHops ?? 0) >= MAX_CHAIN_HOPS) return woken.length > 0;
+  try {
+    if ("groupId" in hand) host.postToRoom(hand.groupId, run.botId, roomPost(run.routineName, run.output!));
+    else enqueue({
+      webhookId: `routine:${routine.id}`, webhookName: routine.name, botId: hand.botId, runOn: "maus", deliveryId: run.id, receivedAt: now, eventSource: "routine",
+      prompt: handPrompt({ routine: routine.name, bot: host.botName(run.botId) ?? "another bot", finishedAt: run.finishedAt ?? now, output: run.output! }),
+      resultsThreadId: host.handThread(hand.botId), chainHops: (run.chainHops ?? 0) + 1,
+    });
+  } catch (error) {
+    console.warn(`routines: could not hand on the report of ${routine.id}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return woken.length > 0;
 }
