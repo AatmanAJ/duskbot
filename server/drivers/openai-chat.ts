@@ -557,7 +557,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       let nudges = 0, effectful = 0, toolsRan = 0, toolFailedEver = false, claimNudged = false, lastReply = "";
       const said: string[] = [];
       let unread: string[] = [];
-      let callsAtNudge = -1; const gates = new TurnGates(), repeats = new ChatRepeatGuard({ stops: Boolean(options.localModel) });
+      let callsAtNudge = -1; const gates = new TurnGates(priorSteps), repeats = new ChatRepeatGuard({ stops: Boolean(options.localModel) });
       let unreadable: false | "call" | "reasoning" = false, askedAgain = false, nudged = false, forceTool = false, forced: "required" | undefined;
       const backups = new TurnBackups(turn.chatBackups); let carrier: ChatBackup | undefined, modelChecked = false, serverModels: string[] | undefined;
       try {
@@ -752,7 +752,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
             }
             if (turnEntry.asides.length || (!claimNudged && tools.definitions.some((tool) => tool.function.name !== ASK_USER_TOOL) && options.nudgeAnnouncedAction !== false && claimsUnmadeChange(completion.text, effectful))) {
               messages.push(assistantReply(carrier?.model ?? model, completion, reply), ...(turnEntry.asides.length ? [] : [{ role: "user" as const, content: NUDGE_CLAIMED_CHANGE }]));
-              claimNudged ||= !turnEntry.asides.length;
+              claimNudged ||= !turnEntry.asides.length; if (claimNudged) gates.applied.add("unbacked_claim");
               continue;
             }
             const gateNote = options.nudgeAnnouncedAction === false || turnEntry.ending ? null : gates.gate(reply); if (gateNote) { messages.push(assistantReply(carrier?.model ?? model, completion, reply), { role: "user", content: gateNote }); continue; }
@@ -908,7 +908,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         active.delete(turn.threadId);
         emit({ ...base(turn.threadId, turnId), type: "turn.completed", ok, stopReason, cost: null,
           ...(hasUsage && (options.includeUsageInCompleted || seenCalls.size) ? { usage } : {}),
-          ...(denials.length ? { denials } : {}), ...(gates.applied.size ? { stopGates: [...gates.applied] } : {}),
+          ...(denials.length ? { denials } : {}), ...(gates.applied.size ? { stopGates: [...gates.applied] } : {}), claimsChecked: true,
         });
         resolveDone();
       }

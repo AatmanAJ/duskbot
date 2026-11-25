@@ -263,3 +263,35 @@ describe("finish guard: open asks and done claims", () => {
     expect([...read.carried, ...file.carried]).toEqual([]);
   });
 });
+
+describe("finish guard: claims with nothing behind them", () => {
+  it("carries on a reply that says it sent something when only a lookup ran, and leaves a turn whose loop already checked", () => {
+    const h = harness();
+    const send = (body: Body) => h.guard.onEvent({ eventId: "e", provider: "fake", threadId: "t1", createdAt: "", ...body } as RuntimeEvent);
+    send({ type: "turn.started" });
+    send({ type: "item.started", itemType: "tool", itemId: "c1", title: "mcp__mail__gmail_search" });
+    send({ type: "item.completed", itemType: "tool", itemId: "c1", ok: true });
+    send({ type: "item.completed", itemType: "assistant_text", text: "I've emailed Priya the three slots." });
+    send({ type: "turn.completed", ok: true });
+    expect(h.carried.at(-1)?.note).toContain("no tool call in this turn did that");
+
+    const checked = harness();
+    checked.turn("I've emailed Priya the three slots.");
+    const sent = checked.carried.length;
+    checked.guard.onEvent({ eventId: "e", provider: "fake", threadId: "t2", createdAt: "", type: "turn.started" } as RuntimeEvent);
+    checked.guard.onEvent({ eventId: "e", provider: "fake", threadId: "t2", createdAt: "", type: "item.completed", itemType: "assistant_text", text: "I've emailed Priya the three slots." } as RuntimeEvent);
+    checked.guard.onEvent({ eventId: "e", provider: "fake", threadId: "t2", createdAt: "", type: "turn.completed", ok: true, claimsChecked: true } as RuntimeEvent);
+    expect(checked.carried.length).toBe(sent);
+  });
+
+  it("lets a sent claim end when a send succeeded", () => {
+    const h = harness();
+    const send = (body: Body) => h.guard.onEvent({ eventId: "e", provider: "fake", threadId: "t1", createdAt: "", ...body } as RuntimeEvent);
+    send({ type: "turn.started" });
+    send({ type: "item.started", itemType: "tool", itemId: "c1", title: "mcp__mail__gmail_send" });
+    send({ type: "item.completed", itemType: "tool", itemId: "c1", ok: true });
+    send({ type: "item.completed", itemType: "assistant_text", text: "I've emailed Priya the three slots." });
+    send({ type: "turn.completed", ok: true });
+    expect(h.carried).toEqual([]);
+  });
+});

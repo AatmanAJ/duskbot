@@ -6,8 +6,9 @@
 
 import { isOutboundTool } from "../shared/outbound.ts";
 import { effectfulCall } from "./drivers/openai-chat-habits.ts";
+import { callEvidence, claimedDeeds, unbackedClaimNote, unbackedDeeds } from "./claim-check.ts";
 
-export type StopGate = "follow_up" | "checklist" | "unconfirmed_write" | "open_items";
+export type StopGate = "follow_up" | "checklist" | "unconfirmed_write" | "open_items" | "unbacked_claim";
 
 /** Gates one turn may take in all; each kind at most once. */
 export const MAX_STOP_GATES = 2;
@@ -180,6 +181,8 @@ export interface TurnSoFar {
   unconfirmed: string | null;
   /** The last change no lookup followed, by tool name, whatever its tool answered; it counts only when the reply calls the work done. */
   unread?: string | null;
+  /** What the turn's successful changing calls could have done (claim-check.ts `callEvidence`). */
+  evidence?: ReadonlySet<string>;
 }
 
 /** The gate a reply that ends the turn should take, with the note to send back, or null to let it end. */
@@ -188,6 +191,8 @@ export function stopGateFor(turn: TurnSoFar): { gate: StopGate; note: string } |
   if (!turn.applied.has("follow_up") && turn.canSchedule && !turn.scheduled && promisesFollowUp(turn.reply)) {
     return { gate: "follow_up", note: stopGateNote("follow_up") };
   }
+  const unbacked = !turn.applied.has("unbacked_claim") && turn.evidence ? unbackedDeeds(claimedDeeds(turn.reply), turn.evidence) : [];
+  if (unbacked.length) return { gate: "unbacked_claim", note: unbackedClaimNote(unbacked) };
   const items = !turn.applied.has("checklist") && turn.effectful > 0 ? openChecklist(turn.reply) : null;
   if (items) return { gate: "checklist", note: stopGateNote("checklist", { items }) };
   const unchecked = turn.unconfirmed ?? (turn.unread && claimsDone(turn.reply) ? turn.unread : null);
@@ -205,6 +210,15 @@ export class TurnGates {
   private effectful = 0;
   private unconfirmed: string | null = null;
   private unread: string | null = null;
+  private readonly evidence = new Set<string>();
+
+  /** `carried`: steps a turn cut off by a limit already ran, which this turn carries on from. */
+  constructor(carried: ReadonlyArray<{ tool_calls?: ReadonlyArray<{ function?: { name?: string; arguments?: string } }> }> = []) {
+    for (const call of carried.flatMap((message) => message.tool_calls ?? [])) {
+      const name = call.function?.name ?? "";
+      if (name && effectfulCall(name, call.function?.arguments ?? "{}")) for (const proof of callEvidence(name, call.function?.arguments)) this.evidence.add(proof);
+    }
+  }
   private lookupFor = (_tool: string) => false;
 
   /** `automationRun`: a routine's own run, whose promises of later work are its routine's. */
@@ -218,6 +232,7 @@ export class TurnGates {
     if (!ok) return;
     if (!effectfulCall(name, rawArgs)) { this.unconfirmed = null; this.unread = null; return; }
     this.effectful += 1;
+    for (const proof of callEvidence(name, rawArgs)) this.evidence.add(proof);
     const tool = ranTool(name, rawArgs);
     if (schedulesCall(name, rawArgs)) { this.scheduled = true; return; }
     if (schedulesWork(tool)) return;
@@ -228,7 +243,7 @@ export class TurnGates {
 
   /** The note to send back for a reply that would end the turn, or null; a note given counts as applied. */
   gate(reply: string): string | null {
-    const found = stopGateFor({ reply, applied: this.applied, canSchedule: this.canSchedule, scheduled: this.scheduled, effectful: this.effectful, unconfirmed: this.unconfirmed, unread: this.unread });
+    const found = stopGateFor({ reply, applied: this.applied, canSchedule: this.canSchedule, scheduled: this.scheduled, effectful: this.effectful, unconfirmed: this.unconfirmed, unread: this.unread, evidence: this.evidence });
     if (found) this.applied.add(found.gate);
     return found?.note ?? null;
   }
