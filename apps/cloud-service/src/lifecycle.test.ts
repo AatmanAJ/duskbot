@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 import type { StoredSubscription } from "../../dashboard/server/billing/store.ts";
 import { homeBackupKey } from "./backups.ts";
-import { INSTABOX_BOOT_FILE, INSTABOX_PACKAGE_FILE, INSTABOX_SETUP_FILE } from "./home.ts";
+import { CLOCK_CHECK_MARK, clockCheckCommand, INSTABOX_BOOT_FILE, INSTABOX_PACKAGE_FILE, INSTABOX_SETUP_FILE } from "./home.ts";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { OWNER_SLEEP_GRACE_MS } from "./lifecycle.ts";
 import { pooledCostProfile } from "./power/pooled-profile.ts";
 import { DAY_MS, deletionVerdict, entitlementOf } from "./retention.ts";
@@ -680,4 +683,51 @@ it("asks the provider once per wake while the machine still reads as stopped rig
   expect(starts() - before).toBe(2);
   f.api.queueStarts(false); f.api.finishStarts();
   await f.settle(c, c => c.status === "running");
+});
+
+it("sets a resumed machine's clock when the home runs but refuses the health probe, then calls it awake", async () => {
+  const f = await homeFixture();
+  const { c } = await f.paid();
+  f.advance(5 * 60_000); f.power.idle = true; f.power.busy = [];
+  await f.settle(c, c => c.status === "sleeping", 60, 5 * 60_000);
+  let clockSet = false;
+  f.api.onExec(({ cmd }) => cmd.includes(CLOCK_CHECK_MARK) ? (clockSet = true, { exitCode: 0, stdout: "set 6240\n" }) : null);
+  f.home.healthy.mockImplementation(async () => clockSet);
+  await f.service.power(c.accountId, c.id, "on");
+  await f.settle(c, c => c.status === "running");
+  expect(execs(f).find(cmd => cmd.includes(CLOCK_CHECK_MARK))).toMatch(new RegExp(` ${CLOCK_CHECK_MARK} \\d+$`));
+  expect(f.audit.entries(c.id).filter(e => e.action === "clock_set").map(e => e.detail)).toEqual([{ offsetS: 6240 }]);
+  expect(f.audit.entries(c.id).at(-1)?.action).not.toBe("clock_set");
+});
+
+it("still fails a wake whose home does not answer when the clock was right", async () => {
+  const f = await homeFixture();
+  const { c } = await f.paid();
+  f.advance(5 * 60_000); f.power.idle = true; f.power.busy = [];
+  await f.settle(c, c => c.status === "sleeping", 60, 5 * 60_000);
+  f.api.onExec(({ cmd }) => cmd.includes(CLOCK_CHECK_MARK) ? { exitCode: 0, stdout: "ok\n" } : null);
+  f.home.healthy.mockImplementation(async () => false);
+  await f.service.power(c.accountId, c.id, "on");
+  for (let pass = 0; pass < 5; pass++) { f.advance(1_000); c.nextAttemptAt = 0; await f.service.reconcile(); }
+  expect(c.status).not.toBe("running");
+  expect(f.audit.entries(c.id).filter(e => e.action === "clock_set")).toHaveLength(0);
+});
+
+it("the clock check script sets the clock only when it is more than 30 s off", () => {
+  const dir = mkdtempSync(join(tmpdir(), "dusk-clock-"));
+  try {
+    const fake = join(dir, "date");
+    writeFileSync(fake, `#!/bin/bash\nif [ "$2" = -s ]; then echo "$3" > "${dir}/set"; else echo "$DUSK_FAKE_NOW"; fi\n`);
+    chmodSync(fake, 0o755);
+    const run = (machineNow: number, wantMs: number) => {
+      rmSync(join(dir, "set"), { force: true });
+      const command = clockCheckCommand(wantMs).replace(/^sudo -n /, "");
+      const out = execFileSync("bash", ["-c", command], { env: { PATH: `${dir}:/usr/bin:/bin`, DUSK_FAKE_NOW: String(machineNow) } }).toString().trim();
+      let set: string | null = null; try { set = readFileSync(join(dir, "set"), "utf8").trim(); } catch { /* not set */ }
+      return { out, set };
+    };
+    expect(run(1_000_000, 1_000_020_000)).toEqual({ out: "ok", set: null });
+    expect(run(1_000_000, 1_006_240_000)).toEqual({ out: "set 6240", set: "@1006240" });
+    expect(run(1_000_100, 1_000_000_000)).toEqual({ out: "set -100", set: "@1000000" });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
