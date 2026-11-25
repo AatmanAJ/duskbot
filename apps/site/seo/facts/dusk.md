@@ -14,7 +14,7 @@ make that claim. Never invent features, numbers, integrations, users, ratings or
 - Began from OpenMausBot, an open project by Milind Soni and contributors; that original code stays under Apache 2.0. Dusk Bot itself is source-available, never call it open source or Apache licensed. (/about, /license)
 
 ## moving in from grok bot
-- Settings, Import, **Move from Grok Bot** brings a Grok Bot over: it needs no sign-in and the import makes no network call. Grok Bot has no export button, so you send each Grok Bot one message and it writes down its own setup as a file; you paste or drop that file into Dusk Bot. A preview names the bot and counts its skills, routines and memories before anything is written. Then you turn each routine off in Grok Bot and on in Dusk Bot. One bot at a time. (repo docs/team-sharing.md)
+- Settings, General, **Start import** opens Bring in from other apps, where Grok Bot has its own row; it needs no sign-in. Grok Bot has no export button, so you send each Grok Bot one message and it writes down its own setup as a file; the desktop app finds that file in Downloads. Each bot comes over with its skills, memories and routines (paused), and Dusk Bot then names each bot and counts what came over. Then you turn each routine off in Grok Bot and on in Dusk Bot. One bot at a time. (repo docs/team-sharing.md)
 - The site says Dusk Bot is "the free Grok bot alternative that runs on your own models": free for personal use, and each bot thinks with the AI you already use. (repo README.md)
 
 ## the ai
@@ -43,7 +43,7 @@ make that claim. Never invent features, numbers, integrations, users, ratings or
 - Bots don't learn from group chats; what they remember comes from your own messages to them. (/docs/memory)
 
 ## routines
-- A routine is a job a bot does without being asked again. You make one by saying it ("summarise my inbox every weekday at 8"). The bot replies with a card showing the schedule and next runs, with Edit, Pause and Undo. Automations in the sidebar lists every routine with a calendar and run history. (/docs/routines)
+- A routine is a job a bot does without being asked again. You make one by saying it ("summarise my inbox every weekday at 8"). The bot replies with a card showing the schedule and next runs, with Edit, Pause and Undo. The bot's side panel lists its routines; each one shows its recent runs and Run now, and each run reports in the bot's chat. (/docs/routines)
 - A routine can start from an event in a connected app ("whenever i get an email from acme, draft a reply", "when a github issue opens, triage it"). Gmail is checked every 15 minutes; Slack, GitHub and most others arrive at once. (/docs/routines; repo docs/composio.md)
 - App events kept per day: 500 on the desktop, 2,000 on a paid Cloud. (repo docs/composio.md)
 - On your own computer nothing runs while it's asleep or the app is closed. A run missed by less than 12 hours runs once when you're back; older ones are skipped. Dusk Cloud runs them on time. (/docs/routines)

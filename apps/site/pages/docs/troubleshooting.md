@@ -27,7 +27,7 @@ look in its **memory**. if the note isn't there, tell it to remember. if memory 
 
 ## a routine didn't run
 
-almost always the app was closed or the computer was asleep. open **automations** and look at the routine's history; it says what happened to each run. for routines that must run on time, use [dusk cloud](/docs/dusk-cloud).
+almost always the app was closed or the computer was asleep. open the routine in the bot's side panel and look at its recent runs; they say what happened to each run. for routines that must run on time, use [dusk cloud](/docs/dusk-cloud).
 
 ## a routine ran at the wrong time
 

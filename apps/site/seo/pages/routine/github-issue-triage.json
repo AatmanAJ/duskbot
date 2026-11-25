@@ -77,7 +77,7 @@
     },
     {
       "q": "can i see why a triage run failed?",
-      "a": "**open automations in the sidebar.** it shows run history. inspect early runs and narrow the scope if unrelated reports creep in."
+      "a": "**open the routine in the bot's side panel.** it lists recent runs. inspect early runs and narrow the scope if unrelated reports creep in."
     }
   ],
   "sources": [

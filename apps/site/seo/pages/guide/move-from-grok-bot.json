@@ -4,7 +4,7 @@
   "title": "How to export your Grok Bot setup and move it to dusk bot",
   "nav": "move from grok bot",
   "h1": "how to export your grok bot setup",
-  "description": "Move skills, routines and memories into dusk bot one bot at a time. Preview the file, switch schedules safely and keep your Cursor account when you cancel.",
+  "description": "Move skills, routines and memories into dusk bot one bot at a time. Check what came over, switch schedules safely and keep your Cursor account when you cancel.",
   "keyword": "export grok bot",
   "keywords": [
     "grok bot export",
@@ -12,7 +12,7 @@
     "switch from grok bot",
     "cancel grok bot"
   ],
-  "answer": "**ask your grok bot to write down its setup as a file.** there is no export button for the whole bot.[^1] in dusk bot, open settings → import → **Move from Grok Bot**. paste or drop the file. you can see the bot’s name and counts for skills, routines and memories before you import anything.",
+  "answer": "**ask your grok bot to write down its setup as a file.** there is no export button for the whole bot.[^1] save the file in your downloads folder. in dusk bot, open settings and choose **start import** under general. grok bot has its own row there. after the move, dusk bot names each bot and counts its routines and memories.",
   "tags": [
     "grok bot",
     "migration",
@@ -39,12 +39,12 @@
       "md": "**save the bot’s work separately from its instructions.** if a bot made a spreadsheet you need next month, download the spreadsheet. grok offers individual file downloads and **download all**. for a call, you can export its transcript or recording.[^1]\n\n**share → create a copy** publishes a bot template by link. it includes identity, skills and routines. it leaves out history and memory. to keep the preferences you taught the bot, follow the [import steps](#move-a-bot-from-its-first-file-to-its-first-run).[^1]"
     },
     {
-      "h": "read the preview before accepting",
-      "md": "**look for the bot’s name first, then the counts.** a skill holds instructions you reuse. a routine says when a workflow should run. memories include preferences and rules you have taught the bot. the preview counts each kind separately.[^1][^2]\n\nif the bot has a regular job and the preview shows no routines, stop there. compare the file with the schedule in grok. for a missing preference, ask the original bot what it remembers. grok lets you inspect its memory in chat.[^1]\n\nthe preview counts skills, routines and memories. it makes no promise about chat history, browser sessions or sign-ins. keep access to anything you still need to inspect."
+      "h": "check what came over",
+      "md": "**look for the bot’s name first, then the counts.** a skill holds instructions you reuse. a routine says when a workflow should run. memories include preferences and rules you have taught the bot. after the move, each bot’s side panel lists its skills and routines.[^1][^2]\n\nif the bot has a regular job and no routine came over, stop there. compare the file with the schedule in grok. for a missing preference, ask the original bot what it remembers. grok lets you inspect its memory in chat.[^1]\n\nthe move brings skills, routines and memories. it makes no promise about chat history, browser sessions or sign-ins. keep access to anything you still need to inspect."
     },
     {
       "h": "give each routine a single home during the trial week",
-      "md": "**keep both apps for a week, with each schedule active in just one.** pick a routine whose result you can recognize. turn it off in grok before you turn it on in dusk. look at the next run on the dusk routine card.[^3]\n\nfor a desktop trial, leave dusk open and the computer awake when the job is due. look for the result in run history under automations. if you need the old schedule back, pause the dusk routine first.[^3]\n\ntreat the week as your own comparison period. keeping both services may cost money. the [side-by-side comparison](/vs/grok-bot) covers phone access, storage and the monthly bill."
+      "md": "**keep both apps for a week, with each schedule active in just one.** pick a routine whose result you can recognize. turn it off in grok before you turn it on in dusk. look at the next run on the dusk routine card.[^3]\n\nfor a desktop trial, leave dusk open and the computer awake when the job is due. look for the result in the bot’s chat. each run reports there, and the routine in the bot’s side panel lists its recent runs. if you need the old schedule back, pause the dusk routine first.[^3]\n\ntreat the week as your own comparison period. keeping both services may cost money. the [side-by-side comparison](/vs/grok-bot) covers phone access, storage and the monthly bill."
     },
     {
       "h": "cancel the plan without deleting cursor",
@@ -55,9 +55,9 @@
     "h": "move a bot from its first file to its first run",
     "items": [
       "**pick a bot you know well.** note a skill, a schedule and a preference you expect to find again.",
-      "**open the importer.** in dusk settings, choose import, then **Move from Grok Bot**. the import needs no sign-in and makes no network call.",
-      "**message that bot in grok.** ask it to write its setup to a file for the move. work with one bot at a time so the file and preview belong together.",
-      "**paste or drop the setup file into dusk.** read the name and preview counts. import when they match what you expect.",
+      "**open the importer.** in dusk settings, choose **start import** under general. grok bot has its own row. the import needs no sign-in.",
+      "**message that bot in grok.** ask it to write its setup to a file for the move. work with one bot at a time so each file belongs to one bot.",
+      "**save the setup file in your downloads folder.** the desktop app finds it there. bring it in, then check the bot’s name and counts against your notes.",
       "**hand over the schedules individually.** turn a routine off in grok, then on in dusk. look for its first result before retiring the old setup.",
       "**finish the trial week before changing the bill.** keep the files you need and confirm which subscription you would be canceling.[^4][^5]"
     ]

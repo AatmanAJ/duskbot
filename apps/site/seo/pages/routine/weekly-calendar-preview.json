@@ -57,7 +57,7 @@
   "fails": [
     "it reads the wrong calendar. if you have several, name the ones you want: \"only my work calendar and the team calendar\". listing calendars is one of the things it can do, so ask it which ones it sees.",
     "times are off by an hour or more. ask the bot \"what time zone is this routine in?\" and tell it yours; put your time zone in **About me** so every bot knows.",
-    "it didn't run. on your own computer nothing runs while it's asleep or dusk bot is closed; a run missed by less than 12 hours runs once when you're back. **Automations** in the sidebar shows what happened to each run.",
+    "it didn't run. on your own computer nothing runs while it's asleep or dusk bot is closed; a run missed by less than 12 hours runs once when you're back. the routine in the bot's side panel shows what happened to each run.",
     "the list is too long to read. say \"shorter\" or \"only tell me about problems\" after the first run; it keeps the change."
   ],
   "sections": [
@@ -73,7 +73,7 @@
     },
     {
       "q": "can i pause it on holiday?",
-      "a": "yes. the routine's card has **Pause**, and **Automations** in the sidebar lists every routine. pause it before you go and resume it when you're back."
+      "a": "yes. the routine's card has **Pause**, and the bot's side panel lists its routines. pause it before you go and resume it when you're back."
     }
   ],
   "sources": [

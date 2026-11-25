@@ -16,7 +16,7 @@ a routine is a job a bot does without being asked again. you make one by saying 
 - "check competitor prices every monday at 9 and tell me what changed."
 - "remind me to send invoices on the last friday of the month."
 
-the bot sets it up in its reply, with a card showing the schedule and the next few runs, plus **Edit**, **pause** and **Undo**. **automations** in the sidebar lists every routine with a calendar and the history of each run.
+the bot sets it up in its reply, with a card showing the schedule and the next few runs, plus **Edit**, **pause** and **Undo**. the bot's side panel lists its routines. open one for its recent runs and **Run now**; each run reports in the bot's chat.
 
 ## when something happens
 

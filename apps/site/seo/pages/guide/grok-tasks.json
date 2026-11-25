@@ -61,7 +61,7 @@
     },
     {
       "h": "when another routine app earns its place",
-      "md": "**keep a working grok routine if it already does the job.** another app can add setup without adding value.\n\ndusk suits someone who wants each bot’s job, memory, recurring work and follow-up questions together. send a routine request and read its schedule card for the next run. automations in the sidebar shows run history.[^7][^8]\n\na local dusk routine stops when the computer sleeps or the app closes. dusk cloud runs the routine on time.[^8]\n\ncompare [grok bot and dusk bot](/alternatives/grok-bot) for model choice and hosting, or see [other schedulers](/scheduled-ai-tasks). choose the home that keeps its sources, results and review in reach."
+      "md": "**keep a working grok routine if it already does the job.** another app can add setup without adding value.\n\ndusk suits someone who wants each bot’s job, memory, recurring work and follow-up questions together. send a routine request and read its schedule card for the next run. the routine in the bot’s side panel lists its recent runs.[^7][^8]\n\na local dusk routine stops when the computer sleeps or the app closes. dusk cloud runs the routine on time.[^8]\n\ncompare [grok bot and dusk bot](/alternatives/grok-bot) for model choice and hosting, or see [other schedulers](/scheduled-ai-tasks). choose the home that keeps its sources, results and review in reach."
     }
   ],
   "faq": [
