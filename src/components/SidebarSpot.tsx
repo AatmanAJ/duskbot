@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { GROK_HOVER_TINT } from "./SidebarSimpleTop";
-import { Check, X } from "../icons";
+import { X } from "../icons";
 
 import { openExternalLink } from "@/lib/app-links";
 import { productName } from "@/lib/brand";
@@ -167,10 +167,12 @@ export function SpotView({ className, state, cta = null }: { className?: string;
   const { spot, act, updated, seen } = state;
   const feedbackHidden = useSidebarFeedbackHidden();
   const showFeedback = spot.kind === "feedback" && !cta && !feedbackHidden;
-  if (spot.kind === "feedback" && !cta && feedbackHidden && !updated) return null;
+  // an update shows no line; it is marked seen quietly
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (updated) seen(); }, [updated]);
+  if (spot.kind === "feedback" && !cta && feedbackHidden) return null;
   return (
     <div className={className}>
-      {updated && spot.kind === "feedback" && <UpdatedNote version={updated} seen={seen} />}
       {spot.kind !== "feedback" ? <UpdateCard spot={spot} act={act} className={CARD} />
         : cta ? (cta.card ? <SpotCloudCard cta={cta} card={cta.card} /> : <SpotCtaCard cta={cta} />)
         : showFeedback ? <FeedbackCard onOpen={act} /> : null}
@@ -358,27 +360,3 @@ export function RailSpot({ bridge }: { bridge?: AppUpdateBridge }) {
   );
 }
 
-const NOTE_MS = 20_000;
-
-export function UpdatedNote({ version, seen }: { version: string; seen: () => void }) {
-  const said = useRef(seen);
-  said.current = seen;
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const look = () => { if (!timer && document.visibilityState === "visible") timer = setTimeout(() => said.current(), NOTE_MS); };
-    look();
-    document.addEventListener("visibilitychange", look);
-    return () => { clearTimeout(timer); document.removeEventListener("visibilitychange", look); };
-  }, [version]);
-  return (
-    <button
-      type="button"
-      data-app-updated={version}
-      onClick={seen}
-      className="mb-1 flex items-center gap-1.5 rounded-full px-3 py-[5px] text-[13px] leading-4 text-ink-secondary transition-colors duration-150 ease-out hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-    >
-      <Check size={13} aria-hidden="true" />
-      {t("updates.updated", { version })}
-    </button>
-  );
-}

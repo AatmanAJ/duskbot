@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppUpdateState } from "../../electron/app-update.mjs";
 import { closeFeedback, useFeedbackOpen } from "@/lib/feedback-sheet";
 import { SIDEBAR_FEEDBACK_HIDDEN_KEY, setSidebarFeedbackHidden } from "@/lib/sidebar-preferences";
-import { RailSpot, SidebarSpot, UpdatedNote, type SpotCta } from "./SidebarSpot";
+import { RailSpot, SidebarSpot, type SpotCta } from "./SidebarSpot";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -18,6 +18,7 @@ const bridge = {
   download: vi.fn(async () => "0.2.7" as string | null),
   open: vi.fn(async () => true),
   move: vi.fn(async () => true),
+  seen: vi.fn(async () => {}),
   onState: vi.fn((cb: (state: AppUpdateState) => void) => { tell = cb; return () => {}; }),
 };
 const openExternal = vi.fn(async () => true);
@@ -250,12 +251,14 @@ describe("the sidebar's feedback and update spot", () => {
       expect(host.firstElementChild).toBeNull();
     });
 
-    it("still shows app updates and the updated note when Give feedback is hidden", async () => {
+    it("still shows app updates, and no updated line, when Give feedback is hidden", async () => {
       setSidebarFeedbackHidden(true);
       now = { ready: null, available: null, progress: null, mode: "self", updated: "0.2.25" };
       await mount();
       expect(spot()).toBeNull();
-      expect(host.querySelector("[data-app-updated='0.2.25']")).not.toBeNull();
+      expect(host.firstElementChild).toBeNull();
+      expect(host.textContent).not.toContain("0.2.25");
+      expect(bridge.seen).toHaveBeenCalled();
 
       await hear({ ready: "0.2.26", available: "0.2.26", progress: null, mode: "self" });
       expect(spot()?.dataset.sidebarSpot).toBe("update");
@@ -314,21 +317,5 @@ describe("the sidebar's feedback and update spot", () => {
         Object.defineProperty(window, "innerHeight", { configurable: true, value: originalHeight });
       }
     });
-  });
-});
-
-describe("the updated note", () => {
-  it("goes away on its own 20 seconds after launch", () => {
-    vi.useFakeTimers();
-    const seen = vi.fn();
-    const host = document.createElement("div");
-    const root = createRoot(host);
-    act(() => root.render(createElement(UpdatedNote, { version: "0.2.16", seen })));
-    act(() => { vi.advanceTimersByTime(19_000); });
-    expect(seen).not.toHaveBeenCalled();
-    act(() => { vi.advanceTimersByTime(1_500); });
-    expect(seen).toHaveBeenCalledTimes(1);
-    act(() => root.unmount());
-    vi.useRealTimers();
   });
 });
