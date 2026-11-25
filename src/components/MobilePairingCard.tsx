@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Apple, ChevronLeft } from "../icons";
-import { QRCodeSVG } from "qrcode.react";
+import { PairingQr } from "./PairingQr";
 
 import { cleanPairSignIn, universalPairLink, universalSignInLink, type MobileDevice, type MobilePairingRequest, type MobilePairingResponse } from "../../shared/mobile-link";
 import type { CloudPhoneSignIn, CloudPlanBridge } from "../../electron/cloud-account.mjs";
@@ -460,7 +460,7 @@ export function MobilePairingCard({ remote, cloudHome = false, email, direct, ch
   // screen does not smudge, and the long link gets bigger modules that a camera reads from further away
   const qrTile = (value: string | null, label: string) => (
     <div role="img" aria-label={label} aria-busy={!value} data-phone-qr={value ?? ""} className="flex size-[200px] shrink-0 items-center justify-center rounded-[16px] bg-white p-3">
-      {value ? <QRCodeSVG value={value} size={176} level="L" includeMargin={false} bgColor="#ffffff" fgColor="#1b1b1f" aria-hidden="true" />
+      {value ? <PairingQr value={value} size={176} level="L" includeMargin={false} bgColor="#ffffff" fgColor="#1b1b1f" aria-hidden="true" />
         : <span className="size-[176px] animate-pulse rounded-[8px] bg-[#1b1b1f]/[0.06] motion-reduce:animate-none" />}
     </div>
   );

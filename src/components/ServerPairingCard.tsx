@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { QRCodeSVG } from "qrcode.react";
+import { PairingQr } from "./PairingQr";
 import { requireUserPresence } from "@/lib/user-presence";
 import { KeyRound } from "../icons";
 
@@ -204,7 +204,7 @@ export function ServerPairingCard({ initialSession = null, cloudHome = false, fo
             <div className="flex flex-wrap items-start gap-5">
               {offer.url ? (
                 <div className="rounded-md bg-white p-2">
-                  <QRCodeSVG value={offer.url} size={160} level="M" bgColor="#ffffff" fgColor="#111111" />
+                  <PairingQr value={offer.url} size={160} level="M" bgColor="#ffffff" fgColor="#111111" />
                 </div>
               ) : null}
               <div className="min-w-[200px] flex-1">

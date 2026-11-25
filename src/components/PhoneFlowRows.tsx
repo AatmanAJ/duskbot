@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { QRCodeSVG } from "qrcode.react";
+import { PairingQr } from "./PairingQr";
 
 import { Check, Loader2 } from "../icons";
 import { t } from "@/lib/i18n";
@@ -99,7 +99,7 @@ export function RelayPairingRows({ onCancel, onDone }: { onCancel: () => void; o
       {!pairing.expired && (
         <div className="flex justify-center px-3.5 pb-3">
           <div className="rounded-[10px] bg-white p-3 outline outline-[0.5px] -outline-offset-[0.5px] outline-transparent" aria-label={t("phone.code.qrAria")}>
-            <QRCodeSVG value={pairing.offer.qr} size={160} level="M" bgColor="#ffffff" fgColor="#111111" />
+            <PairingQr value={pairing.offer.qr} size={160} level="M" bgColor="#ffffff" fgColor="#111111" />
           </div>
         </div>
       )}
