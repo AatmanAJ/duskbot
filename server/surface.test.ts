@@ -129,7 +129,9 @@ describe("resolveSurface", () => {
     expect(plan).toMatchObject({ computer: "off", browser: false, pinned: null });
     expect(plan.note).toMatch(/"Works on" setting is Off/);
     expect(plan.note).toMatch(/no computer or built-in browser is mounted/);
-    expect(plan.note).toContain("Everything else works (automations, waits, memory, connected apps, teammates, files you make here): do the job with those.");
+    expect(plan.note).toContain("Everything else works (automations, waits, memory, connected apps, teammates, files you make here): do the job with those, and look for a file of theirs there first");
+    expect(plan.note).toContain("finish everything else now");
+    expect(plan.note).toContain("in one plain sentence (attach the file here, or turn on Works on");
     expect(plan.note).toContain("give the person that step's exact command or clicks");
     expect(plan.note).not.toContain("tell them Works on is Off");
     expect(resolveSurface({ destination: "off", browserOn: false })).toEqual(plan);
@@ -141,8 +143,8 @@ describe("resolveSurface", () => {
     expect(plan).toMatchObject({ computer: "off", browser: false, pinned: null });
     expect(plan.note).toMatch(/"Works on" setting is Off/);
     expect(plan.note).toContain("Your own shell and files in your working folder still work");
-    expect(plan.note).not.toContain("needs a screen or a shell is out");
-    expect(resolveSurface({ destination: "off", browserOn: true }).note).toContain("needs a screen or a shell is out");
+    expect(plan.note).not.toContain("needs a screen, a shell or");
+    expect(resolveSurface({ destination: "off", browserOn: true }).note).toContain("needs a screen, a shell or a file found nowhere else is out");
   });
 
   it("a Problems to look at turn that lost its computer is told why and that it has none", () => {
