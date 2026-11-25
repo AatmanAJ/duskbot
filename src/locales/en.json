@@ -9397,7 +9397,7 @@
   "settings.dataSharing.checkConnection": "Check your connection and try again.",
   "notesAsk.title": "Help improve dusk bot?",
   "notesAsk.body": "Share anonymous summaries of how sessions went, so we can see what to improve. Personal and identifying details, like names, emails and links, are removed.",
-  "notesAsk.facts": "Summaries aren't linked to your account and are kept for 30 days. You can change this anytime in Settings.",
+  "notesAsk.facts": "Summaries aren't linked to your account and are kept for 30 days. You can change this anytime in settings.",
   "notesAsk.yes": "Share summaries",
   "notesAsk.no": "Not now",
   "notesAsk.example": "See an example",
