@@ -10,6 +10,7 @@ import { nextShortcutBot, shortcutBots, shownBotIds } from "@/lib/sidebar-shortc
 import { useWelcomeViewer, WelcomeGate } from "@/components/onboarding/WelcomeGate";
 import { LateCloudPlan } from "@/components/onboarding/LateCloudPlan";
 import { IslandIntroHost } from "@/components/onboarding/IslandIntroHost";
+import { NotesAskHost } from "@/components/onboarding/NotesAskHost";
 import { CloudTimeZoneSync } from "@/components/CloudTimeZone";
 import { useWarmChatImages } from "@/components/use-warm-chat-images";
 import { cloudSignInDue, type WelcomeViewer } from "@/lib/onboarding";
@@ -434,6 +435,7 @@ function Application({ children }: { children?: ReactNode }) {
         <LateCloudPlan viewer={viewer} />
         <BotsElsewhere />
         <IslandIntroHost />
+        <NotesAskHost />
         <CloudTimeZoneSync viewer={viewer} />
         {liveCallEnabled() && <LiveCallHost />}
         <AmbientPublisher />

@@ -122,10 +122,13 @@ function subscriptionPath(): string {
   return `/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}`;
 }
 
+export interface DataSharing { optOut: boolean; notes: boolean; askUsage: boolean }
+
 export const api = {
-  /** what the account shares: usage counts (off when opted out) and the anonymous summaries its workspaces write */
-  dataSharing: (): Promise<{ optOut: boolean }> => call("/v1/account/analytics"),
-  setDataSharing: (next: { optOut: boolean }): Promise<{ optOut: boolean }> => send("/v1/account/analytics", "PUT", next),
+  /** what the account shares: usage counts and crash reports (off when opted out, or while `askUsage` waits for a yes) and
+   * session notes (`notes`, only while counts are on) */
+  dataSharing: (): Promise<DataSharing> => call("/v1/account/analytics"),
+  setDataSharing: (next: { optOut?: boolean; notes?: boolean }): Promise<DataSharing> => send("/v1/account/analytics", "PUT", next),
   me: async (): Promise<{ account: Account }> => {
     if (FIXTURE) return call("/v1/me");
     const answer = await call<MeAnswer>("/v1/me");

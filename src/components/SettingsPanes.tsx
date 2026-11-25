@@ -58,7 +58,8 @@ import { SettingRow, SettingsGroup, SettingsRows } from "./SettingsPrimitives";
 import { PixelIcon } from "./ui/PixelIcon";
 import { RoutineWakeRow } from "./routines/RoutineWakeRow";
 import { Card as RowsCard, FormDialog, ItemRow, NavRow, SwitchRow, useSubPage } from "./ListRows";
-import { DataSharingRows } from "./DataSharingRows";
+import { DataSharingRows, SHARED_DATA_PAGE } from "./DataSharingRows";
+import { SharedDataPage } from "./SharedDataPage";
 import { SettingsSelect } from "./SettingsSelect";
 import { personFace, useServerUpdateItem } from "./SidebarProfileMenu";
 import { SkillsSection } from "./SkillsSection";
@@ -191,6 +192,7 @@ export function GeneralPane({ has, remoteActive }: { has: Has; remoteActive: boo
   const { at } = useSubPage();
   const { state } = useStore();
   if (at === "import") return <AdminOnly><ImportSettings /></AdminOnly>;
+  if (at === SHARED_DATA_PAGE) return <SharedDataPage />;
   const lead = importFirst({ completedAt: state.config?.onboarding?.completedAt, lastOpenAt: previousOpenAt(), bots: state.bots?.length ?? 0 });
   const bring = has("import") && (
     <SettingsGroup label={tPreferred("settings.docs.bring", "settings.section.import")} block="import">
