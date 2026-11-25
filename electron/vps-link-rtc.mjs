@@ -92,8 +92,9 @@ export function rtcConnector({ ndc, signal, turn = async () => [], stun = RTC_ST
     const started = now();
     const relays = await Promise.race([turn().catch(() => []), new Promise((resolve) => setTimeout(() => resolve([]), 1500))]);
     const pc = new ndc.PeerConnection("dusk-link", { iceServers: [...iceServers(stun.map((urls) => ({ urls }))), ...iceServers(relays)], maxMessageSize: 256 * 1024 });
-    const fail = (error) => { try { pc.close(); } catch { /* closed */ } throw error; };
     let dc;
+    // node-datachannel 0.33: a data channel left open deadlocks node's exit in its destructor
+    const fail = (error) => { try { dc?.close(); } catch { /* closed */ } try { pc.close(); } catch { /* closed */ } throw error; };
     try {
       dc = pc.createDataChannel(RTC_LABEL);
       await gathered(pc, gatherMs);
