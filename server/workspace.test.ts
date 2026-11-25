@@ -497,10 +497,18 @@ describe("workspace", () => {
     expect(memorySystemPrompt(BOT, { managedWrites: true, fileTools: true })).toContain(REMEMBER_AND_FORGET);
     expect(refused).not.toContain(REMEMBER_AND_FORGET);
     expect(REMEMBER_AND_FORGET).toContain("save it now with memory_update append");
-    expect(REMEMBER_AND_FORGET).toContain("call memory_update with action forget");
+    expect(REMEMBER_AND_FORGET).toContain("call memory_update forget");
     // a preference for all their bots is saved once, never passed on to each bot
-    expect(REMEMBER_AND_FORGET).toContain("saved once with memory_update action prefer");
-    expect(REMEMBER_AND_FORGET).toContain("Never pass it on to each bot.");
+    expect(REMEMBER_AND_FORGET).toContain("saved once with memory_update prefer");
+    expect(REMEMBER_AND_FORGET).toContain("never pass it on to each bot.");
+    // "saved" only after the save worked; a changed plan replaces the old fact at once
+    expect(REMEMBER_AND_FORGET).toContain("once the save came back done, confirm");
+    expect(REMEMBER_AND_FORGET).toContain("Never say it is saved before that.");
+    expect(REMEMBER_AND_FORGET).toContain("fix it in the same turn with memory_update supersede");
+    // a remembered fact surfaces only when it changes the answer, in every write mode
+    for (const prompt of [memorySystemPrompt(BOT, { managedWrites: true }), memorySystemPrompt(BOT), refused]) {
+      expect(prompt).toContain("Bring up a remembered fact only when it changes what you answer, recommend or ask");
+    }
   });
 
   it("requires explicit remove to delete a memory passage", () => {

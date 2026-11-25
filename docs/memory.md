@@ -606,7 +606,12 @@ so the person never has to say "remember this".
 "Remember: short answers, and I'm in India" is saved during that turn with
 `memory_update`, so it shows under **What it remembers** in the bot's panel
 as soon as the turn ends, and the bot confirms it in one plain line ("Got it:
-short answers, and times in India time.").
+short answers, India time."), only once the save came back done. When a plan
+it remembers changes (a booking moved, a job finished), the bot replaces that
+fact in the same turn with `supersede`. It brings up a remembered fact only
+when it changes what it answers, recommends or asks, at the level it was said,
+and never says "I remember" or "from my notes" (`MEMORY_USE`, in every write
+mode).
 
 "Forget that" is `memory_update` with `action: "forget"` and either the ids of
 the facts (`ids`, the `#f…` each recalled fact carries) or a few words that
