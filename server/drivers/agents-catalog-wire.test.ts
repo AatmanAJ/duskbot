@@ -95,7 +95,7 @@ const BUDGET_BASELINE: Record<string, number> = {
   "skills+voice+dusk": 79997,
   "default+no-computer-pick": 74395,
   "default+room": 64705,
-  "non-chief+room": 55809,
+  "non-chief+room": 57011,
 };
 
 const RPC_PREFIX = '{"jsonrpc":"2.0","id":1,"result":';

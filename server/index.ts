@@ -15186,6 +15186,8 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         const { groupId, botIds, message, reason, rework, thread, title, reply, consult, inMyFolder, done_when: doneWhen, answers } = parsed.data;
         const forwarded = forwardedAsks.check({ threadId: internalCapability.threadId, chief: chiefLevel(internalSender), room: Boolean(groupId || store.groupByThread(internalCapability.threadId)), consult, message, ask: store.messagesFor(internalCapability.threadId).findLast((row) => row.role === "user" && row.kind === "text")?.text, targets: botIds.map((id) => ({ name: store.bot(id)?.name ?? "" })) }); if (forwarded) return json(res, 409, { error: forwarded });
         const result = await coordinateBots({ groupId, botIds, message, reason: reason || undefined, rework, thread, title: title || undefined, reply, consult, inMyFolder, doneWhen: doneWhen || undefined, ...(answers ? { answers } : {}) }); refusedHandoffs.settled(internalCapability.threadId, internalSender, botIds, result.status);
+        const runsNothing = result.status < 300 && !consult && !answers ? botIds.map(id => store.bot(id)).filter(b => b && !runsCommands(b, registry.get(b.modelSelection.instanceId)?.driverKind)).map(b => b!.name) : [];
+        if (runsNothing.length) result.body.note = `${runsNothing.join(", ")} cannot run code, tests or commands (no computer): if this work needs running, do that part yourself or with a teammate that can, and never say it was run or tested.`;
         return json(res, result.status, result.body);
       }
       if (method === "GET" && path === "/api/internal/room-targets") {
