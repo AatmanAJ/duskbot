@@ -20,6 +20,22 @@ describe("the routine editor's when", () => {
     expect(scheduleFromDraft(whenDraftFor({ type: "cron", expression: "0 9 1 * *", timeZone: "UTC" }, now), now)).toEqual({});
   });
 
+  it("reads a cron line kept in this computer's zone as the preset that says it, with its time and day", () => {
+    const here = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const away = new Date(now).getTimezoneOffset() === -540 ? "America/Los_Angeles" : "Asia/Tokyo";
+    expect(whenDraftFor({ type: "cron", expression: "0 8 * * 1-5", timeZone: here }, now)).toMatchObject({ preset: "weekdays", time: "08:00" });
+    expect(whenDraftFor({ type: "cron", expression: "0 16 * * 5", timeZone: here }, now)).toMatchObject({ preset: "weekly", day: 5, time: "16:00" });
+    expect(whenDraftFor({ type: "cron", expression: "30 7 * * *", timeZone: here }, now)).toMatchObject({ preset: "daily", time: "07:30" });
+    expect(whenDraftFor({ type: "cron", expression: "0 16 * * 1,3", timeZone: here }, now)).toMatchObject({ preset: "keep", day: 1, time: "16:00" });
+    expect(whenDraftFor({ type: "cron", expression: "0 16 * * 5", timeZone: away }, now)).toMatchObject({ preset: "keep", time: "09:00" });
+
+    const friday = whenDraftFor({ type: "cron", expression: "0 16 * * 5", timeZone: here }, now);
+    expect(editedSchedule(friday, { ...friday }, now)).toEqual({});
+    expect(editedSchedule(friday, { ...friday, preset: "daily" }, now).schedule).toEqual({ type: "daily", time: "16:00", weekdays: [0, 1, 2, 3, 4, 5, 6] });
+    const twoDays = whenDraftFor({ type: "cron", expression: "0 16 * * 1,3", timeZone: here }, now);
+    expect(editedSchedule(twoDays, { ...twoDays, preset: "weekly" }, now).schedule).toEqual({ type: "daily", time: "16:00", weekdays: [1] });
+  });
+
   it("saves each preset as the schedule the server keeps", () => {
     const draft = newWhenDraft(now);
     expect(scheduleFromDraft({ ...draft, preset: "weekly", day: 2, time: "18:00" }, now).schedule).toEqual({ type: "daily", time: "18:00", weekdays: [2] });
