@@ -468,6 +468,24 @@ describe("workspace", () => {
     expect(loadMemory(BOT)?.truncated).toBe(false);
   });
 
+  it("keeps a group chat's notes in that group chat, and tells a group chat that 1:1 notes are private", () => {
+    writeMemoryFile(BOT, [
+      "- 2026-11-20 · from chat \"Dinner\" · The person is vegetarian.",
+      "- 2026-11-21 · from room \"Launch\" (noticed) · The launch moved to Friday.",
+      "- 2026-11-22 · from room \"Launch team\" (noticed) · Priya owns the press kit.",
+      "- 2026-11-23 · from room \"Family\" (noticed) · Grandma's surgery is on Monday.",
+    ].join("\n"));
+    const launch = memorySystemPrompt(BOT, { managedWrites: true, room: memorySourceLabel({ room: { name: "Launch" }, threadId: "g1" }) });
+    expect(launch).toContain("The launch moved to Friday.");
+    expect(launch).toContain("The person is vegetarian.");
+    expect(launch).not.toContain("press kit");
+    expect(launch).not.toContain("surgery");
+    expect(launch).toContain("a note from a 1:1 chat was told to you privately");
+    const chat = memorySystemPrompt(BOT, { managedWrites: true });
+    for (const fact of ["vegetarian", "launch moved", "press kit", "surgery"]) expect(chat).toContain(fact);
+    expect(chat).not.toContain("told to you privately");
+  });
+
   // A teammate's hand-off on a Cloud runs in a task folder, with its writes refused: this was the one prompt with no memory path.
   it("tells a turn whose notes would be refused where its topic notes are, with or without a MEMORY.md", () => {
     writeMemoryTopic(BOT, "regulars.md", "---\ntitle: Regulars\n---\n- Code MOSS-42\n");

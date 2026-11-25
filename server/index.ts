@@ -125,7 +125,7 @@ import { connectorCardDescription, connectorCardText } from "./connector-card-te
 import { BOT_LIMIT_CODE } from "../shared/bot-limit.ts"; import { createBotLimit } from "./host/starter-bot-limit.ts"; import { chiefOfStaffSystemPrompt } from "./chief-of-staff.ts"; import { chiefLevel, readTeamRolesWith } from "./chief-level.ts"; import { defaultBotRefusal, ensureDefaultBot, renameLegacyDefaultBots } from "./default-bot.ts";
 import { buildRecall, recallRooms, recallThreadIds, withRecalled } from "./recall.ts";
 import { heldMemory, releaseHeldMemory, takeMemoryDelta } from "./memory-snapshot.ts";
-import { aboutOwner, embedPendingFacts, hasPendingFactsToEmbed } from "./memory-facts.ts";
+import { aboutOwner, embedPendingFacts, hasPendingFactsToEmbed, type FactRow } from "./memory-facts.ts";
 import { migrateMemory } from "./memory-migrate.ts";
 import { personsOwnWords, readOutsideContent } from "./memory-trust.ts";
 import { embedderSettled, stopEmbedder, warmEmbedder } from "./memory-embed.ts";
@@ -1154,9 +1154,11 @@ const heldKey = (botId: string, threadId: string) => `${botId}\n${threadId}`;
 function beforeCompaction(botId: string, threadId: string): void { memoryUpkeep.flushThread(threadId); releaseHeldMemory(heldKey(botId, threadId)); }
 
 /** About me and the core notes this turn's system prompt carries, held for the conversation so its cached prefix holds. */
-function heldMemoryParts(bot: BotRecord, threadId: string, shape: Parameters<typeof memorySystemPrompt>[1] & object): { about: string; core: string } {
+function heldMemoryParts(bot: BotRecord, threadId: string, turnShape: Parameters<typeof memorySystemPrompt>[1] & object): { about: string; core: string } {
   const profile = teamHost.profileFor(threadId, cfg.profile);
   const layer = teamHost.layer(bot.id, threadId);
+  const room = store.groupByThread(threadId);
+  const shape = room ? { ...turnShape, room: memorySourceLabel({ room, threadId }) } : turnShape;
   const held = heldMemory(heldKey(bot.id, threadId), JSON.stringify(shape), () => ({
     about: profile?.aboutMe ?? "",
     notes: shape.enabled === false ? "" : readMemoryRaw(layer),
@@ -1195,10 +1197,13 @@ async function autoRecallPrompt(bot: BotRecord, threadId: string, message: strin
   try {
     const memoryIds = teamHost.memoryIds(bot.id, threadId);
     const aboutText = teamHost.profileFor(threadId, cfg.profile)?.aboutMe?.trim() ?? "";
+    const room = store.groupByThread(threadId);
+    const otherRooms = room ? new Set(store.groups.filter((group) => group.id !== room.id).flatMap((group) => [group.threadId, ...(group.tasks ?? []).map((task) => task.threadId)])) : undefined;
     const recalled = await buildRecall({
       botId: bot.id, memoryIds,
       message,
       threadIds,
+      ...(otherRooms ? { hides: (fact: FactRow) => otherRooms.has(fact.refs?.threadId ?? "") } : {}),
       about: { owner: aboutOwnerFor(bot.id, threadId), text: aboutText, history: CLOUD_TEAM ? [] : listGeneralHistory() },
       loaded: [generalForPrompt(aboutText).text, ...memoryIds.map((id) => loadMemory(id)?.text ?? "")],
       label: (id) => {

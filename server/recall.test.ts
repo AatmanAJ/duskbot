@@ -233,3 +233,18 @@ describe("recall across memory layers (a Team Cloud)", () => {
     expect(await recallText("any plant or drinks?")).not.toContain("oolong");
   });
 });
+
+it("leaves out of a group chat's recall the facts another group chat taught", async () => {
+  writeMemoryTopic(BOT, "launch.md", "---\ntitle: Launch\n---\n- 2026-11-21 · The launch party venue is the Rooftop Bar.\n");
+  writeMemoryTopic(BOT, "family.md", "---\ntitle: Family\n---\n- 2026-11-21 · The family party venue is Aunt May's garden.\n");
+  const { annotateFact } = await import("./memory-facts.ts");
+  annotateFact(BOT, "memory/launch.md", "The launch party venue is the Rooftop Bar.", { source: "other-person", refs: { threadId: "room-launch" } });
+  annotateFact(BOT, "memory/family.md", "The family party venue is Aunt May's garden.", { source: "person-said", refs: { threadId: "room-family" } });
+  const everywhere = await recallText("where is the party venue?");
+  expect(everywhere).toContain("Rooftop Bar");
+  expect(everywhere).toContain("Aunt May");
+  const inLaunch = (await buildRecall({ botId: BOT, message: "where is the party venue?", threadIds: [], label: () => "", author: () => "",
+    hides: (fact) => fact.refs?.threadId === "room-family" }))?.text ?? "";
+  expect(inLaunch).toContain("Rooftop Bar");
+  expect(inLaunch).not.toContain("Aunt May");
+});
