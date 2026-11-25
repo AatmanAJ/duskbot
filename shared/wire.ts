@@ -30,7 +30,7 @@ import type { NotificationLogEntry } from "./notification.ts";
 import type { Routine, RoutineRun } from "./routines.ts";
 import type { WebhookAttempt, WebhookTrigger } from "./webhooks.ts";
 import type { PublishedPageCard } from "./published-page.ts";
-import type { InboxItem, InboxTask } from "./inbox.ts";
+import type { InboxItem, InboxTask } from "./inbox.ts"; import type { MissionMember } from "./mission.ts";
 import type { LiveCallRecord, LiveCallState } from "./live-call-wire.ts";
 /** What a team bot's main chat is called, beside each person's own chats. */
 export const SHARED_CHAT_TITLE = "Shared chat";
@@ -133,7 +133,7 @@ export interface BotMovedTo {
 
 /** One task = one conversation with its own context, thread and provider
  * session. */
-export interface WireTask extends InboxTask {
+export interface WireTask extends InboxTask, MissionMember {
   /** Outstanding handoffs, not an active provider turn. */
   waitingForTeammates?: boolean;
   threadId: string;

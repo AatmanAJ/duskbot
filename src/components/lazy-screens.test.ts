@@ -168,7 +168,7 @@ describe("preloadScreens", () => {
   it("a page on this machine fetches nothing ahead: each screen loads when it opens", () => {
     vi.useFakeTimers();
     const preloads = stubPreloads();
-    expect(preloads.length).toBe(12);
+    expect(preloads.length).toBe(13);
     for (const host of ["127.0.0.1", "localhost", "[::1]"]) preloadScreens(host);
     vi.runAllTimers();
     for (const preload of preloads) expect(preload).not.toHaveBeenCalled();
@@ -228,7 +228,7 @@ describe("preloadScreens", () => {
     preloadScreens("cloud.example");
     for (const preload of preloads) expect(preload).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(60_000);
-    const rarelyOpened = [screens.CloudAddDialog, screens.PhoneAppDialog, screens.TeamLibraryPanel, screens.VoiceSetupDialog, screens.TraceDialog, screens.PlaceSetupSheet];
+    const rarelyOpened = [screens.CloudAddDialog, screens.PhoneAppDialog, screens.TeamLibraryPanel, screens.VoiceSetupDialog, screens.TraceDialog, screens.PlaceSetupSheet, screens.MissionControl];
     const stubbed = Object.values(screens).filter((value): value is ReturnType<typeof lazyScreen> => typeof value === "function" && "preload" in value);
     for (const screen of stubbed) expect(screen.preload).toHaveBeenCalledTimes(rarelyOpened.includes(screen as never) ? 0 : 1);
     expect(preloads.length).toBe(stubbed.length);
@@ -294,7 +294,7 @@ describe("launch bundle", () => {
     expect(reached.has("components/bot-panel/pages.tsx"), "rare panel pages stay deferred").toBe(false);
     const deferred = [
       "CloudAddDialog", "ComputerPanel", "KeyboardShortcutsModal",
-      "NewBotDialog", "PhoneAppDialog", "PhoneSetupFlow", "RemoteAgentSettingsPanel", "RoutineCalendarPage",
+      "NewBotDialog", "PhoneAppDialog", "PhoneSetupFlow", "RemoteAgentSettingsPanel", "RoutineCalendarPage", "mission/MissionControl",
       "RoutinesPage", "SettingsModal", "ShareTeamDialog", "TeamLibraryPanel", "TeamMapPage", "TriggersPage", "WebhookTrigger", "room-panel/RoomPanel",
     ].map((name) => `components/${name}.tsx`);
     expect(deferred.filter((file) => reached.has(file))).toEqual([]);

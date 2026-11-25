@@ -34,7 +34,7 @@ import { usePhoneViewport } from "@/lib/phone-viewport";
 import { preloadConnectedApps } from "@/lib/connected-apps";
 import { ConnectAppsHost, connectAppsPageFor, openConnectApps } from "@/components/connect-apps";
 import {
-  BotSettingsDialog, CloudAddDialog, InboxPanel, KeyboardShortcutsModal,
+  BotSettingsDialog, CloudAddDialog, InboxPanel, KeyboardShortcutsModal, MissionControl,
   preloadScreens, RemoteAgentSettingsPanel, RoomPanel, SettingsModal,
 } from "@/components/lazy-screens";
 import { useRoomPanelShown } from "@/lib/room-panel";
@@ -53,6 +53,7 @@ import { HomeLine } from "@/components/HomeLine";
 import { useTeamChats } from "@/state/team-chats";
 import { needsYouVersion, useTeamPeopleLoader } from "@/state/team-people";
 import { inboxVersion, useInboxLoader, useInboxPanel, useInboxReady, useInboxSupport } from "@/state/inbox";
+import { closeMissionControl, useMissionPage } from "@/state/missions";
 import { InboxColumn } from "@/components/inbox/InboxColumn";
 import { PlacesRail } from "@/components/PlacesRail";
 import { CloudHowTo } from "@/components/CloudHowTo";
@@ -107,6 +108,8 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   const inboxReady = useInboxReady();
   const inboxSupported = useInboxSupport() !== "no";
   const inboxShown = useInboxPanel().open && (inboxReady || inboxSupported);
+  const missionShown = useMissionPage().open;
+  useEffect(closeMissionControl, [state.selectedId, state.revealThread?.nonce]);
   // A Switch AI pick lands once its stopped turn's chat is idle, wherever the person is by then.
   useAiSwitchKeeper({ bots: state.bots, dispatch });
   useWarmChatImages(state.bots);
@@ -360,6 +363,8 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
         <CloudEngineSignIn />
       ) : noEngines ? (
         <NoEngines />
+      ) : missionShown ? (
+        <MissionControl />
       ) : group ? (
         <GroupView key={group.id} group={group} />
       ) : bot ? (

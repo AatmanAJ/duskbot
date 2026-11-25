@@ -424,7 +424,7 @@ export async function launchUi(
   io: { stdout: NodeJS.WritableStream; stderr: NodeJS.WritableStream } = process,
   fixtureOptions: { localVm?: Parameters<typeof launchVerificationServer>[2] } = {},
 ): Promise<void> {
-  const values = parse("ui launch", args, { entry: { type: "string" }, "tool-calls": { type: "string" }, script: { type: "string" }, mode: { type: "string" }, engine: { type: "string" } });
+  const values = parse("ui launch", args, { entry: { type: "string" }, "tool-calls": { type: "string" }, script: { type: "string" }, mode: { type: "string" }, engine: { type: "string" }, "scripted-room": { type: "boolean" } });
   if (values.engine !== undefined && values.engine !== "codex") {
     throw new ControlDuskError(`unknown --engine ${JSON.stringify(values.engine)}`, "the fake Claude CLI always runs; --engine codex adds the fake Codex app-server beside it");
   }
@@ -477,7 +477,7 @@ export async function launchUi(
     const { binary, chrome } = await ensureUiBrowser(parentEnv, note);
     checkpoint();
     fixture = await launchVerificationServer({ ...parentEnv, ...fakeEnv }, startup.signal, fixtureOptions.localVm,
-      { binaryPath: binary, executablePath: chrome ?? "" }, undefined, values.engine === "codex" ? ["codex"] : []);
+      { binaryPath: binary, executablePath: chrome ?? "" }, values["scripted-room"] === true ? { scripted: true } : undefined, values.engine === "codex" ? ["codex"] : []);
     checkpoint();
     const api = fixtureApi(fixture.info.url);
     await api("PATCH", "/api/config", { language: "en" });

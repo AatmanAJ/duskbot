@@ -35,6 +35,9 @@ session named `dusk-ui-<port>`, and prints a handle:
 }
 ```
 
+`--scripted-room` runs the fixture on the scripted room engine instead (`server/testing/room-handoff-agent.ts`): each
+bot's turns follow `room-plan.json` in the fixture's data folder (the handle's `home`), so a recipe can make real
+hand-offs, held turns and failures ([Mission control](missions.md) seeds one this way).
 `--tool-calls`, `--script` and `--mode` script the fake engine
 (`FAKE_CLAUDE_TOOL_CALLS`, `FAKE_CLAUDE_SCRIPT` and `FAKE_CLAUDE_MODE` in
 `server/testing/fake-claude-cli.ts`). `--script` plays one whole turn in order:

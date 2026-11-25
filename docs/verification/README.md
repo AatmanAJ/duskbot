@@ -83,6 +83,7 @@ Use only mapped, tested commands:
 - [Welcome flow](onboarding.md)
 - [Channels](channels.md)
 - [In-chat team coordination](room-coordination.md)
+- [Mission control: several bots on one brief](missions.md)
 - [Question cards: a teammate's question, in its chat and the person's inbox](question-cards.md)
 - [Engines and Doctor](engines.md)
 - [Cline engine and native loopback qualification](cline.md)

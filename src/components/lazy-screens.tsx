@@ -18,6 +18,7 @@ export const PhoneAppDialog = lazyScreen("PhoneAppDialog", async () => (await im
 export const TeamLibraryPanel = lazyScreen("TeamLibraryPanel", async () => (await import("./TeamLibraryPanel")).TeamLibraryPanel);
 export const TraceDialog = lazyScreen("TraceDialog", async () => (await import("./usage/TraceView")).TraceDialog);
 export const PlaceSetupSheet = lazyScreen("PlaceSetup", async () => (await import("./PlaceSetup")).PlaceSetup);
+export const MissionControl = lazyScreen("MissionControl", async () => (await import("./mission/MissionControl")).MissionControl);
 
 // Most opened first: a Cloud page fetches these in this order.
 const SCREENS = [

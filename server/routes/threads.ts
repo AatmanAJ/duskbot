@@ -22,6 +22,7 @@ import { resolveRequestAuth, type RequestAuth, type ResolveOptions } from "../re
 import type { queuedSteerSnapshot } from "../steer-queue.ts";
 import type { BotRecord, GroupRecord, Message, Store } from "../store.ts";
 import { createJobRoutes } from "./jobs.ts";
+import { createMissionRoutes } from "./missions.ts";
 import { PASS, type RouteContext, type RouteHandler } from "./table.ts";
 
 /** How many of each conversation's newest messages GET /api/transcripts sends when not asked for a number. */
@@ -58,7 +59,7 @@ export interface ThreadRouteDeps {
   store: Pick<Store,
     | "activeLeaf" | "activePath" | "bot" | "botByThread" | "bots" | "groupByThread" | "groupTaskByThread" | "groups" | "messagesFor"
     | "onChange" | "sections" | "taskByThread" | "tasks" | "messagesPreview" | "withMediaSizes">;
-  coordinator: Pick<Coordinator, "job">;
+  coordinator: Pick<Coordinator, "job" | "events">;
   groupThreadIsWorking(groupId: string, threadId: string): boolean;
   /** What people's lines are called in this conversation (replies.ts PersonName). */
   userName(threadId: string): PersonName;
@@ -104,6 +105,7 @@ export function createThreadRoutes(deps: ThreadRouteDeps): RouteHandler {
     botComputerControlSnapshot, messageFileRootsForThread, viewerFor, visibleTo,
   } = deps;
   const jobs = createJobRoutes({ store, coordinator: deps.coordinator, groupThreadIsWorking: deps.groupThreadIsWorking, viewerFor, visibleTo, sessions });
+  const missions = createMissionRoutes({ store, coordinator: deps.coordinator, groupThreadIsWorking: deps.groupThreadIsWorking, viewerFor, visibleTo, sessions });
   const handle = async ({ req, res, url, path, method, auth, json, readBody }: RouteContext): Promise<unknown> => {
     let m: RegExpMatchArray | null = null;
     const member = auth.kind === "session" && auth.session.membershipAuthority === "team" ? auth.session.email : undefined;
@@ -602,5 +604,5 @@ export function createThreadRoutes(deps: ThreadRouteDeps): RouteHandler {
     }
     return PASS;
   };
-  return async (ctx) => (await jobs(ctx) !== PASS || await handle(ctx) !== PASS ? undefined : PASS);
+  return async (ctx) => (await jobs(ctx) !== PASS || await missions(ctx) !== PASS || await handle(ctx) !== PASS ? undefined : PASS);
 }

@@ -53,6 +53,7 @@ import { useCloudOwner } from "./CloudOwner";
 import { SidebarSectionHeader } from "./SidebarSectionHeader";
 import { SectionRows } from "./SidebarSectionRows";
 import { Icon } from "./Icon";
+import { MissionControlRow } from "./mission/MissionControlRow";
 import { NeedsYouButton } from "./TeamOwner"; import { SidebarPeople } from "./SidebarPeople";
 import { MENU_ITEM, MENU_ITEM_SEPARATOR, MENU_SHEET } from "./menu-recipe";
 import { SidebarResizeHandle, useSidebarWidth } from "./SidebarResizeHandle";
@@ -1153,7 +1154,7 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
             <div className="px-3 py-6 text-center text-[13px] text-ink-secondary">{t("sidebar.noMatch", { query })}</div>
           )}
           {simpleDesk && <SidebarMoreUnreads edge="top" />}
-          {!q && <NeedsYouButton compact={rail} />}{!q && <SidebarPeople compact={rail} />}
+          {!q && <NeedsYouButton compact={rail} />}{!q && <SidebarPeople compact={rail} />}{!q && <MissionControlRow compact={rail} />}
           {primary && !primaryHeadless && <BotListItem {...botRow(primary)} />}
           {unsectionedChief && (phone ? (
             <PhoneHero bot={unsectionedChief} selected={botRow(unsectionedChief).selected} onOpen={() => openBotRow(dispatch, unsectionedChief, botRow(unsectionedChief).selected)} onMenu={setMenu} />

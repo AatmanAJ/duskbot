@@ -123,14 +123,14 @@ describe("environment identity", () => {
       label: "cab mini",
       platform: process.platform,
       version: "0.1.99",
-      capabilities: { api: SERVER_API_LEVEL, minMobile: MIN_MOBILE_APP_LEVEL, remoteSessions: true, selfUpdate: "desktop-managed", emailSignIn: false, jobs: true },
+      capabilities: { api: SERVER_API_LEVEL, minMobile: MIN_MOBILE_APP_LEVEL, remoteSessions: true, selfUpdate: "desktop-managed", emailSignIn: false, jobs: true, missions: true },
     });
     expect(environmentDescriptor({ environmentId: "abc", desktopManaged: false }).capabilities.selfUpdate).toBe("operator");
     expect(environmentDescriptor({ environmentId: "abc", desktopManaged: false, cloudHome: true }).capabilities)
-      .toEqual({ api: SERVER_API_LEVEL, minMobile: MIN_MOBILE_APP_LEVEL, remoteSessions: true, cloudHome: true, move: 1, selfUpdate: "operator", emailSignIn: false, jobs: true });
+      .toEqual({ api: SERVER_API_LEVEL, minMobile: MIN_MOBILE_APP_LEVEL, remoteSessions: true, cloudHome: true, move: 1, selfUpdate: "operator", emailSignIn: false, jobs: true, missions: true });
     expect(environmentDescriptor({ environmentId: "abc", desktopManaged: false, cloudHome: false }).capabilities).not.toHaveProperty("cloudHome");
     expect(environmentDescriptor({ environmentId: "abc", desktopManaged: true }).capabilities, "only a Cloud home, or a server one person owns, takes a move").not.toHaveProperty("move");
-    expect(environmentDescriptor({ environmentId: "abc", desktopManaged: false, ownHome: true }).capabilities).toEqual({ api: SERVER_API_LEVEL, minMobile: MIN_MOBILE_APP_LEVEL, remoteSessions: true, move: 1, moveOut: 1, selfUpdate: "operator", emailSignIn: false, jobs: true });
+    expect(environmentDescriptor({ environmentId: "abc", desktopManaged: false, ownHome: true }).capabilities).toEqual({ api: SERVER_API_LEVEL, minMobile: MIN_MOBILE_APP_LEVEL, remoteSessions: true, move: 1, moveOut: 1, selfUpdate: "operator", emailSignIn: false, jobs: true, missions: true });
     expect(environmentDescriptor({ environmentId: "abc", desktopManaged: false, ownHome: false }).capabilities).not.toHaveProperty("move");
   });
 

@@ -6,13 +6,13 @@ import { queuedChannelSends } from "../channel-queue.ts";
 import type { Coordinator } from "../coordinator.ts";
 import { jobView, type ConversationState, type JobScope, type JobView } from "../job-view.ts";
 import { hasQueuedSteeredMessages } from "../steer-queue.ts";
+import type { Assignment } from "../runtime/types.ts";
 import type { Store } from "../store.ts";
+import { holdUntilChanged, wholeParam } from "./held-read.ts";
 import { PASS, type RouteHandler } from "./table.ts";
 
 /** Clients ask again with the version they got. */
 export const JOB_WAIT_MAX_MS = 25_000;
-const RECHECK_MS = 2_000;
-const SETTLE_MS = 150;
 
 export interface JobRouteDeps {
   store: Pick<Store, "bot" | "botByThread" | "groupByThread" | "taskByThread" | "groupTaskByThread" | "onChange">;
@@ -26,7 +26,16 @@ export interface JobRouteDeps {
   recheckMs?: number;
 }
 
-export function createJobRoutes(deps: JobRouteDeps): RouteHandler {
+export type JobReaderDeps = Pick<JobRouteDeps, "store" | "coordinator" | "groupThreadIsWorking" | "now">;
+
+export interface JobRead {
+  view: JobView;
+  rows: readonly Assignment[];
+}
+
+export type JobReader = (threadId: string, scope: JobScope, since: number, full: boolean, visible: VisibleSet) => JobRead | null;
+
+export function createJobReader(deps: JobReaderDeps): JobReader {
   const { store, coordinator } = deps;
   const now = deps.now ?? Date.now;
 
@@ -43,12 +52,12 @@ export function createJobRoutes(deps: JobRouteDeps): RouteHandler {
     return group ? { kind: "room", busy: deps.groupThreadIsWorking(group.id, threadId), queued: queuedChannelSends(threadId) } : null;
   };
 
-  const read = (threadId: string, scope: JobScope, since: number, full: boolean, visible: VisibleSet): JobView | null => {
+  return (threadId, scope, since, full, visible) => {
     const conversation = conversationOf(threadId);
     if (!conversation) return null;
     const owner = store.botByThread(threadId);
     const { scopes, rows } = coordinator.job(threadId, since, owner?.id);
-    return jobView({
+    const view = jobView({
       threadId, scope, since, now: now(), scopes, rows, conversation, full,
       activityOf: (row) => row.assignee.destination.groupId
         ? store.bot(row.assignee.botId)?.activity
@@ -59,7 +68,16 @@ export function createJobRoutes(deps: JobRouteDeps): RouteHandler {
         : store.taskByThread(row.assignee.botId, row.assignee.destination.threadId)?.title,
       visible: (thread) => visible.thread(thread),
     });
+    return { view, rows };
   };
+}
+
+export function createJobRoutes(deps: JobRouteDeps): RouteHandler {
+  const { store } = deps;
+  const now = deps.now ?? Date.now;
+  const reader = createJobReader(deps);
+  const read = (threadId: string, scope: JobScope, since: number, full: boolean, visible: VisibleSet): JobView | null =>
+    reader(threadId, scope, since, full, visible)?.view ?? null;
 
   return async ({ res, url, path, method, auth, json }) => {
     const m = /^\/api\/threads\/([\w-]+)\/job$/.exec(path);
@@ -68,14 +86,8 @@ export function createJobRoutes(deps: JobRouteDeps): RouteHandler {
     const params = url.searchParams;
     const scope = params.get("scope") ?? "job";
     if (scope !== "job" && scope !== "turn") return json(res, 400, { error: "scope must be job or turn" });
-    const number = (name: string, max: number) => {
-      const raw = params.get(name);
-      if (raw === null || raw === "") return 0;
-      const value = Number(raw);
-      return Number.isSafeInteger(value) && value >= 0 && value <= max ? value : null;
-    };
-    const sinceParam = number("since", Number.MAX_SAFE_INTEGER);
-    const wait = number("wait", JOB_WAIT_MAX_MS);
+    const sinceParam = wholeParam(params, "since", Number.MAX_SAFE_INTEGER);
+    const wait = wholeParam(params, "wait", JOB_WAIT_MAX_MS);
     if (sinceParam === null) return json(res, 400, { error: "since must be a server time in milliseconds" });
     if (wait === null) return json(res, 400, { error: `wait must be 0 to ${JOB_WAIT_MAX_MS} milliseconds` });
     // No `since`: the work open now. A waiter passes back the since it got, so its job does not move under it.
@@ -88,33 +100,8 @@ export function createJobRoutes(deps: JobRouteDeps): RouteHandler {
     if (!view) return json(res, 404, { error: "no such conversation" });
     if (!wait || view.version !== known) return json(res, 200, view);
 
-    const held = await new Promise<{ view: JobView | null } | { error: unknown }>((answer) => {
-      let settleTimer: ReturnType<typeof setTimeout> | undefined;
-      let done = false;
-      const finish = (next: { view: JobView | null } | { error: unknown }) => {
-        if (done) return;
-        done = true;
-        clearTimeout(settleTimer);
-        clearTimeout(deadline);
-        clearInterval(recheck);
-        unsubscribe();
-        res.off("close", abandoned);
-        answer(next);
-      };
-      const look = (always: boolean) => {
-        if (done) return;
-        let next: JobView | null;
-        try { next = read(threadId, scope, since, full, visible); } catch (error) { return finish({ error }); }
-        if (always || !next || next.version !== known) finish({ view: next });
-      };
-      const abandoned = () => finish({ view: null });
-      const unsubscribe = store.onChange(() => {
-        clearTimeout(settleTimer);
-        settleTimer = setTimeout(() => look(false), SETTLE_MS);
-      });
-      const recheck = setInterval(() => look(false), deps.recheckMs ?? RECHECK_MS);
-      const deadline = setTimeout(() => look(true), wait);
-      res.on("close", abandoned);
+    const held = await holdUntilChanged({
+      res, store, known, wait, recheckMs: deps.recheckMs, read: () => read(threadId, scope, since, full, visible),
     });
     if (res.writableEnded || res.destroyed) return;
     if ("error" in held) throw held.error;

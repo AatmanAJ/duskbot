@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { openMissionControl } from "@/state/missions";
 import { api, openBot, useStore, visibleMessages, type Action, type AppSettingsSection, type Bot, type Group } from "@/state/store";
 import { cn } from "@/lib/cn";
 import type { SearchHit } from "@/lib/search-hit";
@@ -178,6 +179,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
     { id: "shortcuts", name: t("sidebar.menu.shortcuts"), detail: t("settings.w6.group.help"), also: t("palette.also.shortcuts"), icon: "keyboard", run: () => dispatch({ type: "toggleShortcuts", open: true }) },
     ...settingsCommands().map(({ target, ...command }): Command => ({ ...command, run: () => dispatch(openSettings(target)) })),
     ...(currentBot ? [{ id: "bot-settings", name: t("sidebar.grok.botSettings"), detail: currentBot.name, icon: "settings-gear" as const, run: () => openBotSettingsPage(dispatch, currentBot.id) }] : []),
+    { id: "mission-control", name: t("palette.mission"), also: t("palette.also.mission"), icon: "gauge", run: () => openMissionControl() },
     { id: "connect-apps", name: t("sidebar.connectApps"), detail: t("palette.connectApps.detail"), also: t("palette.also.connectApps"), icon: "storefront", run: () => dispatch(settings("apps")) },
     { id: "theme-system", name: t("palette.theme", { theme: t("settings.language.system") }), detail: appearance, also: t("palette.also.theme"), icon: "display", run: () => applySkinChoice("system") },
     { id: "theme-dark", name: t("palette.theme", { theme: t("settings.theme.dark") }), detail: appearance, also: t("palette.also.theme"), icon: "moon", run: () => applySkinChoice(THEME_SKINS.dark) },

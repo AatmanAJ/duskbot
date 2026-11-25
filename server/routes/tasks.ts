@@ -1,4 +1,5 @@
 import { approvalModeFor, approvalModeWidens, isApprovalMode, type ApprovalMode } from "../../shared/approval-mode.ts";
+import { parseMissionTag } from "../../shared/mission.ts";
 import { threadLinkUrl } from "../../shared/thread-link.ts";
 import type { WireBot, WireTask } from "../../shared/wire.ts";
 import { validateBotCwd } from "../bot-cwd.ts";
@@ -180,7 +181,10 @@ export function createTaskRoutes(deps: TaskRouteDeps): RouteHandler & { deleteTa
       if (body.projectId !== undefined && (typeof body.projectId !== "string" || !store.project(bot.id, body.projectId))) {
         return json(res, 400, { error: "projectId must belong to this bot" });
       }
-      const task = store.createTask(bot.id, typeof body.title === "string" ? body.title : undefined, body.select !== false, body.projectId, undefined, body.approvalMode, undefined, cwd);
+      const mission = body.mission === undefined ? undefined : parseMissionTag(body.mission, Date.now());
+      if (mission && !mission.ok) return json(res, 400, { error: mission.error });
+      const made = store.createTask(bot.id, typeof body.title === "string" ? body.title : undefined, body.select !== false, body.projectId, undefined, body.approvalMode, undefined, cwd);
+      const task = made && mission ? store.patchTask(bot.id, made.threadId, { mission: mission.tag }) : made;
       if (!task) return json(res, 500, { error: "couldn't create that task" });
       // Who opened it decides who may answer its cards on a shared workspace.
       if (auth.kind === "session") threadStarters.set(task.threadId, actorKey(auth));

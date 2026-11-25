@@ -48,6 +48,8 @@ export interface EnvironmentDescriptor {
     emailSignIn?: boolean;
     /** GET /api/threads/:id/job answers, long-polled (the headless CLI needs it). */
     jobs: true;
+    /** GET /api/missions and /api/missions/:id answer, and a new conversation may carry a `mission`. */
+    missions?: true;
   };
 }
 
@@ -152,6 +154,7 @@ export function environmentDescriptor(input: { environmentId: string; desktopMan
       selfUpdate: input.desktopManaged ? "desktop-managed" : "operator",
       emailSignIn: input.emailSignIn === true,
       jobs: true,
+      missions: true,
     },
   };
 }

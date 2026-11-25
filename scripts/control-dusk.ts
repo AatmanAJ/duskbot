@@ -36,7 +36,7 @@ export interface ControlDuskDependencies {
 }
 
 export const HELP_UI = `renderer (needs a ui launch handle; every verb takes --ui HANDLE, never discovery):
-  node --experimental-strip-types scripts/control-dusk.ts ui launch [--entry threads] [--tool-calls JSON] [--script JSON] [--mode happy] [--engine codex]
+  node --experimental-strip-types scripts/control-dusk.ts ui launch [--entry threads] [--tool-calls JSON] [--script JSON] [--mode happy] [--engine codex] [--scripted-room]
   ui snapshot --ui HANDLE [--interactive]
   ui click --ui HANDLE (--ref @eN | --name NAME)
   ui type --ui HANDLE (--ref @eN | --name NAME) --text TEXT

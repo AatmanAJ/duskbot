@@ -9,7 +9,7 @@ import { openRuntimeStore, type RuntimeStore } from "./runtime/store.ts";
 import { personOnly, requesterDecides, withDefault } from "./runtime/questions.ts";
 import { isStatusOnly, mayBeStatusOnly, statusReplyPrompt } from "./runtime/status-reply.ts";
 import { answersSender, childrenSince, clip, isTerminal, path } from "./runtime/tree.ts";
-import type { Answerer, Assignment, EndResult, Origin, Owner, Reply, Requester, RunInput, RunResult, StatusView, TurnRunner } from "./runtime/types.ts";
+import type { Answerer, Assignment, AssignmentEvent, EndResult, Origin, Owner, Reply, Requester, RunInput, RunResult, StatusView, TurnRunner } from "./runtime/types.ts";
 import { sameRequest } from "./same-request.ts";
 
 const NOT_RUNNING = "The originating room task is no longer running";
@@ -295,6 +295,11 @@ export class RuntimeCoordinator implements Coordinator {
       for (const a of subtree) rows.set(a.id, a);
     }
     return { scopes, rows: [...rows.values()].sort((a, b) => a.createdAt - b.createdAt) };
+  }
+
+  events(assignmentId: string): AssignmentEvent[] {
+    this.ready();
+    return this.store.events(assignmentId);
   }
 
   private subtree(start: Assignment): Assignment[] {
