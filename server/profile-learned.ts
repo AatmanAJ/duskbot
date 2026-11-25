@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 
 import { writeFileAtomic } from "./atomic.ts";
 import { DATA_DIR } from "./config.ts";
-import { factIdentity, foldForMatch, passageMatcher } from "./memory-entries.ts";
+import { factIdentity, foldForMatch, passageMatcher, traceMatcher } from "./memory-entries.ts";
 import { redactSecretsInText } from "./redact.ts";
 
 const MAX_KEPT = 200;
@@ -104,6 +104,14 @@ function forgottenIn(file: LearnedFile): (text: string) => boolean {
 
 export function isForgotten(text: string): boolean {
   return forgottenIn(load())(text);
+}
+
+/** Whether a chat title, a source quote or a log line names something the person had forgotten. */
+export function forgottenTraces(): (text: string) => boolean {
+  const forgotten = load().forgotten ?? [];
+  const named = forgottenIn({ learned: [], removed: [], forgotten });
+  const traced = traceMatcher(forgotten);
+  return (text) => named(text) || Boolean(traced?.(text));
 }
 
 /** Learned facts that mention it are dropped and never added again, and so is any fact that mentions it later. */

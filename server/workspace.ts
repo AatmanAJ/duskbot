@@ -8,6 +8,7 @@ import { parseTopicHeader, readTopicHead, renderTopicIndex } from "./memory-topi
 import { ARCHIVE_TOPIC, isArchiveTopic } from "../shared/memory-topics.ts";
 import { indexMemoryFile, indexedMemoryFiles, recallMemory, removeMemoryFile, type MemoryHit, type SearchMode } from "./message-db.ts";
 import { redactSecretsInText } from "./redact.ts";
+import { logLineAfterForget } from "./forget-traces.ts";
 import { BLOCKED_LINE, looksLikeInstruction } from "./memory-trust.ts";
 
 import { DATA_DIR } from "./config.ts";
@@ -616,8 +617,10 @@ export function appendMemoryLog(botId: string, text: string, opts: MemoryUpdateO
   }
   const now = opts.now ?? new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
-  const source = cleanSource(opts.source);
-  const line = `- ${pad(now.getHours())}:${pad(now.getMinutes())}${SEP}${source ? `from ${source}${SEP}` : ""}${normaliseEntryText(redactSecretsInText(text))}`;
+  const kept = logLineAfterForget(botId, opts.source ?? "", text, now.getTime());
+  if (!kept) return { ok: true, file: memoryLogPath(now), line: "" };
+  const source = cleanSource(kept.source);
+  const line = `- ${pad(now.getHours())}:${pad(now.getMinutes())}${SEP}${source ? `from ${source}${SEP}` : ""}${normaliseEntryText(redactSecretsInText(kept.text))}`;
   const dir = join(ensureWorkspace(botId), "memory", MEMORY_LOG_DIR);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const relativePath = memoryLogPath(now);
@@ -690,6 +693,12 @@ export function writeMemoryTopic(botId: string, name: string, text: string): voi
   ensureWorkspace(botId);
   writeFileAtomic(join(workspaceDir(botId), "memory", name), redactSecretsInText(text), { mode: 0o600 });
   indexWrittenMemoryFile(botId, `memory/${name}`);
+}
+
+export function removeMemoryTopic(botId: string, name: string): void {
+  if (!isMemoryTopicName(name)) throw new Error("invalid topic name");
+  try { unlinkSync(join(workspaceDir(botId), "memory", name)); } catch {}
+  removeMemoryFile(botId, `memory/${name}`);
 }
 
 export function readMemoryTopic(botId: string, name: string): string | null {
