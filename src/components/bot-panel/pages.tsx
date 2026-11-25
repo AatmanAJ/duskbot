@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { FolderOpen, Plus } from "../../icons";
 
@@ -22,7 +22,7 @@ import { FilesPage } from "../documents/FilesSection";
 import { DocumentPage } from "../documents/DocumentPage";
 import type { SimplePageId } from "./page-registry";
 import { BotSwitch, buttonCls, Card, fieldCls, LinkRow, MemoryReadError, NoteRow, RadioRow, rowCls, SwitchRow, TextRow, TrashButton } from "./rows";
-import { ForgetUndoToast } from "./modals/MemoryModal";
+import { ForgetUndoToast, MemoryTopicLabel } from "./modals/MemoryModal";
 import { forgetLabel, useMemoryEditor } from "./modals/use-memory-editor";
 import { useSkillActions } from "./modals/use-skill-actions";
 import { skillRowHint } from "./skill-row-hint";
@@ -108,11 +108,14 @@ export function MemoryPage({ bot }: PageContext) {
           <NoteRow>{t("botPanel.ui.commonChecking")}</NoteRow>
         ) : notes.length === 0 ? (
           <ArtState data-art-state="memory" art="notebook" title={t("empty.memory.title")} className="py-6">{t("empty.memory.hint", { name: bot.name })}</ArtState>
-        ) : notes.map((note) => (
-          <div key={`${note.path}:${note.line}:${note.text}`} data-memory-note={note.line ?? note.path} className={rowCls}>
-            <div className="min-w-0 flex-1 text-[13px] leading-[1.45] text-ink">{note.text}</div>
-            <TrashButton label={forgetLabel(note.text)} disabled={saving} onClick={() => forget(note)} />
-          </div>
+        ) : notes.map((note, index) => (
+          <Fragment key={`${note.path}:${note.line}:${note.text}`}>
+            <MemoryTopicLabel notes={notes} index={index} />
+            <div data-memory-note={note.line ?? note.path} className={rowCls}>
+              <div className="min-w-0 flex-1 text-[13px] leading-[1.45] text-ink">{note.text}</div>
+              <TrashButton label={forgetLabel(note.text)} disabled={saving} onClick={() => forget(note)} />
+            </div>
+          </Fragment>
         ))}
         {memoryOn && readError && notes !== null && <MemoryReadError readAgain={readAgain} />}
         {error && <NoteRow tone="warn">{error}</NoteRow>}

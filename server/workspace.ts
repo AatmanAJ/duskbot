@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { writeFileAtomic } from "./atomic.ts";
 import { alwaysCore, isExpired, isMemoryDate, parseMemoryEntries, untilMark, withoutExpired, withoutSuperseded, type MemoryEntryLine } from "./memory-entries.ts";
 import { parseTopicHeader, readTopicHead, renderTopicIndex } from "./memory-topics.ts";
+import { ARCHIVE_TOPIC, isArchiveTopic } from "../shared/memory-topics.ts";
 import { indexMemoryFile, indexedMemoryFiles, recallMemory, removeMemoryFile, type MemoryHit, type SearchMode } from "./message-db.ts";
 import { redactSecretsInText } from "./redact.ts";
 import { BLOCKED_LINE, looksLikeInstruction } from "./memory-trust.ts";
@@ -30,15 +31,9 @@ export const MEMORY_MAX_LINES = 200;
 export const MEMORY_MAX_BYTES = 24_000;
 export const MEMORY_ENTRY_MAX_CHARS = 1_000;
 export const MEMORY_ENTRY_MAX_LINES = 20;
-export const ARCHIVE_TOPIC = "archive.md";
 /** Past this, the archive's oldest part rolls into memory/archive-<year>.md, which is history like the archive. */
 export const ARCHIVE_MAX_BYTES = 128 * 1024;
-const ARCHIVE_YEAR = /^archive-\d{4}\.md$/;
-
-/** The archive and its yearly rolls: history, never current notes. */
-export function isArchiveTopic(name: string): boolean {
-  return name === ARCHIVE_TOPIC || ARCHIVE_YEAR.test(name);
-}
+export { ARCHIVE_TOPIC, isArchiveTopic };
 
 const MEMORY_SEEDS: Record<string, string> = {
   en: `# Memory

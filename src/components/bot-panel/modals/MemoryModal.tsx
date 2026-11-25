@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { AnimatePresence } from "motion/react";
 
 import { cn } from "@/lib/cn";
@@ -11,6 +11,7 @@ import { DELETE_UNDO_MS } from "../../ui/Toast";
 import { UndoToast } from "../../bot-access/ShareBotButton";
 import { MemoryReadError } from "../rows";
 import { forgetLabel, useMemoryEditor } from "./use-memory-editor";
+import type { PanelMemoryNote } from "../memory-notes";
 import { ArtState } from "../../ui/Art";
 
 /** "Note forgotten · Undo" after a Forget, held while the pointer or focus is on it. */
@@ -19,6 +20,13 @@ export function ForgetUndoToast({ editor }: { editor: Pick<ReturnType<typeof use
   if (!forgotten) return null;
   return <UndoToast key={forgotten.id} text={t("botPanel.memory.forgotten")} failedText={t("botPanel.memory.undoFailed")}
     timeoutMs={DELETE_UNDO_MS} onUndo={forgotten.restore} onDone={settleForgotten} />;
+}
+
+/** The topic file's name above its first note; MEMORY.md's own notes have none. */
+export function MemoryTopicLabel({ notes, index }: { notes: readonly PanelMemoryNote[]; index: number }) {
+  const note = notes[index];
+  if (!note?.topic || note.path === notes[index - 1]?.path) return null;
+  return <div data-memory-topic={note.path} className="px-2 pt-2.5 pb-0.5 text-[12px] font-medium leading-4 text-ink-secondary">{note.topic}</div>;
 }
 
 /** What the bot remembers: memory on or off, its notes on a page of their own with a forget on each, and a small form to
@@ -52,11 +60,14 @@ function MemoryRows({ bot, derived }: { bot: Bot; derived: ReturnType<typeof use
           {readError && notes === null ? <MemoryReadError readAgain={readAgain} />
             : notes === null ? <NoteRow>{t("botPanel.ui.commonChecking")}</NoteRow>
               : notes.length === 0 ? <ArtState data-art-state="memory" art="notebook" title={t("empty.memory.title")} className="py-6">{t("empty.memory.hint", { name: bot.name })}</ArtState>
-                : notes.map((note) => (
-                  <div key={`${note.path}:${note.line}:${note.text}`} data-memory-note={note.line ?? note.path} className={cn(rowCls, "group/row py-0.5 pr-0.5")}>
-                    <span className="min-w-0 flex-1 py-1 text-[13px] leading-[18px] tracking-[0.015em] text-pretty text-ink">{note.text}</span>
-                    {editable && <RowIconButton reveal icon="trash" data-modal-action="forget" label={forgetLabel(note.text)} disabled={saving} onClick={() => forget(note)} />}
-                  </div>
+                : notes.map((note, index) => (
+                  <Fragment key={`${note.path}:${note.line}:${note.text}`}>
+                    <MemoryTopicLabel notes={notes} index={index} />
+                    <div data-memory-note={note.line ?? note.path} className={cn(rowCls, "group/row py-0.5 pr-0.5")}>
+                      <span className="min-w-0 flex-1 py-1 text-[13px] leading-[18px] tracking-[0.015em] text-pretty text-ink">{note.text}</span>
+                      {editable && <RowIconButton reveal icon="trash" data-modal-action="forget" label={forgetLabel(note.text)} disabled={saving} onClick={() => forget(note)} />}
+                    </div>
+                  </Fragment>
                 ))}
           {readError && notes !== null && <MemoryReadError readAgain={readAgain} />}
           {error && <NoteRow tone="warn">{error}</NoteRow>}

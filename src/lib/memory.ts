@@ -67,6 +67,12 @@ export function fetchMemoryOverview(botId: string, mine = false): Promise<Memory
   return api(memoryRoute(botId, mine));
 }
 
+/** The overview plus `notes`: MEMORY.md, then every topic file but the archive. A server that predates `notes` sends
+ * the overview alone. */
+export function fetchMemoryNotes(botId: string, mine = false): Promise<MemoryOverview & { notes?: MemoryDoc[] }> {
+  return api(`${memoryRoute(botId, mine)}?notes`);
+}
+
 export function fetchMemoryDoc(botId: string, path: string, mine = false): Promise<MemoryDoc> {
   return api(`${memoryRoute(botId, mine)}/file?path=${encodeURIComponent(path)}`);
 }
