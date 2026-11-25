@@ -762,6 +762,20 @@ describe("ChatMarkdown attachments", () => {
     expect(html).not.toContain("C:/Users/Maus/report.md");
   });
 
+  it("renders a file link whose angle-bracketed path was left unclosed as the file, not its path", () => {
+    const render = (text: string) => renderToStaticMarkup(createElement(ChatMarkdown, {
+      text, message: { threadId: "thread-1", messageId: "message-1" },
+    }));
+    for (const text of ["[Proposal.docx](</Users/priya/Hollow Oak/Proposal.docx>)", "[Proposal.docx](</Users/priya/Hollow Oak/Proposal.docx)"]) {
+      const html = render(text);
+      expect(html).toMatch(/<button type="button" title="Save a copy"[^>]*>Proposal\.docx</);
+      expect(html).not.toContain("/Users/priya");
+    }
+    expect(render("Keep a < b and [x](<y")).toContain("Keep a &lt; b and [x](&lt;y");
+    expect(render("[Site](<https://example.com/a)")).toContain("[Site](&lt;");
+    expect(render("[Site](https://example.com/a)")).toContain('href="https://example.com/a"');
+  });
+
   it("says an image with no source is unavailable in the person's language", () => {
     setLocale("de");
     try {

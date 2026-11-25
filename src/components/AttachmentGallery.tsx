@@ -7,6 +7,7 @@ import { attachmentBasename, FILE_MAX_BYTES, type TranscriptFileAttachment, type
 import { cn } from "@/lib/cn";
 import type { MediaSize } from "@/lib/image-cache";
 import { t } from "@/lib/i18n";
+import { closeUnclosedFileLinks } from "../../shared/markdown-unclosed-destinations";
 import { windowsPathDestinations } from "../../shared/markdown-windows-paths";
 import { localFilePath } from "./ChatMarkdown";
 import { ImageRow } from "./ImageRow";
@@ -41,7 +42,7 @@ export function fileIdentity(path: string): string {
 }
 
 export function collectMessageFiles(text: string, existingPaths: readonly string[] = []): GalleryFile[] {
-  const tree: MarkdownNode = fromMarkdown(text, { mdastExtensions: [windowsPathDestinations] });
+  const tree: MarkdownNode = fromMarkdown(closeUnclosedFileLinks(text).markdown, { mdastExtensions: [windowsPathDestinations] });
   const definitions = new Map<string, string>();
   const links: MarkdownNode[] = [];
   const pending = [tree];
