@@ -42,7 +42,7 @@ export interface ChatToolResult { text: string; ok: boolean; images?: ChatImageP
  * person's own computer never gets a session-wide one. */
 export interface ChatToolCallView { title: string; input: Record<string, unknown>; ask: boolean; grant?: string }
 /** A dispatched operation may already have taken effect: never retry it through a new round. */
-export class ChatToolSessionError extends Error {}
+export class ChatToolSessionError extends Error { override name = "ChatToolSessionError"; }
 export interface SkippedChatMcpServer { server: string; reason: string }
 /** A built-in server that listed only its first `listed` of `of` tools, so the turn fits the model's tool limit. */
 export interface TrimmedChatMcpServer { server: string; listed: number; of: number }

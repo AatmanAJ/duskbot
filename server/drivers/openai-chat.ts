@@ -202,7 +202,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       fetch(`${options.apiUrl}/models`, { headers: { authorization: `Bearer ${options.apiKey}` }, signal: AbortSignal.timeout(everyMs) })
         .then((response) => { misses = 0; void response.body?.cancel(); })
         .catch(() => {
-          if (++misses === LIVENESS_MISSES) stop(new Error(`The model server at ${new URL(options.apiUrl).host} stopped answering, so the reply was stopped.`));
+          if (++misses === LIVENESS_MISSES) stop(new ChatProtocolError(`The model server at ${new URL(options.apiUrl).host} stopped answering, so the reply was stopped.`, "server_unresponsive"));
         });
     }, everyMs);
     timer.unref();
@@ -292,9 +292,9 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         if (bodyError) throw bodyError;
         const message = json.choices?.[0]?.message;
         if (!message || !object(message) || !["content", "reasoning_content", "reasoning", "reasoning_details", "tool_calls", "function_call"].some((key) => key in message)) {
-          throw new ChatProtocolError("provider returned no completion message");
+          throw new ChatProtocolError("provider returned no completion message", "no_completion");
         }
-        if (message?.function_call) throw new ChatProtocolError("legacy function_call is unsupported; use structured tool_calls");
+        if (message?.function_call) throw new ChatProtocolError("legacy function_call is unsupported; use structured tool_calls", "legacy_function_call");
         const calls = new ChatToolCalls();
         calls.add(message?.tool_calls, false);
         const details = new ChatReasoningDetails();
@@ -316,7 +316,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       }
 
       if (!response.body) {
-        throw new Error(options.noBodyError ?? `${options.httpErrorLabel} returned no response body`);
+        throw new ChatProtocolError(options.noBodyError ?? `${options.httpErrorLabel} returned no response body`, "no_body");
       }
       let text = "";
       let reasoning = "";
@@ -347,7 +347,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         const choice = chunk.choices?.find((row) => row.index === undefined || row.index === 0);
         const delta = choice?.delta;
         if (object(delta)) sawChoice = true;
-        if (delta?.function_call) throw new ChatProtocolError("legacy function_call is unsupported; use structured tool_calls");
+        if (delta?.function_call) throw new ChatProtocolError("legacy function_call is unsupported; use structured tool_calls", "legacy_function_call");
         calls.add(delta?.tool_calls, true); images.push(...completionImages(delta));
         details.add(delta?.reasoning_details);
         if (choice?.finish_reason) finishReason = choice.finish_reason;
@@ -388,7 +388,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           }
           resetIdleTimer();
           buffer += decoder.decode(value, { stream: true });
-          if (buffer.length > MAX_STREAM_FRAME_CHARS) throw new ChatProtocolError("provider stream frame exceeded the size limit");
+          if (buffer.length > MAX_STREAM_FRAME_CHARS) throw new ChatProtocolError("provider stream frame exceeded the size limit", "stream_frame_too_large");
           let newline: number;
           while ((newline = buffer.indexOf("\n")) !== -1) {
             const line = buffer.slice(0, newline).trim();
@@ -400,7 +400,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         await reader.cancel().catch(() => {});
       }
       activeSignal.throwIfAborted();
-      if (!sawChoice) throw new ChatProtocolError("provider returned no streaming completion choice");
+      if (!sawChoice) throw new ChatProtocolError("provider returned no streaming completion choice", "no_choice");
       return { text, reasoning, usage, toolCalls: calls.finish(finishReason, malformedFrame), finishReason, protocolReasoning, protocolReasoningDetails: details.blocks, images };
     } finally {
       if (idleTimer) clearTimeout(idleTimer);
@@ -426,7 +426,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         }), tools, onUsage, effort);
       } catch (error) {
         if (!(error instanceof ModelRouteRefused) || replied || signal?.aborted) throw error;
-        if (!routes.advance(model, error.refusal)) throw new ChatProtocolError(noRouteLeft(error.message));
+        if (!routes.advance(model, error.refusal)) throw new ChatProtocolError(noRouteLeft(error.message), "responses_route_unavailable");
         console.warn(`${options.driverKind}: ${model} answered ${error.refusal}; now on ${routes.routeFor(model, true)}`);
       }
     }
@@ -644,7 +644,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
                 const resend = resized ? null : smallerResend(messages, request, error.bytes);
                 native("out", { refused: "request_too_large", bytes: error.bytes, ...(resend ? { before: resend.before, after: resend.after } : {}) });
                 console.warn(`${options.driverKind}: ${model} refused a ${error.bytes}-byte request as too large; ${resend ? `resending smaller (${sizeChange(resend.before, resend.after)})` : "not resending"}`);
-                if (!resend) throw new ChatProtocolError(requestTooLargeMessage(options.models().options.find((option) => option.id === model)?.label ?? model));
+                if (!resend) throw new ChatProtocolError(requestTooLargeMessage(options.models().options.find((option) => option.id === model)?.label ?? model), "request_too_large");
                 messages.splice(0, messages.length, ...resend.messages);
                 resized = true;
                 emit({ ...base(turn.threadId, turnId), type: "turn.retrying", attempt: 1, delayMs: 0, reason: "request_too_large" });
@@ -657,7 +657,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
                   emit({ ...base(turn.threadId, turnId), type: "turn.retrying", attempt: ++attempt, delayMs: 0, reason: "tool_use_failed" });
                   continue;
                 }
-                if (!abort.signal.aborted) throw new ChatProtocolError(refusedToolCallFailure(error, seenCalls.size > 0));
+                if (!abort.signal.aborted) throw new ChatProtocolError(refusedToolCallFailure(error, seenCalls.size > 0), "tool_call_refused");
               }
               // A structured parameter rejection executed nothing; never downgrade mounted tools or a handled call.
               if (optionalQuestionOnly && round === 0 && !streamed && !seenCalls.size && !abort.signal.aborted &&
@@ -835,14 +835,14 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
             abort.signal.throwIfAborted();
             const fatal = results.find((result) => result.fatal)?.fatal;
             if (fatal) throw fatal;
-            if (repeats.stopped) { stopReason = "incomplete_action"; throw new ChatProtocolError(repeats.stopped); }
+            if (repeats.stopped) { stopReason = "incomplete_action"; throw new ChatProtocolError(repeats.stopped, "repeat_stopped"); }
           }
           if (screenshotParts.length) messages.push({ role: "user", content: screenshotParts });
         }
         if (!ok) throw stoppedAfter(`${MAX_CHAT_ROUNDS} steps`);
       } catch (value) {
         stopReason = abort.signal.aborted ? "interrupted" : stopReason ?? "error";
-        failure = safeText(asError(inPlainWords(value)).message).slice(0, 2_000); failureCode = failureCodeOf(value) ?? thrownCode(value);
+        failure = safeText(asError(inPlainWords(value)).message).slice(0, 2_000); failureCode = failureCodeOf(value) ?? thrownCode(value) ?? (tools ? "chat_loop" : "tools_mount");
         limitFacts = abort.signal.aborted ? null : chatLimitFacts(value);
         if (limitFacts) carried.keep(turn.threadId, carriedSteps(messages, Math.max(-1, messages.indexOf(request) - priorSteps.length - 1)));
       } finally {
@@ -854,7 +854,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           ok = false;
           stopReason = "error";
           cleanupFailed = true;
-          failure = "Tool processes could not be stopped; their execution state is uncertain.";
+          failure = "Tool processes could not be stopped; their execution state is uncertain."; failureCode = "tool_cleanup";
         }
         if (abort.signal.aborted) { ok = false; stopReason = "interrupted"; }
         if (!ok && (unread.length || turnEntry.asides.length)) emit({ ...base(turn.threadId, turnId), type: "runtime.notice", message: "The reply ended before your last message was read. Send it again." });

@@ -188,15 +188,15 @@ export function cliExitCode(exit: { code: number | null; signal?: string | null;
 
 // the engines' structured codes: codex app-server's codexErrorInfo, OpenCode's error class names, providers' error codes
 const CODE_REASONS: ReadonlyArray<[RegExp, UsageReason]> = [
-  [/^(?:contextWindowExceeded|context_length_exceeded|ContextOverflowError|string_above_max_length|MessageOutputLengthError)$/, "context"],
+  [/^(?:request_too_large|contextWindowExceeded|context_length_exceeded|ContextOverflowError|string_above_max_length|MessageOutputLengthError)$/, "context"],
   [/^(?:usageLimitExceeded|insufficient_quota|quota_exceeded|billing_hard_limit_reached|insufficient_balance|subscription_sharing_usage_limit_exceeded|free_pool_limit)$/, "quota"],
   [/^(?:rate_limit_exceeded|rate_limit_error|free_rate_limited)$/, "rate_limit"],
   [/^(?:unauthorized|invalid_api_key|authentication_error|permission_error|ProviderAuthError|invalid_credentials|inactive_subscription)$/, "auth"],
   [/^(?:model_not_found|ProviderModelNotFoundError|unknown_model|provider_not_configured)$/, "model_not_found"],
-  [/^(?:badRequest|invalid_request_error|invalid_request|rpc_32700|rpc_32600|rpc_32601|rpc_32602)$/, "bad_request"],
-  [/^(?:announced_no_action|max_steps)$/, "no_reply"],
-  [/^(?:tool_args_malformed|reused_call_id)$/, "tool"],
-  [/^(?:internalServerError|serverOverloaded|responseTooManyFailedAttempts|overloaded_error|api_error|server_error|upstream_outage|free_busy)$/, "provider_down"],
+  [/^(?:badRequest|invalid_request_error|invalid_request|rpc_32700|rpc_32600|rpc_32601|rpc_32602|legacy_function_call|stream_frame_too_large|responses_route_unavailable)$/, "bad_request"],
+  [/^(?:announced_no_action|max_steps|repeat_stopped|no_choice|no_completion|no_body)$/, "no_reply"],
+  [/^(?:tool_args_malformed|reused_call_id|tool_call_refused|tools_mount|tool_cleanup|ChatToolSessionError)$/, "tool"],
+  [/^(?:server_unresponsive|internalServerError|serverOverloaded|responseTooManyFailedAttempts|overloaded_error|api_error|server_error|upstream_outage|free_busy)$/, "provider_down"],
   [/^(?:httpConnectionFailed|responseStreamConnectionFailed|responseStreamDisconnected)$/, "network"],
   [/^(?:free_timeout)$/, "timeout"],
   [/^finish_content_filter$/, "refused"],

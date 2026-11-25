@@ -2,7 +2,7 @@
 import { ChatProtocolError } from "./openai-chat-protocol.ts";
 
 /** failures where the provider ran nothing and showed nothing, so asking once more repeats no work */
-const RETRY_ONCE = new Set(["empty_reply", "stream_cut", "tool_call_malformed", "tools_unavailable"]);
+const RETRY_ONCE = new Set(["empty_reply", "stream_cut", "tool_call_malformed", "tools_unavailable", "no_choice", "no_completion"]);
 
 const NUDGE = "Your last reply came back empty. Answer the person's last message now, in plain words.";
 const NUDGE_NO_TOOLS = "No tools are available in this turn. Answer the person's last message now, in plain words, without calling a tool.";

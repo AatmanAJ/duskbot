@@ -321,6 +321,18 @@ describe("bounded action announcement recovery", () => {
     expect(f.effects()).toEqual([{ name: "receipt", value: "done" }]);
   });
 
+  it("asks once more after a stream with no choice in it, and names the failure by its code when it comes back the same", async () => {
+    const empty = (response: ServerResponse) => sse(response, [{ id: "frame-without-choices" }]);
+    const once = await fixture((_body, response, round) => round === 1 ? empty(response) : answer(response));
+    await once.start({ approvalMode: "full" });
+    expect(await once.completed()).toMatchObject({ ok: true });
+    expect(once.requests).toHaveLength(2);
+    const twice = await fixture((_body, response) => empty(response));
+    await twice.start({ approvalMode: "full" });
+    expect(await twice.completed()).toMatchObject({ ok: false });
+    expect(twice.recorder.events.find((event) => event.type === "runtime.error")).toMatchObject({ errorCode: "no_choice" });
+  });
+
   it("does not use an announcement to bypass a failed operation", async () => {
     const f = await fixture((_body, response, round) => round === 1
       ? sse(response, [chunk({ tool_calls: [toolCall("audit_fail")] }, "tool_calls")])
@@ -1038,21 +1050,23 @@ describe("structured tool execution boundaries", () => {
   });
 
   it.each([
-    { scenario: "only a DONE marker", body: "data: [DONE]\n\n" },
-    { scenario: "an invalid frame before DONE", body: "data: {invalid\n\ndata: [DONE]\n\n" },
-    { scenario: "a frame without a completion choice", body: "data: {}\n\ndata: [DONE]\n\n" },
+    // a stream with no choice in it ran and showed nothing, so it is asked for once more
+    { scenario: "only a DONE marker", body: "data: [DONE]\n\n", requests: 2 },
+    { scenario: "an invalid frame before DONE", body: "data: {invalid\n\ndata: [DONE]\n\n", requests: 2 },
+    { scenario: "a frame without a completion choice", body: "data: {}\n\ndata: [DONE]\n\n", requests: 2 },
     {
       scenario: "ordinary text followed by a malformed frame",
       body: `data: ${JSON.stringify(chunk({ content: "Partial response" }))}\n\ndata: {invalid\n\ndata: ${JSON.stringify(chunk({}, "stop"))}\n\ndata: [DONE]\n\n`,
+      requests: 1,
     },
-  ])("fails an SSE response with $scenario instead of completing successfully", async ({ body }) => {
+  ])("fails an SSE response with $scenario instead of completing successfully", async ({ body, requests }) => {
     const f = await fixture((_request, response) => {
       response.setHeader("content-type", "text/event-stream");
       response.end(body);
     });
     await f.start({ integrations: undefined });
     expect(await f.completed()).toMatchObject({ ok: false });
-    expect(f.requests).toHaveLength(1);
+    expect(f.requests).toHaveLength(requests);
     expect(f.effects()).toEqual([]);
     expect(f.recorder.events.some((event) => event.type === "runtime.error")).toBe(true);
     expect(f.recorder.events.filter((event) => event.type === "turn.completed")).toHaveLength(1);
@@ -1075,10 +1089,10 @@ describe("structured tool execution boundaries", () => {
   });
 
   it.each([
-    { scenario: "missing choices", body: {}, requests: 1 },
-    { scenario: "empty choices", body: { choices: [] }, requests: 1 },
-    { scenario: "empty assistant message", body: { choices: [{ message: {}, finish_reason: "stop" }] }, requests: 1 },
-    // an empty reply is asked for once more, with a nudge
+    // a reply with nothing in it, or no reply at all, is asked for once more, with a nudge
+    { scenario: "missing choices", body: {}, requests: 2 },
+    { scenario: "empty choices", body: { choices: [] }, requests: 2 },
+    { scenario: "empty assistant message", body: { choices: [{ message: {}, finish_reason: "stop" }] }, requests: 2 },
     { scenario: "null content without calls", body: { choices: [{ message: { content: null }, finish_reason: "stop" }] }, requests: 2 },
     { scenario: "blank content", body: { choices: [{ message: { content: "   " }, finish_reason: "stop" }] }, requests: 2 },
   ])("rejects a JSON completion with $scenario instead of reporting an empty successful turn", async ({ body, requests }) => {
