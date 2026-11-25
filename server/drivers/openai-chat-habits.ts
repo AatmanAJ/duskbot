@@ -3,7 +3,7 @@
 import { limitResetFromWords } from "./engine-errors.ts";
 import { computeBackoff, RETRY_MAX_ATTEMPTS, type ErrorClassification } from "./retry.ts";
 
-export const NUDGE_ANNOUNCED_ACTION = "You said what you would do next but called no tool. Use your tools for only the remaining work, or reply with verified results if nothing is left to do. Never repeat an operation that succeeded, was denied, or may already have taken effect; inspect its state instead. Do not retry a destructive operation.";
+export const NUDGE_ANNOUNCED_ACTION = "[dusk bot: you said what you would do next but called no tool, so nothing happened. Continue now: make the tool call for that step in this reply, and send your final answer only once the work is done. Do only the remaining work. Never repeat an operation that succeeded, was denied, or may already have taken effect; inspect its state instead. Do not retry a destructive operation. If you need something from the person, ask them.]";
 
 export const NUDGE_CLAIMED_CHANGE = "Your reply says something was done (sent, posted, saved, created, changed or cancelled), but no tool call in this turn did it, so nothing outside this chat changed. Do it now with your tools if you have one for it; otherwise rewrite the reply to say plainly what you did not do and what is ready instead (a draft, the steps), without claiming it is done.";
 

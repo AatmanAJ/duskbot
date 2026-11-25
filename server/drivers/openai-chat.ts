@@ -25,7 +25,7 @@ import { completionError, httpErrorDetail, refusedToolCall, refusedToolCallFailu
 import { ChatRepeatGuard } from "./chat-repeat-guard.ts";
 import { TextCallHoldback, textToolCalls } from "./chat-text-tool-calls.ts";
 import { createModelRoutes, ModelRouteRefused, noRouteLeft, readResponsesStream, responsesRequest, routeRefusal, type ModelRoute, type ResponseItem } from "./openai-responses.ts";
-import { appendNative } from "./native.ts"; import { backupNotice, movesToBackup, TurnBackups, type ChatBackup } from "./chat-fallback.ts"; import { modelSwapNotice, namesUnknownModel, unavailableModelMessage } from "./model-intent.ts"; import { fingerprint, MAX_DELIVERED_THREADS, replayDelivered, type DeliveredUserMessage } from "./openai-chat-replay.ts";
+import { appendNative } from "./native.ts"; import { backupNotice, movesToBackup, refusesToolChoice, TurnBackups, type ChatBackup } from "./chat-fallback.ts"; import { modelSwapNotice, namesUnknownModel, unavailableModelMessage } from "./model-intent.ts"; import { fingerprint, MAX_DELIVERED_THREADS, replayDelivered, type DeliveredUserMessage } from "./openai-chat-replay.ts";
 import { classifyError, interruptibleDelay, RETRY_MAX_ATTEMPTS } from "./retry.ts";
 import { carriedSteps, carriedWorkFile, chatLimitFacts, sharedCarriedWork } from "./openai-chat-carry.ts";
 import { CORRECTIVE_ROUND, CORRECTIVE_ROUNDS, announcesAction, ownsFailure, withoutRepeats, claimsUnmadeChange, effectfulCall, leakedReasoning, leakedToolSyntax, LeakHoldback, NUDGE_ANNOUNCED_ACTION, REASONING_AGAIN, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
@@ -150,7 +150,7 @@ const asError = (value: unknown): Error =>
 
 const MAX_CHAT_ROUNDS = 64;
 const MAX_TURN_TOOL_CALLS = 200;
-const MAX_ANNOUNCEMENT_NUDGES = 3;
+const MAX_ANNOUNCEMENT_NUDGES = 8;
 const stoppedAfter = (count: string) =>
   new ChatProtocolError(`Stopped after ${count} without a final answer. The steps so far already ran, so ask only for what's left.`, "max_steps");
 
@@ -172,7 +172,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     /** Set once the turn stops taking rounds: a later steer goes to the next turn instead. */
     ending: boolean;
   }>();
-  const reasoningReplayRejected = new Set<string>(), routes = createModelRoutes(options.apiUrl);
+  const reasoningReplayRejected = new Set<string>(), toolChoiceRefused = new Set<string>(), routes = createModelRoutes(options.apiUrl);
   /** Beside the messages, not on them, so encrypted reasoning never reaches a Chat Completions body, a log or a handoff. */
   const responseOutputs = new WeakMap<OpenAIChatMessage, ResponseItem[]>();
   const assistantReply = (model: string, completion: Completion, content: string | null, toolCalls?: ChatToolCall[]): OpenAIChatMessage => {
@@ -219,7 +219,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     signal?: AbortSignal,
     onDelta?: (delta: string, kind: "assistant_text" | "reasoning_text") => void,
     tools: ChatToolDefinition[] = [],
-    onUsage?: TextGenerationOptions["onUsage"], requestedEffort?: SendTurnInput["effort"],
+    onUsage?: TextGenerationOptions["onUsage"], requestedEffort?: SendTurnInput["effort"], toolChoice?: "required",
   ): Promise<Completion> => {
     const timeoutController = new AbortController();
     let idleTimer: NodeJS.Timeout | null = null;
@@ -239,9 +239,10 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         : timeoutController.signal;
 
       const served = options.servedModel ? await options.servedModel(model) : model, effort = chosenEffort(options.effort, model, requestedEffort);
+      const forced = tools.length && toolChoice ? { tool_choice: toolChoice } : {};
       const payload = JSON.stringify(route === "responses"
-        ? responsesRequest({ model: served, messages, tools, replay: (message) => responseOutputs.get(message), summaries: routes.summaries(model), ...(effort ? { effort } : {}) })
-        : {
+        ? { ...responsesRequest({ model: served, messages, tools, replay: (message) => responseOutputs.get(message), summaries: routes.summaries(model), ...(effort ? { effort } : {}) }), ...forced }
+        : { ...forced,
           ...options.requestBody(served, messages, stream),
           ...(route === "chat-reasoning-off" ? { reasoning_effort: "none" } : effort ? { reasoning_effort: effort } : {}),
           ...(tools.length ? { tools } : {}),
@@ -417,7 +418,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     signal?: AbortSignal,
     onDelta?: (delta: string, kind: "assistant_text" | "reasoning_text") => void,
     tools: ChatToolDefinition[] = [],
-    onUsage?: TextGenerationOptions["onUsage"], effort?: SendTurnInput["effort"],
+    onUsage?: TextGenerationOptions["onUsage"], effort?: SendTurnInput["effort"], toolChoice?: "required",
   ): Promise<Completion> => {
     for (;;) {
       let replied = false;
@@ -425,7 +426,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         return await completeOn(routes.routeFor(model, tools.length > 0), messages, model, stream, signal, onDelta && ((text, kind) => {
           replied = true;
           onDelta(text, kind);
-        }), tools, onUsage, effort);
+        }), tools, onUsage, effort, toolChoice);
       } catch (error) {
         if (!(error instanceof ModelRouteRefused) || replied || signal?.aborted) throw error;
         if (!routes.advance(model, error.refusal)) throw new ChatProtocolError(noRouteLeft(error.message), "responses_route_unavailable");
@@ -557,7 +558,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       const said: string[] = [];
       let unread: string[] = [];
       let callsAtNudge = -1; const gates = new TurnGates(), repeats = new ChatRepeatGuard({ stops: Boolean(options.localModel) });
-      let unreadable: false | "call" | "reasoning" = false, askedAgain = false, nudged = false;
+      let unreadable: false | "call" | "reasoning" = false, askedAgain = false, nudged = false, forceTool = false, forced: "required" | undefined;
       const backups = new TurnBackups(turn.chatBackups); let carrier: ChatBackup | undefined, modelChecked = false, serverModels: string[] | undefined;
       try {
         if (!model.trim()) { await options.refreshModels?.().catch(() => {}); model = options.models().default; }
@@ -611,8 +612,9 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
                 const shown = streamKind !== "assistant_text" ? text : leakHold.feed(holdback ? holdback.feed(text) : text);
                 if (shown) delta(shown, streamKind);
               };
-              completion = await (carrier ? carrier.complete({ messages, model: carrier.model, signal: abort.signal, tools: tools.definitions, effort: turn.effort, onDelta })
-                : complete(messages, model, true, abort.signal, onDelta, tools.definitions, undefined, turn.effort));
+              forced = forceTool && !toolChoiceRefused.has(carrier?.model ?? model) ? "required" : undefined;
+              completion = await (carrier ? carrier.complete({ messages, model: carrier.model, signal: abort.signal, tools: tools.definitions, effort: turn.effort, onDelta, ...(forced ? { toolChoice: forced } : {}) })
+                : complete(messages, model, true, abort.signal, onDelta, tools.definitions, undefined, turn.effort, forced));
               // A reply cut off at the token limit may be a call cut short; running half of one is worse than saying so.
               const written = holdback && !completion.toolCalls.length && completion.finishReason !== "length" ? textToolCalls(completion.text, tools.definitions) : null;
               const leaked = written || completion.toolCalls.length ? false : tools.definitions.length > 0 && leakedToolSyntax(completion.text) ? "call" : leakedReasoning(completion.text) ? "reasoning" : false;
@@ -632,6 +634,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
               delta("", "reasoning_text", true);
               if (!completion.toolCalls.length && !unreadable && !completion.text.trim() && !completion.reasoning.trim() && !completion.images?.length) throw unfinishedReply("", completion.finishReason)!;
               if (completion.toolCalls.length && !tools.definitions.length) throw noReplyError("tools_unavailable");
+              forceTool = false;
               break;
             } catch (value) {
               const kept = leakHold.kept();
@@ -640,6 +643,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
               const verdict = classifyError(error);
               const nudge = answerStreamed || abort.signal.aborted ? null : nudgeOnce(error, nudged, { toolsRan, failed: toolFailedEver });
               if (nudge) { nudged = true; messages.push({ role: "user", content: nudge }); emit({ ...base(turn.threadId, turnId), type: "turn.retrying", attempt: 1, delayMs: 0, reason: "empty_reply" }); continue; }
+              if (forced && !streamed && !abort.signal.aborted && refusesToolChoice(error)) { toolChoiceRefused.add(carrier?.model ?? model); continue; }
               // A rejected reasoning echo executed nothing upstream, so the stripped resend repeats nothing.
               if (error instanceof UnsupportedReasoningReplayError && !streamed && !abort.signal.aborted) {
                 reasoningReplayRejected.add(carrier?.model ?? model);
@@ -742,6 +746,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
               }
               nudges += 1;
               callsAtNudge = seenCalls.size;
+              forceTool = true;
               messages.push(assistantReply(model, completion, completion.text), { role: "user", content: NUDGE_ANNOUNCED_ACTION });
               continue;
             }
@@ -936,9 +941,10 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         ...(options.tools !== false ? { askTool: { kind: "native" as const, name: ASK_USER_TOOL } } : {}),
         guestTurns: "confined", thinkingSignal: false },
       sendTurn,
-      chatCompletion: ({ messages, model, signal, tools, effort, onDelta }) => {
+      chatCompletion: ({ messages, model, signal, tools, effort, onDelta, toolChoice }) => {
         if (!options.apiKey) return Promise.reject(new Error(options.missingKeyError));
-        return complete(messages, model, true, signal, onDelta, tools, undefined, effort);
+        if (toolChoice && toolChoiceRefused.has(model)) toolChoice = undefined;
+        return complete(messages, model, true, signal, onDelta, tools, undefined, effort, toolChoice);
       },
       interruptTurn: async (threadId, turnId) => {
         const turn = active.get(threadId);

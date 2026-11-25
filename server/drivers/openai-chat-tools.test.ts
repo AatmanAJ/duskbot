@@ -350,17 +350,41 @@ describe("bounded action announcement recovery", () => {
       : sse(response, [chunk({ tool_calls: [toolCall("audit_write", JSON.stringify({ name: `step-${round}`, value: "done" }), `call-${round}`)] }, "tool_calls")]));
     await f.start({ approvalMode: "full" });
     expect(await f.completed()).toMatchObject({ ok: false });
-    expect(f.requests).toHaveLength(7);
-    expect(f.effects()).toHaveLength(3);
-    expect(f.recorder.events).toContainEqual(expect.objectContaining({ type: "runtime.error", message: expect.stringContaining("3 announcement nudges") }));
+    expect(f.requests).toHaveLength(17);
+    expect(f.effects()).toHaveLength(8);
+    expect(f.recorder.events).toContainEqual(expect.objectContaining({ type: "runtime.error", message: expect.stringContaining("8 announcement nudges") }));
   });
 
-  it("stops on a second announcement without tool progress", async () => {
+  it("stops on a second announcement without tool progress, after asking for a tool call", async () => {
     const f = await fixture((_body, response) => answer(response, "I'll inspect the terminal."));
     await f.start();
     expect(await f.completed()).toMatchObject({ ok: false });
     expect(f.requests).toHaveLength(2);
+    expect((f.requests[0] as { tool_choice?: string }).tool_choice).toBeUndefined();
+    expect((f.requests[1] as { tool_choice?: string }).tool_choice).toBe("required");
     expect(f.effects()).toEqual([]);
+  });
+
+  it("gets the announced step done when the provider takes tool_choice: required, and sends it once only", async () => {
+    const f = await fixture((body, response, round) => round === 1 ? answer(response, "I'll write the receipt now.")
+      : (body as { tool_choice?: string }).tool_choice === "required" ? sse(response, [chunk({ tool_calls: [toolCall()] }, "tool_calls")])
+      : answer(response, "Wrote the receipt."));
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: true });
+    expect(f.effects()).toEqual([{ name: "receipt", value: "done" }]);
+    expect(f.requests.map((request) => (request as { tool_choice?: string }).tool_choice)).toEqual([undefined, "required", undefined]);
+  });
+
+  it("asks again without tool_choice when the provider refuses it", async () => {
+    const f = await fixture((body, response, round) => {
+      if (round === 1) answer(response, "I'll write the receipt now.");
+      else if ((body as { tool_choice?: string }).tool_choice) { response.writeHead(400, { "content-type": "application/json" }); response.end('{"error":{"message":"tool_choice required is not supported"}}'); }
+      else if (round === 3) sse(response, [chunk({ tool_calls: [toolCall()] }, "tool_calls")]);
+      else answer(response, "Wrote the receipt.");
+    });
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: true });
+    expect(f.requests.map((request) => (request as { tool_choice?: string }).tool_choice)).toEqual([undefined, "required", undefined, undefined]);
   });
 
   it("does not nudge after a denied operation", async () => {

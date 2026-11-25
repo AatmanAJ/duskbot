@@ -11,6 +11,8 @@ export type ChatCompletion = (request: {
   signal: AbortSignal;
   tools: ChatToolDefinition[];
   effort?: SendTurnInput["effort"];
+  /** "required": the reply must call a tool; a model whose provider refused that once is sent none. */
+  toolChoice?: "required";
   onDelta: (text: string, kind: "assistant_text" | "reasoning_text") => void;
 }) => Promise<Completion>;
 
@@ -49,3 +51,6 @@ export class TurnBackups {
     return this.left.shift();
   }
 }
+
+/** A provider that refuses the `tool_choice` parameter, or its "required" value, as a bad request. */
+export const refusesToolChoice = (error: Error): boolean => /\bHTTP 4(?:00|22)\b/.test(error.message) && /tool[_ ]choice/i.test(error.message);
