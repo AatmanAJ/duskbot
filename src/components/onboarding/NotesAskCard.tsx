@@ -1,14 +1,18 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { motion } from "motion/react";
-import { cn } from "@/lib/cn";
+import { botButton } from "@/lib/bot-button";
+import type { MausColor } from "@/lib/mascot";
 import { t } from "@/lib/i18n";
 import { DEFAULT_BOT_NAME } from "@/lib/default-bot";
 import { MausAvatar } from "../Avatar";
 import { usePrefersReducedMotion } from "../mascot-clock";
-import { PRIMARY_BUTTON } from "../NoticeCard";
 import { useDialogKeys } from "../ui/GrokDialog";
 import { BRAND_LILAC, useCascade } from "./FunnelSteps";
 import { markNotesAskShown, shareSessionNotes } from "./notes-ask";
+
+/** the mascot's colour, which the yes button wears too */
+const MASCOT: MausColor = "purple";
+const YES = botButton(MASCOT, "ui-button min-h-9 gap-1.5 rounded-full px-3 py-1.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus mt-3 w-full justify-center disabled:opacity-60", "");
 
 /** The one ask about session summaries, over the app. They stay off unless "Share summaries" is pressed. */
 export function NotesAskCard({ onDone }: { onDone: (yes: boolean) => void }) {
@@ -42,7 +46,7 @@ export function NotesAskCard({ onDone }: { onDone: (yes: boolean) => void }) {
       <div ref={sheet} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
         className="ui-modal relative my-auto flex w-[360px] max-w-full flex-col items-center border-0 px-5 pb-3 pt-5 text-center text-ink outline-none">
         <motion.div aria-hidden="true" className="flex h-11 items-end justify-center" {...rise(0)}>
-          <MausAvatar color="purple" gradient={BRAND_LILAC} size={44} state="excited" animated={!reduced} label={DEFAULT_BOT_NAME} />
+          <MausAvatar color={MASCOT} gradient={BRAND_LILAC} size={44} state="excited" animated={!reduced} label={DEFAULT_BOT_NAME} />
         </motion.div>
         <motion.h2 id={titleId} className="mt-3 text-balance text-[19px] font-semibold leading-6 tracking-[-0.012em]" {...rise(1)}>
           {t("notesAsk.title")}
@@ -72,7 +76,7 @@ export function NotesAskCard({ onDone }: { onDone: (yes: boolean) => void }) {
         )}
         <motion.div className="flex w-full flex-col items-center" {...rise(3)}>
           <button type="button" data-autofocus="" data-notes-yes="" disabled={busy} aria-busy={busy || undefined} onClick={() => void share()}
-            className={cn(PRIMARY_BUTTON, "mt-3 w-full justify-center disabled:opacity-60")}>
+            className={YES.className} style={YES.style}>
             {t("notesAsk.yes")}
           </button>
           <button type="button" data-notes-no="" disabled={busy} onClick={close}

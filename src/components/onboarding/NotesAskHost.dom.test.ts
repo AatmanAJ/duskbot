@@ -64,6 +64,9 @@ describe("the session notes card", () => {
     await render();
     expect(card()).not.toBeNull();
     expect(card()!.textContent).toContain("Help improve dusk bot?");
+    const yes = card()!.querySelector<HTMLElement>("[data-notes-yes]")!;
+    expect(yes.classList.contains("bot-button")).toBe(true);
+    expect(yes.style.getPropertyValue("--bot-button")).not.toBe("");
     expect(puts()).toEqual([{ notes: false }]);
     await click("[data-notes-yes]");
     expect(puts()).toEqual([{ notes: false }, { notes: true }]);
