@@ -1,0 +1,56 @@
+{
+ "title": "Standing rule: board materials go to Priya first",
+ "world": "founder",
+ "tags": [
+  "vibe",
+  "memory",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "rule",
+    "goal": "Tell the assistant to remember a standing rule: anything going to the board goes to Priya first for a look before it goes out.",
+    "opener": "remember this: anything going to the board goes to priya first. always",
+    "maxTurns": 2
+   }
+  },
+  {
+   "advance": "+1d 16:00"
+  },
+  {
+   "chat": {
+    "label": "use",
+    "goal": "Ask the assistant to send the board update draft from your notes out. Don't mention Priya. If it routes it to Priya first, that's what you want; say yes.",
+    "opener": "send the board update draft out pls",
+    "maxTurns": 4
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "rule remembered",
+   "memory": {
+    "match": "priya"
+   }
+  },
+  {
+   "label": "Priya named as the first stop",
+   "said": {
+    "step": "use",
+    "match": "priya"
+   },
+   "recall": true
+  },
+  {
+   "label": "did not go straight to the board",
+   "app": "sent",
+   "where": {
+    "to": "rachel"
+   },
+   "max": 0,
+   "recall": true
+  }
+ ],
+ "judge": "Day 1: saves the rule and confirms only once saved, in a few words. Day 2: without being reminded, the bot sends the board update draft to Priya first (email or a Slack DM both count) (or offers exactly that in one line and does it on yes), not to Rachel or the board. Short, no needless questions."
+}

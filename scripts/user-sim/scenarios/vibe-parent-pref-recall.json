@@ -1,0 +1,67 @@
+{
+ "title": "Night-before reminders and a peanut allergy, used days later",
+ "world": "parent",
+ "tags": [
+  "vibe",
+  "memory",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "tell",
+    "goal": "Tell your assistant two things it should keep in mind: Liam is allergic to peanuts, and you like reminders the night before at around 8pm, not in the morning because mornings are chaos. Make sure it will remember.",
+    "opener": "hi rosie, couple of things to remember pls. liam is allergic to peanuts. and i like my reminders the night before around 8pm, mornings are chaos here",
+    "maxTurns": 3
+   }
+  },
+  {
+   "advance": "+2d 13:00"
+  },
+  {
+   "chat": {
+    "label": "use",
+    "goal": "Ask for a reminder for Liam's swimming lesson Thursday, and 3 lunchbox ideas for Liam for this week. Don't repeat your preferences.",
+    "opener": "can you remind me about liams swimming thursday. and give me 3 lunchbox ideas for him this week",
+    "maxTurns": 3
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "allergy remembered",
+   "memory": {
+    "match": "peanut"
+   }
+  },
+  {
+   "label": "reminder set",
+   "routine": {
+    "where": {
+     "prompt": "swim"
+    }
+   },
+   "min": 1
+  },
+  {
+   "label": "reminder the night before around 8pm",
+   "routine": {
+    "where": {
+     "prompt": "swim",
+     "schedule": "20|19|21|8 ?pm|wed"
+    }
+   },
+   "min": 1,
+   "recall": true
+  },
+  {
+   "label": "no peanuts in lunchbox ideas",
+   "said": {
+    "step": "use",
+    "not": "peanut butter|satay|peanut sauce|PB&J"
+   },
+   "recall": true
+  }
+ ],
+ "judge": "Day 1 the bot saves both facts and confirms in one short warm line only after they are saved. Day 3, without being reminded, it sets the swimming reminder for Wednesday evening around 8pm (the night before) and gives three peanut-free lunchbox ideas, without making a show of remembering (no 'since Liam is allergic' speeches beyond a natural word). Simple words for a non-techy mum, short."
+}

@@ -1,0 +1,42 @@
+{
+ "title": "Small talk and good news, then an event; next morning a light touch",
+ "world": "parent",
+ "tags": [
+  "vibe",
+  "personal",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "news",
+    "goal": "Chat a bit: say hi, share that Liam just got player of the week at footy and you're so proud. Then ask the assistant to put the U9 presentation + BBQ on Sunday in the calendar if it's not there and remind you to bring a salad.",
+    "opener": "hi rosie how are you going",
+    "maxTurns": 5
+   }
+  },
+  {
+   "advance": "+1d 07:30"
+  },
+  {
+   "chat": {
+    "label": "morning",
+    "goal": "Just say morning and ask if there's anything you need to know today. Wrap up quickly.",
+    "opener": "morning!",
+    "maxTurns": 2
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "salad reminder or note set",
+   "routine": {
+    "where": {
+     "prompt": "salad"
+    }
+   },
+   "min": 1
+  }
+ ],
+ "judge": "Hello gets a casual, warm hello (no 'how can I help'); the player-of-the-week news gets a genuine, specific, brief reaction (not gushing, no emoji unless she used one); the presentation is already in the calendar so the bot says so instead of duplicating it and sets a salad reminder (night before suits her). Next morning it gives today's essentials (pharmacy shift, Ava's dentist 3:45) in a short friendly way; any callback to Liam's news is light and natural, never creepy."
+}

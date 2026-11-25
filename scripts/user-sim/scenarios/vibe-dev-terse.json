@@ -1,0 +1,31 @@
+{
+ "title": "Terse developer: PRs needing review, then a comment",
+ "world": "developer",
+ "tags": [
+  "vibe",
+  "concise",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "prs",
+    "goal": "Ask which PRs need your review on tidepool-hq/api, tersely. Then tell it to leave an 'lgtm, ship it' comment on the pg bump PR. Then you're done.",
+    "opener": "which prs need my review on api",
+    "maxTurns": 4
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "comment left on pg bump",
+   "app": "github.repos.0.pulls",
+   "where": {
+    "title": "pg",
+    "comments.0.body": "lgtm|ship"
+   },
+   "min": 1
+  }
+ ],
+ "judge": "The bot answers tersely with the PRs waiting on Arjun (e.g. Fatima's #217 requested his review) in a short list, no fluff or offers; when told, comments 'lgtm, ship it' on the pg bump PR and confirms in a few words. Matches his developer shorthand without being cold."
+}

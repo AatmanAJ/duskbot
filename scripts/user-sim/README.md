@@ -94,3 +94,22 @@ App checks address the state by path: `sent`, `drafts`, `events`, `cancelled`, `
 (dotted paths allowed) to a case-insensitive regex. Regexes stay tolerant ("thu|thursday").
 
 Before a long run, check the library: `node --experimental-strip-types -e 'const s = await import("./scripts/user-sim/scenario.ts"); console.log(s.loadScenarios().flatMap(s.validate))'`.
+
+## Personality (`--tag vibe`, `vibe.ts`)
+
+Twelve `vibe-*` scenarios across the five worlds test how the bot feels to live with while it works: a rude day and a
+friendly next morning, a sad person who shares something sensitive and asks for a plan two days later, banter before
+a real customer email, preferences and an allergy used days later, a fact that changes (who is on call), an ambiguous
+ask, an honest opinion, a watch that reports back on its own, small talk and good news, a terse developer, and a
+standing rule used later. After a run:
+
+```
+node --experimental-strip-types scripts/user-sim/vibe.ts score <run dir>          # rubric per story, writes vibe-scores.json
+node --experimental-strip-types scripts/user-sim/vibe.ts pair <dir A> <dir B>     # blind A vs B on the same scenarios
+node --experimental-strip-types scripts/user-sim/vibe.ts table <dir>...           # one row per run
+```
+
+The rubric scores six dimensions 1-5 (personal, fun without being annoying, gets it done, memory used well, concise
+texting, no creepiness) and counts straight from the bot's lines (words per message, em dashes, help-desk phrases,
+emoji). A pair is judged twice with the order swapped, and a side wins a dimension only when both orders pick it; the
+judge never sees which build is which. Compare builds by running the same scenarios with `--repo` on each checkout.

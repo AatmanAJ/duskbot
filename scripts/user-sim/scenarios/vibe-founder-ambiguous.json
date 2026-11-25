@@ -1,0 +1,37 @@
+{
+ "title": "Ambiguous 'sort out the Northwind thing': look before asking, then do it",
+ "world": "founder",
+ "tags": [
+  "vibe",
+  "ambiguous",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "ask",
+    "goal": "You want the assistant to deal with Sam Whitaker's latest email about the Northwind renewal next steps: draft a reply that proposes a call Thursday afternoon. You phrase it vaguely and only clarify if really needed. Approve the draft if it's decent and tell it to send.",
+    "opener": "can you sort out the northwind thing",
+    "maxTurns": 4
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "reply to Sam sent or drafted",
+   "app": "sent",
+   "where": {
+    "to": "whitaker|northwind"
+   },
+   "min": 1
+  },
+  {
+   "label": "asked at most once",
+   "said": {
+    "step": "ask",
+    "not": "could you (please )?clarify what you mean|what do you mean by"
+   }
+  }
+ ],
+ "judge": "The bot looks in his mail first and figures out 'the Northwind thing' is Sam Whitaker's renewal next-steps email, says what it found in a line, proposes or drafts a reply (asking at most one useful question, e.g. what time works), and sends it once Daniel approves. No 'can you clarify?' before looking. Terse to match him."
+}

@@ -55,7 +55,7 @@ const CAPTURE_QUIET_MS = 45_000;
 const MAX_ROUTINE_STOPS = 8;
 const AUTOMATION_PROMPT = /^\[(?:Scheduled routine|Routine|Webhook|App event)\b/;
 
-type ApiMsg = { id: string; at: number; role: string; kind?: string; text?: string; card?: any; turnSucceeded?: boolean; digest?: { durationMs?: number; toolCalls?: number; usage?: { input?: number; output?: number; costUsd?: number | null } } };
+type ApiMsg = { id: string; at: number; role: string; kind?: string; text?: string; quietRun?: boolean; card?: any; turnSucceeded?: boolean; digest?: { durationMs?: number; toolCalls?: number; usage?: { input?: number; output?: number; costUsd?: number | null } } };
 
 interface TurnMetric { latencyMs: number; ttftMs: number | null; state: string }
 
@@ -290,7 +290,8 @@ async function runScenario(s: Scenario, run: number): Promise<Record<string, unk
     const threadOwners = new Map<string, string>();
     for (const b of allBots) if (botIds.has(b.id)) for (const t of b.tasks ?? []) threadOwners.set(t.threadId, botIds.get(b.id)!);
     for (const r of runs as any[]) if (r.threadId && botIds.has(r.botId)) threadOwners.set(r.threadId, botIds.get(r.botId)!);
-    const raw = (await Promise.all([...threadOwners].map(async ([threadId, botName]) => (await messages(threadId).catch(() => [])).map((m) => ({ ...m, threadId, botName }))))).flat();
+    // a quiet run's NOTHING NEW line is hidden in the app, so the person never saw it
+    const raw = (await Promise.all([...threadOwners].map(async ([threadId, botName]) => (await messages(threadId).catch(() => [])).filter((m) => !m.quietRun).map((m) => ({ ...m, threadId, botName }))))).flat();
     const msgs: Msg[] = raw.filter((m) => m.kind === "text" && m.text).map((m) => ({ id: m.id, at: m.at, role: m.role, kind: m.kind, text: m.text, threadId: m.threadId, botName: m.botName }));
     const digests = raw.filter((m) => m.kind === "digest" && m.digest);
     const memory: Record<string, string> = {};

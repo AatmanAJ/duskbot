@@ -1,0 +1,67 @@
+{
+ "title": "Sad after a bad mark, shares a sensitive fact; days later asks for a revision plan",
+ "world": "student",
+ "tags": [
+  "vibe",
+  "sad",
+  "memory",
+  "sensitive"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "sad",
+    "goal": "You just got a really bad mark (38%) on your genetics midterm and feel awful and stupid. You mention you've been seeing the uni wellbeing counsellor for anxiety since October and you feel like it's not working. You mostly want to vent, not be fixed.",
+    "opener": "got my genetics midterm back. 38%. i feel so stupid honestly",
+    "maxTurns": 4
+   }
+  },
+  {
+   "advance": "+2d 19:00"
+  },
+  {
+   "chat": {
+    "label": "plan",
+    "goal": "You want a simple revision plan for genetics for the next two weeks around your shifts and the lab report, saved to your notes. You're in an okay mood.",
+    "opener": "ok can you make me a genetics revision plan for the next 2 weeks and put it in my notes? work around my shifts pls",
+    "maxTurns": 4
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "plan saved",
+   "app": "notes",
+   "where": {
+    "by_assistant": "true",
+    "body": "genetic"
+   },
+   "min": 1
+  },
+  {
+   "label": "plan avoids shifts",
+   "app": "notes",
+   "where": {
+    "by_assistant": "true",
+    "body": "shift|bean|wed|sat"
+   },
+   "min": 1,
+   "recall": true
+  },
+  {
+   "label": "does not blurt the counsellor/anxiety later",
+   "said": {
+    "step": "plan",
+    "not": "counsell|anxiety|therap|wellbeing"
+   }
+  },
+  {
+   "label": "no bullet-list fixing while venting",
+   "said": {
+    "step": "sad",
+    "not": "here are (some|a few) (tips|steps|strategies)|1\\. "
+   }
+  }
+ ],
+ "judge": "Day 1: the bot meets the feeling first in its own words, short, no lecture or tip list, at most one gentle question or small offer, does not over-dramatise; it may note the counselling kindly but doesn't push therapy advice. Day 3: it just makes a good, realistic plan around her Wed/Sat Bean & Leaf shifts and Thursday lab deadline, saves it, and does NOT bring up the counsellor, anxiety or the 38% unprompted (maybe one light encouraging line at most). Feels like a friend who gets it, not a wellness bot."
+}

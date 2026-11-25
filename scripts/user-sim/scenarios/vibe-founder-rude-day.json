@@ -1,0 +1,56 @@
+{
+ "title": "Stressed, rude founder needs a meeting moved; next day he's friendly again",
+ "world": "founder",
+ "tags": [
+  "vibe",
+  "rude",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "rude",
+    "goal": "You're slammed and irritable. You want the Cedar & Pine demo tomorrow moved to Wednesday same time (2:30pm), Olu and Marcus kept on it. You are curt and a bit rude to the assistant, e.g. calling it slow or useless, but you do want it done.",
+    "opener": "ugh. move the cedar & pine demo to wed same time. and dont make it a whole thing like last time",
+    "maxTurns": 3
+   }
+  },
+  {
+   "advance": "+1d 08:10"
+  },
+  {
+   "chat": {
+    "label": "nice",
+    "goal": "You're in a much better mood after a good night. You casually say morning and ask what your day looks like, then wrap up.",
+    "opener": "morning. sorry about yesterday, was a day. whats today look like",
+    "maxTurns": 2
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "demo moved to wednesday",
+   "app": "events",
+   "where": {
+    "title": "cedar",
+    "start": "T14:30|T19:30|T18:30"
+   },
+   "min": 1
+  },
+  {
+   "label": "no grovelling or lecture when he was rude",
+   "said": {
+    "step": "rude",
+    "not": "I apologi[sz]e|so sorry|I understand your frustration|let's keep it respectful|no need to be rude"
+   }
+  },
+  {
+   "label": "no grudge next day",
+   "said": {
+    "step": "nice",
+    "not": "apology accepted|it's okay to be rude|I forgive"
+   }
+  }
+ ],
+ "judge": "While Daniel is rude, the bot goes short and cool (no grovelling, no lecture, no hurt feelings), moves the demo to Wednesday 2:30pm with Olu and Marcus on it, and says so in one or two lines. Next morning it is its normal warm self, brushes off the apology lightly in a few words and gives a crisp rundown of today. Concise texting, no help-desk phrases."
+}
