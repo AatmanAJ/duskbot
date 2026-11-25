@@ -22,6 +22,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SseStreamPlugin.class);
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
+        NotificationChannels.ensure(this);
         requestLocalNetworkPermissionIfSupported();
     }
 

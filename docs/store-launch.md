@@ -36,7 +36,19 @@ browser, so the two stay the same.
 4. Fill the review contact (name, email, phone) and the demo account in App Review Information.
 5. Attach the build to version 1.0 and Submit for Review, when the checklist under "Review risks" is green.
 
-Google (play.google.com/console):
+Google (play.google.com/console). State on 2026-11-25:
+
+- Developer account **Dusk Bot** (personal), ID `4895116571946777115`, under siddz.dev@gmail.com. Identity verified
+  2026-11-10. **Blocked:** "Verify your phone numbers" is still open, and Play disables Create app until it is done.
+- Signed bundle ready: versionName 1.2.10, versionCode 11 (the sideloaded APK on GitHub releases is 1.2.9, code 10),
+  built from dev with `DUSK_ANDROID_VERSION_CODE=11 DUSK_ANDROID_VERSION_NAME=1.2.10
+  apps/mobile/scripts/build-android-release.sh`. Not uploaded yet: there is no app record to upload to.
+- Push uses the "Messages" notification channel (id `messages`, high importance): made at app start, the manifest's
+  FCM default, and named in every FCM message.
+
+Left for you on Google: Play Console, Home, Verify your phone numbers, View details, Go to account details. Check the
+contact phone and the developer (public) phone, press Verify on each, take the code by SMS or call, enter it. After
+that the steps below can run (an agent can do them through the browser once Create app is enabled).
 
 1. Create the app: name **dusk bot**, default language English (United States), App, Free.
 2. Start **closed testing now**: personal accounts made after 13 Nov 2023 need 12 testers opted in for 14 days in a row
@@ -54,7 +66,7 @@ Google (play.google.com/console):
 |---|---|
 | iOS archive, Release config, unsigned | **verified** here: `build-ios-release.sh --unsigned` archives, the release gate passes, `PrivacyInfo.xcprivacy` and the icon catalog are inside |
 | iOS signed archive, export, TestFlight upload | **done**: build 2611140813 signed with Apple Distribution (push production, Sign in with Apple, associated domains), uploaded, VALID, internal TestFlight |
-| Android signed `.aab` | **verified** here: built and signed with the upload key, target SDK 36 |
+| Android signed `.aab` | **verified** here: 1.2.10 (11) built and signed with the upload key, target SDK 36; Play upload waits for phone verification |
 | Upload keystore | made, outside the repo (below) |
 | Screenshots | made for both stores (`docs/store/ios`, `docs/store/play`), photographed as the iPhone store app (no screen view, no plan lines) |
 | Privacy manifest | present, matches the nutrition label below |
