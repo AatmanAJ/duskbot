@@ -90,7 +90,7 @@ const FETCH_LIMIT_MS = 300_000;
 const LIVENESS_MISSES = 3;
 let unlimitedAgent: Agent | undefined;
 async function fetchPastLimit(url: string, init: RequestInit): Promise<Response> {
-  const { Agent: UndiciAgent, fetch: fetchWithoutLimits } = await import("undici");
+  const { Agent: UndiciAgent, fetch: fetchWithoutLimits } = await import("../undici.ts");
   unlimitedAgent ??= new UndiciAgent({ headersTimeout: 0, bodyTimeout: 0 });
   return fetchWithoutLimits(url, { ...init, dispatcher: unlimitedAgent } as Parameters<typeof fetchWithoutLimits>[1]) as unknown as Promise<Response>;
 }

@@ -29,7 +29,7 @@ export function brokeredServer(path: BrokerPath, name: string, server: { url: st
   const { token } = path.broker.mintForThread({ threadId, grants: { [grant]: { upstream: server.url, headers: { ...server.headers } } }, ttlMs: PROBE_GRANT_TTL_MS });
   let agent: Agent | undefined;
   const brokered: typeof fetch = async (input, init) => {
-    const { Agent: UndiciAgent, fetch: fetchVia } = await import("undici");
+    const { Agent: UndiciAgent, fetch: fetchVia } = await import("../undici.ts");
     agent ??= new UndiciAgent({ connect: { socketPath: path.socketPath } });
     const response = await fetchVia(String(input instanceof Request ? input.url : input), { ...init, dispatcher: agent } as Parameters<typeof fetchVia>[1]) as unknown as Response;
     if (response.status !== 502 || !(response.headers.get("content-type") ?? "").startsWith("application/json")) return response;

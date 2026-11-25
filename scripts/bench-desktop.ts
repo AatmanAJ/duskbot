@@ -318,13 +318,9 @@ async function buildUi(outDir: string, profiling: boolean) {
 /** The packaged server: index.ts bundled as the release does, run through the desktop entry with its compile cache. */
 async function bundleServer(): Promise<string> {
   const { build } = await import("esbuild");
-  const { serverLocalePlugin } = await import("./server-locale-plugin.mjs");
+  const { HARNESS_SPLIT, SERVER_BUNDLE } = await import("./server-bundle-options.mjs");
   const outdir = join(work, "dist-server");
-  await build({
-    entryPoints: [join(ROOT, "server", "index.ts")], bundle: true, platform: "node", target: "node20", format: "esm", outdir, logLevel: "warning", minifyWhitespace: true, minifySyntax: true, lineLimit: 500,
-    plugins: [{ name: "yaml-esm", setup(builder) { builder.onResolve({ filter: /^yaml$/ }, () => ({ path: join(ROOT, "node_modules", "yaml", "browser", "index.js") })); } }, serverLocalePlugin],
-    banner: { js: 'import { createRequire as __duskCreateRequire } from "node:module";\nconst require = __duskCreateRequire(import.meta.url);' },
-  });
+  await build({ ...SERVER_BUNDLE, ...HARNESS_SPLIT, entryPoints: [join(ROOT, "server", "index.ts")], outdir, logLevel: "warning" });
   copyFileSync(join(ROOT, "scripts", "desktop-server-entry.mjs"), join(outdir, "desktop-entry.mjs"));
   return join(outdir, "desktop-entry.mjs");
 }

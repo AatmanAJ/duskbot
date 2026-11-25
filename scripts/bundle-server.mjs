@@ -1,36 +1,18 @@
-// Bundles each harness-server entry point into a self-contained ESM file: the
-// packaged app ships no node_modules. Entry points keep their exact relative
-// paths under dist-server, where the server locates each proxy by path.
+// Bundles the harness-server entry points into ESM files: the packaged app
+// ships no node_modules. Entry points keep their exact relative paths under
+// dist-server, where the server locates each proxy by path.
 import { build } from "esbuild";
 import { copyFileSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { commonJsDefaultChunks, HARNESS_SPLIT, SERVER_BUNDLE } from "./server-bundle-options.mjs";
 import { serverLocalePlugin } from "./server-locale-plugin.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const server = join(root, "server");
 
-// yaml's Node export is CommonJS with dynamic requires that cannot run once
-// inlined into ESM; its browser export is the same parser without them.
-const yamlEsmPlugin = {
-  name: "yaml-esm",
-  setup(build) {
-    build.onResolve({ filter: /^yaml$/ }, () => ({
-      path: join(root, "node_modules", "yaml", "browser", "index.js"),
-    }));
-  },
-};
-
-// ws is CommonJS and requires Node's own modules, which an ESM bundle reaches
-// only through a require of its own (esbuild otherwise throws "Dynamic require
-// of "events" is not supported" when it loads).
-const NODE_REQUIRE = {
-  js: 'import { createRequire as __duskCreateRequire } from "node:module";\nconst require = __duskCreateRequire(import.meta.url);',
-};
-
 // Every file run as its own process.
 const ENTRY_POINTS = [
-  "index.ts",
   "message-search.worker.ts",
   // the `duskbot` command
   "duskbot.ts",
@@ -79,28 +61,23 @@ function nativeClients() {
   return Object.fromEntries(names.flatMap((name) => process.env[name] ? [[name, process.env[name]]] : []));
 }
 
-await build({
-  entryPoints: ENTRY_POINTS.map((entry) => join(server, entry)),
-  bundle: true,
-  platform: "node",
-  target: "node20",
-  format: "esm",
+const serverBuild = {
+  ...SERVER_BUNDLE,
   outbase: server,
   outdir: join(root, "dist-server"),
-  // Function names stay in stack traces. Node prints a whole source line with an uncaught error, so no line may be long.
-  minifyWhitespace: true,
-  minifySyntax: true,
-  lineLimit: 500,
   // Written after tsc, replacing its output for these entry points.
   allowOverwrite: true,
   logLevel: "info",
-  plugins: [yamlEsmPlugin, serverLocalePlugin],
-  banner: NODE_REQUIRE,
   // every entry reads the old env names first, whichever process starts it
   inject: [join(root, "electron", "legacy-names.mjs")],
   // dusk bot's own OAuth clients (shared/native-connectors.json), from the release environment
   define: { DUSK_BUILD_DEVICE_CLIENTS: JSON.stringify(JSON.stringify(nativeClients())) },
-});
+};
+
+const harness = await build({ ...serverBuild, ...HARNESS_SPLIT, entryPoints: [join(server, "index.ts")], metafile: true });
+const commonJsChunks = commonJsDefaultChunks(harness.metafile);
+if (commonJsChunks.length) throw new Error(`these harness chunks export only a CommonJS default, so an import() of them loses its named exports; import the package statically from a module of ours and import() that: ${commonJsChunks.join(", ")}`);
+await build({ ...serverBuild, entryPoints: ENTRY_POINTS.map((entry) => join(server, entry)) });
 
 // External MCP clients launch this as an independent stdio process, so release
 // users need no repository, TypeScript, pnpm or node_modules.
