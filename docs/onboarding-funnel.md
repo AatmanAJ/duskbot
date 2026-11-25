@@ -20,7 +20,9 @@ account, place, AI, bring, phone, permissions):
    and, once ready, gets one test message while the hello shows (`free-warmup.ts`), so its first answer is warm.
 2. **One AI choice** (`AiStep.tsx`): **Use the Claude you're already signed into** (the AI already signed in on this
    computer that answered its test, one tap, no new sign-in), **Use free models**, or **Use my plan** (the grid of AIs;
-   Other choices goes back).
+   Other choices goes back). Free models are pickable once they answer: while the download is under way the tile says
+   they are getting ready (the server's `freeBackupDownloading`), and when none is coming (no preinstall, or the download
+   gave up) neither the tile nor "Use free models instead" shows.
 
 Then the chat: Dusk says one message and shows one question card, "What should we start with?", with three first jobs
 fitted to what is connected (`introAsks`: Summarize my inbox, What's on my calendar today?, Help me plan my week, Watch

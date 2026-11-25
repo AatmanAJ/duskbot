@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StandaloneRelease } from "./contracts.ts";
 import { OPENCODE_STANDALONE } from "./drivers/acp/opencode-release.ts";
 import type { StandaloneInstalled } from "./engine-standalone.ts";
-import { freeBackupArriving, PREINSTALL_FREE_BACKUP_ENV, preinstallFreeBackup, startFreeBackupPreinstall } from "./free-backup.ts";
+import { freeBackupArriving, freeBackupDownloading, PREINSTALL_FREE_BACKUP_ENV, preinstallFreeBackup, startFreeBackupPreinstall } from "./free-backup.ts";
 
 const installed: StandaloneInstalled = { version: OPENCODE_STANDALONE.version, executablePath: "/data/tools/standalone/opencode/bin/opencode", binDir: "/data/tools/standalone/opencode/bin" };
 
@@ -132,6 +132,22 @@ describe("the preinstall at server start", () => {
     await run;
     await Promise.resolve();
     expect(freeBackupArriving()).toBeNull();
+  });
+
+  it("says it is downloading until the download lands or gives up, then tells the server once it no longer is", async () => {
+    expect(freeBackupDownloading()).toBe(false);
+    for (const install of [async () => installed, async (): Promise<StandaloneInstalled> => { throw new Error("offline"); }]) {
+      const download = gate();
+      const seen: boolean[] = [];
+      const run = startFreeBackupPreinstall({ [PREINSTALL_FREE_BACKUP_ENV]: "1" }, () => {}, { present: () => false, install: async () => { await download.opened; return install(); }, retryMs: [] },
+        () => seen.push(freeBackupDownloading()));
+      expect(freeBackupDownloading()).toBe(true);
+      download.open();
+      await run;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(seen, "told once, after it stopped downloading").toEqual([false]);
+      expect(freeBackupDownloading()).toBe(false);
+    }
   });
 
   it("reads the engines again only when a copy was added", async () => {
