@@ -59,7 +59,7 @@ export const VITEST_SUBSETS = {
   },
   "docs-tests": {
     part: "docs tests",
-    files: ["scripts/testing/analytics-docs.test.ts"],
+    files: ["scripts/testing/analytics-docs.test.ts", "server/settings-models-path.test.ts"],
     shards: 1,
     nodeTests: false,
   },
