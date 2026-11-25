@@ -1,4 +1,4 @@
-import { feel, prefersReducedMotion, springEasing } from "./motion";
+import { feel, prefersReducedMotion, springKeyframes } from "./motion";
 
 /** Controls that already press in CSS (the shell's round buttons, the composer discs) or that move under the finger. */
 const OWN_PRESS = ".mobile-press, [data-long-press], [data-composer-send], [data-voice-mic], [data-composer-stop], [data-composer-plus], [role='slider'], [role='switch'], input, textarea, select";
@@ -46,7 +46,6 @@ export function pressScale(width: number): number {
  * into a scroll lets go at once. */
 export function installPress(root: HTMLElement): () => void {
   if (document.documentElement.dataset.mobileApp === "android") return installRipple(root);
-  const release = springEasing(feel.press.release.stiffness, feel.press.release.damping);
   let held: { el: HTMLElement; anim: Animation; to: number } | null = null;
   let rowTouch: { el: HTMLElement; x: number; y: number; timer: number; highlighted: boolean; cancelled: boolean } | null = null;
   let flashTimer = 0;
@@ -71,7 +70,8 @@ export function installPress(root: HTMLElement): () => void {
     held = null;
     const now = Number(getComputedStyle(el).scale) || to;
     anim.cancel();
-    el.animate([{ scale: String(now) }, { scale: "1" }], { duration: release.duration, easing: release.easing });
+    const release = springKeyframes(feel.press.release.stiffness, feel.press.release.damping, (p) => ({ scale: String(now + (1 - now) * p) }));
+    el.animate(release.keyframes, { duration: release.duration });
   };
 
   const down = (event: PointerEvent) => {

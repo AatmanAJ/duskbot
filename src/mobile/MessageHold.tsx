@@ -4,12 +4,11 @@ import { copyText } from "@/lib/copy-text";
 import { t } from "@/lib/i18n";
 import { phoneBridge } from "@/lib/phone-bridge";
 import { inAppLink } from "./viewers/ViewerHost";
-import { ContextMenu, holdSink, type ContextAction, type ContextReaction } from "./ContextMenu";
+import { ContextMenu, HOLD_MS, holdSink, type ContextAction, type ContextReaction } from "./ContextMenu";
 import { haptic } from "./haptics";
 import { useNativeHold, type HeldMenu, type NativeHold } from "./native-menu";
 import { usePlatform } from "./platform";
 
-const HOLD_MS = 400;
 const MOVE_CANCEL = 8;
 const BUBBLE = "[data-mobile-chat] [data-message-row] [data-chat-bubble]";
 
