@@ -14,9 +14,11 @@ export function createAppSignIns(now: () => number = Date.now, holdMs = APP_SIGN
       const id = appSlug(slug);
       if (id) open.set(id, now() + holdMs);
     },
-    /** apps that are connected now: their sign-in is over */
-    settled(connected: Iterable<string>) {
-      for (const slug of connected) { const id = appSlug(slug); if (id) open.delete(id); }
+    /** apps that are connected now: their sign-in is over. True when one of them was still open. */
+    settled(connected: Iterable<string>): boolean {
+      let landed = false;
+      for (const slug of connected) { const id = appSlug(slug); if (id && open.delete(id)) landed = true; }
+      return landed;
     },
     active(): boolean {
       const at = now();

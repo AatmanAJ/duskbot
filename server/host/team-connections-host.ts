@@ -51,6 +51,8 @@ export interface TeamConnectionsHostDeps {
   onSettled?(name: string, phase: McpSignInPhase, owner: string): void;
   /** The connected-apps service a member's own installation is made on; null: none here. */
   brokerUrl(): string | null;
+  /** An app sign-in page went out and has not landed yet: each turn reads the connected apps again meanwhile. */
+  appSignInOpen?(): boolean;
   composio: Pick<typeof Composio, "configured" | "mcpIntegration" | "connectedServices" | "connectedServiceSlugs" | "authorizeService" | "removeService">;
 }
 
@@ -77,20 +79,25 @@ export function createTeamConnectionsHost(deps: TeamConnectionsHostDeps) {
     ...(deps.onSettled ? { onSettled: deps.onSettled } : {}),
   });
   const personApps = () => (team ? scopes.person("app") : []);
-  /** The apps connected for an installation, the team's or a member's own. A turn never waits on a refresh: what is known
-   * is used at once, and read again in the background once it is a minute old. Only an installation's first answer is
-   * waited for, at most a few seconds, and a failed first read is tried again soon; `primeApps` reads the team's at start. */
-  const connectedApps = new Map<string, { at: number; apps: string[] | null; reading: Promise<void> | null }>();
+  /** The apps connected for an installation, the team's or a member's own. What is known is used at once, and read again
+   * in the background once it is a minute old. A turn waits, at most a few seconds, only for an installation's first answer
+   * and for a read after an app changed or while its sign-in is open; a failed first read is tried again soon; `primeApps`
+   * reads the team's at start. */
+  const connectedApps = new Map<string, { at: number; apps: string[] | null; reading: Promise<void> | null; changed: boolean }>();
   const appsConnected = async (as?: BrokerAccess): Promise<string[]> => {
     const key = as ? createHash("sha256").update(as.url).update("\u0000").update(as.token).digest("hex") : "";
-    const entry = connectedApps.get(key) ?? { at: -Infinity, apps: null, reading: null };
+    const entry = connectedApps.get(key) ?? { at: -Infinity, apps: null, reading: null, changed: false };
     connectedApps.set(key, entry);
-    if (!entry.reading && Date.now() - entry.at >= (entry.apps ? APPS_FRESH_MS : APPS_RETRY_MS)) {
-      entry.reading = deps.composio.connectedServices(deps.cfg(), as).then((services) => {
-        entry.apps = Object.entries(services).filter(([, state]) => state.connected).map(([slug]) => slug);
-      }, () => {}).finally(() => { entry.at = Date.now(); entry.reading = null; });
+    const changing = entry.changed || deps.appSignInOpen?.() === true;
+    const read = () => deps.composio.connectedServices(deps.cfg(), as).then((services) => {
+      entry.apps = Object.entries(services).filter(([, state]) => state.connected).map(([slug]) => slug);
+    }, () => {}).finally(() => { entry.at = Date.now(); });
+    if (changing || (!entry.reading && Date.now() - entry.at >= (entry.apps ? APPS_FRESH_MS : APPS_RETRY_MS))) {
+      entry.changed = false;
+      const reading: Promise<void> = (entry.reading ? entry.reading.then(read) : read()).finally(() => { if (entry.reading === reading) entry.reading = null; });
+      entry.reading = reading;
     }
-    if (!entry.apps && entry.reading) {
+    if ((!entry.apps || changing) && entry.reading) {
       await Promise.race([entry.reading, new Promise<void>((resolve) => { setTimeout(resolve, FIRST_APPS_WAIT_MS).unref?.(); })]);
     }
     return entry.apps ?? [];
@@ -213,6 +220,10 @@ export function createTeamConnectionsHost(deps: TeamConnectionsHostDeps) {
     /** At start: the team's installation's apps are read now, so the first turn need not wait for them. */
     primeApps(): void {
       if (deps.composio.configured(deps.cfg())) void appsConnected();
+    },
+    /** An app was connected, reconnected or removed: the next turn reads the connected apps before it mounts them. */
+    appsChanged(): void {
+      for (const entry of connectedApps.values()) entry.changed = true;
     },
 
     /** The connected-apps bridges of a turn: the team's, and in a turn that acts for a member their own beside it.
