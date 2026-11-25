@@ -76,7 +76,7 @@ import { enterFromComposer, growFromMascot, hasSendLaunch } from "./bubble-entra
 import { STATUS_MOUNT_MS, useReached } from "@/hooks/use-reached";
 import { lifeDraw } from "@/lib/reply-life";
 import { lastNonReceipt } from "@/lib/receipts";
-import { routineStartName } from "./RoutineStartLine"; import { SILENT_LINE } from "../../shared/routine-run.ts"; import { useRoutineRetry } from "@/lib/routine-retry"; import { useTurnLive } from "@/state/turn-status"; import { useLiveReplyActive } from "@/state/live-reply"; import { useTurnNow } from "./NowCard"; import { useThreadRoutineRun } from "@/state/older-routine-runs";
+import { routineStartName } from "./RoutineStartLine"; import { SILENT_LINE } from "../../shared/routine-run.ts"; import { routineToRun, useRoutineRetry } from "@/lib/routine-retry"; import { useTurnLive } from "@/state/turn-status"; import { useLiveReplyActive } from "@/state/live-reply"; import { useTurnNow } from "./NowCard"; import { useThreadRoutineRun } from "@/state/older-routine-runs";
 import { followSentTurn, sentTurn, useSentTurn } from "@/state/sent-turn";
 import { waitsForNetwork } from "@/state/network-wait";
 import { useOffline } from "@/mobile/network";
@@ -1234,7 +1234,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   const { retry: routineRetry, known: routineRetryKnown, canRetry: canRegenerate } = useRoutineRetry(lastUserMessage, state.routines, state.routinesLoadState);
   const regenerate = useCallback(() => {
     if (bot.busy) return;
-    if (routineRetry) { if (routineRetry.state === "ready") dispatch({ type: "runRoutine", routineId: routineRetry.routineId }); return; }
+    if (routineRetry) { const routineId = routineToRun(routineRetry); if (routineId) dispatch({ type: "runRoutine", routineId }); return; }
     if (lastUserMessage?.text && !lastUserMessage.id.startsWith("optimistic-")) {
       dispatch({ type: "editMessage", botId: bot.id, threadId: bot.threadId, messageId: lastUserMessage.id, text: lastUserMessage.text });
     }

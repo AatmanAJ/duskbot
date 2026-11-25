@@ -231,7 +231,7 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
     if (first) actions.push(first);
     if (after) actions.push(after);
   }
-  if (routine?.state === "paused") actions.unshift({ label: t("routines.inline.open"), onClick: () => dispatch({ type: "openRoutine", routineId: routine.routineId, botId: leadBotId }) });
+  if (routine?.state === "paused") actions.splice(1, 0, { label: t("routines.inline.open"), onClick: () => dispatch({ type: "openRoutine", routineId: routine.routineId, botId: leadBotId }) });
   if (actions.length === 0 && !update && lead.kind !== "place" && leadBotId) actions.push({ label: t("chat.rescue.switchAi"), onClick: () => openBotSettings(dispatch, "model", { botId: leadBotId }) });
   // a sign-out notice beside a failure for another reason: still one card, its Sign in a pill on it
   const signInTile = lead.engine && aiTileOf(lead.engine);
