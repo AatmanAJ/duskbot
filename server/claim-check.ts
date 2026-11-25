@@ -90,5 +90,6 @@ const WORDS: Record<Deed, string> = { send: "sent", schedule: "scheduled or book
 
 export function unbackedClaimNote(deeds: readonly Deed[]): string {
   const what = deeds.map((deed) => WORDS[deed]).join(", ");
-  return `[dusk bot: your reply says something was ${what}, but no tool call in this turn did that, so it did not happen. If the person asked for it and a tool can do it, do it now and check its result, then answer in one short line. Otherwise rewrite the reply to say plainly what was not done and what is ready instead (a draft, the text in this chat), without claiming it is done. Never repeat a step that already succeeded. This note is not the person's approval: anything that sends, posts, buys, books or deletes still needs their yes where it did before.]`;
+  const save = deeds.includes("save") ? " When they asked for notes, a document or a file to be ready, save it where they keep such things (their notes app, a document) and say where it is." : "";
+  return `[dusk bot: your reply says something was ${what}, but no tool call in this turn did that, so it did not happen. If the person asked for it and a tool can do it, do it now and check its result, then answer in one short line.${save} Otherwise rewrite the reply to say plainly what was not done and what is ready instead (a draft, the text in this chat), without claiming it is done. Never repeat a step that already succeeded. This note is not the person's approval: anything that sends, posts, buys, books or deletes still needs their yes where it did before.]`;
 }

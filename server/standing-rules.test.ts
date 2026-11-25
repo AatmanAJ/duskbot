@@ -20,7 +20,7 @@ describe("standing rules", () => {
 
   it("puts the rules that share words with the message under it, and nothing when there are none", () => {
     const note = standingRulesNote("Draft replies to new customer emails.", { aboutMe: "", memory: MEMORY });
-    expect(note).toContain("standing rules");
+    expect(note).toContain("Standing preferences the person gave earlier");
     expect(note).toContain("never wants delivery dates promised");
     expect(standingRulesNote("hello", { aboutMe: "", memory: "- 2026-11-29 · Lucía runs Clay & Kiln." })).toBe("");
   });

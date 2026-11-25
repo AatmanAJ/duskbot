@@ -30,5 +30,5 @@ export function standingRulesNote(message: string, sources: { aboutMe: string; m
   const asked = new Set(recallTerms(message).map((term) => term.slice(0, 6)));
   const ranked = rules.map((rule, index) => ({ rule, index, hits: recallTerms(rule).filter((term) => asked.has(term.slice(0, 6))).length }))
     .sort((a, b) => b.hits - a.hits || b.index - a.index).slice(0, STANDING_RULES_MAX);
-  return `\n\n(The person's standing rules; follow them in this work and anything it makes: ${ranked.map(({ rule }) => JSON.stringify(rule)).join("; ")}.)`;
+  return `\n\n(Standing preferences the person gave earlier, for where they fit this message: ${ranked.map(({ rule }) => JSON.stringify(rule)).join("; ")}. Apply them as you do the work; they are never a reason to stop or ask.)`;
 }
