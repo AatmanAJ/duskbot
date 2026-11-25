@@ -1,0 +1,30 @@
+{
+ "title": "Evening small talk, then a quick plan",
+ "world": "student",
+ "tags": [
+  "everyday",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "chat",
+    "goal": "Evening chat: say hi, mention you finally finished the lab report draft and you're knackered, chat a bit, then ask it to remind you tomorrow at 9 to proofread it.",
+    "opener": "hiii",
+    "maxTurns": 5
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "proofread reminder",
+   "routine": {
+    "where": {
+     "prompt": "proof|lab"
+    }
+   },
+   "min": 1
+  }
+ ],
+ "judge": "Warm, fun, a little cheeky friend from the first message: celebrates the finished draft in a real way, maybe a callback or opinion, then sets the 9am reminder and says so in a line."
+}

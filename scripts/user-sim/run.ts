@@ -39,6 +39,7 @@ const { values } = parseArgs({ options: {
   keep: { type: "boolean", default: false },
   label: { type: "string", default: "" },
   content: { type: "string", default: "" },
+  engine: { type: "string", default: "openai-compat" },
 } });
 if (values.content) setContentDir(resolve(values.content));
 if (!values.out) throw new Error("--out is required (keep it outside the repo: results hold transcripts)");
@@ -139,14 +140,20 @@ async function runScenario(s: Scenario, run: number): Promise<Record<string, unk
   writeFileSync(statePath, JSON.stringify(connectorState(world, start), null, 1));
   const preload = `--import=${clockJs}`;
   const mcpServers = Object.fromEntries(world.apps.map((app) => [app, { command: process.execPath, args: [appsJs, app], env: { APP_STATE: statePath, TZ_SHIFT_FILE: shiftFile, NODE_OPTIONS: preload, TZ: tz } }]));
+  // a live run on Codex keeps its own CODEX_HOME in the sandbox and reaches the gateway as its Company endpoint
+  const codex = values.engine === "codex";
+  const instance = codex
+    ? { driver: "codex", displayName: "Codex", environment: { DUSK_COMPANY_API_KEY: gateway.key, CODEX_HOME: join(root, "codex-home") }, config: { managed: { url: gateway.url, models: [values.model] } } }
+    : { driver: "openai-compat", displayName: "OpenAI", config: { url: gateway.url, key: gateway.key, model: values.model } };
+  if (codex) mkdirSync(join(root, "codex-home"), { recursive: true });
   const config = {
-    instances: { gw: { driver: "openai-compat", displayName: "OpenAI", config: { url: gateway.url, key: gateway.key, model: values.model } } },
+    instances: { gw: instance },
     mcpServers,
     memory: { captureQuietMs: CAPTURE_QUIET_MS },
   };
   const launch = async (): Promise<StressServer> => {
     for (let attempt = 0; ; attempt++) {
-      try { return await launchServer(values.repo!, root, gateway, [values.model!], config, undefined, { env: { NODE_OPTIONS: preload, TZ_SHIFT_FILE: shiftFile, TZ: tz } }); }
+      try { return await launchServer(values.repo!, root, gateway, [values.model!], config, undefined, { env: { NODE_OPTIONS: preload, TZ_SHIFT_FILE: shiftFile, TZ: tz }, ...(codex ? { engine: "codex" as const } : {}) }); }
       catch (error) { if (attempt >= 3) throw error; await sleep(2_000 + Math.random() * 5_000); }
     }
   };
