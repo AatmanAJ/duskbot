@@ -110,18 +110,21 @@ export function memoryUsageStore(now: () => number = Date.now): UsageStore {
 type RecordDoc = { _id: string; kind: Kind; at: Date; accountId?: string; workspaceId?: string; ran?: UsageRan; test?: true; data: UsageRecord["data"] };
 const docId = (record: Pick<UsageRecord, "workspaceId" | "id">) => record.workspaceId ? `${record.workspaceId}:${record.id}` : record.id;
 /** usage_events (TTL on `at`), usage_daily (kept), usage_people (TTL on `at`), usage_snapshots (one per workspace) */
-export async function mongoUsageStore(db: Db): Promise<UsageStore> {
+export async function mongoUsageStore(db: Db, retention: SweepOptions = {}): Promise<UsageStore> {
   const events = db.collection<RecordDoc>("usage_events"), daily = db.collection<{ _id: string; day: string; c: Record<string, number> }>("usage_daily");
   const people = db.collection<{ _id: string; day: string; accountId: string; at: Date; turns: number; failed: number; runs: number; frustrations: number; appTurns: number }>("usage_people");
   const snaps = db.collection<{ _id: string; accountId: string; at: Date; snapshot: UsageSnapshot }>("usage_snapshots"), marks = db.collection<{ _id: string }>("usage_marks");
   const spans = db.collection<{ _id: string; workspaceId: string; accountId: string; routine: string; first: Date; last: Date; runs: number }>("usage_routines");
-  await ttlIndex(events, USAGE_RETENTION_DAYS * 86_400);
+  // index steps never stop the service: one that is refused is a warning and the service runs on
+  const seconds = USAGE_RETENTION_DAYS * 86_400, ttl = await ttlIndex(events, seconds);
+  const indexed = (name: string, step: Promise<unknown>) => step.catch((error: Error & { code?: number }) => console.warn(`usage: the ${name} indexes were not made (${error.code ?? error.name}); the service runs without them`));
   await Promise.all([
-    events.createIndexes([{ key: { at: 1 }, expireAfterSeconds: USAGE_RETENTION_DAYS * 86_400 }, { key: { kind: 1, at: -1 } }, { key: { accountId: 1 } }, { key: { workspaceId: 1 } }]),
-    people.createIndexes([{ key: { at: 1 }, expireAfterSeconds: PEOPLE_RETENTION_DAYS * 86_400 }, { key: { day: 1 } }, { key: { accountId: 1 } }]),
-    snaps.createIndexes([{ key: { accountId: 1 } }]),
-    spans.createIndexes([{ key: { last: 1 }, expireAfterSeconds: PEOPLE_RETENTION_DAYS * 86_400 }, { key: { accountId: 1 } }]),
+    indexed("usage_events", events.createIndexes([...(ttl === "sweep" ? [] : [{ key: { at: 1 }, expireAfterSeconds: seconds }]), { key: { kind: 1, at: -1 } }, { key: { accountId: 1 } }, { key: { workspaceId: 1 } }])),
+    indexed("usage_people", people.createIndexes([{ key: { at: 1 }, expireAfterSeconds: PEOPLE_RETENTION_DAYS * 86_400 }, { key: { day: 1 } }, { key: { accountId: 1 } }])),
+    indexed("usage_snapshots", snaps.createIndexes([{ key: { accountId: 1 } }])),
+    indexed("usage_routines", spans.createIndexes([{ key: { last: 1 }, expireAfterSeconds: PEOPLE_RETENTION_DAYS * 86_400 }, { key: { accountId: 1 } }])),
   ]);
+  if (ttl === "sweep") startSweep(events, seconds, retention);
   // notes stored before they were kept apart get their account and workspace taken off, in the background
   void unlinkNotes(events).catch(error => console.warn(`usage: unlinking stored notes stopped (${(error as Error).message}); it resumes at the next start`));
   const toRecord = (doc: RecordDoc): UsageRecord => ({ id: doc.workspaceId ? doc._id.slice(doc.workspaceId.length + 1) : doc._id, kind: doc.kind, at: doc.at.getTime(), accountId: doc.accountId ?? "",
@@ -165,13 +168,51 @@ export async function mongoUsageStore(db: Db): Promise<UsageStore> {
   };
 }
 
-/** sets the TTL on `at` when an older start made it with another one; createIndexes refuses to change it */
-export async function ttlIndex(events: Pick<Collection<RecordDoc>, "indexes">, seconds: number, run: (command: Record<string, unknown>) => Promise<unknown> = command => (events as Collection<RecordDoc>).db.command(command)) {
-  let existing: Array<{ key?: Record<string, unknown>; expireAfterSeconds?: number }>;
-  try { existing = await events.indexes(); } catch (error) { if ((error as { codeName?: string }).codeName === "NamespaceNotFound") return; throw error; }
+type Ttl = Pick<Collection<RecordDoc>, "indexes" | "dropIndex" | "createIndex">;
+/** sets the TTL on `at` when an older start made it with another one (createIndexes refuses to change it). collMod needs
+ * dbAdmin, which the service's user may not have; then the index is dropped and made again (readWrite allows that), and
+ * when that is refused too, "sweep": the caller deletes expired records itself. never throws */
+export async function ttlIndex(events: Ttl, seconds: number, run: (command: Record<string, unknown>) => Promise<unknown> = command => (events as Collection<RecordDoc>).db.command(command)): Promise<"ok" | "changed" | "rebuilt" | "sweep"> {
+  const why = (error: unknown) => { const e = error as { code?: number; codeName?: string; name?: string }; return e.codeName ?? e.code ?? e.name ?? "error"; };
+  let existing: Array<{ name?: string; key?: Record<string, unknown>; expireAfterSeconds?: number }>;
+  try { existing = await events.indexes(); } catch (error) {
+    if ((error as { codeName?: string }).codeName === "NamespaceNotFound") return "ok";
+    console.warn(`usage: the usage_events indexes could not be read (${why(error)}); old records are deleted hourly instead`);
+    return "sweep";
+  }
   const ttl = existing.find(index => index.key && Object.keys(index.key).length === 1 && index.key.at === 1);
-  if (!ttl || ttl.expireAfterSeconds === seconds) return;
-  await run({ collMod: (events as Collection<RecordDoc>).collectionName, index: { keyPattern: { at: 1 }, expireAfterSeconds: seconds } });
+  if (!ttl || ttl.expireAfterSeconds === seconds) return "ok";
+  const name = (events as Collection<RecordDoc>).collectionName;
+  try { await run({ collMod: name, index: { keyPattern: { at: 1 }, expireAfterSeconds: seconds } }); return "changed"; } catch (refused) {
+    try {
+      await events.dropIndex(ttl.name ?? "at_1");
+      await events.createIndex({ at: 1 }, { expireAfterSeconds: seconds });
+      console.log(`usage: the usage_events TTL was made again with ${seconds}s (collMod refused: ${why(refused)})`);
+      return "rebuilt";
+    } catch (error) {
+      console.warn(`usage: the usage_events TTL could not be changed (collMod ${why(refused)}, rebuild ${why(error)}); old records are deleted hourly instead`);
+      return "sweep";
+    }
+  }
+}
+
+export interface SweepOptions { everyMs?: number; batch?: number; maxBatches?: number; now?: () => number }
+/** deletes records older than `seconds`, a capped number of batches at a time; the work a TTL index would do */
+export async function sweepExpired(events: Pick<Collection<RecordDoc>, "find" | "deleteMany">, seconds: number, { batch = 1_000, maxBatches = 20, now = Date.now }: SweepOptions = {}): Promise<number> {
+  const before = new Date(now() - seconds * 1000);
+  let removed = 0;
+  for (let round = 0; round < maxBatches; round++) {
+    const ids = (await events.find({ at: { $lt: before } }, { projection: { _id: 1 } }).limit(batch).toArray()).map(doc => doc._id);
+    if (!ids.length) break;
+    removed += (await events.deleteMany({ _id: { $in: ids }, at: { $lt: before } })).deletedCount ?? 0;
+    if (ids.length < batch) break;
+  }
+  return removed;
+}
+function startSweep(events: Pick<Collection<RecordDoc>, "find" | "deleteMany">, seconds: number, options: SweepOptions) {
+  const sweep = () => void sweepExpired(events, seconds, options).catch((error: Error & { code?: number }) => console.warn(`usage: deleting old records failed (${error.code ?? error.name}); it tries again in an hour`));
+  setImmediate(sweep);
+  setInterval(sweep, options.everyMs ?? 3_600_000).unref();
 }
 
 export const UNLINK_BATCH = 500;

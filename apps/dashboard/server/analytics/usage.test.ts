@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { UsageReport, UsageTurn } from "../../../../shared/usage-signals.ts";
-import { UNLINK_BATCH, createUsage, latencyBucket, memoryUsageStore, noteKey, notesOnly, ttlIndex, unlinkNotes, unlinkedDoc } from "./usage.ts";
+import { UNLINK_BATCH, createUsage, latencyBucket, memoryUsageStore, mongoUsageStore, noteKey, notesOnly, sweepExpired, ttlIndex, unlinkNotes, unlinkedDoc } from "./usage.ts";
 import { focusRules, summarize, themesOf, type UsageAnswer } from "./usage-summary.ts";
 import { dayOf } from "./events.ts";
 
@@ -219,9 +219,73 @@ describe("moving stored notes away from their account", () => {
     const commands: unknown[] = [];
     const run = async (command: Record<string, unknown>) => { commands.push(command); };
     const events = (expire: number) => ({ indexes: async () => [{ key: { _id: 1 } }, { key: { at: 1 }, expireAfterSeconds: expire }], collectionName: "usage_events" });
-    await ttlIndex(events(90 * 86_400) as never, 30 * 86_400, run);
-    await ttlIndex(events(30 * 86_400) as never, 30 * 86_400, run);
-    await ttlIndex({ indexes: async () => { throw Object.assign(new Error("ns"), { codeName: "NamespaceNotFound" }); } } as never, 30 * 86_400, run);
+    expect(await ttlIndex(events(90 * 86_400) as never, 30 * 86_400, run)).toBe("changed");
+    expect(await ttlIndex(events(30 * 86_400) as never, 30 * 86_400, run)).toBe("ok");
+    expect(await ttlIndex({ indexes: async () => { throw Object.assign(new Error("ns"), { codeName: "NamespaceNotFound" }); } } as never, 30 * 86_400, run)).toBe("ok");
     expect(commands).toEqual([{ collMod: "usage_events", index: { keyPattern: { at: 1 }, expireAfterSeconds: 30 * 86_400 } }]);
+  });
+
+  // the service's mongo user is readWrite: collMod (dbAdmin) is refused with code 13, and on some setups dropIndex too
+  const unauthorized = () => Object.assign(new Error("not authorized"), { code: 13, codeName: "Unauthorized" });
+  type Spec = { key: Record<string, number>; name?: string; expireAfterSeconds?: number };
+  function fakeDb({ dropRefused, docs = [] }: { dropRefused: boolean; docs?: Array<{ _id: string; at: Date }> }) {
+    const indexes = new Map<string, Spec[]>([["usage_events", [{ key: { _id: 1 }, name: "_id_" }, { key: { at: 1 }, name: "at_1", expireAfterSeconds: 90 * 86_400 }]]]);
+    const rows = new Map(docs.map(doc => [doc._id, doc]));
+    const nameOf = (key: Record<string, number>) => Object.entries(key).map(([field, dir]) => `${field}_${dir}`).join("_");
+    const make = (spec: Spec, list: Spec[]) => {
+      const same = list.find(item => nameOf(item.key) === nameOf(spec.key));
+      if (same && same.expireAfterSeconds !== spec.expireAfterSeconds) throw Object.assign(new Error("conflict"), { code: 85, codeName: "IndexOptionsConflict" });
+      if (!same) list.push({ ...spec, name: nameOf(spec.key) });
+    };
+    const db = {
+      command: async () => { throw unauthorized(); },
+      collection: (name: string) => {
+        const list = indexes.get(name) ?? (indexes.set(name, []), indexes.get(name)!);
+        return {
+          collectionName: name, db: undefined as unknown,
+          indexes: async () => list.map(spec => ({ ...spec })),
+          createIndexes: async (specs: Spec[]) => { for (const spec of specs) make(spec, list); },
+          createIndex: async (key: Record<string, number>, options: { expireAfterSeconds?: number }) => make({ key, ...options }, list),
+          dropIndex: async (index: string) => { if (dropRefused) throw unauthorized(); list.splice(list.findIndex(spec => spec.name === index), 1); },
+          find: (filter: { at?: { $lt: Date } }) => ({ limit: (n: number) => ({ toArray: async () =>
+            name !== "usage_events" ? [] : [...rows.values()].filter(doc => filter.at ? doc.at < filter.at.$lt : false).slice(0, n) }) }),
+          deleteMany: vi.fn(async (filter: { _id: { $in: string[] } }) => { let deletedCount = 0; for (const id of filter._id.$in) if (rows.delete(id)) deletedCount++; return { deletedCount }; }),
+          insertMany: async () => {},
+        };
+      },
+    };
+    return { db, indexes, rows };
+  }
+  it("starts when collMod is refused, and makes the TTL again with dropIndex and createIndex", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {}), log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const { db, indexes } = fakeDb({ dropRefused: false });
+      await expect(mongoUsageStore(db as never)).resolves.toBeTruthy();
+      expect(indexes.get("usage_events")!.find(spec => spec.name === "at_1")!.expireAfterSeconds).toBe(30 * 86_400);
+      expect(warn).not.toHaveBeenCalled();
+    } finally { warn.mockRestore(); log.mockRestore(); }
+  });
+  it("starts when collMod and dropIndex are both refused, warns once and deletes records past 30 days itself", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const old = (i: number) => ({ _id: `old${i}`, at: new Date(Date.now() - 31 * 86_400_000) }), fresh = { _id: "fresh", at: new Date(Date.now() - 86_400_000) };
+      const { db, indexes, rows } = fakeDb({ dropRefused: true, docs: [old(1), old(2), old(3), fresh] });
+      await expect(mongoUsageStore(db as never, { batch: 2 })).resolves.toBeTruthy();
+      // the 90 day index stays (it cannot be changed) and the other indexes are still made
+      expect(indexes.get("usage_events")!.map(spec => spec.name)).toEqual(["_id_", "at_1", "kind_1_at_-1", "accountId_1", "workspaceId_1"]);
+      await vi.waitFor(() => expect([...rows.keys()]).toEqual(["fresh"]));
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]![0])).toContain("deleted hourly");
+    } finally { warn.mockRestore(); }
+  });
+  it("sweeps in capped batches and stops when nothing is left", async () => {
+    const at = new Date(NOW - 40 * 86_400_000), rows = new Map(Array.from({ length: 7 }, (_, i) => [`r${i}`, { _id: `r${i}`, at }]));
+    const events = {
+      find: (filter: { at: { $lt: Date } }) => ({ limit: (n: number) => ({ toArray: async () => [...rows.values()].filter(doc => doc.at < filter.at.$lt).slice(0, n) }) }),
+      deleteMany: async (filter: { _id: { $in: string[] } }) => { for (const id of filter._id.$in) rows.delete(id); return { deletedCount: filter._id.$in.length }; },
+    };
+    expect(await sweepExpired(events as never, 30 * 86_400, { batch: 2, maxBatches: 3, now: () => NOW })).toBe(6);
+    expect(await sweepExpired(events as never, 30 * 86_400, { batch: 2, maxBatches: 3, now: () => NOW })).toBe(1);
+    expect(await sweepExpired(events as never, 30 * 86_400, { batch: 2, maxBatches: 3, now: () => NOW })).toBe(0);
   });
 });
