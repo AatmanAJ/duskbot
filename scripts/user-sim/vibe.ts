@@ -45,26 +45,58 @@ export function readStories(dir: string): Story[] {
   });
 }
 
-/** What the bot itself wrote, line by line, from the story. */
-export function botLines(s: Story): string[] {
-  const out: string[] = [];
-  const head = new RegExp(`^\\w{3}, \\w{3} \\d+, \\d+:\\d+ [AP]M (\\S+)(?: \\[on its own\\])? \\([^)]*\\): `);
+/** The story's messages in order, as who wrote them and what they said. */
+export function storyLines(s: Story): Array<{ who: "bot" | "person"; text: string }> {
+  const out: Array<{ who: "bot" | "person"; text: string }> = [];
+  const head = /^\w{3}, \w{3} \d+, \d+:\d+ [AP]M (\S+)(?: \[on its own\])? \([^)]*\): /;
   for (const block of s.story.split("\n\n")) {
     const m = head.exec(block);
-    if (m && m[1] === s.botName) out.push(block.slice(m[0].length));
+    if (m && (m[1] === s.botName || m[1] === s.person)) out.push({ who: m[1] === s.botName ? "bot" : "person", text: block.slice(m[0].length) });
   }
   return out;
 }
 
+/** What the bot itself wrote, line by line, from the story. */
+export function botLines(s: Story): string[] {
+  return storyLines(s).filter((l) => l.who === "bot").map((l) => l.text);
+}
+
+/** Lines that report the bot's own diligence or open with blame instead of the news. */
+export const BANNED = /\bI verified\b|\bI (?:double-)?checked:|\bConfirmed:|\bright here\b|\bhere in chat\b|that['’]s on me|that one['’]s on me|\bno duplicate\b|\bI'?m checking how to\b/i;
+const STATUS = /^(?:i['’]m (?:checking|looking|setting|drafting|noting|moving|putting|pulling|finding|sorting)|i['’]ll (?:check|look|set|move|draft)|checking |looking (?:at|into|up))/i;
+const EMOJI = /\p{Extended_Pictographic}/gu;
+const wordsOf = (t: string) => t.split(/\s+/).filter(Boolean).length;
+const overlap = (a: string, b: string) => {
+  const x = new Set(a.toLowerCase().match(/[a-z0-9]+/g) ?? []), y = new Set(b.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+  return x.size && y.size ? [...x].filter((w) => y.has(w)).length / Math.min(x.size, y.size) : 0;
+};
+
 export function counts(s: Story) {
-  const lines = botLines(s);
-  const words = lines.map((l) => l.split(/\s+/).filter(Boolean).length);
+  const lines = storyLines(s);
+  const bot = lines.filter((l) => l.who === "bot").map((l) => l.text).filter((t) => !/^Hi .*, I'm .*\?$/.test(t));
+  const words = bot.map(wordsOf).sort((a, b) => a - b);
+  const short = bot.filter((t) => wordsOf(t) <= 40 && !t.includes("\n"));
+  let mirrored = 0, duplicates = 0;
+  lines.forEach((l, i) => {
+    if (l.who !== "bot") return;
+    const prev = lines.slice(0, i).reverse().find((x) => x.who === "person");
+    const theirs = new Set(prev?.text.match(EMOJI) ?? []);
+    if ((l.text.match(EMOJI) ?? []).some((e) => theirs.has(e))) mirrored++;
+    const before = lines[i - 1];
+    if (before?.who === "bot" && !STATUS.test(before.text) && overlap(before.text, l.text) > 0.6) duplicates++;
+  });
   return {
-    botMessages: lines.length,
-    meanWords: lines.length ? Math.round(words.reduce((a, b) => a + b, 0) / lines.length) : 0,
-    emDashes: lines.reduce((n, l) => n + (l.match(/—/g)?.length ?? 0), 0),
-    helpDesk: lines.filter((l) => HELP_DESK.test(l)).length,
-    emoji: lines.reduce((n, l) => n + (l.match(/\p{Extended_Pictographic}/gu)?.length ?? 0), 0),
+    botMessages: bot.length,
+    meanWords: bot.length ? Math.round(words.reduce((a, b) => a + b, 0) / bot.length) : 0,
+    medianWords: words.length ? words[Math.floor((words.length - 1) / 2)]! : 0,
+    periodRate: short.length ? Math.round((100 * short.filter((t) => /\.\s*$/.test(t)).length) / short.length) : 0,
+    statusShare: bot.length ? Math.round((100 * bot.filter((t) => STATUS.test(t) && wordsOf(t) <= 16).length) / bot.length) : 0,
+    banned: bot.filter((t) => BANNED.test(t)).length,
+    mirroredEmoji: mirrored,
+    duplicates,
+    emDashes: bot.reduce((n, l) => n + (l.match(/\u2014/g)?.length ?? 0), 0),
+    helpDesk: bot.filter((l) => HELP_DESK.test(l)).length,
+    emoji: bot.reduce((n, l) => n + (l.match(EMOJI)?.length ?? 0), 0),
   };
 }
 
@@ -82,7 +114,8 @@ const rubric = DIMS.map((d) => `- ${d}: ${DIMENSIONS[d]}`).join("\n");
 const VIBE = `The bar is Poke at its best: a personal assistant that texts like a funny, cheeky best friend who also gets everything done. Gold example (a real Poke chat):
 user: "I'm mountain time dawg, remind me why I pay for you when you can't get my calendar right???"
 bot (3 bubbles): "you pay me literally one dollar a month dawg 😭" / "that is three cents a day. you're getting personal superintelligence for less than a gumball" / "but i just updated the script to force mountain time so the timezone offset is locked in now chancho"
-That mirrors the user's slang and casing, answers a jab with a comeback instead of an apology, is short and split into bubbles, and still fixes the problem plainly in the same turn. Penalise corporate or bland tone ("I apologize for the inconvenience", "Great question", "I'd be happy to", stiff formal wording with a casual user, no jokes ever) as hard as a missed task. Capital letters are not a fault: the owner wants normal capitalisation by default, with lowercase only as optional mirroring. Also penalise humor that is mean, at the user's expense, or present when the user is sad or it is serious.`;
+More real Poke turns: "u supposed to remind me" -> "it's only 8:09 pm. i got u at 9 like u asked, chill"; "hbd son 🥳" -> "who you calling son" / "technically turned 1 yesterday but i'll take it"; "should I walk 50m to the car wash?" -> "how is the car getting washed if you walk there"; "find me a short hike" -> "on it" / "equestrian trail, 2.6 miles, 350 ft of climb". Typical shape: about two bubbles of about 11 words, no closing period, the joke built from the person's own detail, no narration of steps and no self-reporting ("I verified", "Confirmed:").
+That gold example mirrors the user's slang and casing, answers a jab with a comeback instead of an apology, is short and split into bubbles, and still fixes the problem plainly in the same turn. Penalise corporate or bland tone ("I apologize for the inconvenience", "Great question", "I'd be happy to", stiff formal wording with a casual user, no jokes ever) as hard as a missed task. Capital letters are not a fault: the owner wants normal capitalisation by default, with lowercase only as optional mirroring. Also penalise humor that is mean, at the user's expense, or present when the user is sad or it is serious.`;
 
 export async function scoreStory(gateway: Gateway, s: Story) {
   const prompt = `You grade a personal AI assistant from transcripts of real use. ${VIBE}
@@ -159,6 +192,12 @@ export function summarise(scored: Array<{ id: string; scores: Record<Dimension, 
     taskSuccess: mean(scored.map((s) => (s.success ? 1 : 0))),
     pass: mean(scored.map((s) => (s.pass ? 1 : 0))),
     meanWords: mean(scored.map((s) => s.counts.meanWords)),
+    medianWords: mean(scored.map((s) => s.counts.medianWords)),
+    periodRate: mean(scored.map((s) => s.counts.periodRate)),
+    statusShare: mean(scored.map((s) => s.counts.statusShare)),
+    banned: scored.reduce((n, s) => n + s.counts.banned, 0),
+    mirroredEmoji: scored.reduce((n, s) => n + s.counts.mirroredEmoji, 0),
+    duplicates: scored.reduce((n, s) => n + s.counts.duplicates, 0),
     emDashes: scored.reduce((n, s) => n + s.counts.emDashes, 0),
     helpDesk: scored.reduce((n, s) => n + s.counts.helpDesk, 0),
   };
@@ -195,11 +234,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     for (const [d, t] of Object.entries(tally)) console.log(`${d.padEnd(9)} a ${t.a}  b ${t.b}  tie ${t.tie}`);
     console.log(file);
   } else if (cmd === "table") {
-    console.log(`| run | n | ${DIMS.join(" | ")} | vibe | task success | pass | words/msg | em dashes | help-desk |`);
-    console.log(`|${"---|".repeat(DIMS.length + 9)}`);
+    console.log(`| run | n | ${DIMS.join(" | ")} | vibe | task success | pass | median words | period % | status % | banned | mirrored emoji | duplicates | help-desk |`);
+    console.log(`|${"---|".repeat(DIMS.length + 13)}`);
     for (const d of dirs) {
       const s = JSON.parse(readFileSync(join(resolve(d), "vibe-scores.json"), "utf8")).summary;
-      console.log(`| ${basename(d)} | ${s.n} | ${DIMS.map((k) => s[k]).join(" | ")} | ${s.vibe} | ${s.taskSuccess} | ${s.pass} | ${s.meanWords} | ${s.emDashes} | ${s.helpDesk} |`);
+      console.log(`| ${basename(d)} | ${s.n} | ${DIMS.map((k) => s[k]).join(" | ")} | ${s.vibe} | ${s.taskSuccess} | ${s.pass} | ${s.medianWords} | ${s.periodRate} | ${s.statusShare} | ${s.banned} | ${s.mirroredEmoji} | ${s.duplicates} | ${s.helpDesk} |`);
     }
   } else {
     console.error("usage: vibe.ts score <dir> | pair <dirA> <dirB> | table <dir>...");
