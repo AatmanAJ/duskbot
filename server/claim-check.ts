@@ -9,8 +9,8 @@ type Evidence = Deed | "browser" | "shell" | "other";
 const BACKED_BY: Record<Deed, readonly Evidence[]> = {
   send: ["send", "browser"],
   schedule: ["schedule", "browser"],
-  save: ["save", "schedule", "browser", "shell", "other"],
-  remove: ["remove", "browser", "shell", "other"],
+  save: ["save", "schedule", "browser", "shell"],
+  remove: ["remove", "browser", "shell"],
   setup: ["schedule", "save", "remove", "browser", "shell", "other"],
 };
 

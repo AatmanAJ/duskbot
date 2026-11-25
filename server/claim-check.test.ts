@@ -45,8 +45,9 @@ describe("callEvidence", () => {
 describe("TurnGates: claims", () => {
   it("sends back 'notes are ready' when nothing was saved, once, and lets it end when a note was made", () => {
     const gates = new TurnGates();
-    gates.mount(["notes_create", "notes_search"]);
+    gates.mount(["notes_create", "notes_search", "crm_contact"]);
     gates.ran("notes_search", "{}", true, "[]");
+    gates.ran("crm_contact", "{}", true, '{"name":"Lena Brandt"}');
     expect(gates.gate("Your Acme notes are ready for the 3:00 PM call.")).toContain("no tool call in this turn did that");
     expect(gates.gate("Your Acme notes are ready for the 3:00 PM call.")).toBeNull();
     const saved = new TurnGates();
