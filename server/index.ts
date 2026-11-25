@@ -84,8 +84,7 @@ import { RoomTurnDeadline, RoomTurnStallRegistry, effectiveRoomTurnTimeoutMinute
 import { roomTurnEnd, type RoomClaimEnd } from "./room-turn-end.ts";
 import { applyHoldDirective, classifyHoldDirective, heldMemberLine, rememberHeldMessage, stopWordPlacement } from "./room-holds.ts";
 import { createPersonStop } from "./host/person-stop.ts"; import { createTurnOrder } from "./host/turn-order.ts"; import { createQueuedNotes, createWaitWords } from "./host/wait-words.ts"; import { settleParkedFiles, type ParkedTurnAttachment } from "./host/turn-attachments.ts"; import type { DirectSendInput, DirectSendReceipt } from "./direct-send.ts";
-import { AWAITED_SENT_NOTE } from "./peer-brief.ts"; import { crossReadTarget } from "./cross-bot-read.ts";
-import { finishedWithoutSummaryLine, isPassText, ROOM_SUMMARY_REASK, roomTurnNarrationIds, roomTurnReply } from "./room-reply.ts"; import { createStreamedReply, runsNotice } from "./host/streamed-reply.ts"; import { answeredAboveNote, cleanBotVoice, mentionCueNote, roomTalkRules, roomTurnVoiceNote } from "./group-voice.ts"; import { asksFor, MentionChain } from "./room-mention-chain.ts"; import { teammatesNote, workInProgressNote, type InHand } from "./room-team-context.ts"; import { createRoomEarlier, ROOM_EARLIER_LABEL } from "./host/room-earlier.ts"; import { replyBubbles } from "./reply-bubbles.ts";
+import { AWAITED_SENT_NOTE } from "./peer-brief.ts"; import { crossReadTarget } from "./cross-bot-read.ts"; import { finishedWithoutSummaryLine, isPassText, ROOM_SUMMARY_REASK, roomTurnNarrationIds, roomTurnReply } from "./room-reply.ts"; import { createStreamedReply, runsNotice } from "./host/streamed-reply.ts"; import { answeredAboveNote, cleanBotVoice, mentionCueNote, roomTalkRules, roomTurnVoiceNote } from "./group-voice.ts"; import { asksFor, MentionChain } from "./room-mention-chain.ts"; import { teammatesNote, workInProgressNote, type InHand } from "./room-team-context.ts"; import { createRoomEarlier, ROOM_EARLIER_LABEL } from "./host/room-earlier.ts"; import { replyBubbles } from "./reply-bubbles.ts";
 import { pickComputer } from "./computer-selection.ts";
 import { keyHint, keyStatus, nestedKeyStatus, withoutKeyHints } from "./key-hint.ts";
 import { chartRenderer, compileChart, dataEngine, validateVegaLite } from "./data/deps.ts";
@@ -5236,8 +5235,7 @@ const lastReply = new Map<string, string>(); /** Turns whose reply tagged the pe
 const stoppedTurns = new Map<string, string | undefined>(), personStops = new PersonStops();
 const streamedReplies = createStreamedReply({
   store,
-  directPassAllowed: (threadId) => Boolean(store.botByThread(threadId)) && !activeRoutineRunForThread(threadId) && !isInternalTurn(threadId) && !botApiThread(threadId)
-    && (!coordinator.assignerOf(threadId) || runsNotice(coordinator.active(), threadId)),
+  directPassAllowed: (threadId) => Boolean(store.botByThread(threadId)) && !activeRoutineRunForThread(threadId) && !isInternalTurn(threadId) && !botApiThread(threadId) && (!coordinator.assignerOf(threadId) || runsNotice(coordinator.active(), threadId)),
 });
 // The turn each thread runs, from its start to its end, and nothing once the thread is idle: what Stop and the rescue check.
 const liveTurns = new LiveTurns((threadId) => { const owner = store.botByThread(threadId); return owner ? threadBusy(owner.id, threadId) : groupSpeakers.has(threadId); });
@@ -14799,8 +14797,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         if (!connectorThread(from.id, fromThreadId)) {
           return json(res, 403, { error: "source conversation does not belong to sender" });
         }
-        const other = otherChats(from);
-        if (other && "error" in other) return json(res, other.status, { error: other.error });
+        const other = otherChats(from); if (other && "error" in other) return json(res, other.status, { error: other.error });
         const q = String(url.searchParams.get("q") ?? "").trim();
         const now = Date.now();
         const sinceRaw = url.searchParams.get("since");
@@ -14821,8 +14818,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         }
         const memoryHits = other || scope === "conversations" || !q || from.memoryEnabled === false ? [] : teamHost.memoryIds(from.id, fromThreadId).flatMap((id) => searchMemoryFiles(id, q, limit)).slice(0, limit);
         if (scope === "memory") return json(res, 200, { hits: [], memoryHits });
-        if (other) return json(res, 200, { otherBot: other.bot.name, memoryHits: [], hits: (q ? recallMessages(q, other.threads, limit, range) : recentMessages(other.threads, range ?? {}, limit))
-          .map((hit) => ({ ...hit, task: store.taskByThread(other.bot.id, hit.threadId)?.title, current: false, crossed: false })) });
+        if (other) return json(res, 200, { otherBot: other.bot.name, memoryHits: [], hits: (q ? recallMessages(q, other.threads, limit, range) : recentMessages(other.threads, range ?? {}, limit)).map((hit) => ({ ...hit, task: store.taskByThread(other.bot.id, hit.threadId)?.title, current: false, crossed: false })) });
         const { roomByThread, ownThreads } = recallThreads(from, internalCapability);
         const inRoom = Boolean(store.groupByThread(fromThreadId));
         const found = q ? recallMessages(q, ownThreads, limit, range) : recentMessages(ownThreads, range ?? {}, limit);
@@ -14855,8 +14851,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         const threadId = String(url.searchParams.get("threadId") ?? "").trim();
         const messageId = String(url.searchParams.get("messageId") ?? "").trim();
         if (!threadId || !messageId) return json(res, 400, { error: "threadId and messageId are required" });
-        const other = otherChats(from);
-        if (other && "error" in other) return json(res, other.status, { error: other.error });
+        const other = otherChats(from); if (other && "error" in other) return json(res, other.status, { error: other.error });
         const read = other && other.threads.includes(threadId) ? readMessageText(threadId, messageId) : null;
         if (other) return read ? json(res, 200, { ...read, otherBot: other.bot.name, crossed: false, text: read.text.length > SESSION_READ_MAX_CHARS ? `${read.text.slice(0, SESSION_READ_MAX_CHARS)}…` : read.text,
           task: store.taskByThread(other.bot.id, threadId)?.title }) : json(res, 404, { error: `no such message in ${other.bot.name}'s chats` });
