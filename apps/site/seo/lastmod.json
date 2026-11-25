@@ -1,11 +1,11 @@
 {
  "/": {
-  "hash": "c51edad08ee53063",
-  "lastmod": "2026-11-22"
+  "hash": "3da29666f64c9e2c",
+  "lastmod": "2026-11-25"
  },
  "/download": {
-  "hash": "7837f57378c0f8ff",
-  "lastmod": "2026-11-24"
+  "hash": "6584c6d5fd133b7b",
+  "lastmod": "2026-11-25"
  },
  "/waitlist": {
   "hash": "799f5ae949bf1d86",
@@ -68,8 +68,8 @@
   "lastmod": "2026-11-12"
  },
  "/docs/getting-started": {
-  "hash": "5e69336a5b4dd5f8",
-  "lastmod": "2026-11-12"
+  "hash": "562aa82e721bef5d",
+  "lastmod": "2026-11-25"
  },
  "/docs/dusk-cloud": {
   "hash": "6d57d759fc68049e",
@@ -124,8 +124,8 @@
   "lastmod": "2026-11-23"
  },
  "/docs/faq": {
-  "hash": "17d28d6ce36fcf7d",
-  "lastmod": "2026-11-19"
+  "hash": "592f7945ab633c06",
+  "lastmod": "2026-11-25"
  },
  "/docs": {
   "hash": "dbdb89858b859687",
