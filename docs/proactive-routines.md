@@ -134,6 +134,19 @@ schedule and posts what it prints as the bot's reply. No AI turn runs.
 - **`access: "full"`.** Runs it outside the fence, as the server's user, so it can
   write files. A bot cannot grant this alone: the person approves it on a card.
   The card also says the script posts without the AI.
+- **`saveTo` (tool: `check.save_to`).** dusk bot writes each new output to a file in
+  the bot's own folder (`workspaces/<bot>/<path>`), so a script's results can be
+  used locally with no full access card. The path must stay inside the folder,
+  is never followed through a link, and never lands on `MEMORY.md`, `memory/`,
+  `SOUL.md` or `skills/`. It replaces the file each time, or with
+  `saveMode: "append"` (`check.save_mode`) adds a `## <time>` line and the output,
+  keeping the newest 1 MB. A test run saves nothing (`server/routine-save.ts`).
+- **On dusk cloud.** Script checks run there too, in the bot's box exactly as
+  background jobs do (docs/background-jobs.md "Where it runs": its mounts,
+  egress gate, seccomp filter and environment allow-list, `HOME` in
+  `workspaces/<bot>/.jobs/home`). Only the owner's own chat may set one up, as on
+  a desktop. `access: "full"` is refused on a Cloud, and a box that is off fails
+  the check with one plain sentence instead of running the script bare.
 
 ## Reliability, for every routine with checks
 
