@@ -157,7 +157,7 @@ export class ProviderRegistry {
     if (!catalog || !key) return;
     const own = Object.getOwnPropertyDescriptor(instance, "models");
     const read = own?.get ? own.get.bind(instance) : () => own?.value as ProviderInstance["models"];
-    Object.defineProperty(instance, "models", { configurable: true, enumerable: true, get: () => catalog.curate(key, read()) });
+    Object.defineProperty(instance, "models", { configurable: true, enumerable: true, get: () => catalog.curate(key, read(), instance.refusedModels?.()) });
   }
 
   async load(configs: InstanceConfigMap, decorate?: (instance: ProviderInstance) => ProviderInstance) {

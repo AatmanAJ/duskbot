@@ -13,6 +13,16 @@ export function storedCodexLogin(env: Env): string | null {
   try { return readFileSync(join(home, "auth.json"), "utf8"); } catch { return null; }
 }
 
+/** Which sign-in a stored login is, without its secrets; null when there is no readable file to tell.
+ * codex-cli 0.160.1 writes `auth_mode` ("chatgpt" or "apikey") and, for ChatGPT, `tokens.account_id`. */
+export function codexSignInIdentity(stored: string | null): string | null {
+  if (stored === null) return null;
+  try {
+    const auth = JSON.parse(stored) as { auth_mode?: unknown; tokens?: { account_id?: unknown } | null };
+    return JSON.stringify([auth.auth_mode ?? null, auth.tokens?.account_id ?? null]);
+  } catch { return null; }
+}
+
 const readable = (stored: string | null): boolean => {
   if (stored === null) return false;
   try { JSON.parse(stored); return true; } catch { return false; }

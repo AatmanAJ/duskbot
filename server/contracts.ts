@@ -570,6 +570,8 @@ export interface ProviderInstance {
   /** The engine in dusk.bot's model catalog (server/model-catalog/dusk-models.json) whose names and additions apply to
    * `models`; unset where the list is fixed by someone else (a company's models, a ChatGPT plan's own list). */
   readonly modelCatalogKey?: string;
+  /** Models the signed-in account refused although its engine or dusk.bot's catalog lists them; never added back to `models`. */
+  readonly refusedModels?: () => readonly string[];
   /** False while the sign-in can refuse a model its catalog lists (Codex on a ChatGPT account): a short message and background text then stay on the bot's own model. */
   readonly quickModelsUsable?: () => boolean;
   /** Refresh a live catalog without recreating the provider instance. */

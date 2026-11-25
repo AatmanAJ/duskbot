@@ -63,16 +63,19 @@ export function codexLimitFacts(raw: string, route: CodexRoute, codexErrorInfo?:
 
 // ChatGPT's words, reported 2026-11-03, for a model its /models lists but the plan can't use through Codex:
 // "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account."
-const PLAN_MODEL_REFUSED = /model is not supported when using Codex with a ChatGPT account/i;
+const ACCOUNT_MODEL_REFUSED = /model is not supported when using Codex with a ChatGPT account/i;
 
-/** A ChatGPT plan turn refused because the signed-in account can't use the selected model. */
-export function codexPlanModelRefused(value: string, route: CodexRoute): boolean {
-  return route === "plan" && PLAN_MODEL_REFUSED.test(value);
+/** A ChatGPT sign-in, dusk bot's ChatGPT plan or Codex's own, refused because its account can't use the selected model. */
+export function codexAccountRefusedModel(value: string, route: CodexRoute): boolean {
+  return route !== "other" && ACCOUNT_MODEL_REFUSED.test(value);
 }
 
 export function codexUserError(value: string, route: CodexRoute, codexErrorInfo?: unknown): string {
-  if (codexPlanModelRefused(value, route)) {
+  if (route === "plan" && codexAccountRefusedModel(value, route)) {
     return "This model isn't available on your ChatGPT plan, so it's now hidden from this account's model list. Pick another model.";
+  }
+  if (route === "own" && codexAccountRefusedModel(value, route)) {
+    return "This ChatGPT account can't use this model in Codex, so it's now hidden from Codex's model list. Your next message will use Codex's default model.";
   }
   if (route === "plan" && value.includes("subscription_sharing_usage_limit_exceeded")) {
     return "subscription_sharing_usage_limit_exceeded: Your ChatGPT plan usage limit was reached. Manage usage in ChatGPT Settings, or explicitly choose another provider.";
