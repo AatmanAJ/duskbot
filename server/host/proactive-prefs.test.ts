@@ -59,6 +59,8 @@ describe("routine news in quiet hours", () => {
     expect(routineNewsHeld("question", quiet, 23 * 60)).toBe(false);
     expect(routineNewsHeld("routine-failed", quiet, 23 * 60)).toBe(false);
     expect(routineNewsHeld("done", quiet, 12 * 60)).toBe(false);
-    expect(routineNewsHeld("done", null, 23 * 60)).toBe(false);
+    expect(routineNewsHeld("done", null, 23 * 60 + 30)).toBe(true);
+    expect(routineNewsHeld("done", null, 7 * 60)).toBe(false);
+    expect(routineNewsHeld("done", { from: "01:00", to: "02:00" }, 23 * 60 + 30)).toBe(false);
   });
 });

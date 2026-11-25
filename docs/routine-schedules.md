@@ -206,8 +206,10 @@ first bot, and a script with `save_to` keeps its output in the bot's folder
   and a check that cannot read (`checkProblem`), so a quiet routine can be told
   from a dead one. The automation card's strip shows the same.
 - During the person's quiet hours (the Quiet hours line of "What to tell me about",
-  docs/suggestions.md) a routine's plain report waits unread in its chat instead of
-  notifying. A question, an approval or a failure still notifies at once.
+  docs/suggestions.md; 23:00 to 07:00 when they set none) a routine's plain report
+  waits unread in its chat instead of notifying. A question, an approval or a
+  failure still notifies at once. Telling a bot "quiet hours 1 to 2" (or any short
+  span) all but turns the hold off.
 - Each run starts in a fresh session with the routine's instructions, its last
   reports and notes. A run that answers in the bot's own chat (one person, off a
   Cloud) works in that chat, so its engine sees that chat's history too.
