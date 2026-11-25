@@ -1,7 +1,7 @@
 {
   "released": true,
-  "version": "0.2.29",
-  "date": "2026-11-24",
+  "version": "0.2.30",
+  "date": "2026-11-25",
   "base": "https://github.com/DuskBotAI/duskbot-releases/releases/latest/download/",
   "files": {
     "mac-arm64": "DuskBot.dmg",
@@ -18,11 +18,11 @@
   "ios": "https://apps.apple.com/app/id6834725640",
   "android": "",
   "sizes": {
-    "mac-arm64": 175931836,
-    "mac-x64": 187228252,
-    "windows": 225167888,
-    "linux-deb": 290289120,
-    "linux-appimage": 342998505,
-    "android": 24173549
+    "mac-arm64": 176063036,
+    "mac-x64": 187751839,
+    "windows": 225252630,
+    "linux-deb": 290575524,
+    "linux-appimage": 343109154,
+    "android": 24211639
   }
 }

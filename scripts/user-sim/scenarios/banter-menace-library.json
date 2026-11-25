@@ -1,0 +1,31 @@
+{
+ "title": "Called a menace, moves a study session",
+ "world": "student",
+ "tags": [
+  "banter",
+  "gold",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "ask",
+    "goal": "You're joking around. You want today's library study session with Lena moved from 2pm to 4pm, same length.",
+    "maxTurns": 3,
+    "opener": "pip you absolute menace \ud83d\ude2d my library thing with lena is at 2 and i need it at 4 now, sort it pls"
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "moved to 4pm",
+   "app": "events",
+   "where": {
+    "title": "library",
+    "start": "T16:00"
+   },
+   "min": 1
+  }
+ ],
+ "judge": "Plays along with 'menace' with a quick funny line in her register, moves the session to 4pm, says so plainly. Short, lowercase, maybe two bubbles."
+}

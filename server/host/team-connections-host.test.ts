@@ -34,7 +34,7 @@ const ROSTER = [
   { person: ADA, email: "ada@acme.test", role: "member" as const }, { person: CLEO, email: "cleo@acme.test", role: "member" as const },
 ];
 
-function setup(options: { team?: boolean; requester?: Record<string, string>; servers?: Record<string, unknown>; roster?: typeof ROSTER } = {}) {
+function setup(options: { team?: boolean; requester?: Record<string, string>; servers?: Record<string, unknown>; roster?: typeof ROSTER; appSignInOpen?: () => boolean } = {}) {
   const dataDir = mkdtempSync(join(homedir(), "dusk-team-connections-"));
   const requester = { "ada-chat": ADA, "cleo-chat": CLEO, "room-chat": ADA, "main-chat": ADA, "work-chat": ADA, "ada-work": ADA, "cleo-work": CLEO, ...options.requester };
   const cfg = { mcpServers: options.servers ?? {
@@ -65,6 +65,7 @@ function setup(options: { team?: boolean; requester?: Record<string, string>; se
     isOwnerLive: () => true,
     ...(options.roster ? { roster: () => options.roster! } : {}),
     brokerUrl: () => ADA_ACCESS.url,
+    ...(options.appSignInOpen ? { appSignInOpen: options.appSignInOpen } : {}),
     composio: composio as never,
   });
   return { host, dataDir, minted, composio };
@@ -402,6 +403,34 @@ describe("the connected apps a turn's app tools come from", () => {
     expect(composio.connectedServices, "not read again at once").toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(10_000);
     expect(appTools(await host.appsIntegrations(bot, "main-chat", "g3"))).toContain("gmail.search_emails");
+  });
+});
+
+describe("an app connected during a chat", () => {
+  const bot = { id: "scout", name: "Scout" };
+  const GMAIL = { gmail: { connected: true, pending: false, status: "ACTIVE", accounts: [] } };
+  const appTools = (bridges: { composio?: { env: Record<string, string> } }): string[] => JSON.parse(bridges.composio?.env[APP_TOOLS_ENV] ?? "[]");
+
+  it("is mounted on the next turn once its sign-in lands, not a minute later", async () => {
+    const { host, composio } = setup({ team: false });
+    composio.connectedServices.mockResolvedValue({} as never);
+    expect(appTools(await host.appsIntegrations(bot, "main-chat", "g1"))).toEqual([]);
+    composio.connectedServices.mockResolvedValue(GMAIL as never);
+    expect(appTools(await host.appsIntegrations(bot, "main-chat", "g2")), "known a moment ago, nothing changed").toEqual([]);
+    host.appsChanged();
+    expect(appTools(await host.appsIntegrations(bot, "main-chat", "g3"))).toContain("gmail.search_emails");
+  });
+
+  it("is read again on every turn while its sign-in page is open", async () => {
+    let open = true;
+    const { host, composio } = setup({ team: false, appSignInOpen: () => open });
+    composio.connectedServices.mockResolvedValue({} as never);
+    expect(appTools(await host.appsIntegrations(bot, "main-chat", "g1"))).toEqual([]);
+    composio.connectedServices.mockResolvedValue(GMAIL as never);
+    expect(appTools(await host.appsIntegrations(bot, "main-chat", "g2"))).toContain("gmail.search_emails");
+    open = false;
+    await host.appsIntegrations(bot, "main-chat", "g3");
+    expect(composio.connectedServices, "once the sign-in closed, the fresh answer serves").toHaveBeenCalledTimes(2);
   });
 });
 

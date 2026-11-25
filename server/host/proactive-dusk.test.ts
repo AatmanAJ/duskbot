@@ -15,6 +15,7 @@ import { Store, type BotRecord } from "../store.ts";
 import { BRIEF_FILE } from "./brief.ts";
 import { createProactive, WATCH_FILE, WATCH_NAME } from "./proactive.ts";
 import { proactiveOwner } from "./proactive-owner.ts";
+import { localMinute } from "./proactive-prefs.ts";
 import { CHECKS_FILE } from "./routine-checks.ts";
 
 // Dusk owns the proactive side: the "Keep an eye on my day" routine, the brief and the add-a-key suggestion. Each
@@ -64,10 +65,9 @@ const watchRun = (routine: Routine, fields: Partial<RoutineRun>): RoutineRun => 
   scheduledFor: Date.now(), status: "completed", manual: false, checkKey: "key-1", deliver: "brief", access: "read-and-draft", createdAt: Date.now() - 60_000, ...fields,
 });
 
-/** The watch suggested in the proactive bot's chat, and turned on there. */
+/** The watch the server makes on the proactive bot by default. */
 function turnOn(place: ReturnType<typeof start>): Routine {
-  const card = place.proactive.ensureWatch()!;
-  expect(place.proactive.answerWatch(proactiveOwner(place.store)!.threadId, card, "on", { kind: "loopback", scopes: ["admin", "client"] })).toBe("kept");
+  expect(place.proactive.ensureWatch()).toBeTruthy();
   return place.briefing().find((routine) => routine.name === WATCH_NAME)!;
 }
 
@@ -87,7 +87,7 @@ describe("Dusk keeps an eye on the day", () => {
     rmSync(DATA_DIR, { recursive: true, force: true });
   });
 
-  it("on a new install, its Dusk is the Chief and gets the one watch, once it is turned on", () => {
+  it("on a new install, its Dusk is the Chief and gets the one watch, on by default", () => {
     const first = start();
     first.store.seedIfEmpty();
     const maus = ensureDefaultBot(first.store, { dataDir: DATA_DIR })!;
@@ -237,6 +237,19 @@ describe("Dusk keeps an eye on the day", () => {
     expect(after.store.messagesFor(hidden.threadId).filter((message) => message.setupSuggestion?.kind === "helperKey")).toHaveLength(1);
     expect(after.store.messagesFor(clive.threadId).filter((message) => message.setupSuggestion?.kind === "helperKey")).toEqual([]);
     expect(watch.id).toBe(moved.id);
+  });
+
+  it("in the person's quiet hours the brief is posted unread and sends no notification", async () => {
+    const place = start();
+    place.store.seedIfEmpty();
+    ensureDefaultBot(place.store, { dataDir: DATA_DIR });
+    const watch = turnOn(place);
+    expect(place.proactive.prefs.rule("quiet", "00:00 to 23:59", "person")).toBe("saved");
+    const quiet = localMinute(Date.now(), "UTC") < 23 * 60 + 59;
+    await place.proactive.brief.report({ routine: watch, at: Date.now(), picked: [{ email: ada, why: "Ada needs the numbers.", needsReply: true }] });
+    const owner = proactiveOwner(place.store)!;
+    expect(briefCards(place.store, owner)).toHaveLength(1);
+    expect(place.notified.filter((one) => one.kind === "brief")).toHaveLength(quiet ? 0 : 1);
   });
 
   it("on a Team Cloud: no watch, nothing handed over, and a member's Dusk never reads the shared inbox", async () => {

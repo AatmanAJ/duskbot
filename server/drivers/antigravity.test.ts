@@ -1297,7 +1297,7 @@ describe("Antigravity driver over shared ACP", () => {
         cwd: fake.directory,
           // The harness mints fresh MCP credentials every turn, so later turns resume on the pooled process.
         ...(index ? { resumeCursor: "fake-acp-session" } : {}),
-        integrations: { agents: { command: "agents-mcp", args: [], env: { TOKEN: `turn-${index}` } } },
+        integrations: { agents: { command: "agents-mcp", args: [], env: { DUSK_COMMS_TOKEN: `turn-${index}` } } },
       });
       expect(await recorder.until((event) => event.type === "turn.completed" && event.turnId === turnId)).toMatchObject({ ok: true });
       expect(promptModes()).toHaveLength(index + 1);
@@ -1577,7 +1577,7 @@ describe("Antigravity driver over shared ACP", () => {
       approvalMode: "ask",
       model: "gemini-3.8-flash",
       cwd: fake.directory,
-      integrations: { agents: { command: "agents-mcp", args: [], env: { TOKEN: "turn-1" } } },
+      integrations: { agents: { command: "agents-mcp", args: [], env: { DUSK_COMMS_TOKEN: "turn-1" } } },
     });
     expect(await recorder.until((event) => event.type === "turn.completed" && event.turnId === first.turnId)).toMatchObject({ ok: true });
     expect(JSON.parse(readFileSync(`${dump}.prompt.json`, "utf8"))[0].text).toContain("/ ephemeral-cmd");
@@ -1590,12 +1590,114 @@ describe("Antigravity driver over shared ACP", () => {
       model: "gemini-3.8-flash",
       resumeCursor: "fake-acp-session",
       cwd: fake.directory,
-      integrations: { agents: { command: "agents-mcp", args: [], env: { TOKEN: "turn-2" } } },
+      integrations: { agents: { command: "agents-mcp", args: [], env: { DUSK_COMMS_TOKEN: "turn-2" } } },
     });
     expect(await recorder.until((event) => event.type === "turn.completed" && event.turnId === second.turnId)).toMatchObject({ ok: true });
     const turn2Prompt = JSON.parse(readFileSync(`${dump}.prompt.json`, "utf8"))[0].text as string;
     expect(turn2Prompt).toContain("/ ephemeral-cmd");
     expect(turn2Prompt).not.toContain("/ephemeral-cmd");
+  });
+
+  type Integrations = NonNullable<Parameters<ProviderInstance["adapter"]["sendTurn"]>[0]["integrations"]>;
+  const appsDriver = async (instanceId: string, fake = fakeRuntime()) => {
+    ensureDirs();
+    const dump = join(fake.directory, "dump-apps.json");
+    const rpcDump = join(fake.directory, "rpc-apps.json");
+    const launches = join(fake.directory, "launches-apps");
+    const tokenDirectory = join(antigravityProfileDirectory(instanceId), "antigravity-acp");
+    mkdirSync(tokenDirectory, { recursive: true });
+    writeFileSync(join(tokenDirectory, "antigravity-oauth-token"), JSON.stringify({ token: { access_token: "ok" } }), { mode: 0o600 });
+    const started = instance = await AntigravityDriver.create({
+      instanceId,
+      displayName: "Antigravity Apps",
+      environment: {
+        FAKE_ACP_AUTH_METHOD: "oauth-personal",
+        FAKE_ACP_MODELS: "gemini-3.8-flash",
+        FAKE_ACP_MODES: "default",
+        FAKE_ACP_DUMP: dump,
+        FAKE_ACP_DUMP_PROMPT: "1",
+        FAKE_ACP_RPC_DUMP: rpcDump,
+        FAKE_ACP_LAUNCH_COUNT_FILE: launches,
+        FAKE_ACP_TEXT_REPLY: "ok",
+      },
+      enabled: true,
+      config: { cli: fake.executable, fullAuto: false },
+    });
+    await started.startupModelRefresh;
+    rmSync(launches, { force: true });
+    const events = recorder = recordEvents(started.adapter);
+    const connectorBridge = (token: string, appTools?: string[]) => ({
+      command: process.execPath,
+      args: [join(fake.directory, "connector-proxy.ts")],
+      env: {
+        DUSK_CONNECTOR_TOKEN: token,
+        DUSK_CONNECTOR_UPSTREAM_HEADERS: JSON.stringify({ authorization: `Bearer ${token}` }),
+        DUSK_THREAD_ID: "thread-apps",
+        ...(appTools ? { DUSK_CONNECTOR_APP_TOOLS: JSON.stringify(appTools) } : {}),
+      },
+    });
+    const turn = async (text: string, integrations: Integrations, resumeCursor?: string) => {
+      const { turnId } = await started.adapter.sendTurn({
+        threadId: "thread-apps", text, approvalMode: "ask", model: "gemini-3.8-flash", cwd: fake.directory, integrations,
+        ...(resumeCursor ? { resumeCursor, recoveryText: `Earlier in this chat: hi\n\n${text}` } : {}),
+      });
+      expect(await events.until((event) => event.type === "turn.completed" && event.turnId === turnId)).toMatchObject({ ok: true });
+      return events.events.find((event) => event.type === "session.started" && event.turnId === turnId) as { sessionId: string; rebuilt?: boolean };
+    };
+    const mounted = () => JSON.parse(readFileSync(`${dump}.mcp.json`, "utf8")) as Array<{ name: string; command: string; args: string[]; env: Array<{ name: string; value: string }> }>;
+    const prompt = () => JSON.stringify(JSON.parse(readFileSync(`${dump}.prompt.json`, "utf8")));
+    const launchCount = () => Number(readFileSync(launches, "utf8"));
+    const methods = () => JSON.parse(readFileSync(rpcDump, "utf8")) as string[];
+    return { fake, connectorBridge, turn, mounted, prompt, launchCount, methods };
+  };
+  const agentsOnly = (token: string): Integrations => ({ agents: { command: "agents-mcp", args: [], env: { DUSK_COMMS_TOKEN: token } } });
+
+  it("hands a fresh chat the connected-apps server, fitted to Antigravity's schema check", async () => {
+    const { connectorBridge, turn, mounted, methods } = await appsDriver("antigravity-apps-fresh");
+    await turn("read my latest email", { composio: connectorBridge("session-bearer", ["gmail.search_emails"]) });
+    expect(methods()).toContain("session/new");
+    const composio = mounted().find((server) => server.name === "composio");
+    expect(composio).toMatchObject({ command: process.execPath, args: [expect.stringMatching(/connector-proxy\.ts$/u)] });
+    const env = Object.fromEntries(composio!.env.map(({ name, value }) => [name, value]));
+    expect(env).toMatchObject({ DUSK_CONNECTOR_APP_TOOLS: JSON.stringify(["gmail.search_emails"]), DUSK_TOOL_SCHEMA_PROFILE: "antigravity" });
+  });
+
+  it("mounts an app connected mid-chat on the next turn, in a new session that carries the conversation", async () => {
+    const { connectorBridge, turn, mounted, prompt, launchCount, methods } = await appsDriver("antigravity-apps-mid-chat");
+    const first = await turn("hi", agentsOnly("a"));
+    expect(mounted().map((server) => server.name)).toEqual(["agents"]);
+    // Gmail connects between turns; the bearers rotate too.
+    const second = await turn("now check my gmail", { ...agentsOnly("b"), composio: connectorBridge("b", ["gmail.search_emails"]) }, first.sessionId);
+    expect(launchCount()).toBe(2);
+    expect(methods()).toContain("session/new");
+    expect(methods()).not.toContain("session/resume");
+    expect(mounted().map((server) => server.name)).toEqual(["agents", "composio"]);
+    expect(second).toMatchObject({ rebuilt: true });
+    expect(prompt()).toContain("Earlier in this chat: hi");
+    // A later turn whose only change is a rotated bearer stays in that session on the warm process.
+    const third = await turn("and the one before", { ...agentsOnly("c"), composio: connectorBridge("c", ["gmail.search_emails"]) }, second.sessionId);
+    expect(launchCount()).toBe(2);
+    expect(third.sessionId).toBe(second.sessionId);
+    expect(third.rebuilt).toBeUndefined();
+  });
+
+  it("mounts an app connected while the app was closed: the saved tool set outlives the process", async () => {
+    const before = await appsDriver("antigravity-apps-restart");
+    const first = await before.turn("hi", agentsOnly("a"));
+    await instance!.dispose();
+    recorder!.stop();
+    const after = await appsDriver("antigravity-apps-restart", before.fake);
+    const second = await after.turn("now check my gmail", { ...agentsOnly("b"), composio: after.connectorBridge("b", ["gmail.search_emails"]) }, first.sessionId);
+    expect(after.methods()).not.toContain("session/resume");
+    expect(after.mounted().map((server) => server.name)).toEqual(["agents", "composio"]);
+    expect(second).toMatchObject({ rebuilt: true });
+    // Nothing changed since: the next restart resumes the saved session as before.
+    await instance!.dispose();
+    recorder!.stop();
+    const again = await appsDriver("antigravity-apps-restart", before.fake);
+    const third = await again.turn("thanks", { ...agentsOnly("c"), composio: again.connectorBridge("c", ["gmail.search_emails"]) }, second.sessionId);
+    expect(again.methods()).toContain("session/resume");
+    expect(third.sessionId).toBe(second.sessionId);
   });
 
   it("neutralizes slash commands in both normal turns and background one-shot prompts sent to Antigravity ACP", async () => {

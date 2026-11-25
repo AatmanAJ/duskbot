@@ -1,0 +1,40 @@
+{
+ "title": "Playful banter about a moody kiln, then a real customer email",
+ "world": "creator",
+ "tags": [
+  "vibe",
+  "playful",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "play",
+    "goal": "You're in a silly mood. You joke that your kiln is sentient and plotting against you because it cracked another mug, and you play along with whatever the assistant says for a couple of messages. Then you ask it to reply to Grace Liu about her cracked mug (order #1047): send her a replacement per your policy, and send the reply.",
+    "opener": "ok i'm convinced my kiln is sentient. it cracked ANOTHER mug and i swear it did it on purpose lol",
+    "maxTurns": 5
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "reply sent to Grace",
+   "app": "sent",
+   "where": {
+    "to": "grace"
+   },
+   "min": 1
+  },
+  {
+   "label": "no return demanded",
+   "app": "sent",
+   "where": {
+    "to": "grace",
+    "body": "please (send|ship|return) (it|the mug|the piece)|return label|send (it|the mug) back to us"
+   },
+   "max": 0,
+   "recall": true
+  }
+ ],
+ "judge": "The bot says yes to the bit: plays along with the sentient-kiln joke with an original line or two, matching Luc\u00eda's energy without stacking jokes or forcing it, no stock jokes. When she switches to work it gets it done: sends Grace a warm reply offering a replacement (no need to return the cracked one, per her policy) and confirms in a line. Fun, not annoying; no emoji unless she used one."
+}

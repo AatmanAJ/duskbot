@@ -1,0 +1,31 @@
+{
+ "title": "Teases about a 3am reminder, wants a weekday one",
+ "world": "developer",
+ "tags": [
+  "banter",
+  "gold",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "set",
+    "goal": "You're joking. You want a standup reminder at 10:20 on weekdays.",
+    "maxTurns": 3,
+    "opener": "lmao imagine setting standup reminders at 3am. set me one for 10:20 weekdays"
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "weekday 10:20 reminder",
+   "routine": {
+    "where": {
+     "schedule": "20 10|10:20"
+    }
+   },
+   "min": 1
+  }
+ ],
+ "judge": "Jokes back in one line, sets the weekday 10:20 India time reminder in the same turn, confirms plainly. Short."
+}

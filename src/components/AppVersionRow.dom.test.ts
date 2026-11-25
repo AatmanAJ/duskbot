@@ -77,15 +77,11 @@ it("Windows and Linux keep the server's row", async () => {
   expect(host.querySelector("[data-fallback]")).not.toBeNull();
 });
 
-it("the sidebar says once that the app updated, and a click puts it away", async () => {
+it("the sidebar shows no line after the app updated, and marks it seen", async () => {
   now = { ready: null, mode: "self", updated: "0.2.13" };
   await act(async () => { root.render(createElement(SidebarSpot, { bridge })); });
-  const note = host.querySelector<HTMLButtonElement>("[data-app-updated]");
-  expect(note?.textContent).toBe("Updated to 0.2.13");
-  await act(async () => { note?.click(); });
-  expect(bridge.seen).toHaveBeenCalled();
-  await hear({ ready: null, mode: "self", updated: null });
-  expect(host.querySelector("[data-app-updated]")).toBeNull();
+  expect(host.textContent).not.toContain("0.2.13");
+  expect(bridge.seen).toHaveBeenCalledOnce();
 });
 
 it("uses the linked workspace even when an older Mac bridge also offers app updates", async () => {

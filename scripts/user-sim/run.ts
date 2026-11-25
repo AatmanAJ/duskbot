@@ -39,6 +39,7 @@ const { values } = parseArgs({ options: {
   keep: { type: "boolean", default: false },
   label: { type: "string", default: "" },
   content: { type: "string", default: "" },
+  engine: { type: "string", default: "openai-compat" },
 } });
 if (values.content) setContentDir(resolve(values.content));
 if (!values.out) throw new Error("--out is required (keep it outside the repo: results hold transcripts)");
@@ -55,7 +56,7 @@ const CAPTURE_QUIET_MS = 45_000;
 const MAX_ROUTINE_STOPS = 8;
 const AUTOMATION_PROMPT = /^\[(?:Scheduled routine|Routine|Webhook|App event)\b/;
 
-type ApiMsg = { id: string; at: number; role: string; kind?: string; text?: string; card?: any; turnSucceeded?: boolean; digest?: { durationMs?: number; toolCalls?: number; usage?: { input?: number; output?: number; costUsd?: number | null } } };
+type ApiMsg = { id: string; at: number; role: string; kind?: string; text?: string; quietRun?: boolean; card?: any; turnSucceeded?: boolean; digest?: { durationMs?: number; toolCalls?: number; usage?: { input?: number; output?: number; costUsd?: number | null } } };
 
 interface TurnMetric { latencyMs: number; ttftMs: number | null; state: string }
 
@@ -139,14 +140,20 @@ async function runScenario(s: Scenario, run: number): Promise<Record<string, unk
   writeFileSync(statePath, JSON.stringify(connectorState(world, start), null, 1));
   const preload = `--import=${clockJs}`;
   const mcpServers = Object.fromEntries(world.apps.map((app) => [app, { command: process.execPath, args: [appsJs, app], env: { APP_STATE: statePath, TZ_SHIFT_FILE: shiftFile, NODE_OPTIONS: preload, TZ: tz } }]));
+  // a live run on Codex keeps its own CODEX_HOME in the sandbox and reaches the gateway as its Company endpoint
+  const codex = values.engine === "codex";
+  const instance = codex
+    ? { driver: "codex", displayName: "Codex", environment: { DUSK_COMPANY_API_KEY: gateway.key, CODEX_HOME: join(root, "codex-home") }, config: { managed: { url: gateway.url, models: [values.model] } } }
+    : { driver: "openai-compat", displayName: "OpenAI", config: { url: gateway.url, key: gateway.key, model: values.model } };
+  if (codex) mkdirSync(join(root, "codex-home"), { recursive: true });
   const config = {
-    instances: { gw: { driver: "openai-compat", displayName: "OpenAI", config: { url: gateway.url, key: gateway.key, model: values.model } } },
+    instances: { gw: instance },
     mcpServers,
     memory: { captureQuietMs: CAPTURE_QUIET_MS },
   };
   const launch = async (): Promise<StressServer> => {
     for (let attempt = 0; ; attempt++) {
-      try { return await launchServer(values.repo!, root, gateway, [values.model!], config, undefined, { env: { NODE_OPTIONS: preload, TZ_SHIFT_FILE: shiftFile, TZ: tz } }); }
+      try { return await launchServer(values.repo!, root, gateway, [values.model!], config, undefined, { env: { NODE_OPTIONS: preload, TZ_SHIFT_FILE: shiftFile, TZ: tz }, ...(codex ? { engine: "codex" as const } : {}) }); }
       catch (error) { if (attempt >= 3) throw error; await sleep(2_000 + Math.random() * 5_000); }
     }
   };
@@ -290,7 +297,8 @@ async function runScenario(s: Scenario, run: number): Promise<Record<string, unk
     const threadOwners = new Map<string, string>();
     for (const b of allBots) if (botIds.has(b.id)) for (const t of b.tasks ?? []) threadOwners.set(t.threadId, botIds.get(b.id)!);
     for (const r of runs as any[]) if (r.threadId && botIds.has(r.botId)) threadOwners.set(r.threadId, botIds.get(r.botId)!);
-    const raw = (await Promise.all([...threadOwners].map(async ([threadId, botName]) => (await messages(threadId).catch(() => [])).map((m) => ({ ...m, threadId, botName }))))).flat();
+    // a quiet run's NOTHING NEW line is hidden in the app, so the person never saw it
+    const raw = (await Promise.all([...threadOwners].map(async ([threadId, botName]) => (await messages(threadId).catch(() => [])).filter((m) => !m.quietRun).map((m) => ({ ...m, threadId, botName }))))).flat();
     const msgs: Msg[] = raw.filter((m) => m.kind === "text" && m.text).map((m) => ({ id: m.id, at: m.at, role: m.role, kind: m.kind, text: m.text, threadId: m.threadId, botName: m.botName }));
     const digests = raw.filter((m) => m.kind === "digest" && m.digest);
     const memory: Record<string, string> = {};

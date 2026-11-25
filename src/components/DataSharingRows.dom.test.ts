@@ -8,13 +8,18 @@ const f = vi.hoisted(() => ({
   shared: null as null | { notes: unknown[]; counts: unknown[]; removing: boolean },
   calls: [] as Array<{ path: string; method: string; body?: unknown }>,
   failDelete: false,
+  oldServer: false,
   opened: [] as string[],
 }));
-vi.mock("@/state/api", () => ({
-  api: vi.fn(async (path: string, init?: { method?: string; body?: string }) => {
+vi.mock("@/state/api", async (importActual) => {
+  const real = await importActual<typeof import("@/state/api")>();
+  return { ApiError: real.ApiError, api: vi.fn(async (path: string, init?: { method?: string; body?: string }) => {
     const method = init?.method ?? "GET";
     const body = init?.body ? JSON.parse(init.body) : undefined;
     f.calls.push({ path, method, ...(body ? { body } : {}) });
+    if (path === "/api/dashboard/usage-shared" && f.oldServer) {
+      return real.answerOf(new Response(JSON.stringify({ error: `no route: ${method} ${path}` }), { status: 404, headers: { "content-type": "application/json" } }));
+    }
     if (path === "/api/dashboard/usage-shared") {
       if (method === "DELETE") {
         if (f.failDelete) throw new Error("offline");
@@ -25,12 +30,13 @@ vi.mock("@/state/api", () => ({
     }
     if (method === "PUT") f.signals = { ...f.signals, ...body, ...(body.enabled ? { askUsage: false } : {}) };
     return f.signals;
-  }),
-}));
+  }) };
+});
 vi.mock("./ListRows", () => ({ useSubPage: () => ({ at: undefined, open: (id: string) => f.opened.push(id), back: () => {} }) }));
 
 const { DataSharingRows, SHARED_DATA_PAGE } = await import("./DataSharingRows");
 const { SharedDataPage } = await import("./SharedDataPage");
+const { resetServerCompat } = await import("@/lib/server-compat");
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -55,9 +61,13 @@ beforeEach(() => {
   f.shared = null;
   f.calls = [];
   f.failDelete = false;
+  f.oldServer = false;
   f.opened = [];
+  resetServerCompat();
+  // a dusk cloud on 0.2.29: api level 1, no usage-shared route
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ app: "duskbot", version: "0.2.29", capabilities: { api: 1 } }), { status: 200, headers: { "content-type": "application/json" } })));
 });
-afterEach(async () => { await act(async () => root?.unmount()); root = null; });
+afterEach(async () => { await act(async () => root?.unmount()); root = null; vi.unstubAllGlobals(); });
 
 describe("Settings > Privacy", () => {
   it("has the usage switch, a session notes switch of its own and the way to what's been shared", async () => {
@@ -143,6 +153,14 @@ describe("what's been shared", () => {
     expect($<HTMLElement>("[data-shared-problem]")!.textContent).toContain("Couldn't load what's been shared");
     f.shared = { notes: [], counts: [], removing: false };
     await click("[data-shared-problem] button");
+    expect($("[data-shared-empty]")!.textContent).toBe("Nothing has been shared from here yet.");
+  });
+
+  it("a place whose server predates the list shows the empty state, not the error", async () => {
+    f.oldServer = true;
+    await render(SharedDataPage);
+    expect(f.calls.some((call) => call.path === "/api/dashboard/usage-shared")).toBe(true);
+    expect($("[data-shared-problem]")).toBeNull();
     expect($("[data-shared-empty]")!.textContent).toBe("Nothing has been shared from here yet.");
   });
 });

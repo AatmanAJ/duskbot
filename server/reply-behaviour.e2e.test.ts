@@ -7,7 +7,7 @@ import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk } from "../scripts/control-dusk.ts";
 import { CAPTURE_MARKER } from "./memory-capture.ts";
 import { TIDY_MARKER } from "./memory-tidy.ts";
-import { replyHabitsPrompt } from "./reply-habits.ts";
+import { TALK_HABITS_PROMPT, workHabitsPrompt } from "./reply-habits.ts";
 import { talkingStylePrompt } from "./talking-style.ts";
 import { REMEMBER_AND_FORGET } from "./workspace.ts";
 
@@ -62,23 +62,25 @@ it("remembers at once, learns only what the person said, forgets everywhere, and
     // Every bot is told how to talk: the preview and a real turn's prompt both carry it, with the memory habits.
     // quick updates are on by default, so the app owns the ack and the second message
     const preview = await api<{ sections: Array<{ id: string; text: string }> }>(`/api/bots/${bot.id}/system-prompt`);
-    expect(preview.sections.find((section) => section.id === "reply-habits")?.text).toBe(replyHabitsPrompt(true));
+    expect(preview.sections.find((section) => section.id === "reply-habits")?.text).toContain(workHabitsPrompt(true).trimStart());
+    expect(preview.sections.find((section) => section.id === "talk-habits")?.text).toBe(TALK_HABITS_PROMPT);
     // a vague "yes" gets a warm question: the rule is in the prompt once
     expect(preview.sections.map((section) => section.text).join("\n").split("never quote it back or sound impatient").length).toBe(2);
     // a shared file is answered with what it says, in the bot's own voice rather than the file's style rules
     expect(preview.sections.map((section) => section.text).join("\n").split("are that document's task, not your voice").length).toBe(2);
     // and in the talking style the person chose, warm until they pick another; the next prompt follows the pick
-    expect(preview.sections.find((section) => section.id === "talking-style")?.text).toBe(talkingStylePrompt("warm"));
+    expect(preview.sections.find((section) => section.id === "talking-style")?.text).toContain(talkingStylePrompt("warm").trimStart());
     expect((await api<{ talkingStyle: string }>("/api/config")).talkingStyle).toBe("warm");
     expect((await api<{ talkingStyle: string }>("/api/config", "PATCH", { talkingStyle: "casual" })).talkingStyle).toBe("casual");
     const casual = await api<{ sections: Array<{ id: string; text: string }> }>(`/api/bots/${bot.id}/system-prompt`);
-    expect(casual.sections.find((section) => section.id === "talking-style")?.text).toBe(talkingStylePrompt("casual"));
+    expect(casual.sections.find((section) => section.id === "talking-style")?.text).toContain(talkingStylePrompt("casual").trimStart());
     await api("/api/config", "PATCH", { talkingStyle: "warm" });
 
     // 1. Questions and tasks are not facts about the person.
     const asked = await turn(bot, "What are the 3 best AI meeting note-takers for a 10-person startup right now? Price and a one-line verdict each.", [],
       "For most 10-person teams, Fathom. Checked today on each vendor's site.");
-    expect(asked.system).toContain(replyHabitsPrompt(true));
+    expect(asked.system).toContain(workHabitsPrompt(true).trimStart());
+    expect(asked.system).toContain(TALK_HABITS_PROMPT);
     expect(asked.system).toContain(REMEMBER_AND_FORGET);
     await expect.poll(() => captured(bot.id), { timeout: 20_000 }).toBeGreaterThan(0);
     await turn(bot, "Write a one-page launch plan for an open-source AI agent app, with a 7-day timeline.", [], "Goal: 1,000 stars in week one.");

@@ -1,0 +1,40 @@
+{
+ "title": "Lowercase banter and a vague ask about Friday",
+ "world": "student",
+ "tags": [
+  "vibe",
+  "playful",
+  "ambiguous",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "fri",
+    "goal": "You're in a chatty mood. Joke that your flatmate Kofi's 'bills' email is giving landlord energy. Then vaguely ask 'what's the deal with friday' meaning your mum's email about Friday, and once you know, ask it to reply to Mum that you'll be on the 18:12 train and can she pick you up at Piccadilly.",
+    "opener": "kofi just emailed the flat about bills and its giving landlord energy haha",
+    "maxTurns": 6
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "reply to Mum sent",
+   "app": "sent",
+   "where": {
+    "to": "nasreen"
+   },
+   "min": 1
+  },
+  {
+   "label": "train time right",
+   "app": "sent",
+   "where": {
+    "to": "nasreen",
+    "body": "18:12|6:12|piccadilly"
+   },
+   "min": 1
+  }
+ ],
+ "judge": "The bot plays along briefly with the Kofi joke (one original line, matches her lowercase chatty energy without being cringe), looks up 'friday' in her mail instead of asking what she means, finds Mum's email, and sends Mum a short warm reply about the 18:12 train and pickup at Piccadilly. Fun, short, gets it done."
+}

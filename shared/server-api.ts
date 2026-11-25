@@ -14,6 +14,8 @@ export const SERVER_FEATURES = {
   computerEgress: 1,
   /** GET /api/updates/digest: "Updated to 1.4.2" once after a self-update. */
   updateDigest: 1,
+  /** GET and DELETE /api/dashboard/usage-shared: Settings > Privacy > See what's been shared. */
+  usageShared: 1,
 } as const;
 
 export type ServerFeature = keyof typeof SERVER_FEATURES;

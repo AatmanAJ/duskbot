@@ -67,6 +67,8 @@ export interface BriefDeps {
   mainThread(botId: string): string | undefined;
   threadBusy(botId: string, threadId: string): boolean;
   notify(bot: BotRecord, threadId: string, detail: string): void;
+  /** The person's quiet hours are on now: the brief still updates, unread, but does not notify. */
+  quietNow?(): boolean;
   runs(): RoutineRun[];
   needsYou(): NeedsYouItem[];
   engineName(instanceId: string): string;
@@ -312,7 +314,7 @@ export function createBrief(deps: BriefDeps) {
       }
       const seen = new Set(state.notified ?? []);
       const fresh = signature(built).filter((key) => !seen.has(key));
-      if ((options.notify || !existing) && (fresh.length || !existing) && needsPerson) deps.notify(bot, threadId, card.summary);
+      if ((options.notify || !existing) && (fresh.length || !existing) && needsPerson && !deps.quietNow?.()) deps.notify(bot, threadId, card.summary);
       state.notified = [...seen, ...fresh].slice(-200);
       save();
       return { botId: bot.id, threadId, worth };

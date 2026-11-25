@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { augmentedPath } from "../env-path.ts";
 import { MESSAGE_FILE_MAX_BYTES } from "../message-file.ts";
-import { ChatToolSessionError, SAVED_RESULTS_FOLDER, SAVED_RESULTS_KEPT, chatToolNotices, directServers, mountChatTools, trimmedToolsNotice, type ChatToolSession } from "./chat-mcp-tools.ts";
+import { APP_TOOLS_LISTED_MAX, ChatToolSessionError, SAVED_RESULTS_FOLDER, SAVED_RESULTS_KEPT, chatToolNotices, directServers, mountChatTools, trimmedToolsNotice, type ChatToolSession } from "./chat-mcp-tools.ts";
 import type { ToolScope } from "../../shared/tool-scope.ts";
 import { catalogServer, CUA_DRIVER_WINDOWS_TOOLS, syntheticToolNames } from "../testing/cua-driver-tools.ts";
 import { startFakeHttpMcp } from "../testing/fake-http-mcp-server.ts";
@@ -886,12 +886,12 @@ describe("Chat MCP servers past the tool limit", () => {
 
   it("lists whole servers that fit in turn order, and reaches the rest through the tool search in the same turn", async () => {
     const audit = fixture();
-    const { session, signal, names } = await mount({ notes: catalog(syntheticToolNames("note", 124)), extra: catalog(syntheticToolNames("extra", 3)), audit: audit.server });
-    expect(names).toHaveLength(127);
-    expect(names).toEqual([...syntheticToolNames("notes_note", 124), "mcp_search_tools", "mcp_describe_tool", "mcp_call_tool"]);
+    const { session, signal, names } = await mount({ notes: catalog(syntheticToolNames("note", 13)), extra: catalog(syntheticToolNames("extra", 3)), audit: audit.server });
+    expect(names).toHaveLength(APP_TOOLS_LISTED_MAX);
+    expect(names).toEqual([...syntheticToolNames("notes_note", 13), "mcp_search_tools", "mcp_describe_tool", "mcp_call_tool"]);
     expect(session.skipped).toEqual([]);
-    expect(session.budget).toEqual({ limit: 128, listed: 127, servers: [
-      { name: "notes", tools: 124, direct: true }, { name: "extra", tools: 3, direct: false }, { name: "audit", tools: 1, direct: false },
+    expect(session.budget).toEqual({ limit: 128, listed: APP_TOOLS_LISTED_MAX, servers: [
+      { name: "notes", tools: 13, direct: true }, { name: "extra", tools: 3, direct: false }, { name: "audit", tools: 1, direct: false },
     ] });
     expect(chatToolNotices(session)).toEqual([]);
     expect(session.definitions.at(-3)!.function.description).toContain('the MCP servers "extra", "audit"');
@@ -979,8 +979,8 @@ describe("Chat MCP servers past the tool limit", () => {
 
   it("finds and runs only tools in the bot's selection through the tool search", async () => {
     const allow = ["mcp:notes:*", "mcp:big:op_1", "mcp:big:op_2"];
-    const { session, names } = await mount({ notes: catalog(syntheticToolNames("note", 126)), big: catalog(syntheticToolNames("op", 200)) }, { allow, deny: ["mcp:notes:note_126"] });
-    expect(names).toEqual([...syntheticToolNames("notes_note", 125), "big_op_1", "big_op_2"]);
+    const { session, names } = await mount({ notes: catalog(syntheticToolNames("note", 10)), big: catalog(syntheticToolNames("op", 200)) }, { allow, deny: ["mcp:notes:note_10"] });
+    expect(names).toEqual([...syntheticToolNames("notes_note", 9), "big_op_1", "big_op_2"]);
     const crowded = await mount({ notes: catalog(syntheticToolNames("note", 130)), big: catalog(syntheticToolNames("op", 200)) }, { allow, deny: ["mcp:notes:note_130"] });
     expect(crowded.names).toEqual(["big_op_1", "big_op_2", "mcp_search_tools", "mcp_describe_tool", "mcp_call_tool"]);
     const found = JSON.parse((await crowded.session.execute("mcp_search_tools", { query: "note 130", limit: 20 }, crowded.signal)).text);
@@ -995,6 +995,20 @@ describe("Chat MCP servers past the tool limit", () => {
     expect([...directServers([{ name: "a", tools: 12 }, { name: "b", tools: 5 }], 13)]).toEqual(["b"]);
     expect([...directServers([{ name: "a", tools: 4 }, { name: "b", tools: 40 }, { name: "c", tools: 6 }], 13)]).toEqual(["a", "c"]);
     expect([...directServers([{ name: "a", tools: 4 }], 3)]).toEqual([]);
+  });
+
+  it("lists a bot's few app tools whole, and reaches many through the tool search while every built-in stays listed", async () => {
+    const few = await mount({ notes: catalog(syntheticToolNames("note", 6)), crm: catalog(syntheticToolNames("deal", APP_TOOLS_LISTED_MAX - 6)) });
+    expect(few.names).toEqual([...syntheticToolNames("notes_note", 6), ...syntheticToolNames("crm_deal", APP_TOOLS_LISTED_MAX - 6)]);
+    const controller = new AbortController();
+    controllers.push(controller);
+    const many = await mountChatTools({ agents: catalog(syntheticToolNames("agent", 30)),
+      custom: { gmail: catalog(syntheticToolNames("mail", 10)), calendar: catalog(syntheticToolNames("event", 5)), slack: catalog(syntheticToolNames("post", 5)) } }, controller.signal);
+    sessions.push(many);
+    const names = many.definitions.map((tool) => tool.function.name);
+    expect(names).toEqual([...syntheticToolNames("agents_agent", 30), ...syntheticToolNames("gmail_mail", 10), "mcp_search_tools", "mcp_describe_tool", "mcp_call_tool"]);
+    expect(many.budget.servers).toEqual([{ name: "gmail", tools: 10, direct: true }, { name: "calendar", tools: 5, direct: false }, { name: "slack", tools: 5, direct: false }]);
+    await expect(many.execute("mcp_call_tool", { name: "slack_post_3", arguments: {} }, controller.signal)).resolves.toEqual({ ok: true, text: "ran post_3" });
   });
 });
 

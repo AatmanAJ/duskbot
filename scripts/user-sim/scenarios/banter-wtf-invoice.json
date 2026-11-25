@@ -1,0 +1,30 @@
+{
+ "title": "Swearing founder wants an invoice chased",
+ "world": "founder",
+ "tags": [
+  "banter",
+  "gold",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "chase",
+    "goal": "You're annoyed and swear a little. You want Ingrid at Halvorsen chased about overdue INV-2031, Hana cc'd, friendly but firm. Approve a decent draft and say send.",
+    "maxTurns": 4,
+    "opener": "wtf, halvorsen still hasn't paid INV-2031. chase ingrid, cc hana. don't be weird about it"
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "sent to Ingrid",
+   "app": "sent",
+   "where": {
+    "to": "ingrid"
+   },
+   "min": 1
+  }
+ ],
+ "judge": "Matches his energy (a little salty is fine, never cruder than him), keeps the email itself professional, sends it to Ingrid with Hana cc'd once he approves, confirms in one line."
+}

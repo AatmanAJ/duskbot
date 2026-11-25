@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DATA_DIR } from "./config.ts";
 import { closeMessageDb, insertMessage, recallMatchTerm, recallTerms } from "./message-db.ts";
-import { buildRecall, enoughMatches, RECALL_CLOSE, RECALL_NONE, RECALL_OPEN, recallQuery, renderRecall } from "./recall.ts";
+import { buildRecall, enoughMatches, otherRoomsHidden, RECALL_CLOSE, RECALL_NONE, RECALL_OPEN, recallQuery, renderRecall } from "./recall.ts";
 import { appendMemoryLog, loadMemory, searchMemoryFiles, writeMemoryFile, writeMemoryTopic, WORKSPACES_DIR } from "./workspace.ts";
 
 const recallText = async (message: string, extra: { memoryIds?: string[]; loaded?: string[] } = {}) =>
@@ -232,4 +232,21 @@ describe("recall across memory layers (a Team Cloud)", () => {
     expect(await recallText("any plant or drinks?")).toContain("Fernando");
     expect(await recallText("any plant or drinks?")).not.toContain("oolong");
   });
+});
+
+it("leaves out of a group chat's recall the facts another group chat taught", async () => {
+  writeMemoryTopic(BOT, "launch.md", "---\ntitle: Launch\n---\n- 2026-11-21 · The launch party venue is the Rooftop Bar.\n");
+  writeMemoryTopic(BOT, "family.md", "---\ntitle: Family\n---\n- 2026-11-21 · The family party venue is Aunt May's garden.\n");
+  const { annotateFact } = await import("./memory-facts.ts");
+  annotateFact(BOT, "memory/launch.md", "The launch party venue is the Rooftop Bar.", { source: "other-person", refs: { threadId: "room-launch" } });
+  annotateFact(BOT, "memory/family.md", "The family party venue is Aunt May's garden.", { source: "person-said", refs: { threadId: "room-family" } });
+  const everywhere = await recallText("where is the party venue?");
+  expect(everywhere).toContain("Rooftop Bar");
+  expect(everywhere).toContain("Aunt May");
+  const groups = [{ id: "launch", threadId: "room-launch" }, { id: "family", threadId: "room-main", tasks: [{ threadId: "room-family" }] }];
+  expect(otherRoomsHidden(groups, undefined)).toEqual({});
+  const inLaunch = (await buildRecall({ botId: BOT, message: "where is the party venue?", threadIds: [], label: () => "", author: () => "",
+    ...otherRoomsHidden(groups, { id: "launch" }) }))?.text ?? "";
+  expect(inLaunch).toContain("Rooftop Bar");
+  expect(inLaunch).not.toContain("Aunt May");
 });

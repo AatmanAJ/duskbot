@@ -50,7 +50,9 @@ async function call(method, path, body) {
   const res = await fetch(`${API}${path}`, { method, headers: { authorization: `Bearer ${bearer}`, "content-type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
   const text = await res.text();
   const json = text ? JSON.parse(text) : {};
-  if (!res.ok) throw new Error(`${method} ${path.split("?")[0]}: ${res.status} ${json.errors?.map((e) => e.detail ?? e.title).join("; ") ?? text.slice(0, 200)}`);
+  // a 409 names its real cause only in meta.associatedErrors (a field, a version or an item it cannot review)
+  const why = (e) => [e.detail ?? e.title, ...Object.values(e.meta?.associatedErrors ?? {}).flat().map((a) => a.detail ?? a.title)].join(": ");
+  if (!res.ok) throw new Error(`${method} ${path.split("?")[0]}: ${res.status} ${json.errors?.map(why).join("; ") ?? text.slice(0, 200)}`);
   return json;
 }
 

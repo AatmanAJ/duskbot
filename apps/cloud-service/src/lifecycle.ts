@@ -295,6 +295,13 @@ export function createLifecycle(deps: LifecycleDeps) {
   const keyOf = (c: StoredCloud) => homeBackupKey(deps.backupSecret, c.id);
   /** where this service reaches the home: the machine's own hosted URL, never through the public proxy */
   const homeOrigin = (c: StoredCloud) => state(c).upstream ?? c.origin!;
+  const clockCorrected = async (c: StoredCloud): Promise<boolean> => {
+    const done = await provider.run(c.serverId!, image.clockCheckCommand(now()), 30);
+    const offset = /^set (-?\d+)$/m.exec(done.stdout)?.[1];
+    if (!done.ok || offset === undefined) return false;
+    log(c, "clock_set", "reconciler", "stale_after_resume", { offsetS: Number(offset) });
+    return true;
+  };
   const label = (c: StoredCloud) => (state(c).label ??= `d${createHmac("sha256", deps.labelKey).update(`omb-managed-label:${c.id}`).digest("hex").slice(0, 20)}`);
   /** the user-facing origin for a machine's hosted URL: ours when a public domain is set */
   function publish(c: StoredCloud, upstream: string) {
@@ -988,7 +995,11 @@ export function createLifecycle(deps: LifecycleDeps) {
       if (relayExits(homeVersion(c))) await deps.updates?.asideRelay(c);
       // a resume that kept memory finds the home running (the start command says so); a cold boot starts it
       const started = await provider.run(c.serverId, image.startCommand(c.origin!, homeOrigin(c)), 120);
-      if (!started.ok || !(await deps.home.healthy(homeOrigin(c), secret(c)))) {
+      let up = started.ok && await deps.home.healthy(homeOrigin(c), secret(c));
+      // InstaBox's guest agent resets the clock after a resume, but not always (seen 2026-11-25): a home left hours
+      // behind refuses every signed request as stale, health included, while it runs fine
+      if (started.ok && !up && await clockCorrected(c)) up = await deps.home.healthy(homeOrigin(c), secret(c));
+      if (!up) {
         // a start that has not brought the home up in 5 minutes is a failed one, once: enough of them open the breaker
         if (b.wakeStartedAt !== null && now() - b.wakeStartedAt > 5 * MINUTE && !b.wakeFailureNoted) {
           const m = memory(c);

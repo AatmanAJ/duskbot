@@ -376,6 +376,14 @@ off. It keeps the notes in shape without the bot having to decide to:
   the recent-work brief), checked again when the batch is captured, as are
   the switch and the bot's membership. Bot-to-bot channels, room hand-offs,
   goal runs and, on a Cloud home, every room are left out.
+  **A room's facts stay in that room.** Each captured fact keeps the thread
+  it came from (`refs.threadId` on its row) besides the `from room` label. In
+  a room, the notes loaded with the prompt leave out lines another room
+  taught, and recall leaves out facts whose thread is another room's (or one
+  of its tasks). In a room the bot is also told that a note from a 1:1 chat
+  was said privately, so it never repeats its details there unless the
+  person brings it up. A 1:1 chat still sees room facts: a room feeds a bot
+  only when everyone who can see the bot can see the room.
   Turns still waiting when the app quits or restarts through its normal
   shutdown are kept as their ids (never their text) in
   `memory-capture-pending.json`, at most 50 chats, and read back from the

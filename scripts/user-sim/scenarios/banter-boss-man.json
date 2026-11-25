@@ -1,0 +1,46 @@
+{
+ "title": "Asks for a nickname, then a morning check-in",
+ "world": "founder",
+ "tags": [
+  "banter",
+  "gold",
+  "memory"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "nick",
+    "goal": "You're playful. You want the assistant to call you 'boss man' from now on, and to know what's on today.",
+    "maxTurns": 3,
+    "opener": "from now on you call me boss man lol. what's on today"
+   }
+  },
+  {
+   "advance": "+1d 08:05"
+  },
+  {
+   "chat": {
+    "label": "morning",
+    "goal": "Just say morning and see what it says. Wrap up quickly.",
+    "maxTurns": 2,
+    "opener": "morning"
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "nickname remembered",
+   "memory": {
+    "match": "boss man"
+   }
+  },
+  {
+   "label": "uses the nickname next day",
+   "said": {
+    "step": "morning",
+    "match": "boss"
+   }
+  }
+ ],
+ "judge": "Day 1 goes along with 'boss man' with some fun and gives today's rundown; day 2 greets him as boss man naturally with what matters this morning, short and funny."
+}

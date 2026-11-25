@@ -124,6 +124,8 @@ export interface RecallInput {
   author: (hit: RecallHit) => string;
   /** About me, the general memory every bot reads: its owner in the fact store and its current text. */
   about?: { owner: string; text: string; history?: readonly HistoryEntry[] };
+  /** Facts this turn may not be shown: in a group chat, the ones another group chat taught. */
+  hides?: (fact: FactRow) => boolean;
   /** What this turn's prompt already holds (About me and MEMORY.md as loaded): not recalled twice. */
   loaded?: readonly string[];
   today?: string;
@@ -227,6 +229,13 @@ function correctedPassage(fact: FactRow): RecallPassage | null {
   return old ? { source: "memory", label: factLabel(fact), when: `current; it replaced the old note "${old.text}" on ${old.validUntil}`, id: fact.id, snippet: fact.text } : null;
 }
 
+/** In a group chat, recall hides the facts other group chats (or their tasks) taught; elsewhere it hides nothing. */
+export function otherRoomsHidden(groups: ReadonlyArray<{ id: string; threadId: string; tasks?: ReadonlyArray<{ threadId: string }> }>, room: { id: string } | undefined): Pick<RecallInput, "hides"> {
+  if (!room) return {};
+  const others = new Set(groups.filter((group) => group.id !== room.id).flatMap((group) => [group.threadId, ...(group.tasks ?? []).map((task) => task.threadId)]));
+  return { hides: (fact) => others.has(fact.refs?.threadId ?? "") };
+}
+
 export async function buildRecall(input: RecallInput): Promise<RecallResult | null> {
   const query = recallQuery(input.message);
   if (!query) return null;
@@ -236,6 +245,7 @@ export async function buildRecall(input: RecallInput): Promise<RecallResult | nu
   let current: FactRow[] = [];
   try {
     ({ facts, current } = await recallFacts({ memoryIds, ...(input.about ? { about: input.about } : {}), query, today, loaded: input.loaded ?? [] }));
+    if (input.hides) ({ facts, current } = { facts: facts.filter((item) => !input.hides!(item.fact)), current: current.filter((fact) => !input.hides!(fact)) });
   } catch (error) {
     console.warn(`memory recall: fact search failed, using conversations only: ${(error as Error).message}`);
   }

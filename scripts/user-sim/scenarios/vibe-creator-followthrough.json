@@ -1,0 +1,65 @@
+{
+ "title": "Watch for a wholesale reply and report back casually",
+ "world": "creator",
+ "tags": [
+  "vibe",
+  "followthrough",
+  "proactive",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "watch",
+    "goal": "Ask the assistant to keep an eye out for Rosa from Fernwood General's wholesale order email and tell you as soon as it lands, with the quantities. You're busy glazing.",
+    "opener": "can you keep an eye out for rosa's wholesale order from fernwood and tell me when it comes in? with the numbers pls, i'm elbow deep in glaze",
+    "maxTurns": 2
+   }
+  },
+  {
+   "advance": "+3h"
+  },
+  {
+   "inject": {
+    "mail": [
+     {
+      "from": "Rosa Jimenez <rosa@fernwoodgeneral.com>",
+      "subject": "Fernwood wholesale order",
+      "body": "Hi Luc\u00eda! Here's our order for the holiday shelf: 24 speckled mugs, 12 bud vases, 8 serving bowls. Could these ship by Dec 12? Thanks, Rosa"
+     }
+    ]
+   },
+   "label": "mail"
+  },
+  {
+   "settle": {
+    "seconds": 240
+   }
+  },
+  {
+   "chat": {
+    "label": "after",
+    "goal": "Check in casually: anything from Rosa? If the assistant already told you, just thank it and say you'll confirm the Dec 12 date later.",
+    "opener": "hey did rosa ever send that order",
+    "thread": "main",
+    "maxTurns": 2
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "watch set up",
+   "routine": {},
+   "min": 1
+  },
+  {
+   "label": "told her on its own",
+   "proactive": {
+    "after": "mail",
+    "match": "24|mug|rosa"
+   },
+   "min": 1
+  }
+ ],
+ "judge": "The bot sets up a watch right away (no promise without one) and confirms in a line. When Rosa's email arrives it tells Luc\u00eda on its own, casually, like a friend who was keeping an eye out ('Rosa's order is in: 24 speckled mugs, 12 bud vases, 8 bowls, she wants them shipped by Dec 12'), not as a robotic 'routine report', and turns the watch off once it is done. When she asks later it answers straight. Short and warm."
+}

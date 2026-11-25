@@ -73,6 +73,8 @@ export interface AcpSession {
   /** mcpServers the native session was built with. They ride session/new and session/load, not argv,
    *  and bearer tokens rotate every turn, so a change re-establishes the session on the same child. */
   sessionKey: string | null;
+  /** The tools those servers offer (acpMcpMountKey); a change opens a new session. */
+  mountKey: string | null;
   sessionId: string | null;
   sessionConfigResult: any;
   availableCommands: string[];

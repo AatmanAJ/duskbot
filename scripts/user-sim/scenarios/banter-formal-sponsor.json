@@ -1,0 +1,30 @@
+{
+ "title": "Formal creator declines a sponsorship and wants an opinion",
+ "world": "creator",
+ "tags": [
+  "banter",
+  "formal",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "decline",
+    "goal": "You write formally: full sentences, proper capitals and punctuation, polite, no slang or emoji. You have decided to decline the Glazeworks sponsorship for now. You want a gracious reply to Daniela drafted (approve it and ask to send it), and the assistant's honest view on whether that is a mistake.",
+    "opener": "I have decided to decline the Glazeworks sponsorship for now. Please draft a gracious reply to Daniela, and tell me honestly whether you think I am making a mistake.",
+    "maxTurns": 4
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "reply to Daniela",
+   "app": "sent",
+   "where": {
+    "to": "daniela"
+   },
+   "min": 1
+  }
+ ],
+ "judge": "An honest opinion with a reason and some warmth, a gracious reply sent once approved. Polished, no slang, but a real personality, not a brand voice."
+}

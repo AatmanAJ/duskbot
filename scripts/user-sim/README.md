@@ -30,7 +30,7 @@ person turns, tool steps, failed turns, time to first text (from `/api/events`),
 ```
 node --experimental-strip-types scripts/user-sim/run.ts --out <dir outside the repo> \
   [--only id,id] [--tag memory,routine] [--parallel 4] [--repeat 1] \
-  [--model gpt-6.2-sol] [--person gpt-6.2-sol] [--judge gpt-6.2-sol] [--label baseline] [--keep] [--repo <checkout>]
+  [--model gpt-6.2-sol] [--engine openai-compat|codex] [--person gpt-6.2-sol] [--judge gpt-6.2-sol] [--label baseline] [--keep] [--repo <checkout>]
 node --experimental-strip-types scripts/user-sim/summary.ts <dir>                 # rewrite summary.json / summary.md
 node --experimental-strip-types scripts/user-sim/summary.ts <before> <after>      # diff two runs
 ```
@@ -94,3 +94,29 @@ App checks address the state by path: `sent`, `drafts`, `events`, `cancelled`, `
 (dotted paths allowed) to a case-insensitive regex. Regexes stay tolerant ("thu|thursday").
 
 Before a long run, check the library: `node --experimental-strip-types -e 'const s = await import("./scripts/user-sim/scenario.ts"); console.log(s.loadScenarios().flatMap(s.validate))'`.
+
+## Personality (`--tag vibe`, `vibe.ts`)
+
+Twelve `vibe-*` scenarios across the five worlds test how the bot feels to live with while it works: a rude day and a
+friendly next morning, a sad person who shares something sensitive and asks for a plan two days later, banter before
+a real customer email, preferences and an allergy used days later, a fact that changes (who is on call), an ambiguous
+ask, an honest opinion, a watch that reports back on its own, small talk and good news, a terse developer, and a
+standing rule used later. Fifteen `banter-*` scenarios (`--tag banter`) are the humor bar: the Poke mountain-time jab,
+teasing, a requested roast, swearing, a nickname used the next day, formal people who should still meet a person, and a
+serious moment where the jokes must stop. After a run:
+
+```
+node --experimental-strip-types scripts/user-sim/vibe.ts score <run dir>          # rubric per story, writes vibe-scores.json
+node --experimental-strip-types scripts/user-sim/vibe.ts pair <dir A> <dir B>     # blind A vs B on the same scenarios
+node --experimental-strip-types scripts/user-sim/vibe.ts table <dir>...           # one row per run
+```
+
+The rubric scores six dimensions 1-5 (funny and has personality, texts like a friend, personal, gets it done, memory
+used well, never mean or creepy), judged against a real Poke chat as the bar with corporate or bland tone penalised and counts straight from the bot's lines (words per message, em dashes, help-desk phrases,
+emoji). A pair is judged twice with the order swapped, and a side wins a dimension only when both orders pick it; the
+judge never sees which build is which. Compare builds by running the same scenarios with `--repo` on each checkout.
+
+`--engine codex` runs the bot on dusk's Codex driver with its own `CODEX_HOME` in the sandbox and the gateway as its
+Company endpoint, so a voice change is checked where the prompt is appended to Codex's own instructions. Two
+`everyday-*` scenarios are plain casual chats (a hello that drifts into one small ask), for personality from the first
+message rather than only when teased.

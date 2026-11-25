@@ -1,7 +1,7 @@
 // The proactive main agent, wired from ordinary routines: the checks a routine runs before any AI turn, the
 // read-and-draft fence its runs work inside, the brief its results become, and the proactive bot's "Keep an eye on my
-// day" routine: suggested once in its chat on a personal install or a personal Cloud that can reach connected apps, made
-// only when the person turns it on, and never on a team's. The brief is there only while that routine is on.
+// day" routine: on by default on a personal install or a personal Cloud that can reach connected apps, unless the person
+// said Not now on the card that once asked, and never on a team's. The brief is there only while that routine is on.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -23,14 +23,14 @@ import type { BotRecord, Store } from "../store.ts";
 import { deciderEnabled, type Decider } from "../decider/index.ts";
 import type { Extractor } from "../extractor/index.ts";
 import { createBrief, type BriefDeps } from "./brief.ts";
-import { upgradedWatchPrompt, WATCH_INSTRUCTIONS, WATCH_NAME, WATCH_SUGGESTION_TEXT, watchSchedule } from "./default-watch.ts";
+import { upgradedWatchPrompt, WATCH_INSTRUCTIONS, WATCH_NAME, watchSchedule } from "./default-watch.ts";
 import { createHelperSuggestion } from "./helper-suggestion.ts";
 import { createInboxTriage } from "./inbox-triage.ts";
 import { mainChief, proactiveOwner } from "./proactive-owner.ts";
 import { createRoutineChecks } from "./routine-checks.ts";
 import { recordMemoryChange } from "../memory-journal.ts";
 import { readMemoryTopic, writeMemoryTopic } from "../workspace.ts";
-import { createProactivePrefs, PROACTIVE_TOPIC } from "./proactive-prefs.ts";
+import { createProactivePrefs, isQuiet, localMinute, PROACTIVE_TOPIC } from "./proactive-prefs.ts";
 import { COMMITMENTS_TOPIC, createCommitments } from "./commitments.ts";
 import { localDate } from "./check-plan.ts";
 
@@ -144,6 +144,7 @@ export function createProactive(deps: ProactiveDeps) {
     store, dataDir: deps.dataDir, hosted: deps.team, watching, mainThread: deps.mainThread, threadBusy: deps.threadBusy, runs,
     needsYou: deps.needsYou, engineName: deps.engineName, hostTimeZone: deps.hostTimeZone, language: () => cfg.language,
     notify: (bot, threadId, detail) => deps.notify(briefNotification(bot, threadId, detail)),
+    quietNow: () => isQuiet(prefs.get().quiet, localMinute(Date.now(), brief.timeZone())),
     session: () => (composio.configured(cfg) ? reads.session() : null),
     address: () => checks.address(),
     failRun: (runId, why) => deps.routines()?.rejectResult(runId, why),
@@ -230,10 +231,22 @@ export function createProactive(deps: ProactiveDeps) {
     remember({ ...kept, handed: Object.fromEntries(Object.entries(handed).slice(-MAX_HANDED)) });
   }
 
-  /** The proactive bot's "Keep an eye on my day", suggested once in its chat when connected apps are there to read, and
-   * made only on Turn it on. One already on the bot counts as made, so nothing is suggested. Asked at start and every
-   * minute, since a Cloud's access arrives later, and a Dusk can arrive after the routine was made. Returns the card
-   * posted now. */
+  /** The watch on the proactive bot, made once; one already there counts as made. */
+  function makeWatch(manager: RoutineManager, bot: BotRecord, kept: WatchRecord): Routine {
+    const existing = manager.listRoutines().find((routine) => routine.botId === bot.id && isWatch(routine));
+    const routine = existing ?? manager.create({
+      name: WATCH_NAME, prompt: WATCH_INSTRUCTIONS, botId: bot.id, enabled: true, timeoutMinutes: 15, schedule: watchSchedule(),
+      checks: ["calendar", "mail", "runs"], access: "read-and-draft", deliver: "brief",
+    });
+    if (!existing) deps.owned(routine);
+    remember({ ...kept, routineId: routine.id, createdAt: Date.now(), handed: { ...kept.handed, [routine.id]: bot.id } });
+    return routine;
+  }
+
+  /** The proactive bot's "Keep an eye on my day", on by default once connected apps are there to read: made once, and
+   * never again after the person pauses or deletes it. Not now on the card that asked before it was on by default is
+   * kept: no watch. A card still unanswered is marked on. Asked at start and every minute, since a Cloud's access arrives
+   * later, and a Dusk can arrive after the routine was made. Returns the routine made now. */
   function ensureWatch(): string | null {
     const manager = deps.routines();
     const bot = owner();
@@ -249,22 +262,17 @@ export function createProactive(deps: ProactiveDeps) {
       if (prompt) manager.update(routine.id, { prompt });
     }
     const kept = watchRecord();
-    if (!composio.configured(cfg) || kept.createdAt || kept.offered || kept.notNowAt) return null;
-    const existing = manager.listRoutines().find((routine) => routine.botId === bot.id && isWatch(routine));
-    if (existing) {
-      remember({ ...kept, routineId: existing.id, createdAt: Date.now(), handed: { ...kept.handed, [existing.id]: bot.id } });
-      return null;
-    }
-    const threadId = deps.mainThread(bot.id);
-    if (!threadId || deps.threadBusy(bot.id, threadId)) return null;
-    const message = store.appendMessage(threadId, { role: "bot", kind: "text", text: WATCH_SUGGESTION_TEXT, setupSuggestion: { kind: "watch" } });
-    store.patchTask(bot.id, threadId, { unread: true });
-    remember({ ...kept, offered: { at: Date.now(), threadId, messageId: message.id } });
-    return message.id;
+    if (!composio.configured(cfg) || kept.createdAt || kept.notNowAt) return null;
+    const made = manager.listRoutines().some((routine) => routine.botId === bot.id && isWatch(routine));
+    const routine = makeWatch(manager, bot, kept);
+    const card = kept.offered && store.messagesFor(kept.offered.threadId).find((one) => one.id === kept.offered!.messageId);
+    if (card && card.setupSuggestion?.kind === "watch" && !card.setupSuggestion.answer) store.patchMessage(kept.offered!.threadId, card.id, { setupSuggestion: { kind: "watch", answer: "on" } });
+    return made ? null : routine.id;
   }
 
-  /** Turn it on or Not now on the suggestion card: only the owner or an admin, only on the card this posted. Turn it on
-   * makes the routine on the proactive bot, once; a second answer changes nothing. */
+  /** Turn it on or Not now on a suggestion card posted before the watch was on by default: only the owner or an admin,
+   * only on the card this posted. Turn it on makes the routine on the proactive bot, once; a second answer changes
+   * nothing. */
   function answerWatch(threadId: string, messageId: string, answer: "on" | "notNow", auth: RequestAuth): "kept" | "refused" | "unknown" | "unavailable" {
     const kept = watchRecord();
     const offer = kept.offered;
@@ -280,13 +288,7 @@ export function createProactive(deps: ProactiveDeps) {
     const manager = deps.routines();
     const bot = owner();
     if (deps.team || deps.frozen?.() || !manager || !bot) return "unavailable";
-    const existing = manager.listRoutines().find((routine) => routine.botId === bot.id && isWatch(routine));
-    const routine = existing ?? manager.create({
-      name: WATCH_NAME, prompt: WATCH_INSTRUCTIONS, botId: bot.id, enabled: true, timeoutMinutes: 15, schedule: watchSchedule(),
-      checks: ["calendar", "mail", "runs"], access: "read-and-draft", deliver: "brief",
-    });
-    if (!existing) deps.owned(routine);
-    remember({ ...kept, routineId: routine.id, createdAt: Date.now(), handed: { ...kept.handed, [routine.id]: bot.id } });
+    makeWatch(manager, bot, kept);
     store.patchMessage(threadId, messageId, { setupSuggestion: { kind: "watch", answer: "on" } });
     return "kept";
   }

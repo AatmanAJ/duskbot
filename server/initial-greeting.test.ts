@@ -14,20 +14,20 @@ describe("the line after Set me up", () => {
   });
 
   it("leaves the greeting itself as it was", () => {
-    expect(initialGreeting("Ava", "en")).toBe("Hi, I'm Ava. What would you like me to do?");
+    expect(initialGreeting("Ava", "en")).toBe("Hi, I'm Ava. What's on your plate?");
   });
 });
 
 describe("a new bot's greeting", () => {
   it("names the person by their first name, in the app's language", () => {
-    expect(initialGreeting("Scout", "en", "Milind Soni")).toBe("Hi Milind, I'm Scout. What would you like me to do?");
-    expect(initialGreeting("Scout", "es-MX", "  Ana  María ")).toBe("Hola Ana, soy Scout. ¿Qué te gustaría que hiciera?");
-    expect(initialGreeting("Scout", "pt-BR", "João")).toBe("Oi João, eu sou Scout. O que você gostaria que eu fizesse?");
+    expect(initialGreeting("Scout", "en", "Milind Soni")).toBe("Hi Milind, I'm Scout. What's on your plate?");
+    expect(initialGreeting("Scout", "es-MX", "  Ana  María ")).toBe("Hola Ana, soy Scout. ¿Qué tienes entre manos?");
+    expect(initialGreeting("Scout", "pt-BR", "João")).toBe("Oi João, eu sou Scout. O que tem pra hoje?");
   });
 
   it("names no one when the person has not given a name", () => {
     for (const person of [undefined, "", "   "]) {
-      expect(initialGreeting("Scout", "en", person)).toBe("Hi, I'm Scout. What would you like me to do?");
+      expect(initialGreeting("Scout", "en", person)).toBe("Hi, I'm Scout. What's on your plate?");
     }
   });
 });

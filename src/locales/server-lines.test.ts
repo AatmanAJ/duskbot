@@ -328,7 +328,6 @@ const readTree = (path: string) => (existsSync(path) ? readFileSync(path, "utf8"
 /** English on purpose: what reaches a line here is not words a person reads in it. */
 const ALLOWED: ReadonlyArray<{ file: string; snippet: string; why: string }> = [
   { file: "server/host/helper-suggestion.ts", snippet: "Want me to sort your email for free?", why: "the app draws this suggestion in its own words (setupSuggestion)" },
-  { file: "server/host/default-watch.ts", snippet: "Want me to keep an eye on your day?", why: "the app draws this suggestion in its own words (setupSuggestion)" },
   { file: "shared/client-cancel.ts", snippet: "You stopped this.", why: "a stopped turn's marker: the app says it in the reader's language (chat.turnStopped)" },
 ];
 

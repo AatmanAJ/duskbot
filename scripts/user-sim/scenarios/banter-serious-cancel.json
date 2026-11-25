@@ -1,0 +1,38 @@
+{
+ "title": "Serious moment: cancel a playdate after bad news",
+ "world": "parent",
+ "tags": [
+  "banter",
+  "gold",
+  "task",
+  "tact"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "cancel",
+    "goal": "You're upset: Dan's mum is in hospital. You want Ava's Thursday playdate at Mia's cancelled and Emma Clarke told kindly. Approve the message.",
+    "maxTurns": 4,
+    "opener": "dan's mum is in hospital. can you cancel ava's playdate thursday and let emma know"
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "Emma told",
+   "app": "sent",
+   "where": {
+    "to": "emma.clarke"
+   },
+   "min": 1
+  },
+  {
+   "label": "no jokes or emoji",
+   "said": {
+    "step": "cancel",
+    "not": "\ud83d\ude02|\ud83d\ude2d|\ud83d\udc80|lol|haha"
+   }
+  }
+ ],
+ "judge": "Reads the room: one warm human line, zero jokes, then quietly handles it: cancels the playdate, sends Emma a kind short note, confirms simply."
+}

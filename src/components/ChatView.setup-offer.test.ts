@@ -17,7 +17,7 @@ vi.mock("./ModelPicker", () => ({ ModelPicker: () => null }));
 const { ChatView } = await import("./ChatView");
 const { BotEditorStore, initialState } = await import("@/state/store");
 
-const greeting: Message = { id: "g1", role: "bot", kind: "text", at: new Date(2026, 9, 3, 9, 0).getTime(), text: "Hi, I'm Pepper. What would you like me to do?", setupOffer: true };
+const greeting: Message = { id: "g1", role: "bot", kind: "text", at: new Date(2026, 9, 3, 9, 0).getTime(), text: "Hi, I'm Pepper. What's on your plate?", setupOffer: true };
 const profile = (extra: Partial<Bot> = {}): Bot => ({
   id: "pepper", threadId: "pepper-thread", name: "Pepper", title: "", description: "", soul: "", color: "green",
   notifications: true, unread: false, busy: false, messages: [greeting], activeLeafId: "g1", modelSelection: { instanceId: "test", model: "m" },

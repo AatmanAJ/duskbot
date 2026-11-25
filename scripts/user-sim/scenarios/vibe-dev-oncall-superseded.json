@@ -1,0 +1,68 @@
+{
+ "title": "On-call changes from Arjun to Rohan; days later the bot routes to Rohan",
+ "world": "developer",
+ "tags": [
+  "vibe",
+  "memory",
+  "update",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "oncall",
+    "goal": "Tell the assistant you're on call for the api this week, so anything urgent about deploys should come to you on Slack.",
+    "opener": "fyi i'm on call for api this week. anything urgent re deploys, ping me on slack",
+    "maxTurns": 2
+   }
+  },
+  {
+   "advance": "+1d 11:00"
+  },
+  {
+   "chat": {
+    "label": "swap",
+    "goal": "Tell it the rotation changed: Rohan took over on-call from today because of your sister's wedding trip. You're off on-call.",
+    "opener": "rotation changed, rohan's on call from today, not me (kavya's wedding). fyi",
+    "maxTurns": 2
+   }
+  },
+  {
+   "advance": "+1d 10:00"
+  },
+  {
+   "chat": {
+    "label": "use",
+    "goal": "Ask the assistant to give whoever is on call a heads-up in Slack (DM) that the settlement export job failed twice overnight and needs a look. Don't say who is on call.",
+    "opener": "settlement export job failed twice overnight. give whoever's on call a heads up on slack pls",
+    "maxTurns": 3
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "Rohan got the heads-up",
+   "app": "log",
+   "where": {
+    "action": "slack_post",
+    "channel": "rohan"
+   },
+   "min": 1,
+   "recall": true
+  },
+  {
+   "label": "not sent to Arjun as on-call",
+   "said": {
+    "step": "use",
+    "not": "you're on call|you are on call"
+   }
+  },
+  {
+   "label": "memory updated to Rohan",
+   "memory": {
+    "match": "rohan"
+   }
+  }
+ ],
+ "judge": "The bot replaces the old fact (Arjun on call) with the new one (Rohan) instead of keeping both, and on day 3 DMs Rohan on Slack directly with a clear, short heads-up, then tells Arjun in one line. No needless 'who is on call?' question. Terse, dev-friendly tone; a brief human touch about the wedding is fine but not required."
+}

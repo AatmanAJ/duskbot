@@ -126,7 +126,8 @@ export interface FinishGuardDeps {
   /** The bot of a one-on-one chat this may carry on, or null (a room, a routine's run, a fenced run). Asked when the turn
    * starts and again when it ends: a routine's run is already settled by the time its last turn completes. */
   botOf(threadId: string): string | null;
-  /** Something waits on the person, a message of theirs is queued, or the thread is busy again. */
+  /** Something waits on the person, a message of theirs is queued, the thread is busy again, or it waits on teammates'
+   * answers, which resume it (a carry-on there would take that turn's place and could not reach them). */
   held(threadId: string): boolean;
   /** Starts the next turn with a note only the bot reads. */
   carryOn(botId: string, threadId: string, note: string): Promise<unknown>;

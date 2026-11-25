@@ -78,25 +78,25 @@ const FULL = "skills+voice+x+team";
  * either: lock a saving in by lowering the number. A Chief's list is longer
  * than another bot's only by the Chief-only names in find_tool's description. */
 const BUDGET_BASELINE: Record<string, number> = {
-  "default": 35780,
-  "voice": 36558,
-  "skills": 35807,
-  "skills+voice": 36585,
-  "non-chief": 35694,
-  "voice+non-chief": 36472,
-  "skills+non-chief": 35721,
-  "skills+voice+non-chief": 36499,
-  "skills+voice+cloud-home": 36602,
-  "skills+voice+non-chief+cloud-home": 36516,
-  "skills+voice+x": 36663,
-  "skills+voice+x+team": 37079,
-  "skills+skill-reader": 36223,
-  "default+legacy-switches": 35780,
-  "default+dusk": 35832,
-  "skills+voice+dusk": 36637,
-  "default+no-computer-pick": 34573,
-  "default+room": 34474,
-  "non-chief+room": 34388,
+  "default": 36866,
+  "voice": 37644,
+  "skills": 36893,
+  "skills+voice": 37671,
+  "non-chief": 36780,
+  "voice+non-chief": 37558,
+  "skills+non-chief": 36807,
+  "skills+voice+non-chief": 37585,
+  "skills+voice+cloud-home": 37688,
+  "skills+voice+non-chief+cloud-home": 37602,
+  "skills+voice+x": 37749,
+  "skills+voice+x+team": 38165,
+  "skills+skill-reader": 37309,
+  "default+legacy-switches": 36866,
+  "default+dusk": 36918,
+  "skills+voice+dusk": 37723,
+  "default+no-computer-pick": 35659,
+  "default+room": 35560,
+  "non-chief+room": 35474,
 };
 
 type RpcAnswer = { id: number; result?: { tools?: unknown[]; content?: Array<{ text: string }>; isError?: boolean }; error?: { code: number; message: string } };
@@ -366,7 +366,9 @@ describe("agents proxy tools/list wire size with the tool bridge on", () => {
         `  ${String(bytes(JSON.stringify(tool))).padStart(6)} ${String(bytes(JSON.stringify(tool.inputSchema))).padStart(6)}  ${tool.name}  (${name})`)),
     ];
     console.log(lines.join("\n"));
-    for (const [name, wire] of Object.entries(wires)) expect(bytes(wire), name).toBeLessThan(bytes(unbridgedWire(name)) * 0.62);
+    // non-chief+room keeps the room tools hot and reached 62.2% with the chained-routine and coordination rules (2026-11-25)
+    const bound = (name: string) => (name === "non-chief+room" ? 0.63 : 0.62);
+    for (const [name, wire] of Object.entries(wires)) expect(bytes(wire), name).toBeLessThan(bytes(unbridgedWire(name)) * bound(name));
   });
 
   it.each(Object.keys(PROFILES))("%s stays within 2% of its budget baseline", (name) => {

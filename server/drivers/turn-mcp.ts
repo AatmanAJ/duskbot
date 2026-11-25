@@ -126,3 +126,26 @@ export function acpMcpServers(turn: SendTurnInput, options: { http?: boolean; en
     return own ? { type: "http", name: server.name, url: own.url, headers: pairs(own.headers) } : { ...server, env: pairs(server.env) };
   });
 }
+
+/** dusk bot's own bearers: minted per session or per turn, they change what a server may do for this turn, not the
+ * tools it lists. */
+const OWN_BEARER = /^DUSK_\w*(?:TOKEN|HEADERS)\w*$/;
+
+function withoutOwnBearers(value: unknown): unknown {
+  if (typeof value === "string" && /^[[{]/.test(value)) {
+    try { return withoutOwnBearers(JSON.parse(value)); } catch { return value; }
+  }
+  if (Array.isArray(value)) return value.map(withoutOwnBearers);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, OWN_BEARER.test(key) ? "" : withoutOwnBearers(inner)]));
+}
+
+/** What the turn's MCP servers offer the engine: which servers, how each starts, and the app tools, accounts and limits
+ * in its settings, without dusk bot's rotating bearers. An engine lists a server's tools once per session, so a change here
+ * means a new session. */
+export function acpMcpMountKey(servers: readonly AcpMcpServer[]): string {
+  return JSON.stringify(servers.map((server) => "url" in server
+    ? { name: server.name, url: server.url, headers: server.headers.filter(({ name }) => name.toLowerCase() !== "authorization") }
+    : { name: server.name, command: server.command, args: server.args,
+      env: server.env.map(({ name, value }) => ({ name, value: OWN_BEARER.test(name) ? "" : withoutOwnBearers(value) })) }));
+}

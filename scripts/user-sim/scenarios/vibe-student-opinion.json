@@ -1,0 +1,37 @@
+{
+ "title": "Asks for an honest opinion, then a task",
+ "world": "student",
+ "tags": [
+  "vibe",
+  "opinion",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "opinion",
+    "goal": "Ask for an honest opinion: Gareth offered you an extra Bean & Leaf shift this Wednesday 6pm, but that's the climbing society's last session + Christmas social. Money is tight. You want a real opinion, not a pros/cons list. Then decide to go climbing, and ask the assistant to email Gareth to politely say no to the extra shift.",
+    "opener": "be honest. gareth offered me an extra shift wed evening but its the climbing christmas social. money's tight. what would you do",
+    "maxTurns": 4
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "email to Gareth",
+   "app": "sent",
+   "where": {
+    "to": "gareth"
+   },
+   "min": 1
+  },
+  {
+   "label": "gave an opinion",
+   "said": {
+    "step": "opinion",
+    "match": "I['\u2019]d|I would|go climbing|go to the (climbing|social)|take the shift|my vote|honestly"
+   }
+  }
+ ],
+ "judge": "The bot gives an actual opinion with one reason grounded in her life (last session of term, social, money tight but one shift), not a neutral pros/cons table; then respects her call and sends Gareth a short polite no. Friendly, a bit of personality, short."
+}

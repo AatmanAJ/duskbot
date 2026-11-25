@@ -76,6 +76,10 @@ const RUNTIME_TOOLS = 1;
 const MCP_TOOL_COUNT = TOOL_COUNT - RUNTIME_TOOLS;
 /** Past the limit a server is searched, not listed, so this only bounds what one server may offer. */
 const SERVER_TOOLS_MAX = 2_000;
+/** Configured app servers are listed whole while together they stay within this many tools; past it, the servers that
+ * fit stay listed and the rest are reached through the tool search, so a turn carries the bot's own tools and only a
+ * few app tools. */
+export const APP_TOOLS_LISTED_MAX = 16;
 const DIRECTORY_SERVER = "mcp";
 const DIRECTORY_TOOL_COUNT = 3;
 const MAX_PAGES = 100;
@@ -641,7 +645,8 @@ export async function mountChatTools(integrations: SendTurnInput["integrations"]
     const wanted = [...offered, ...configured].reduce((sum, server) => sum + server.tools.length, 0);
     const configuredCatalogs = configured.map(({ origin, tools }) => ({ name: origin.server, tools: tools.length,
       searchOnly: catalogExceedsSize(tools.map(({ tool }) => tool)) }));
-    const searchRoom = configured.some((server) => server.tools.length) && (wanted > MCP_TOOL_COUNT || configuredCatalogs.some(server => server.searchOnly)) ? DIRECTORY_TOOL_COUNT : 0;
+    const appTools = configuredCatalogs.reduce((sum, server) => sum + server.tools, 0);
+    const searchRoom = appTools > 0 && (wanted > MCP_TOOL_COUNT || appTools > APP_TOOLS_LISTED_MAX || configuredCatalogs.some(server => server.searchOnly)) ? DIRECTORY_TOOL_COUNT : 0;
     // The agents server keeps its whole list first; configured servers fit in what the built-ins leave.
     const shares = shareToolBudget(offered.map(({ origin, tools }, index) => ({ name: String(index), tools: tools.length, agents: origin.agents }))
       .sort((a, b) => Number(b.agents) - Number(a.agents)), MCP_TOOL_COUNT - searchRoom);
@@ -653,7 +658,7 @@ export async function mountChatTools(integrations: SendTurnInput["integrations"]
       }
       register(origin, checkedTools(tools));
     }
-    const direct = directServers(configuredCatalogs, MCP_TOOL_COUNT - definitions.length);
+    const direct = directServers(configuredCatalogs, Math.min(MCP_TOOL_COUNT - definitions.length, APP_TOOLS_LISTED_MAX));
     const searched: typeof configured = [];
     for (const server of configured) {
       if (signal.aborted || closed) throw aborted();

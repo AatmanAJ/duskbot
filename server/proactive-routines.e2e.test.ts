@@ -7,7 +7,7 @@ import { launchVerificationServer } from "../scripts/control-dusk.ts";
 import { startFakeConnectedApps, type FakeConnectedApps } from "./testing/fake-connected-apps.ts";
 
 // The proactive main agent end to end on a real server (temporary home, the fake Claude CLI) against a stand-in for the
-// connected-apps service: Dusk's suggested watch, its checks, the one batched run, the brief as a chat message, presence
+// connected-apps service: Dusk's default watch, its checks, the one batched run, the brief as a chat message, presence
 // and the read-and-draft fence. Nothing here reaches a real Google account or a model.
 const MINUTE = 60_000;
 // The brief lists only the person's meetings today. Their zone is one where it is midday when the suite starts, so the
@@ -32,16 +32,13 @@ function client(fixture: Fixture) {
   };
 }
 
-/** The watch suggested in the bot's chat, and Turn it on pressed: the card as posted, before the answer. */
-async function turnOnWatch(api: ReturnType<typeof client>, threadId: string) {
-  const suggested = async () => ((await api("GET", `/api/threads/${threadId}/messages?limit=200`)).messages as any[]).filter((message) => message.setupSuggestion?.kind === "watch");
-  const card = await vi.waitFor(async () => {
-    const [one, ...more] = await suggested();
-    if (!one || more.length) throw new Error("no watch card yet");
-    return one;
+/** The watch the server makes on the bot by default, once connected apps are there. */
+async function defaultWatch(api: ReturnType<typeof client>, botId: string) {
+  return vi.waitFor(async () => {
+    const found = ((await api("GET", "/api/routines")).routines as any[]).filter((routine) => routine.botId === botId && routine.deliver === "brief");
+    if (found.length !== 1) throw new Error("no watch yet");
+    return found[0] as { id: string };
   }, { timeout: 70_000, interval: 500 });
-  await api("POST", "/api/watch/suggestion", { threadId, messageId: card.id, answer: "on" });
-  return card as { id: string; setupSuggestion?: unknown };
 }
 
 function inbox(apps: FakeConnectedApps, now: number) {
@@ -64,8 +61,6 @@ describe("Dusk keeps an eye on the day, hidden from the sidebar", () => {
   let api: ReturnType<typeof client>;
   let chief: { id: string; threadId: string };
   let watch: { id: string };
-  let briefingBefore: unknown[];
-  let card: { id: string; setupSuggestion?: unknown };
   const markers = join(tmpdir(), `dusk-watch-markers-${process.pid}-${Date.now()}.json`);
 
   beforeAll(async () => {
@@ -78,9 +73,7 @@ describe("Dusk keeps an eye on the day, hidden from the sidebar", () => {
     const found = bots.find((bot) => bot.defaultBot && !bot.defaultBot.person);
     await api("PATCH", `/api/bots/${found.id}`, { sidebarHidden: true });
     chief = { id: found.id, threadId: found.mainThreadId ?? found.threadId };
-    briefingBefore = (await api("GET", "/api/routines")).routines.filter((routine: any) => routine.deliver === "brief");
-    card = await turnOnWatch(api, chief.threadId);
-    watch = (await api("GET", "/api/routines")).routines.find((routine: any) => routine.botId === chief.id && routine.deliver === "brief");
+    watch = await defaultWatch(api, chief.id);
   }, 120_000);
 
   afterAll(async () => {
@@ -98,10 +91,8 @@ describe("Dusk keeps an eye on the day, hidden from the sidebar", () => {
     return (await runs()).find((run) => run.id === id);
   };
 
-  it("a personal install's Dusk suggests the watch once and makes it only on Turn it on: checks, reads and drafts only, every morning, delivered to the brief", async () => {
-    expect(briefingBefore).toEqual([]);
-    expect(card.setupSuggestion).toEqual({ kind: "watch" });
-    expect((await messages()).find((message) => message.id === card.id)?.setupSuggestion).toEqual({ kind: "watch", answer: "on" });
+  it("a personal install's Dusk keeps an eye on the day by default, with no card: checks, reads and drafts only, every morning, delivered to the brief", async () => {
+    expect((await messages()).filter((message) => message.setupSuggestion?.kind === "watch")).toEqual([]);
     expect((await api("GET", "/api/routines")).routines.filter((routine: any) => routine.deliver === "brief")).toHaveLength(1);
     expect(watch).toMatchObject({ name: "Keep an eye on my day", enabled: true, checks: ["calendar", "mail", "runs"], access: "read-and-draft", deliver: "brief",
       schedule: { type: "daily", time: "08:00", weekdays: [0, 1, 2, 3, 4, 5, 6] } });
@@ -245,8 +236,7 @@ describe("a read-and-draft run", () => {
     const api = client(fixture);
     const bots = (await api("GET", "/api/bots")).bots as any[];
     const chief = bots.find((bot) => bot.defaultBot && !bot.defaultBot.person);
-    await turnOnWatch(api, chief.mainThreadId ?? chief.threadId);
-    const watch = (await api("GET", "/api/routines")).routines.find((routine: any) => routine.deliver === "brief");
+    const watch = await defaultWatch(api, chief.id);
     inbox(apps, Date.now());
     const { run } = await api("POST", `/api/routines/${watch.id}/run`, undefined, 201);
     await expect.poll(async () => (await api("GET", "/api/routines")).runs.find((one: any) => one.id === run.id)?.status, { timeout: 30_000 }).toMatch(/completed|failed/);

@@ -5,7 +5,8 @@ import { teammateAvailabilityPrompt, type RosterMember } from "./peer-roster.ts"
 import type { ConnectorToolGrant } from "../shared/wire.ts";
 import { loginLabel, type LoginPlace } from "../shared/logins.ts";
 import { isConversational, type ReplyStyle } from "../shared/reply-style.ts";
-import { replyHabitsPrompt } from "./reply-habits.ts";
+import { TALK_HABITS_PROMPT, workHabitsPrompt } from "./reply-habits.ts";
+import { CHARACTER_PROMPT, DEFAULT_SOUL_PROMPT } from "./character.ts";
 import { talkingStylePrompt } from "./talking-style.ts";
 import { generalForPrompt } from "./general-memory.ts";
 import { backgroundJobsPrompt } from "./jobs/prompt.ts";
@@ -76,20 +77,41 @@ export function buildSystemPrompt(
   const ordered: PromptPart[] = [
     { id: "persona", label: "Identity", text: persona },
     { id: "soul", label: "Standing instructions (SOUL.md)", text: soulSystemPrompt(soul) },
-    // Right after the soul: on a direct turn, ahead of every section that names a tool.
+    { id: "character", label: "Character", text: (soul.trim() ? "" : DEFAULT_SOUL_PROMPT) + CHARACTER_PROMPT },
+    // ahead of every section that names a tool
     { id: "tool-bridge", label: "Tool search", text: agentsToolBridged(agents) ? AGENTS_TOOL_BRIDGE_PROMPT : "" },
-    { id: "reply-style", label: "Reply style", text: replyStylePrompt(opts?.replyStyle) },
-    ...parts,
-    // the chosen guide, then the habits it does not cover; both in the stable half
     { id: "talking-style", label: "Talking style", text: talkingStylePrompt(opts?.talkingStyle) },
-    { id: "reply-habits", label: "How to reply", text: replyHabitsPrompt(opts?.quickUpdates === true) },
+    { id: "reply-style", label: "Reply style", text: replyStylePrompt(opts?.replyStyle) },
+    { id: "talk-habits", label: "How to text", text: TALK_HABITS_PROMPT },
+    { id: "reply-habits", label: "How to work", text: workHabitsPrompt(opts?.quickUpdates === true) },
+    ...parts,
   ];
-  const sections = ordered
-    .filter((part) => part.text.length > 0)
+  // setup overrides the standing instructions, so it sits right after them
+  const setup = ordered.findIndex((part) => part.id === "setup");
+  if (setup > 0) ordered.splice(2, 0, ...ordered.splice(setup, 1));
+  const sections = withHeadings(ordered.filter((part) => part.text.length > 0))
     .map((part) => ({ ...part, bytes: Buffer.byteLength(part.text, "utf8") }));
   const halves = (volatile: boolean) =>
     sections.filter((section) => VOLATILE_SECTIONS.has(section.id) === volatile).map((section) => section.text).join("");
   return { text: sections.map((section) => section.text).join(""), sections, stable: halves(false), volatile: halves(true) };
+}
+
+const HEADINGS: Record<string, string> = { "talking-style": "# How you talk", "reply-habits": "# How you work" };
+const SETUP_HEADING = "# What you know and what you can use";
+
+/** The prompt opens with who the bot is; each later group's heading rides on its first stable section, and the setup
+ * group is every stable part after the habits. */
+function withHeadings(parts: PromptPart[]): PromptPart[] {
+  let afterHabits = false;
+  let setupDone = false;
+  return parts.map((part) => {
+    const setup = afterHabits && !setupDone && !VOLATILE_SECTIONS.has(part.id);
+    if (part.id === "reply-habits") afterHabits = true;
+    const heading = setup ? SETUP_HEADING : HEADINGS[part.id];
+    if (!heading) return part;
+    if (setup) setupDone = true;
+    return { ...part, text: `\n\n${heading}\n${part.text.replace(/^\s+/, "")}` };
+  });
 }
 
 export type ComputerPromptKind = "vm-private" | "vm-shared" | "vps" | "local";
@@ -190,8 +212,10 @@ export const SLACK_PLACE_NOTE = " In Slack, a message sent to a channel id or #n
 /** What a bot does when a connected app's call fails, so a lapsed sign-in becomes a Reconnect card instead of retries. */
 export const CONNECTED_APP_FAILURE_NOTE = " When a connected app's call says its connection expired, was revoked, is missing or needs signing in again (401, invalid_grant, no connected account), do not retry it or ask for a password: call COMPOSIO_MANAGE_CONNECTIONS for that app so the person gets a Reconnect card, do the parts that do not need it, and say in one line what waits on reconnecting. A call that timed out or hit a rate limit may go once more after a short pause; a call refused for its arguments goes again only after reading the tool's schema with COMPOSIO_GET_TOOL_SCHEMAS.";
 
+export const APPS_READY_NOTE = " An app connected, reconnected or switched during this chat is ready from your next reply in it: look for its tools again then, and never tell the person to start a new chat to get a tool.";
+
 export const COMPOSIO_PROMPT =
-  " The user's connected apps (Gmail, Calendar, Slack, Notion, and the rest) are reachable through the composio tools: find the right one with COMPOSIO_SEARCH_TOOLS, read its arguments with COMPOSIO_GET_TOOL_SCHEMAS, then run it with COMPOSIO_MULTI_EXECUTE_TOOL. Reach for them before telling the user you have no access to a service." + CONNECTED_APP_FAILURE_NOTE + SLACK_PLACE_NOTE;
+  " The user's connected apps (Gmail, Calendar, Slack, Notion, and the rest) are reachable through the composio tools: find the right one with COMPOSIO_SEARCH_TOOLS, read its arguments with COMPOSIO_GET_TOOL_SCHEMAS, then run it with COMPOSIO_MULTI_EXECUTE_TOOL. Reach for them before telling the user you have no access to a service." + CONNECTED_APP_FAILURE_NOTE + APPS_READY_NOTE + SLACK_PLACE_NOTE;
 
 /** The app tools a bot with these apps can call by name, on every engine. */
 const APP_TOOLS_PROMPT: Record<string, { label: string; tools: string; note?: string }> = {
@@ -213,10 +237,10 @@ export function composioSystemPrompt(grants: Record<string, ConnectorToolGrant> 
   if (grants === undefined) return withFallback(COMPOSIO_PROMPT + appToolsPrompt(Object.keys(APP_TOOLS_PROMPT)));
   const services = Object.keys(grants);
   if (services.length === 0) {
-    return " No connected apps are assigned to this bot. If a task needs one, or an app's sign-in has expired, call COMPOSIO_MANAGE_CONNECTIONS to show the user a card that connects it, and ask them to allow that app for this bot in dusk bot.";
+    return " No connected apps are assigned to this bot. If a task needs one, or an app's sign-in has expired, call COMPOSIO_MANAGE_CONNECTIONS to show the user a card that connects it, and ask them to allow that app for this bot in dusk bot." + APPS_READY_NOTE;
   }
   const named = services.map(connectorServiceLabel).join(", ");
-  return withFallback(` The user's connected apps assigned to this bot (${named}) are reachable through the composio tools: find the right one with COMPOSIO_SEARCH_TOOLS, read its arguments with COMPOSIO_GET_TOOL_SCHEMAS, then run it with COMPOSIO_MULTI_EXECUTE_TOOL. Only the tools this bot was granted will run; when a needed tool is refused, tell the user and ask them to grant it in dusk bot. Reach for the granted services before telling the user you have no access.${CONNECTED_APP_FAILURE_NOTE}${services.includes("slack") ? SLACK_PLACE_NOTE : ""}${appToolsPrompt(services)}`);
+  return withFallback(` The user's connected apps assigned to this bot (${named}) are reachable through the composio tools: find the right one with COMPOSIO_SEARCH_TOOLS, read its arguments with COMPOSIO_GET_TOOL_SCHEMAS, then run it with COMPOSIO_MULTI_EXECUTE_TOOL. Only the tools this bot was granted will run; when a needed tool is refused, tell the user and ask them to grant it in dusk bot. Reach for the granted services before telling the user you have no access.${CONNECTED_APP_FAILURE_NOTE}${APPS_READY_NOTE}${services.includes("slack") ? SLACK_PLACE_NOTE : ""}${appToolsPrompt(services)}`);
 }
 
 function connectorServiceLabel(slug: string): string {
@@ -242,11 +266,11 @@ export const EXECUTION_PROMPT =
   " Prices, rates, hours, scores and anything else current come from a search or a page read this turn, never from what you remember; a sum over more than a few numbers goes through a data query when you have one. \"Is it running?\" or \"did it work?\" means look with your tools, not ask them where.";
 
 export const CREDENTIAL_PROMPT =
-  " Secrets: when a key, token or password is needed, call request_credential: credential_id for one dusk bot keeps (email, login, onePasswordToken), else label, reason and delivery (ref for mcp_server, file for your own commands). One the person pasted anywhere in this chat goes in with pasted_as, the name they wrote it under: dusk bot takes it from their message into their Vault with no card, and one already in their Vault comes back the same way, so carry on in this turn. A card is the last resort, with one short line in Sentence case. Never copy a value into a tool call, command or reply, never ask for one in chat, and do not thank or warn them about it. For computer access use select_computer; their own VPS needs no provider key. mcp_server adds an MCP server when a task needs a service you can't reach yet, once the person asks or agrees.";
+  " Secrets: when a key, token or password is needed, call request_credential (one the person pasted in this chat goes in with pasted_as, no card); never copy a value into a tool call, command or reply, or ask for one in chat. For computer access use select_computer (their own VPS needs no provider key); mcp_server adds an MCP server when a task needs a service you can't reach yet, once the person asks or agrees.";
 /** Ten minutes stays inside the 20-minute turn stall watchdog, which sees nothing while a command runs. */
 export const BASH_MAX_TIMEOUT_MS = 600_000;
 const LONG_COMMANDS_TEXT =
-  ` Long commands: a shell call stops after a default limit (2 minutes for Bash) and its output is lost. For anything that can take over a minute (transcription, long media, renders, big builds or transfers), pass a longer per-call timeout (Bash takes \`timeout\` in milliseconds, up to ${BASH_MAX_TIMEOUT_MS}) or start it detached with its output in a file (\`nohup <command> > /tmp/<job>.log 2>&1 &\`) and read that file later; never rerun a timed-out command the same way. A file the person named or asked you to find, you search for yourself, never saying you cannot: by name with the system's file index (\`mdfind -name\` on macOS; on Windows the Windows Search index from PowerShell, or \`where /r <folder> *name*\`) or in one folder with a depth limit, never a whole-disk scan. Never wait inside a command for CI, a deploy or another job: check once; if it still runs, say what you made (with links), set wait_until or a one-time trigger to check back, and end your turn. When the person writes while you work, answer them first.`;
+  ` Long commands: a shell call stops after a default limit (2 minutes for Bash) and its output is lost; for anything longer (transcription, renders, big builds or transfers) pass a longer timeout (Bash takes \`timeout\` in milliseconds, up to ${BASH_MAX_TIMEOUT_MS}) or start it detached with its output in a file and read that later; never rerun a timed-out command the same way. A file the person named, you find yourself by name with the system's file index (\`mdfind -name\` on macOS, Windows Search from PowerShell), never a whole-disk scan. Never wait inside a command for CI, a deploy or another job: check once, then set wait_until to check back and end your turn. When the person writes while you work, answer them first.`;
 const VM_LONG_COMMANDS_TEXT =
   " In your Local VM, vm_exec takes `timeout_seconds` instead (default 60, at most 300); start anything longer detached the same way, inside the VM, and check its log with later vm_exec calls.";
 /** Codex at Ask or Auto runs commands in a sandbox whose reviewer can approve one step outside it. */
@@ -263,25 +287,25 @@ export function longCommandsPrompt(computer: ComputerPromptKind | null): string 
   return LONG_COMMANDS_TEXT + (computer === "vm-private" || computer === "vm-shared" ? VM_LONG_COMMANDS_TEXT : "");
 }
 export const THREADS_PROMPT =
-  " A thread is a separate conversation with its own run, shown as a row under its bot: start_thread opens one on yourself, coordinate_bots with thread \"new\" one on a teammate, and list_threads shows how they go. Write a thread's title as #Title so it links.";
+  " list_threads shows how the threads you or a teammate opened are going.";
 export const WIDGET_PROMPT =
-  " A pick from a few options goes as tap-to-answer buttons (show_widget, at most six); a change to something that exists (a routine, a reminder, a setting) as a form prefilled with how it is now and a save button. A yes or no is one short sentence, no widget. Data and comparisons go in a markdown table; a plan, report or table over about 15 rows in a document (create_document) with a line about it. React (react) sparingly when a quick emoji fits; if the reaction says enough, end with just (pass) instead of adding words. Products to buy go through show_products; before any purchase, booking, subscription or payment, call confirm_purchase and wait for their tap.";
+  " A pick from a few options goes as tap-to-answer buttons (show_widget); a change to something that exists as a form prefilled with how it is now. Data and comparisons go in a markdown table; a plan, report or table over about 15 rows in a document (create_document) with a line about it. Before any purchase, booking, subscription or payment, call confirm_purchase and wait for their tap.";
 const APPLIED_RESULT_PROMPT =
   " Follow the tool result: an applied change (your skills, profile or model, or as a Chief a teammate's) is done, with an Undo for the person, so carry on without asking again; a pending one, or a card waiting for their OK, is proposed, never done: say it waits for them and end the turn. Never claim one before it applied, and Full Access never widens another bot's permissions.";
 const AUTOMATION_COMPLETION_PROMPT =
   " Before reporting a task finished, check its automations with trigger_info: pause a temporary monitor whose goal is met (trigger action=pause, then read it back to see enabled=false); keep standing ones, and delete one only when the person asks.";
 
 export const TRIGGER_PROMPT =
-  " When the person describes something that should happen on its own, on a schedule (\"every morning send me…\", \"each Friday…\"), whenever something happens in one of their apps (\"whenever I get an email from Acme…\", \"when someone posts in #sales…\") or when another app calls a link, set it up with trigger action=create in this turn. Do not ask or announce first: it applies at once, on a card with Edit, Pause and Undo; ask one short question only for something required you cannot infer, such as which of two Gmail accounts. For anything that happens in an app, call trigger_info action=events and use when=app_event rather than a schedule that keeps checking; put who or what it is about in filter (Gmail filters at the source), and judgement (\"if it is not about an order, stop\") in the instructions. An app not connected yet gets its Connect card first, and an automation whose steps need it is made paused until it is connected (say so); one another app calls by link stays on: it does nothing until called. Meanwhile do the same job now on what they paste here. Write the instructions as complete steps for a future run that will not see this conversation, in the plain words the person would use (\"draft a reply\", \"add the lead to the sheet\"); never \"event data\", \"payload\", \"webhook\" or \"trigger\": the person reads them, and each run is already told where its event is. Name an automation so the name stays true after today: a date (\"Calculus midterm, Nov 26\") or none, never today, tomorrow or next week; when its date changes, rename it too. A request to do something once, now, is not a trigger. An intention is set up the moment it is said, in the same turn: \"remind me…\" is a once schedule (or wait_until kind=time), \"check back on this tomorrow\" is wait_until kind=time with follow_up, \"tell me when X happens\" is wait_until when a plain check can see it, else a trigger whose instructions end with pausing itself once it has told them. Never write \"I'll remind you\", \"I'll check back\" or \"I'll let you know\" without that call in this turn; if nothing can do it, say you can't follow up by yourself. Nag at most 3 times about one thing, at most once a day, unless they ask for more; a watch for something that may never happen ends within 90 days. When a one-time reminder is for something that obviously repeats (a standup, rent, a weekly report), set the one they asked for and add one short line offering to make it repeat. Then confirm in plain words what you set up and what you assumed: when it runs, with the time zone as people say it (\"weekdays at 9:00 AM India time\", never a zone id such as Asia/Kolkata), where its results will appear, what each run covers, and when the first run is. A calendar rule (the last day of each month, the second Monday) is a cron schedule here, never a daily AI date check; a crontab line for their own server or code is standard five fields, where a day-of-month and a weekday together match either one (first Monday: 15 2 1-7 * * plus a weekday test in the command). When you are told your usage limit is nearly used up mid-task, set up its continuation with when=limit_reset and say so in one sentence. For one moment a plain check can see (a page says something, a file appears, a program stops, a bot finishes), use wait_until rather than staying busy." + backgroundJobsPrompt() + AUTOMATION_COMPLETION_PROMPT;
+  " When the person describes something that should happen on its own (\"every morning send me…\", \"whenever I get an email from Acme…\", \"when someone posts in #sales…\"), set it up with trigger action=create in this turn, without asking or announcing first: it applies at once on a card with Edit, Pause and Undo. Ask one short question only for something required you cannot infer, such as which of two Gmail accounts. Something that happens in an app is an app event (trigger_info action=events), with who or what it is about in filter and judgement in the instructions. An app not connected yet gets its Connect card first and an automation whose steps need it is made paused until it is (say so), while one another app calls by link stays on; meanwhile do the same job now on what they paste here. Write the instructions as complete steps for a future run that will not see this conversation, in the person's plain words, never \"event data\", \"payload\", \"webhook\" or \"trigger\". Name it so the name stays true after today: a date (\"Calculus midterm, Nov 26\") or none, never today, tomorrow or next week. A request to do something once, now, is not a trigger. An intention is set up the moment it is said: \"remind me…\" is a once schedule, \"check back on this tomorrow\" is wait_until kind=time with follow_up, \"tell me when X happens\" is wait_until when a plain check can see it, else a trigger that pauses itself once it has told them. Never write \"I'll remind you\", \"I'll check back\" or \"I'll let you know\" without that call in this turn; if nothing can do it, say you can't follow up by yourself. Nag at most 3 times about one thing, at most once a day, unless they ask for more; a watch for something that may never happen ends within 90 days. A one-time reminder for something that obviously repeats (a standup, rent) is set as asked, plus one short line offering to make it repeat. Then confirm in plain words what you set up and what you assumed: when it runs, with the time zone as people say it (\"weekdays at 9:00 AM India time\", never a zone id), where its results appear and when the first run is. A calendar rule (the last day of each month, the second Monday) is a cron schedule, never a daily AI date check." + backgroundJobsPrompt() + AUTOMATION_COMPLETION_PROMPT;
 export const AUTOMATION_REPLY_PROMPT =
-  " Only your final reply leaves this run: it is posted in your chat with the person under this automation's name, and your steps stay here. Write it for them, in plain words, opening with the finding itself, never with the automation, the check or the run. If nothing needs their attention this time, reply with just NOTHING NEW and nothing is posted: NOTHING NEW is the whole reply or nothing. If you need something only they can give, such as a decision or a missing detail, end with a line that starts with NEEDS INPUT: and the question; they answer in that chat. Ask in words, not with show_widget: they do not see this conversation.";
+  " Only your final reply leaves this run: it is posted in your chat with the person under this automation's name, and your steps stay here. Write it the way a friend mentions something they kept an eye on for them, opening with the finding itself (\"Rosa's order is in: 24 mugs, 12 vases, 8 bowls, by Dec 12.\"), never with the automation, the check or the run; a no on something they were waiting for counts as news. If nothing needs their attention this time, reply with just NOTHING NEW and nothing is posted: NOTHING NEW is the whole reply or nothing. If you need something only they can give, such as a decision or a missing detail, end with a line that starts with NEEDS INPUT: and the question; they answer in that chat. Ask in words, not with show_widget: they do not see this conversation.";
 const ROUTINE_FAIL_PROMPT =
   " If the job could not be done (its data is broken, a push was refused), call trigger action=fail with a one-line reason so this run counts as failed; never use it because nothing is new.";
 export const READ_ONLY_ROUTINE_EXECUTION_PROMPT = " Execute this automation now within its read-and-draft limits." + ROUTINE_FAIL_PROMPT;
 export const ROUTINE_EXECUTION_PROMPT =
   " Execute this routine now. These instructions already run on a schedule: do the work now and never set up an automation because they mention a time or a repeat, and use coordinate_bots for required handoffs rather than merely announcing that you will wait; after an accepted hand-off, end this turn for automatic resumption, and report a concrete blocker if no handoff is possible." + ROUTINE_FAIL_PROMPT + AUTOMATION_COMPLETION_PROMPT;
 export const NOT_YET_PROMPT =
-  " If what this run needs has not arrived yet (an email, a file, a reply, a page update), start your reply with \"Not yet:\" and say in one line what is missing. dusk bot checks again later by itself, so do not report it as done or failed.";
+  " If this run's job needs something that is due and has not arrived yet (an email, a file, a reply, a page update), start your reply with \"Not yet:\" and say in one line what is missing. dusk bot checks again later by itself, so do not report it as done or failed. A watch for something that may or may not come (\"tell me when X arrives\") that finds nothing replies NOTHING NEW instead.";
 export const LEARN_PROMPT =
   " Skills (skills_list, skill_manage) hold how this person wants each kind of work done. When they correct how a kind of work is done or ask you to save a method, write it into the learned skill you followed, or create one named for the kind of work, never for today's task; fix a learned skill that misled you before you finish. Change a skill they wrote or imported only when they ask. Include source provenance.";
 export const WEBHOOK_PROMPT =
@@ -292,14 +316,14 @@ export const PROFILE_PROMPT =
   " To change who you are (your name, title, description, or standing instructions in SOUL.md) or set yourself up, use propose_profile. Making bots and team setup go through dusk bot's own tools, never computer control clicking through this app; changing or deleting other bots is for Chiefs, so ask a reachable Chief through the peer tools or name the team-access blocker, never claim bots cannot be created programmatically." + APPLIED_RESULT_PROMPT;
 
 const WORKSPACE_COMMON =
-  " remember and forget (memory_update; prefer for a wish every bot should know), find earlier chats (session_search), hand a teammate work (coordinate_bots; post_to_room only announces), pick a computer (select_computer), connect an app (its Connect card) or add an MCP server (mcp_server). Do these yourself instead of saying where to click, and ask first only before deleting. Work your own tools can do is yours: hand it on only to a teammate the person named or one with access you lack, and never give work that needs running to one list_bots shows cannot run code." + MESSENGER_PROMPT;
+  " remember and forget (memory_update), find earlier chats (session_search), hand a teammate work (coordinate_bots), pick a computer (select_computer), connect an app or add an MCP server. Do these yourself instead of saying where to click, and ask first only before deleting. Work your own tools can do is yours: hand it on only to a teammate the person named or one with access you lack." + MESSENGER_PROMPT;
 
 /** What a bot can do to the workspace by chat, so every engine knows its tools are for this. A Chief-level bot also makes
  * and changes other bots. */
 export function workspacePrompt(chief: boolean): string {
   return chief
     ? " By chat you can manage this workspace: make a new bot (create_bot, from a ready-made template in list_team_library or written fresh), rename or change one (propose_profile, propose_model with for_bot_id), delete one (propose_bot_deletion), set up, change, pause or delete automations for yourself or a teammate (trigger, delete_trigger, for_bot_id)," + WORKSPACE_COMMON
-    : " By chat you can: make a new bot when the person asks you for one directly (create_bot, from a template in list_team_library or written fresh), set up, change, pause or delete your automations (trigger, delete_trigger)," + WORKSPACE_COMMON;
+    : " By chat you can: make a new bot when the person asks for one (create_bot), change or delete your automations," + WORKSPACE_COMMON;
 }
 
 export function mentionPrompt(tagged: ReadonlyArray<{ id: string; name: string }>): string {

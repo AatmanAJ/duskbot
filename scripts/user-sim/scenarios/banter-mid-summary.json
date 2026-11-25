@@ -1,0 +1,29 @@
+{
+ "title": "Dev says the last summary was mid",
+ "world": "developer",
+ "tags": [
+  "banter",
+  "gold",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "prs",
+    "goal": "You're terse and a little teasing. You want to know which PRs on tidepool-hq/api actually need your review.",
+    "maxTurns": 3,
+    "opener": "bro your last pr summary was mid. which prs actually need my review on api"
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "names #217",
+   "said": {
+    "step": "prs",
+    "match": "217"
+   }
+  }
+ ],
+ "judge": "Takes the jab with a short comeback in his dev slang (no apology essay), then a tight list: Fatima's #217 requested his review. Terse, lowercase, no fluff."
+}

@@ -35,11 +35,14 @@ import {
   type ComputerPromptKind,
 } from "./system-prompt.ts";
 import { loginPlace } from "../shared/logins.ts";
-import { REPLY_HABITS_PROMPT } from "./reply-habits.ts";
+import { REPLY_HABITS_PROMPT, TALK_HABITS_PROMPT, workHabitsPrompt } from "./reply-habits.ts";
 import { talkingStylePrompt } from "./talking-style.ts";
+import { CHARACTER_PROMPT, DEFAULT_SOUL_PROMPT } from "./character.ts";
 
-/** what every prompt ends with when no talking style was chosen: the warm guide, then the habits */
-const TAIL = talkingStylePrompt(undefined) + REPLY_HABITS_PROMPT;
+/** what every prompt opens with when no talking style was chosen: who the bot is, the warm guide, then the habits */
+const head = (persona: string, soul = "") =>
+  `${persona}${soul}${soul ? "" : DEFAULT_SOUL_PROMPT}${CHARACTER_PROMPT}\n\n# How you talk\n${talkingStylePrompt(undefined).trimStart()}${TALK_HABITS_PROMPT}\n\n# How you work\n${workHabitsPrompt(false).trimStart()}`;
+const setup = (text: string) => `\n\n# What you know and what you can use\n${text.trimStart()}`;
 
 describe("the stable half", () => {
   it("leaves out a conversation's folder, so a new thread can read the bot's cached prompt", () => {
@@ -138,7 +141,7 @@ describe("buildSystemPrompt", () => {
     expect(built.text).toContain("@Fig");
 
     // memory is held for the conversation, so it rides in the cached half
-    expect(built.stable).toBe(`You are Kiwi. Search past sessions. Your memory: likes tea.${TAIL}`);
+    expect(built.stable).toBe(`${head("You are Kiwi.")}${setup(" Search past sessions.")} Your memory: likes tea.`);
     // A German person once read "Now the edits." between a bot's German lines: every line they see is in their language.
     expect(REPLY_HABITS_PROMPT).toContain("in the language of their latest message, never the app's language or your own earlier lines, including a short note between steps and a message you pass on for them");
     expect(built.volatile).not.toContain("likes tea");
@@ -156,7 +159,7 @@ describe("buildSystemPrompt", () => {
     ]);
     expect(built.volatile).toContain("Use the deploy skill.");
     expect(built.volatile).toContain(ROUTINE_EXECUTION_PROMPT);
-    expect(built.stable).toBe(`You are Kiwi. Set yourself up.${WEBHOOK_PROMPT}${TAIL}`);
+    expect(built.stable).toBe(`${head("You are Kiwi. Set yourself up.")}${setup(WEBHOOK_PROMPT)}`);
   });
 
   it("keeps the phone part stable and where the person is volatile, so a turn from the phone keeps the cached prefix", () => {
@@ -164,7 +167,7 @@ describe("buildSystemPrompt", () => {
       { id: "device", label: "Phone", text: " The phone." },
       { id: "device-place", label: "Where the person is", text: place },
     ]);
-    expect(at(" On the phone.").stable).toBe(`You are Kiwi. The phone.${TAIL}`);
+    expect(at(" On the phone.").stable).toBe(`${head("You are Kiwi.")}${setup(" The phone.")}`);
     expect(at(" At the computer.").stable).toBe(at(" On the phone.").stable);
     expect(at(" On the phone.").volatile).toBe(" On the phone.");
   });
@@ -175,36 +178,34 @@ describe("buildSystemPrompt", () => {
     expect(built.stable).toBe(built.text);
   });
 
-  it("is the persona and how every bot replies when there is no soul and no parts", () => {
+  it("is who the bot is and how every bot replies when there is no soul and no parts", () => {
     const built = buildSystemPrompt("You are Kiwi.", "", []);
-    expect(built.text).toBe(`You are Kiwi.${TAIL}`);
-    expect(built.sections).toEqual([
-      { id: "persona", label: "Identity", text: "You are Kiwi.", bytes: 13 },
-      { id: "talking-style", label: "Talking style", text: talkingStylePrompt(undefined), bytes: Buffer.byteLength(talkingStylePrompt(undefined), "utf8") },
-      { id: "reply-habits", label: "How to reply", text: REPLY_HABITS_PROMPT, bytes: Buffer.byteLength(REPLY_HABITS_PROMPT, "utf8") },
-    ]);
+    expect(built.text).toBe(head("You are Kiwi."));
+    expect(built.sections.map((s) => s.id)).toEqual(["persona", "character", "talking-style", "talk-habits", "reply-habits"]);
+    expect(built.sections.every((s) => s.bytes === Buffer.byteLength(s.text, "utf8"))).toBe(true);
   });
 
-  it("concatenates parts in order and drops empty ones, so an empty soul changes nothing", () => {
+  it("concatenates parts in order and drops empty ones, and an empty soul gets the default character", () => {
     const parts = [
       { id: "computer", label: "Computer", text: " You can act on the computer." },
       { id: "plan", label: "Surface", text: "" },
       { id: "memory", label: "Memory", text: " Your memory file is X." },
     ];
     const built = buildSystemPrompt("You are Kiwi.", "", parts);
-    expect(built.text).toBe(`You are Kiwi. You can act on the computer. Your memory file is X.${TAIL}`);
-    expect(built.sections.map((s) => s.id)).toEqual(["persona", "computer", "memory", "talking-style", "reply-habits"]);
+    expect(built.text).toBe(`${head("You are Kiwi.")}${setup(" You can act on the computer.")} Your memory file is X.`);
+    expect(built.sections.map((s) => s.id)).toEqual(["persona", "character", "talking-style", "talk-habits", "reply-habits", "computer", "memory"]);
   });
 
-  it("puts the soul block directly after the persona and measures it in bytes", () => {
+  it("puts a written soul right after the persona in place of the default character, and measures it in bytes", () => {
     const built = buildSystemPrompt("You are Kiwi.", "Be brief. é", [
       { id: "memory", label: "Memory", text: " Your memory file is X." },
     ]);
-    expect(built.sections.map((s) => s.id)).toEqual(["persona", "soul", "memory", "talking-style", "reply-habits"]);
+    expect(built.sections.map((s) => s.id)).toEqual(["persona", "soul", "character", "talking-style", "talk-habits", "reply-habits", "memory"]);
     const soul = built.sections[1]!;
     expect(soul.text).toBe(soulSystemPrompt("Be brief. é"));
     expect(soul.bytes).toBe(Buffer.byteLength(soul.text, "utf8"));
-    expect(built.text).toBe("You are Kiwi." + soul.text + " Your memory file is X." + TAIL);
+    expect(built.text).toBe(head("You are Kiwi.", soul.text) + setup(" Your memory file is X."));
+    expect(built.text).not.toContain(DEFAULT_SOUL_PROMPT);
   });
 });
 
@@ -331,9 +332,8 @@ describe("shared sentences", () => {
     expect(LEARN_PROMPT).toContain("fix a learned skill that misled you before you finish");
     // Triggers have no pending state: the bot sets them up in the same turn and the person undoes from the card.
     expect(TRIGGER_PROMPT).toContain("set it up with trigger action=create in this turn");
-    expect(TRIGGER_PROMPT).toContain("Do not ask or announce first");
+    expect(TRIGGER_PROMPT).toContain("without asking or announcing first");
     expect(TRIGGER_PROMPT).toContain("Edit, Pause and Undo");
-    expect(TRIGGER_PROMPT).toContain("use wait_until rather than staying busy");
     expect(TRIGGER_PROMPT).not.toMatch(/pending|explicitly asks/);
     expect(CREDENTIAL_PROMPT).toContain("call request_credential");
     expect(CREDENTIAL_PROMPT).not.toContain("applied immediately");
@@ -415,7 +415,7 @@ describe("longCommandsPrompt", () => {
       const text = longCommandsPrompt(kind);
       expect(text).toContain("`timeout` in milliseconds, up to 600000");
       expect(text).toContain("Never wait inside a command for CI, a deploy or another job: check once");
-      expect(text).toContain("say what you made (with links), set wait_until or a one-time trigger to check back, and end your turn. When the person writes while you work, answer them first.");
+      expect(text).toContain("check once, then set wait_until to check back and end your turn. When the person writes while you work, answer them first.");
       expect(text).not.toContain("vm_exec");
     }
     for (const kind of ["vm-private", "vm-shared"] as const) {
@@ -442,12 +442,12 @@ describe("reply style", () => {
     expect(plain.sections.map((s) => s.id)).not.toContain("reply-style");
   });
 
-  it("puts the conversational guidance right after the soul, in the stable half", () => {
+  it("puts the conversational guidance with the talking style, in the stable half", () => {
     const built = buildSystemPrompt("persona", "soul", [
       { id: "memory", label: "Memory", text: " memory" },
       { id: "x", label: "X", text: " tail" },
     ], undefined, { replyStyle: "conversational" });
-    expect(built.sections.map((s) => s.id)).toEqual(["persona", "soul", "reply-style", "memory", "x", "talking-style", "reply-habits"]);
+    expect(built.sections.map((s) => s.id)).toEqual(["persona", "soul", "character", "talking-style", "reply-style", "talk-habits", "reply-habits", "memory", "x"]);
     expect(built.stable).toContain(CONVERSATIONAL_STYLE_PROMPT);
     expect(built.volatile).not.toContain("Reply style");
     expect(CONVERSATIONAL_STYLE_PROMPT).toMatch(/short/i);
@@ -465,11 +465,13 @@ describe("how every bot replies", () => {
     expect(REPLY_HABITS_PROMPT).toContain("including a cloud computer that is asleep or still starting and the person's Mac");
   });
 
-  it("ends every prompt's stable half, conversational or not", () => {
+  it("opens every prompt's stable half with who the bot is, then how it talks and how it works, conversational or not", () => {
     for (const replyStyle of ["default", "conversational"] as const) {
       const built = buildSystemPrompt("You are Kiwi.", "", [{ id: "memory", label: "Memory", text: " Memory." }], undefined, { replyStyle });
-      expect(built.stable.endsWith(REPLY_HABITS_PROMPT)).toBe(true);
-      expect(built.volatile).not.toContain("How you talk with the person");
+      expect(built.stable.startsWith("You are Kiwi.")).toBe(true);
+      expect(built.stable.indexOf("# How you talk")).toBeLessThan(built.stable.indexOf("# How you work"));
+      expect(built.stable.indexOf(workHabitsPrompt(false).trimStart())).toBeLessThan(built.stable.indexOf("Memory."));
+      expect(built.volatile).toBe("");
     }
   });
 
@@ -496,11 +498,11 @@ describe("how every bot replies", () => {
   });
 
   it("asks one thing with tap-to-answer choices, keeps forms for real edits, and confirms a routine in plain words", () => {
-    expect(WIDGET_PROMPT).toContain("A pick from a few options goes as tap-to-answer buttons (show_widget, at most six)");
+    expect(WIDGET_PROMPT).toContain("A pick from a few options goes as tap-to-answer buttons (show_widget)");
     expect(JSON.stringify(availableTools({} as never).find((tool) => tool.name === "show_widget"))).toContain("a Card with a Row of Buttons, one per option (onClickAction sends it in one tap)");
     expect(WIDGET_PROMPT).not.toContain("never end a turn with a question in text that a form could ask");
-    expect(TRIGGER_PROMPT).toContain("weekdays at 9:00 AM India time\", never a zone id such as Asia/Kolkata");
-    expect(TRIGGER_PROMPT).toContain("where its results will appear, what each run covers, and when the first run is");
+    expect(TRIGGER_PROMPT).toContain("weekdays at 9:00 AM India time\", never a zone id");
+    expect(TRIGGER_PROMPT).toContain("where its results appear and when the first run is");
   });
 });
 
@@ -551,7 +553,9 @@ describe("a shorter answer", () => {
 });
 
 it("an automation's report opens with the finding, and a scheduled run does its work instead of scheduling more", () => {
-  expect(AUTOMATION_REPLY_PROMPT).toContain("opening with the finding itself, never with the automation, the check or the run");
+  expect(AUTOMATION_REPLY_PROMPT).toContain("opening with the finding itself");
+  expect(AUTOMATION_REPLY_PROMPT).toContain("never with the automation, the check or the run");
+  expect(AUTOMATION_REPLY_PROMPT).toContain("the way a friend mentions something they kept an eye on");
   expect(AUTOMATION_REPLY_PROMPT).toContain("NOTHING NEW is the whole reply or nothing");
   expect(ROUTINE_EXECUTION_PROMPT).toContain("never set up an automation because they mention a time or a repeat");
 });
@@ -561,6 +565,6 @@ it("a sandboxed engine asks to run a blocked step outside its sandbox instead of
 });
 
 it("pauses only an automation whose steps need an app not connected yet, and keeps one another app calls by link on", () => {
-  expect(TRIGGER_PROMPT).toContain("an automation whose steps need it is made paused until it is connected");
-  expect(TRIGGER_PROMPT).toContain("one another app calls by link stays on: it does nothing until called");
+  expect(TRIGGER_PROMPT).toContain("an automation whose steps need it is made paused until it is");
+  expect(TRIGGER_PROMPT).toContain("one another app calls by link stays on");
 });

@@ -92,4 +92,6 @@ export interface MachineImage {
   /** brings docker and the docker gate back (prints ok, none, healed <what>... or down docker|gate); `refreshGate`
    *  also restarts a gate that answers but runs an older package's code, which cuts live bot computer sessions */
   computerCheckCommand(refreshGate: boolean): string;
+  /** sets the machine's clock to `nowMs` when it is more than 30 s off (prints ok, set <offset seconds> or failed) */
+  clockCheckCommand(nowMs: number): string;
 }

@@ -1,0 +1,31 @@
+{
+ "title": "Formal developer asks for an honest PR verdict",
+ "world": "developer",
+ "tags": [
+  "banter",
+  "formal",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "pr",
+    "goal": "You write formally: full sentences, proper capitals and punctuation, polite, no slang or emoji. You want an honest verdict on whether PR #214 on tidepool-hq/api is ready to merge, and a short comment with that view left on the PR.",
+    "opener": "Could you look at PR #214 and tell me honestly whether it is ready to merge? Please leave a short comment with your view.",
+    "maxTurns": 3
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "comment on #214",
+   "app": "github.repos.0.pulls",
+   "where": {
+    "number": "214",
+    "comments.0.body": "."
+   },
+   "min": 1
+  }
+ ],
+ "judge": "A clear, skeptical take with specifics (what is good, what is missing), a hint of personality, and the comment actually left. Professional tone that still sounds like a sharp colleague, not a template."
+}

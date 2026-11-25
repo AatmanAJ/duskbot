@@ -525,9 +525,21 @@ if [ -n "$fixed" ]; then echo "healed$fixed"; else echo ok; fi
 `;
 export const computerCheckCommand = (refreshGate: boolean) => `sudo -n bash -c ${shellQuote(COMPUTER_CHECK_SCRIPT)} ${COMPUTER_CHECK_MARK}${refreshGate ? " refresh" : ""}`;
 
+/** marks the clock check in a command line (the fake machine answers it by this) */
+export const CLOCK_CHECK_MARK = "dusk-clock-check";
+const CLOCK_CHECK_SCRIPT = `set -u
+want="$1"; off=$((want - $(date -u +%s)))
+if [ "\${off#-}" -le 30 ]; then echo ok; exit 0; fi
+date -u -s "@$want" >/dev/null && echo "set $off" || { echo failed; exit 3; }
+`;
+export function clockCheckCommand(nowMs: number): string {
+  if (!Number.isFinite(nowMs) || nowMs <= 0) throw new Error("Invalid clock.");
+  return `sudo -n bash -c ${shellQuote(CLOCK_CHECK_SCRIPT)} ${CLOCK_CHECK_MARK} ${Math.floor(nowMs / 1000)}`;
+}
+
 export const HOME_IMAGE: MachineImage = {
   homeVolume: INSTABOX_HOME_VOLUME, packagePath: INSTABOX_PACKAGE_FILE, restorePath: INSTABOX_RESTORE_FILE,
   bootFile, claimBootFile, bootContent, setupScript: homeSetupScript,
   installCommand, startCommand, restoreCommand: RESTORE_COMMAND, rollbackCommand: ROLLBACK_COMMAND, desktopStatusCommand: DESKTOP_STATUS_COMMAND, phoneRelayAsideCommand: PHONE_RELAY_ASIDE_COMMAND,
-  computerCheckCommand,
+  computerCheckCommand, clockCheckCommand,
 };

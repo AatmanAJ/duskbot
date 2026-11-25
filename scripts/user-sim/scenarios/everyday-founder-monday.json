@@ -1,0 +1,28 @@
+{
+ "title": "A normal casual Monday chat that drifts into one small ask",
+ "world": "founder",
+ "tags": [
+  "everyday",
+  "task"
+ ],
+ "steps": [
+  {
+   "chat": {
+    "label": "chat",
+    "goal": "Just chatting at the start of the week: say hey, mention you barely slept because of the board meeting next week, react to whatever it says, then ask what your Wednesday looks like. Casual, not teasing.",
+    "opener": "hey",
+    "maxTurns": 5
+   }
+  }
+ ],
+ "checks": [
+  {
+   "label": "covers Wednesday",
+   "said": {
+    "step": "chat",
+    "match": "wed|priya|ben|coffee"
+   }
+  }
+ ],
+ "judge": "From the very first reply the bot feels like a friend with personality: a real hello with a little life, a genuine reaction (and maybe an opinion or a light tease) when he mentions the board meeting, and a crisp Wednesday rundown. Not a help desk, not cringe."
+}

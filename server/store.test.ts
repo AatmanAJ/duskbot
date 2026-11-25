@@ -564,7 +564,7 @@ describe("Store", () => {
     expect(messages[0]).toMatchObject({
       role: "bot",
       kind: "text",
-      text: `Hi, I'm ${bot.name}. What would you like me to do?`,
+      text: `Hi, I'm ${bot.name}. What's on your plate?`,
     });
     expect(bot.modelSelection).toEqual(selection());
   });
@@ -597,7 +597,7 @@ describe("Store", () => {
     language = "pt-BR";
 
     const bot = store.createBot();
-    expect(store.messagesFor(bot.threadId)[0]?.text).toBe(`Oi, eu sou ${bot.name}. O que você gostaria que eu fizesse?`);
+    expect(store.messagesFor(bot.threadId)[0]?.text).toBe(`Oi, eu sou ${bot.name}. O que tem pra hoje?`);
   });
 
   it("greets the person by the first name they have given by the time the bot is created", () => {
@@ -605,9 +605,9 @@ describe("Store", () => {
     const store = new Store(selection, undefined, undefined, "en", () => person);
     const greeting = (name: string) => store.messagesFor(store.createBot({ name }).threadId)[0]?.text;
 
-    expect(greeting("Ivy")).toBe("Hi, I'm Ivy. What would you like me to do?");
+    expect(greeting("Ivy")).toBe("Hi, I'm Ivy. What's on your plate?");
     person = "Milind Soni";
-    expect(greeting("Scout")).toBe("Hi Milind, I'm Scout. What would you like me to do?");
+    expect(greeting("Scout")).toBe("Hi Milind, I'm Scout. What's on your plate?");
   });
 
   it("clears provider-owned voice ids as one durable mutation", () => {
