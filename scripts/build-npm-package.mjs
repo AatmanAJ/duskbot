@@ -94,8 +94,8 @@ One optional step connects your phone, defaulting to Skip for now. Choose
 an explicitly approved managed public HTTPS endpoint protected by pairing,
 existing Tailscale, or an HTTPS reverse proxy you already configured.
 Managed access uses a separate dusk bot account and asks permission for
-the public endpoint and possible connector download; dusk.bot does not run
-the service behind it today, so pick another way. The pairing page and
+the public endpoint and possible connector download. Setup shows it only
+when that service answers; dusk.bot does not run it today. The pairing page and
 basic server identity are public; chat and settings require pairing.
 Tailscale must already be installed and signed in on both devices.
 

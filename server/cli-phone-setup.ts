@@ -11,7 +11,18 @@ export interface PhoneSetupDependencies {
   /** May read saved tunnel credentials, but must not sign in or start a tunnel. */
   accountReady?(options: CliOptions): boolean | Promise<boolean>;
   login(options: CliOptions, io: SetupIo): Promise<number>;
+  /** False hides the managed HTTPS route; absent means offered. */
+  managedAvailable?(options: CliOptions): boolean | Promise<boolean>;
 }
+
+const ROUTE_LABELS = {
+  managed: "Managed HTTPS address: protected by pairing",
+  tailscale: "Existing Tailscale, only your tailnet",
+  existing: "Existing HTTPS address: advanced",
+  back: "Back to phone choice",
+  skip: "Skip for now",
+} as const;
+type Route = keyof typeof ROUTE_LABELS;
 
 /** An HTTPS origin, not proof a phone can reach it; never a pasted invitation, password, query token, localhost or unspecified bind. */
 export function normalizePhoneOrigin(raw: string): string | null {
@@ -74,25 +85,20 @@ export async function runPhoneSetup(
       return selected(phone, { publicUrl: existing });
     }
     io.log("This server listens only on this computer. A localhost or LAN-IP link will not connect your phone.");
+    const routes: Route[] = [...((await deps.managedAvailable?.(options)) ?? true ? ["managed" as const] : []), "tailscale", "existing", "back", "skip"];
     let back = false;
     while (!back) {
-      const route = await io.choose("How should your phone reach this computer?", [
-        "Managed HTTPS address: protected by pairing",
-        "Existing Tailscale, only your tailnet",
-        "Existing HTTPS address: advanced",
-        "Back to phone choice",
-        "Skip for now",
-      ], 4);
-      if (route === 4) return skip();
-      if (route === 3) { back = true; continue; }
-      if (route === 0) {
+      const route = routes[await io.choose("How should your phone reach this computer?", routes.map((id) => ROUTE_LABELS[id]), routes.indexOf("skip"))];
+      if (route === "skip") return skip();
+      if (route === "back") { back = true; continue; }
+      if (route === "managed") {
         io.log("This creates a public HTTPS endpoint through Cloudflare. Chat and settings require device pairing; the sign-in page and basic server identity are public.");
         io.log("Starting it may download the Cloudflare connector. It stays active while dusk bot runs; stop dusk bot to close the connection.");
         if (!await io.confirm("Allow this managed public endpoint and connector download?", false)) continue;
         if (!await signIn()) return skip();
         return selected(phone, { tunnel: true, tailscale: false, publicUrl: undefined });
       }
-      if (route === 1) {
+      if (route === "tailscale") {
         io.log("Tailscale must already be installed and signed in on this computer and phone, with HTTPS certificates enabled for the tailnet.");
         if (!await io.confirm("Allow dusk bot to serve HTTPS to your tailnet while it runs?", false)) continue;
         return selected(phone, { tailscale: true, tunnel: false, publicUrl: undefined });

@@ -926,6 +926,7 @@ export async function runOnboardingCommand(
       io.log("\nOne optional step: connect your phone. You can skip this and start chatting here.");
       const result = await (flow.phoneSetup ?? runPhoneSetup)(launch, prompts, {
         accountReady: (value) => !!describeTunnelAccount(createTunnelAccount({ dataDir: value.dataDir, version: serverVersion() }).credentials.read()).email,
+        managedAvailable: async (value) => (await loginRefusal(createTunnelAccount({ dataDir: value.dataDir, version: serverVersion() }))) === null,
         login: (value, ui) => runLogin(value, {
           log: ui.log, error: ui.log,
           ask: (question) => /code/i.test(question) ? ui.secret(question) : ui.ask(question),

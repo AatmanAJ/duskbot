@@ -98,6 +98,24 @@ describe("optional phone setup", () => {
     ui.consumed();
   });
 
+  it("hides the managed route while the secure access service is not there, and offers it again once it is", async () => {
+    const deps = { ...dependencies(), managedAvailable: vi.fn().mockResolvedValue(false) };
+    const hidden = prompts({ choices: [1, 0], confirms: [true] });
+    expect(await runPhoneSetup(options, hidden.io, deps)).toEqual({
+      phone: "ios", options: { ...options, tailscale: true, tunnel: false, publicUrl: undefined, client: true, pair: true },
+    });
+    expect(hidden.lines.join("\n")).not.toContain("Managed HTTPS address");
+    expect(hidden.io.choose).toHaveBeenLastCalledWith("How should your phone reach this computer?", expect.any(Array), 3);
+    expect(deps.login).not.toHaveBeenCalled();
+    hidden.consumed();
+
+    deps.managedAvailable.mockResolvedValue(true);
+    const shown = prompts({ choices: [1, 0], confirms: [true] });
+    expect((await runPhoneSetup(options, shown.io, deps)).options.tunnel).toBe(true);
+    expect(shown.lines.join("\n")).toContain("Managed HTTPS address");
+    shown.consumed();
+  });
+
   it("declining exposure returns to routes and may skip without sign-in", async () => {
     const deps = dependencies();
     const ui = prompts({ choices: [2, 0, 4], confirms: [false] });
