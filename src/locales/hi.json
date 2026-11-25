@@ -821,7 +821,7 @@
   "chat.reply.cancel": "जवाब रद्द करें",
   "chat.reply.image": "[छवि]",
   "chat.reply.file": "[फ़ाइल]",
-  "chat.speak.needsKey": "संदेश ज़ोर से पढ़ने के लिए किसी एजेंट की प्रोफ़ाइल में ElevenLabs कुंजी जोड़ें",
+  "chat.speak.needsKey": "जवाब ज़ोर से पढ़ने के लिए सेटिंग्स → API कुंजियाँ में आवाज़ की कुंजी जोड़ें",
   "chat.speak.needsVoice": "संदेश ज़ोर से पढ़ने के लिए इस एजेंट की प्रोफ़ाइल में आवाज़ चुनें",
   "chat.speak.stop": "पढ़ना रोकें",
   "chat.speak.read": "इसे ज़ोर से पढ़ें",

@@ -61,6 +61,7 @@ export function useBotMessageMenu({
       label: speak.mine ? t("chat.speak.stop") : t("chat.speak.read"),
       title: speak.label,
       disabled: !speak.ready,
+      note: speak.ready ? undefined : speak.label,
       onSelect: speak.toggle,
     });
   }

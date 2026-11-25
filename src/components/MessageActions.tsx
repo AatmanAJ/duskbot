@@ -23,6 +23,8 @@ export type MessageMenuItem = {
   onSelect: () => void;
   title?: string;
   disabled?: boolean;
+  /** A line under the label, such as why the item is off. */
+  note?: string;
   /** Offered only while the chat's turn is not running. */
   idleOnly?: boolean;
 };
@@ -230,6 +232,7 @@ export function MessageActions({
               role="menuitem"
               disabled={item.disabled}
               title={item.title}
+              aria-describedby={item.note ? `${menuId}-${item.key}-note` : undefined}
               onClick={() => {
                 item.onSelect();
                 setMenuOpen(false);
@@ -238,7 +241,12 @@ export function MessageActions({
               className={cn(MENU_ITEM, "text-start text-ink hover:bg-menu-hover focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60")}
             >
               <span className="flex size-4 shrink-0 items-center justify-center text-ink-secondary [&>svg]:size-4" aria-hidden="true">{item.icon}</span>
-              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              {item.note ? (
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate">{item.label}</span>
+                  <span id={`${menuId}-${item.key}-note`} className="max-w-60 whitespace-normal text-[12px] leading-snug text-ink-secondary">{item.note}</span>
+                </span>
+              ) : <span className="min-w-0 flex-1 truncate">{item.label}</span>}
             </button>
           ))}
         </div>
