@@ -26,7 +26,7 @@ import { dropSentTurn, followSendReceipt, noteSentTurn } from "./sent-turn";
 import { applySendReceipt } from "./send-receipt";
 import { foldSnapshotOntoStreamed, patchedGroups, roomAnswers, snapshotPatch } from "./room-frames";
 import { savedStateAction, type SavedOwner, type SavedSnapshot } from "./saved-state";
-import { firstLivePage, heldTranscript, keepBotNavigation, keepGroupNavigation, navigatedSince, openElsewhere, visibleMessages } from "./snapshot-navigation";
+import { firstLivePage, heldTranscript, keepBotNavigation, keepGroupNavigation, navigatedSince, openElsewhere, pendingSendFollows, visibleMessages } from "./snapshot-navigation";
 import { createTranscriptCache, indexedDbShelf, reconcileTranscript, type CachedTranscript } from "./transcript-cache";
 import { TranscriptShelfScope } from "./transcript-scope";
 export { shownTranscript, visibleMessages } from "./snapshot-navigation";
@@ -929,7 +929,10 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         bots: state.bots.map((bot) => {
           const loaded = replace(bot);
-          return loaded === bot ? bot : { ...loaded, activeLeafId: bot.activeLeafId === action.leafAtStart ? action.activeLeafId : bot.activeLeafId };
+          if (loaded === bot) return bot;
+          const leaf = bot.activeLeafId === action.leafAtStart ? action.activeLeafId : bot.activeLeafId;
+          const following = pendingSendFollows(loaded.messages, bot.activeLeafId, leaf);
+          return following ? { ...loaded, messages: following, activeLeafId: bot.activeLeafId } : { ...loaded, activeLeafId: leaf };
         }),
         groups: state.groups.map(replace),
       };

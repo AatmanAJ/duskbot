@@ -106,8 +106,9 @@ function confirmsSend(body: unknown, threadId: string): boolean {
 }
 
 /** A send whose answer was lost may still have reached the server. It is asked again with the same sendId, which the
- * server never delivers twice, until it answers, refuses, or its copy arrives on the live stream. A slow answer is
- * never given up on: the server may be waiting on an engine before it steers or queues the message. */
+ * server never delivers twice, until it answers, refuses, or its copy arrives on the live stream; a wait between tries
+ * ends when the live stream opens again. A slow answer is never given up on: the server may be waiting on an engine
+ * before it steers or queues the message. */
 export async function sendReconciled<T>(
   post: (signal: AbortSignal) => Promise<T>,
   arrived: () => boolean,
@@ -128,11 +129,10 @@ export async function sendReconciled<T>(
     confirm({ arrived: true });
     owned.abort();
   } }) : () => {};
-  const limited = attemptLimitMs !== null;
   const beforeRetry = (ms: number): Promise<unknown> => wait ? Promise.race([wait(ms), delivered]) : new Promise<void>((resolve) => {
     const finish = () => { clearTimeout(timer); stopOpen(); owned.signal.removeEventListener("abort", finish); resolve(); };
     const timer = setTimeout(finish, ms);
-    const stopOpen = limited ? onPlaceBack(finish) : () => {};
+    const stopOpen = onPlaceBack(finish);
     if (owned.signal.aborted) finish();
     else owned.signal.addEventListener("abort", finish, { once: true });
   });
