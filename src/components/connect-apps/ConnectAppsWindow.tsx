@@ -613,7 +613,9 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
       return <AppPage model={model} />;
     }
     if (page.kind === "yours") {
-      const offServers = entries.filter((entry) => entry.kind === "custom" && !isConnected.has(entry.id));
+      const vendorId = (entry: AppEntry) => entry.kind === "remote" ? entry.id : entry.remote;
+      const offServers = entries.filter((entry) => !isConnected.has(entry.id)
+        && (entry.kind === "custom" || remote.accounts(vendorId(entry) ?? "").length > 0));
       return (
         <div className="ca-yours @container">
           <h1 className="ca-title ps-2" data-detail-hero-title="">{t("connectApps.manage")}</h1>

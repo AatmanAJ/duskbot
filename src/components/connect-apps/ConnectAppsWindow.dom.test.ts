@@ -22,7 +22,7 @@ const fixture = vi.hoisted(() => ({
     ],
   },
   actions: { attio: { actions: ["Create record", "Find person"] } } as Record<string, { actions: string[]; triggers?: string[] }>,
-  mcpServers: [] as Array<{ name: string; enabled: boolean }> | null,
+  mcpServers: [] as Array<{ name: string; enabled: boolean; type?: string; url?: string; headerKeys?: string[] }> | null,
 }));
 
 vi.mock("@/state/store", async (original) => {
@@ -71,6 +71,11 @@ const CARDS = [
   card("linear", "Linear", "developer tools"), card("figma", "Figma", "design"), card("stripe", "Stripe", "finance"), card("posthog", "PostHog", "analytics"),
 ];
 
+const STRIPE_SERVER = {
+  id: "stripe", source: "remote-mcp", label: "Stripe", description: "Payments", categories: ["finance"], domain: "stripe.com", logo: null,
+  url: "https://mcp.stripe.com", auth: "oauth",
+};
+
 let root: Root;
 let onClose: ReturnType<typeof vi.fn<() => void>>;
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')!;
@@ -86,6 +91,8 @@ beforeEach(async () => {
   fixture.api.mockImplementation(async (path: string) => {
     if (path === "/api/connectors/catalog") return { configured: true, mode: "self-hosted", setup: "ready", source: "api", cards: CARDS };
     if (path.endsWith("/authorize")) return { url: "https://connect.example/asana" };
+    if (path === "/api/connectors/directory") return { apps: [STRIPE_SERVER] };
+    if (path === "/api/mcp/servers") return { servers: fixture.mcpServers ?? [] };
     return { services: {} };
   });
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ skills: [{ name: "invoice-chaser", description: "Chase unpaid invoices" }] }) })));
@@ -888,6 +895,18 @@ describe("the Connect Apps window", () => {
     expect(off?.textContent, "a server that failed its test is still listed, as off").toContain("Off");
     await act(async () => { dialog().querySelector<HTMLElement>(`[data-app-row="mcp:${opened}"] :is(button, [role=button])`)!.click(); });
     expect(dialog().querySelector("[data-detail-hero-title]")?.textContent).toBe("Custom MCP");
+  });
+
+  it("lists a saved server at a vendor's own address as off on Your plugins, as a moved bot's Stripe is", async () => {
+    act(() => root.unmount());
+    fixture.mcpServers = [{ name: "stripe", type: "http", url: "https://mcp.stripe.com", headerKeys: [], enabled: false }];
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => { root.render(createElement(ConnectAppsWindow, { page: { kind: "yours" }, nonce: 8, onClose, onTemplates: vi.fn() })); });
+    await flush();
+    const row = dialog().querySelector('[data-app-row="stripe"]');
+    expect(row?.textContent).toContain("Stripe");
+    expect(row?.textContent).toContain("Off");
+    expect(dialog().textContent).not.toContain("Nothing installed yet");
   });
 
   it("closes on Escape, and the search's Escape only closes its results", async () => {
