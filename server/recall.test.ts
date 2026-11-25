@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DATA_DIR } from "./config.ts";
 import { closeMessageDb, insertMessage, recallMatchTerm, recallTerms } from "./message-db.ts";
-import { buildRecall, enoughMatches, RECALL_CLOSE, RECALL_NONE, RECALL_OPEN, recallQuery, renderRecall } from "./recall.ts";
+import { buildRecall, enoughMatches, otherRoomsHidden, RECALL_CLOSE, RECALL_NONE, RECALL_OPEN, recallQuery, renderRecall } from "./recall.ts";
 import { appendMemoryLog, loadMemory, searchMemoryFiles, writeMemoryFile, writeMemoryTopic, WORKSPACES_DIR } from "./workspace.ts";
 
 const recallText = async (message: string, extra: { memoryIds?: string[]; loaded?: string[] } = {}) =>
@@ -243,8 +243,10 @@ it("leaves out of a group chat's recall the facts another group chat taught", as
   const everywhere = await recallText("where is the party venue?");
   expect(everywhere).toContain("Rooftop Bar");
   expect(everywhere).toContain("Aunt May");
+  const groups = [{ id: "launch", threadId: "room-launch" }, { id: "family", threadId: "room-main", tasks: [{ threadId: "room-family" }] }];
+  expect(otherRoomsHidden(groups, undefined)).toEqual({});
   const inLaunch = (await buildRecall({ botId: BOT, message: "where is the party venue?", threadIds: [], label: () => "", author: () => "",
-    hides: (fact) => fact.refs?.threadId === "room-family" }))?.text ?? "";
+    ...otherRoomsHidden(groups, { id: "launch" }) }))?.text ?? "";
   expect(inLaunch).toContain("Rooftop Bar");
   expect(inLaunch).not.toContain("Aunt May");
 });
