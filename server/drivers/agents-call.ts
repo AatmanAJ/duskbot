@@ -37,6 +37,7 @@ import { callDevsTool, DEVS_TOOL_NAMES } from "./agents-devs-tools.ts";
 import { STATUS_TOOL } from "../../shared/turn-progress.ts";
 import { callStatusTool } from "./agents-status-tool.ts";
 import { callSendMessageTool, SEND_MESSAGE_TOOL } from "./agents-send-message-tool.ts";
+import { recallLink } from "./recall-link.ts";
 
 /** What a turn with no computer still does: most "use your computer" asks are reads a page fetch answers. */
 export const NO_COMPUTER_NOTE = "\nNo computer is available here, but reading pages and searching the web need none: do every part of the task you can with those and your other tools, and say in one line only what setup would let you do the rest.";
@@ -841,13 +842,13 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
         : typeof hit.room === "string" && hit.room
           ? `room "${hit.room}"${typeof hit.task === "string" && hit.task ? `, ${task}` : ""}`
           : hit.crossed ? `${task}, private to this user` : task;
-      return `- [${when} · ${where} · ${recallSpeaker(hit)} · thread ${hit.threadId} · message ${hit.messageId}] ${hit.snippet}`;
+      return `- [${when} · ${where} · ${recallSpeaker(hit)} · thread ${hit.threadId} · message ${hit.messageId}${recallLink(hit)}] ${hit.snippet}`;
     });
     const crossed = hits.some((hit) => hit.crossed === true);
     return {
       text:
         `${memoryBlock}${hits.length} ${q ? "matching " : ""}message${hits.length === 1 ? "" : "s"} from your earlier conversations (${q ? "best match first" : "newest first"}):\n${lines.join("\n")}\n\n` +
-        "These are your own past notes. If one of them is the message you need, call session_search with its thread_id and message_id for the full text rather than searching again. Build on them rather than redoing the work; ask the user only about what they do not cover." +
+        "These are your own past notes. If one of them is the message you need, call session_search with its thread_id and message_id for the full text rather than searching again. Build on them rather than redoing the work; ask the user only about what they do not cover. To point the person to the conversation where something is (a page, a file, an answer), copy that hit's link into your reply exactly as it is: the person can click it." +
         (crossed
           ? " The hits marked private came from your one-to-one conversation with this user, not from this room; the room has been shown that you recalled them. Use them, and say where something came from if anyone asks."
           : ""),
