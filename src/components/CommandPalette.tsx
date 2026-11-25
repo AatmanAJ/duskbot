@@ -75,6 +75,12 @@ function Marked({ text, query }: { text: string; query: string }) {
   return <>{text.slice(0, at)}<span className="font-semibold">{text.slice(at, at + query.length)}</span>{text.slice(at + query.length)}</>;
 }
 
+/** The conversation a message result is in, unless the message is the one that titled it and already says it. */
+function conversationOf(hit: SearchHit): string {
+  const title = hit.task?.replace(/…$/, "").trim() ?? "";
+  return title && !hit.snippet.replace(/^…/, "").startsWith(title) ? hit.task ?? "" : "";
+}
+
 export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean) => void }) {
   const { state, dispatch } = useStore();
   const you = useGroupYou();
@@ -350,7 +356,8 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
                   const match = hit.snippet.slice(hit.matchStart, hit.matchStart + hit.matchLength);
                   const after = withoutCitationTraces(hit.snippet.slice(hit.matchStart + hit.matchLength));
                   return row(`msg:${hit.threadId}:${hit.messageId}`, index, entry, tile("chat-bubbles"),
-                    hit.name, <>{before}<span className="font-semibold text-ink">{match}</span>{after}</>, t("inbox.subject.message"));
+                    <>{hit.name}{conversationOf(hit) && <span className="text-ink-secondary"> · {conversationOf(hit)}</span>}</>,
+                    <>{before}<span className="font-semibold text-ink">{match}</span>{after}</>, t("inbox.subject.message"));
                 }
                 const { command } = entry;
                 return row(`cmd:${command.id}`, index, entry, tile(command.icon), command.name, command.detail, t("palette.kind.action"));
