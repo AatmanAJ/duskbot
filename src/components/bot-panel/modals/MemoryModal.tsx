@@ -9,6 +9,7 @@ import { Card, FormDialog, FormField, NavRow, NoteRow, rowCls, SheetPane, Switch
 import { RowIconButton, textAreaCls } from "../../ui/GrokDialog";
 import { DELETE_UNDO_MS } from "../../ui/Toast";
 import { UndoToast } from "../../bot-access/ShareBotButton";
+import { MemoryReadError } from "../rows";
 import { forgetLabel, useMemoryEditor } from "./use-memory-editor";
 import { ArtState } from "../../ui/Art";
 
@@ -36,7 +37,7 @@ export function MemoryModal({ bot, derived }: {
 
 function MemoryRows({ bot, derived }: { bot: Bot; derived: ReturnType<typeof useBotSettingsDerived> }) {
   const editor = useMemoryEditor(bot);
-  const { memoryOn, readError, notes, index, saving, error, forget } = editor;
+  const { memoryOn, readError, readAgain, notes, index, saving, error, forget } = editor;
   const { at, open } = useSubPage();
   const [adding, setAdding] = useState(false);
   const editable = bot.yourAccess !== "view";
@@ -48,7 +49,7 @@ function MemoryRows({ bot, derived }: { bot: Bot; derived: ReturnType<typeof use
     return (
       <>
         <Card data-sheet-group="notes">
-          {readError ? <NoteRow tone="warn">{t("botPanel.library.memoryError")}</NoteRow>
+          {readError && notes === null ? <MemoryReadError readAgain={readAgain} />
             : notes === null ? <NoteRow>{t("botPanel.ui.commonChecking")}</NoteRow>
               : notes.length === 0 ? <ArtState data-art-state="memory" art="notebook" title={t("empty.memory.title")} className="py-6">{t("empty.memory.hint", { name: bot.name })}</ArtState>
                 : notes.map((note) => (
@@ -57,6 +58,7 @@ function MemoryRows({ bot, derived }: { bot: Bot; derived: ReturnType<typeof use
                     {editable && <RowIconButton reveal icon="trash" data-modal-action="forget" label={forgetLabel(note.text)} disabled={saving} onClick={() => forget(note)} />}
                   </div>
                 ))}
+          {readError && notes !== null && <MemoryReadError readAgain={readAgain} />}
           {error && <NoteRow tone="warn">{error}</NoteRow>}
         </Card>
         {editable && (

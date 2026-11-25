@@ -87,5 +87,5 @@ export function useMemoryEditor(bot: Bot) {
   };
 
   const settleForgotten = () => setForgotten(null);
-  return { memoryOn, readError: memory.error, notes, index, draft, setDraft, saving, error, forget, add, forgotten, settleForgotten };
+  return { memoryOn, readError: memory.error, readAgain: memory.reload, notes, index, draft, setDraft, saving, error, forget, add, forgotten, settleForgotten };
 }
