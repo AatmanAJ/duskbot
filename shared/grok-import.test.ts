@@ -196,6 +196,14 @@ describe("what comes over", () => {
     expect(notes).toContain("- Details: #customer-escalations, phrase 'needs repro'");
     expect(notes).toContain("## Order hook");
     expect(notes).toContain("File the order.");
+    const soul = moved.document.package.agents[0]!.soul;
+    expect(soul, "the bot itself knows which routines it still has to set up again, and where they are").toContain(
+      `These were not set up here: Escalations, Order hook. They start on something happening, or their schedule couldn't be read; each one's trigger and steps are in ${GROK_NOTES_FILE}.`);
+    expect(notes, "the topic is read by the bot, so it speaks to the bot").toContain("When one comes up, offer to set it up again here with the person.");
+    expect(notes.split("\n## ")[0]).not.toMatch(/\b(?:me|my)\b/i);
+    const eventsOnly = plan({ name: "E", routines: [{ name: "On mail", instruction: "Sort it.", trigger: "email" }] }).document.package.agents[0]!.soul;
+    expect(eventsOnly, "a bot whose routines were all on an event still gets its Routines section").toContain("## Routines\nThese were not set up here: On mail.");
+    expect(eventsOnly).not.toContain("came over paused");
     for (const trigger of ["github", "linear", "sentry", "pagerduty", "email", "other"]) {
       const one = plan({ name: "E", routines: [{ name: "r", instruction: "i", trigger, schedule_cron: "0 9 * * *" }] });
       expect(one.document.package.routines, trigger).toBeUndefined();
