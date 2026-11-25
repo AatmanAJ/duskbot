@@ -3,12 +3,13 @@ import { useMemo, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { usePageOpener } from "@/lib/page-open";
-import { usePhoneLayout } from "@/lib/use-media-query";
+import { TOUCH_ONLY, useMediaQuery, usePhoneLayout } from "@/lib/use-media-query";
 import { useStore, visibleMessages, type Bot, type Message } from "@/state/store";
 import { useLocalFileSave } from "../AttachmentPreview";
 import { recentChangedFiles, sharedFileReferences } from "../ComputerFilesPane";
 import { Icon } from "../Icon";
 import { chipNameAction, useFilePreview } from "../HtmlFilePreview";
+import { shortcutInText } from "../ShortcutHint";
 import { FileKindIcon } from "./FileKindIcon";
 import type { SimplePageId } from "./page-registry";
 import { Card, LabelAction, PanelEmpty } from "./rows";
@@ -43,6 +44,16 @@ export function libraryItems(bot: Bot, messages: readonly Message[] = visibleMes
   }
   const unshared = recentChangedFiles(bot).filter((path) => !references.has(path));
   return { pages, apps, shared, unshared };
+}
+
+export function libraryEmptyLine(bot: Bot, keyboard: boolean): string {
+  const key = keyboard ? shortcutInText("command-palette") : undefined;
+  return key ? t("botPanel.library.empty", { name: bot.name, key }) : t("botPanel.library.emptyNoKeyboard", { name: bot.name });
+}
+
+function LibraryEmpty({ bot }: { bot: Bot }) {
+  const keyboard = !useMediaQuery(TOUCH_ONLY);
+  return <PanelEmpty data-panel-empty="library">{libraryEmptyLine(bot, keyboard)}</PanelEmpty>;
 }
 
 const fileName = (path: string) => path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
@@ -221,7 +232,7 @@ export function LibraryPage({ bot }: { bot: Bot }) {
   if (entries.length === 0) {
     return (
       <div data-panel-library="">
-        <PanelEmpty data-panel-empty="library">{t("botPanel.library.empty")}</PanelEmpty>
+        <LibraryEmpty bot={bot} />
       </div>
     );
   }
@@ -248,7 +259,7 @@ export function LibrarySection({ bot, onOpen, quietWhenEmpty = false }: { bot: B
     if (quietWhenEmpty) return null;
     return (
       <section data-panel-card="library">
-        <PanelEmpty data-panel-empty="library">{t("botPanel.library.empty")}</PanelEmpty>
+        <LibraryEmpty bot={bot} />
       </section>
     );
   }

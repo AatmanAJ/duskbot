@@ -133,7 +133,7 @@ const { AvatarEditorCard } = await import("./bot-panel/AvatarEditorCard");
 const { DetailsTab } = await import("./bot-panel/DetailsTab");
 const { AdvancedTab } = await import("./bot-panel/AdvancedTab");
 const { SettingsPage } = await import("./bot-panel/SettingsPage");
-const { LibraryPage, LibrarySection } = await import("./bot-panel/LibraryTab");
+const { LibraryPage, LibrarySection, libraryEmptyLine } = await import("./bot-panel/LibraryTab");
 const { CloudCtaCard, ComputerTab, WherePage, cloudCtaStep, hasDuskCloud } = await import("./bot-panel/ComputerTab");
 const { PageBody, AppsPage, RoutinesPage, MemoryPage, SkillsPage, FolderPage, BrowserPage } = await import("./bot-panel/pages");
 const { BrowserLogins } = await import("./bot-panel/browser-logins");
@@ -660,13 +660,18 @@ describe("the Bot settings page", () => {
 });
 
 describe("the Library", () => {
-  it("says what it will hold while the bot has made nothing, in Grok's words, and nothing else", () => {
+  it("says it holds this conversation's things while the bot has made nothing here, and how to find an earlier conversation's", () => {
     const rendered = library(makeBot());
     expect(rendered.html).toContain('data-panel-empty="library"');
-    expect(rendered.html).toContain(">Pages, files, and apps this bot makes show up here<");
+    expect(rendered.html).toContain(">Pages, files, and apps this bot makes in this conversation show up here. For one from an earlier conversation, ask Scout or search with Ctrl+K.<");
     expect(rendered.html).not.toContain("data-art-state");
     expect(rendered.html).not.toContain("Nothing made yet");
     for (const gone of ["memory", "skills", "folder"]) expect(has(rendered, "data-panel-page", gone), gone).toBe(false);
+  });
+
+  it("leaves the keyboard shortcut out on a touch screen with no keyboard", () => {
+    expect(libraryEmptyLine(makeBot(), false)).toBe("Pages, files, and apps this bot makes in this conversation show up here. For one from an earlier conversation, ask Scout or search for it.");
+    expect(libraryEmptyLine(makeBot(), true)).toContain("search with Ctrl+K.");
   });
 
   it("sits on top of the Advanced tab as a Library section, Grok's centred empty line until the bot makes something, with no View all", () => {
@@ -674,7 +679,7 @@ describe("the Library", () => {
     expect(rendered.html).toContain('data-panel-card="library"');
     expect(rendered.html).not.toContain(">library<");
     expect(rendered.html).not.toContain("data-panel-card-surface");
-    expect(rendered.html).toContain(">Pages, files, and apps this bot makes show up here<");
+    expect(rendered.html).toContain(">Pages, files, and apps this bot makes in this conversation show up here. For one from an earlier conversation, ask Scout or search with Ctrl+K.<");
     expect(has(rendered, "data-panel-page", "library")).toBe(false);
   });
 });

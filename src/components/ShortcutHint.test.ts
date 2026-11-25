@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ShortcutHint, shortcutLabel } from "./ShortcutHint";
+import { ShortcutHint, shortcutInText, shortcutLabel } from "./ShortcutHint";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -18,6 +18,12 @@ describe("shortcut hints", () => {
     const html = renderToStaticMarkup(createElement(ShortcutHint, { id: "new-bot" }));
     expect(html).toContain('<kbd aria-hidden="true"');
     expect(html).toContain(newBot);
+  });
+
+  it("writes a shortcut for a sentence as ⌘K on a Mac and Ctrl+K elsewhere", () => {
+    expect(shortcutInText("command-palette", true)).toBe("⌘K");
+    expect(shortcutInText("command-palette", false)).toBe("Ctrl+K");
+    expect(shortcutInText("not-a-binding")).toBeUndefined();
   });
 
   it("does not invent a hint for an unknown action", () => {

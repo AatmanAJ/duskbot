@@ -1,8 +1,15 @@
-import { SHORTCUT_GROUPS, shortcutKeysForPlatform } from "@/lib/keyboard-shortcuts";
+import { isMacPlatform, SHORTCUT_GROUPS, shortcutKeysForPlatform } from "@/lib/keyboard-shortcuts";
+
+const shortcutItem = (id: string) => SHORTCUT_GROUPS.flatMap((group) => group.items).find((entry) => entry.id === id);
 
 export function shortcutLabel(id: string): string | undefined {
-  const item = SHORTCUT_GROUPS.flatMap((group) => group.items).find((entry) => entry.id === id);
+  const item = shortcutItem(id);
   return item ? shortcutKeysForPlatform(item).join(" ") : undefined;
+}
+
+export function shortcutInText(id: string, isMac: boolean = isMacPlatform()): string | undefined {
+  const item = shortcutItem(id);
+  return item ? shortcutKeysForPlatform(item, isMac).join(isMac ? "" : "+") : undefined;
 }
 
 export function ShortcutHint({ id }: { id: string }) {
