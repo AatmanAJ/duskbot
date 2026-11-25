@@ -1,6 +1,7 @@
 import { hasPriorRun } from "./prior-run";
 
-export const SKIN_IDS = [
+/** Skins with a `[data-skin]` block of their own in styles.css. */
+export const BASE_SKIN_IDS = [
   "midnight",
   "atelier",
   "foundry",
@@ -15,7 +16,19 @@ export const SKIN_IDS = [
   "grok-dark",
   "halloween",
 ] as const;
-export type SkinId = (typeof SKIN_IDS)[number];
+export type BaseSkinId = (typeof BASE_SKIN_IDS)[number];
+
+/** dusk bot's own looks. Each wears a base skin's structure (`data-skin`) under its own palette (`data-look`), so every
+ * refinement written for the base carries over. */
+export const LOOK_BASES = { signal: "grok", "signal-dark": "grok-dark" } as const satisfies Record<string, BaseSkinId>;
+
+export type SkinId = BaseSkinId | keyof typeof LOOK_BASES;
+export const SKIN_IDS: readonly SkinId[] = [...BASE_SKIN_IDS, "signal", "signal-dark"];
+
+/** The skin whose stylesheet block and structural rules this one wears. */
+export function skinBase(id: SkinId): BaseSkinId {
+  return Object.hasOwn(LOOK_BASES, id) ? LOOK_BASES[id as keyof typeof LOOK_BASES] : (id as BaseSkinId);
+}
 
 export type Skin = {
   id: SkinId;
@@ -24,6 +37,8 @@ export type Skin = {
 };
 
 export const SKINS: readonly Skin[] = [
+  { id: "signal", name: "Signal", tagline: "dusk bot's own look. Warm white, lit in LED red." },
+  { id: "signal-dark", name: "Signal Dark", tagline: "dusk bot after dark: an LED sign switching on." },
   { id: "grok", name: "Grok", tagline: "Near-white and quiet, Geist type, ink-black bubbles." },
   { id: "grok-dark", name: "Grok Dark", tagline: "The same quiet look after dark, in Geist." },
   { id: "midnight", name: "Midnight", tagline: "The original. Cool and dark." },
@@ -55,11 +70,13 @@ export const SKIN_SCHEME: Record<SkinId, "light" | "dark"> = {
   grok: "light",
   "grok-dark": "dark",
   halloween: "dark",
+  signal: "light",
+  "signal-dark": "dark",
 };
 
 /** "system" follows the OS between the light and dark skins below; anything else pins one skin. */
 export type SkinChoice = SkinId | "system";
-export const THEME_SKINS = { light: "grok", dark: "grok-dark" } as const satisfies Record<"light" | "dark", SkinId>;
+export const THEME_SKINS = { light: "signal", dark: "signal-dark" } as const satisfies Record<"light" | "dark", SkinId>;
 
 export const DEFAULT_SKIN_CHOICE: SkinChoice = "system";
 export const PRIOR_INSTALL_SKIN: SkinId = "midnight";
@@ -67,6 +84,9 @@ export const PRIOR_INSTALL_SKIN: SkinId = "midnight";
 const KEY = "dusk-skin";
 // set once every install has been moved onto the Grok look; a pick made after that sticks
 const GROK_MOVE_KEY = "dusk-skin-grok";
+// set once a pinned Light or Dark (Grok's, before Signal took those names) has moved to Signal's
+const SIGNAL_MOVE_KEY = "dusk-skin-signal";
+const SIGNAL_MOVES: Partial<Record<SkinId, SkinId>> = { grok: THEME_SKINS.light, "grok-dark": THEME_SKINS.dark };
 const DARK_QUERY = "(prefers-color-scheme: dark)";
 
 function isSkinId(value: unknown): value is SkinId {
@@ -104,8 +124,14 @@ export function readSkinChoice(): SkinChoice {
     const store = getStore();
     if (store && store.getItem(GROK_MOVE_KEY) == null) {
       store.setItem(GROK_MOVE_KEY, "1");
+      store.setItem(SIGNAL_MOVE_KEY, "1");
       store.setItem(KEY, DEFAULT_SKIN_CHOICE);
       return DEFAULT_SKIN_CHOICE;
+    }
+    if (store && store.getItem(SIGNAL_MOVE_KEY) == null) {
+      store.setItem(SIGNAL_MOVE_KEY, "1");
+      const moved = SIGNAL_MOVES[store.getItem(KEY) as SkinId];
+      if (moved) store.setItem(KEY, moved);
     }
     const stored = store?.getItem(KEY);
     if (isSkinChoice(stored)) return stored;
@@ -131,8 +157,9 @@ export function subscribeSkin(listener: () => void): () => void {
 
 function wear(id: SkinId): void {
   const root = document.documentElement;
-  root.dataset.skin = id;
+  root.dataset.look = id;
   root.dataset.scheme = SKIN_SCHEME[id];
+  root.dataset.skin = skinBase(id);
   for (const listener of listeners) listener();
 }
 

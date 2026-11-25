@@ -10,7 +10,7 @@ const THEMES = [
   { choice: THEME_SKINS.dark, label: "settings.theme.dark" },
 ] as const satisfies readonly { choice: SkinChoice; label: string }[];
 
-/** the other looks, after Grok's three themes in the same select */
+/** the other looks, after the three themes in the same select */
 const LOOKS = SKINS.filter((skin) => !THEMES.some((theme) => theme.choice === skin.id));
 
 export function useSkinChoice(): SkinChoice {
@@ -18,7 +18,9 @@ export function useSkinChoice(): SkinChoice {
 }
 
 const SWATCHES: Record<string, readonly [ground: string, accent: string]> = {
-  system: ["#fcfcfc", "#121212"],
+  system: ["#fcf9f8", "#100c0c"],
+  signal: ["#fcf9f8", "#f0122f"],
+  "signal-dark": ["#100c0c", "#ff2e44"],
   grok: ["#fcfcfc", "#126fd4"],
   "grok-dark": ["#121212", "#116dd2"],
   midnight: ["#121212", "#1084fe"],
@@ -40,7 +42,7 @@ export function ThemeSwatch({ id }: { id: string }) {
   return <span aria-hidden="true" data-theme-swatch={id} className="size-3.5 shrink-0 rounded-full shadow-[inset_0_0_0_0.5px_rgb(28_28_28/0.18)]" style={{ background: `linear-gradient(135deg, ${ground} 50%, ${accent} 50%)` }} />;
 }
 
-/** Grok's three themes, then the other looks, each with its swatch. */
+/** The three themes, then the other looks, each with its swatch. */
 export const themeOptions = () => [
   ...THEMES.map((theme) => ({ value: theme.choice, label: t(theme.label), preview: <ThemeSwatch id={theme.choice} /> })),
   ...LOOKS.map((skin) => ({ value: skin.id, label: skin.name, preview: <ThemeSwatch id={skin.id} /> })),

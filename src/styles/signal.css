@@ -1,0 +1,230 @@
+/* Signal: dusk bot's own look. An LED sign at dusk: one vibrant red that glows instead of casting shadows, on warm
+   near-black (an unlit panel) or warm paper. It wears the Grok skins' structure and replaces their palette, so the
+   selectors carry the base skin and win over its block. Every text/surface pair clears 4.5:1 (pnpm check:contrast). */
+
+:root[data-skin="grok-dark"][data-look="signal-dark"] {
+  color-scheme: dark;
+  --code-color-scheme: dark;
+  --color-app: #100c0c;
+  --color-panel: #090606;
+  --color-raised: #211919;
+  --color-raised-hover: #312626;
+  --color-composer: #1a1313;
+  --color-composer-ring: #fff1ee1c;
+  --color-card: #1b1414;
+  --color-menu: #1d1515;
+  --color-menu-hover: #fff1ee0f;
+  --color-menu-active: #fff1ee14;
+  --color-inset: #140f0f;
+  --color-control: #282020;
+  --color-hairline: #fff1ee38;
+  --color-edge: #fff1ee10;
+  --color-ink: #fff1ee;
+  --color-ink-secondary: #fff1eeab;
+  --color-ink-tertiary: #fff1ee8f;
+  --color-accent: #e8132e;
+  --color-accent-border: #ff2e44;
+  --color-accent-text: #ff6877;
+  --color-unread: #ff2e44;
+  --color-focus: #7a7070;
+  --color-accent-ink: #ffffff;
+  --color-bubble-user: #3a2b2b;
+  --color-bubble-user-ink: #fff1ee;
+  --color-success: #2fcf86;
+  --color-danger: #ff7a59;
+  --color-danger-ink: #200a04;
+  --color-success-ink: #04200f;
+  --color-warning: #f2a12a;
+  --color-scrollbar: #3e3030;
+  --color-maus-line: #fff1ee;
+  --identity-green: #10a760;
+  --identity-blue: #2d72f9;
+  --identity-red: #ef3a3f;
+  --identity-orange: #fb7c01;
+  --identity-purple: #9059f1;
+  --identity-cyan: #04a2ed;
+  --identity-pink: #f12b93;
+  --identity-yellow: #e5a915;
+  --identity-teal: #26cb96;
+  --identity-coral: #f75e51;
+  --identity-brown: #ad6a30;
+  --identity-silver: #a3aab3;
+  --identity-chrome: #b3bac4;
+
+  --led: #ff2e44;
+  --led-hot: #ff5a6b;
+  --led-off: #fff1ee12;
+  --led-halo: 0.55;
+  --dusk-horizon: #ff2e4426;
+}
+
+:root[data-skin="grok"][data-look="signal"] {
+  --code-color-scheme: light;
+  --color-app: #fcf9f8;
+  --color-panel: #f5f0ee;
+  --color-frame: var(--color-panel);
+  --color-raised: #e9e1de;
+  --color-raised-hover: #ded4d1;
+  --color-card: #f1ebe9;
+  --color-inset: #ece5e2;
+  --color-control: #e6dedb;
+  --color-hairline: #2a16163d;
+  --color-edge: #2a161614;
+  --color-ink: #211515;
+  --color-ink-secondary: #211515ad;
+  --color-ink-tertiary: #211515a6;
+  --color-accent: #d40f28;
+  --color-accent-border: #f0122f;
+  --color-accent-text: #c20c23;
+  --color-unread: #e0102b;
+  --color-focus: #7f7676;
+  --color-accent-ink: #ffffff;
+  --color-composer: #ffffff;
+  --color-composer-ring: #2a16161f;
+  --color-menu: #ffffff;
+  --color-menu-hover: #2a16160f;
+  --color-menu-active: #2a161614;
+  --color-bubble-user: #211515;
+  --color-bubble-user-ink: #fcf9f8;
+  --color-success: #007a44;
+  --color-danger: #b3401a;
+  --color-danger-ink: #ffffff;
+  --color-success-ink: #ffffff;
+  --color-warning: #955700;
+  --color-scrollbar: #d3c8c5;
+  --color-maus-line: #5f5353;
+  --identity-green: #0d844c;
+  --identity-blue: #2169f9;
+  --identity-red: #e51318;
+  --identity-orange: #b65a01;
+  --identity-purple: #894ef0;
+  --identity-cyan: #037ab3;
+  --identity-pink: #dd0f7b;
+  --identity-yellow: #946d0e;
+  --identity-teal: #188360;
+  --identity-coral: #e31b0a;
+  --identity-brown: #a4642e;
+  --identity-silver: #6b7481;
+  --identity-chrome: #687486;
+
+  --led: #f0122f;
+  --led-hot: #ff3a52;
+  --led-off: #2a161612;
+  --led-halo: 0.24;
+  --dusk-horizon: #f0122f1a;
+}
+
+/* the ink-black bubble's own links and accents, in the red it can carry */
+:root[data-skin][data-look="signal"] .bg-bubble-user {
+  --color-accent: #ff7c88;
+  --color-accent-text: #ff7c88;
+}
+
+:root[data-skin][data-look^="signal"] {
+  --led-glow: 0 0 0 0.5px color-mix(in srgb, var(--led) 70%, transparent),
+    0 0 14px -2px color-mix(in srgb, var(--led) calc(var(--led-halo) * 100%), transparent),
+    0 0 36px -8px color-mix(in srgb, var(--led) calc(var(--led-halo) * 80%), transparent);
+  --led-dots: radial-gradient(circle at center, var(--led-off) 1.1px, transparent 1.6px);
+}
+
+:root[data-skin][data-look^="signal"] ::selection {
+  background: color-mix(in srgb, var(--led) 32%, transparent);
+}
+
+/* The primary action is lit: the red fill and its glow, a hotter red under the pointer. */
+:root[data-skin][data-look^="signal"] .ui-button-primary {
+  border-color: transparent;
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  box-shadow: var(--led-glow);
+  transition: background-color 140ms ease, box-shadow 200ms ease;
+}
+:root[data-skin][data-look^="signal"] .ui-button-primary:not(:disabled):is(:hover, :active):where(:not(html[data-mobile-app] *)) {
+  background: color-mix(in srgb, var(--color-accent) 86%, var(--led-hot));
+  color: var(--color-accent-ink);
+  box-shadow: var(--led-glow), 0 0 48px -10px color-mix(in srgb, var(--led) 60%, transparent);
+}
+:root[data-skin][data-look^="signal"] .ui-button-primary:disabled {
+  box-shadow: none;
+}
+
+/* The message box: a hairline at rest, a red edge with a low halo while you write in it. */
+:root[data-skin][data-look^="signal"] .composer-pill {
+  transition: box-shadow 180ms ease;
+}
+:root[data-skin][data-look^="signal"] .composer-pill:focus-within {
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--led) 55%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--led) 9%, transparent),
+    0 10px 32px -14px color-mix(in srgb, var(--led) 45%, transparent);
+}
+
+/* The bot you are talking to and the settings page you are on have their indicator lit, in the gutter beside the row. */
+:root[data-skin][data-look^="signal"] :is([data-sidebar-bot-row], .settings-nav-item) {
+  position: relative;
+}
+:root[data-skin][data-look^="signal"] :is([data-sidebar-bot-row], .settings-nav-item)[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  inset-inline-start: -8px;
+  width: 5px;
+  height: 5px;
+  translate: 0 -50%;
+  border-radius: 9999px;
+  background: var(--led);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--led) 25%, transparent),
+    0 0 8px 1px color-mix(in srgb, var(--led) calc(var(--led-halo) * 140%), transparent);
+  pointer-events: none;
+}
+
+/* the first run stands in front of the sign: a field of unlit dots, and the dusk light low on the horizon */
+:root[data-skin][data-look^="signal"] .welcome-screen {
+  background-color: var(--color-app);
+  background-image: radial-gradient(120% 60% at 50% 118%, var(--dusk-horizon), transparent 70%), var(--led-dots);
+  background-size: 100% 100%, 14px 14px;
+  background-attachment: local, local;
+}
+
+/* a step's way on floats over the field rather than cutting a band out of it */
+:root[data-skin][data-look^="signal"] .welcome-screen [data-step-footer] {
+  background: color-mix(in srgb, var(--color-app) 70%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  mask-image: linear-gradient(transparent, black 16px);
+}
+
+/* the funnel's progress pill and the done fill run in the LED */
+:root[data-skin][data-look^="signal"] [data-funnel-progress] .funnel-progress-ink {
+  background: var(--led);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--led) calc(var(--led-halo) * 120%), transparent);
+}
+:root[data-skin][data-look^="signal"] [data-funnel-progress] .funnel-progress-done {
+  background: color-mix(in srgb, var(--led) 45%, transparent);
+}
+
+/* a first-run choice lights its edge under the pointer and the keyboard */
+:root[data-skin][data-look^="signal"] .funnel-tile {
+  box-shadow: inset 0 0 0 0.5px var(--color-edge);
+  transition: background-color 150ms ease, box-shadow 200ms ease, transform 150ms ease;
+}
+:root[data-skin][data-look^="signal"] .funnel-tile:enabled:is(:hover, :focus-visible) {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--led) 60%, transparent), 0 0 24px -10px color-mix(in srgb, var(--led) calc(var(--led-halo) * 120%), transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-skin][data-look^="signal"] :is(.ui-button-primary, .composer-pill, .funnel-tile) { transition: none; }
+}
+:root[data-skin][data-look^="signal"][data-reduced-motion="true"] :is(.ui-button-primary, .composer-pill, .funnel-tile) { transition: none; }
+
+@media (forced-colors: active) {
+  :root[data-skin][data-look^="signal"] :is([data-sidebar-bot-row], .settings-nav-item)[aria-current="page"]::after { background: Highlight; box-shadow: none; }
+  :root[data-skin][data-look^="signal"] .welcome-screen { background-image: none; }
+}
+
+/* settings' group labels read like the labels on an instrument panel */
+:root[data-skin][data-look^="signal"] :is(.settings-nav-label, [data-settings-heading]) {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--color-ink-tertiary);
+}

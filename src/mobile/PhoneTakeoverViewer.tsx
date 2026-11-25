@@ -264,7 +264,7 @@ function toNativeMenu(items: readonly TakeoverMenuItem[]): TakeoverGlassMenuItem
 
 function restoreAppearance(platform: MobilePlatform): void {
   const skin = readSkinChoice();
-  const dark = document.documentElement.dataset.skin === THEME_SKINS.dark;
+  const dark = document.documentElement.dataset.look === THEME_SKINS.dark;
   platform.setStatusBar?.(dark ? "light" : "dark");
   platform.setAppearance?.(skin === THEME_SKINS.dark ? "dark" : skin === THEME_SKINS.light ? "light" : "system");
 }

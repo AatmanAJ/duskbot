@@ -1,0 +1,54 @@
+.led-sign {
+  display: block;
+  overflow: visible;
+}
+.led-sign-off {
+  fill: var(--led-off, color-mix(in srgb, var(--color-ink) 7%, transparent));
+}
+.led-sign-on {
+  fill: var(--led, var(--color-accent));
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--led, var(--color-accent)) calc(var(--led-halo, 0.4) * 140%), transparent))
+    drop-shadow(0 0 14px color-mix(in srgb, var(--led, var(--color-accent)) calc(var(--led-halo, 0.4) * 100%), transparent));
+}
+/* a lit dot runs hot in its centre, as a real LED does */
+:root[data-scheme="dark"] .led-sign-on {
+  stroke: color-mix(in srgb, var(--led-hot, var(--color-accent)) 70%, white);
+  stroke-width: 0.6;
+  stroke-opacity: 0.35;
+}
+.led-sign[data-lighting] .led-sign-on circle {
+  animation: led-on 460ms steps(1, end) both;
+}
+@keyframes led-on {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  34% { opacity: 0.25; }
+  52% { opacity: 1; }
+  100% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .led-sign[data-lighting] .led-sign-on circle { animation: none; }
+}
+:root[data-reduced-motion="true"] .led-sign[data-lighting] .led-sign-on circle { animation: none; }
+@media (forced-colors: active) {
+  .led-sign-on { fill: CanvasText; filter: none; }
+  .led-sign-off { fill: transparent; }
+}
+
+/* the welcome's sign hangs in its own glow, a little light spilling onto the wall round it */
+.welcome-sign-plate {
+  position: relative;
+  padding: 28px 32px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--color-ink) 3%, transparent);
+  box-shadow: inset 0 0 0 0.5px var(--color-edge);
+}
+.welcome-sign-plate::before {
+  content: "";
+  position: absolute;
+  inset: -40px -60px;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--led, var(--color-accent)) calc(var(--led-halo, 0.4) * 40%), transparent), transparent);
+  pointer-events: none;
+}

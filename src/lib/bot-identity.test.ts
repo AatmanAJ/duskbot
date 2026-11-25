@@ -5,15 +5,18 @@ import { Window } from "happy-dom";
 import { describe, expect, it } from "vitest";
 import { contrastRatio, mixSrgb, toneForSurface } from "./color-contrast";
 import { MAUS_COLORS, MAUS_COLOR_NAMES } from "./mascot";
-import { SKIN_IDS } from "./skins";
+import { LOOK_BASES, SKIN_IDS } from "./skins";
 
 const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../styles.css"), "utf8");
+const looks = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../styles/signal.css"), "utf8");
 
 function declarations(body: string): Record<string, string> {
   return Object.fromEntries([...body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map(([, name, value]) => [name, value.trim()]));
 }
 
 function skin(id: string): Record<string, string> {
+  const base = (LOOK_BASES as Record<string, string>)[id];
+  if (base) return { ...skin(base), ...declarations(looks.match(new RegExp(`\\[data-look="${id}"\\]\\s*\\{([^}]*)\\}`))?.[1] ?? "") };
   const theme = declarations(css.match(/@theme\s*\{([^}]*)\}/)?.[1] ?? "");
   const blocks = [...css.matchAll(new RegExp(`\\[data-skin="${id}"\\]\\s*\\{([^}]*)\\}`, "g"))];
   return blocks.reduce((acc, match) => ({ ...acc, ...declarations(match[1] ?? "") }), theme);

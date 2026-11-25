@@ -9,6 +9,7 @@ import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const css = readFileSync(join(root, "src/styles.css"), "utf8");
+const looksCss = readFileSync(join(root, "src/styles/signal.css"), "utf8");
 
 function declarations(body) {
   const tokens = {};
@@ -196,6 +197,10 @@ const PAIRS = [
 ];
 
 const skins = parseSkins(css);
+// A look is measured over the base skin it wears: `[data-skin="base"][data-look="id"] { … }`.
+for (const [, base, id, body] of looksCss.matchAll(/\[data-skin="([a-z-]+)"\]\[data-look="([a-z-]+)"\]\s*\{([^}]*)\}/g)) {
+  skins.set(id, { ...skins.get(base), ...declarations(body) });
+}
 // Midnight faithfully keeps two upstream contrast gaps. They may improve, but
 // must not get worse; every other below-target pair is a regression.
 const BASELINE_FLOORS = new Map([

@@ -9,6 +9,7 @@ import { usePrefersReducedMotion } from "../mascot-clock";
 import { Art, type ArtName } from "../ui/Art";
 import { PlaceArt, type PlaceArtName } from "../ui/PlaceArt";
 import { DEFAULT_BOT_NAME } from "@/lib/default-bot";
+import { LedSign } from "../brand/LedSign";
 import { MAC_TRAFFIC_LIGHT_CLEAR_X, useDesktopCapabilities } from "../DesktopCapabilities";
 
 export const PRIMARY = "ui-button ui-button-pill ui-button-lg ui-button-primary w-[288px] max-w-full font-normal tracking-[0.14px]";
@@ -16,7 +17,7 @@ export const PRIMARY = "ui-button ui-button-pill ui-button-lg ui-button-primary 
 export const SECONDARY = "ui-button ui-button-pill ui-button-lg w-[288px] max-w-full font-normal tracking-[0.14px]";
 export const QUIET = "min-h-11 rounded-full px-3 text-[13px] leading-[18px] text-ink-secondary transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none";
 /** A tonal choice: a soft fill, no outline, a deeper fill on hover and while chosen. */
-export const TILE = "rounded-2xl bg-ink/[0.035] transition-[background-color,transform] duration-150 ease-[ease] hover:bg-ink/[0.06] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none motion-reduce:active:scale-100";
+export const TILE = "funnel-tile rounded-2xl bg-ink/[0.035] transition-[background-color,transform] duration-150 ease-[ease] hover:bg-ink/[0.06] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none motion-reduce:active:scale-100";
 
 // the brand's lilac, a shade deeper than the pastel so the mark reads on the light canvas
 export const BRAND_LILAC: [string, string, string] = ["#d0cefb", "#b99af2", "#d0cefb"];
@@ -71,8 +72,8 @@ export function ProgressInk({ at }: { at: number }) {
   const width = useTransform(() => `${Math.max(0, to.get() - from.get())}px`);
   const doneWidth = useTransform(done, (v) => `${v}px`);
   return <>
-    <motion.span aria-hidden="true" className="absolute inset-y-0 start-0 rounded-full bg-ink/45" style={{ width: doneWidth }} />
-    <motion.span aria-hidden="true" className="absolute inset-y-0 rounded-full bg-ink" style={{ insetInlineStart: inset, width }} />
+    <motion.span aria-hidden="true" className="funnel-progress-done absolute inset-y-0 start-0 rounded-full bg-ink/45" style={{ width: doneWidth }} />
+    <motion.span aria-hidden="true" className="funnel-progress-ink absolute inset-y-0 rounded-full bg-ink" style={{ insetInlineStart: inset, width }} />
   </>;
 }
 
@@ -114,20 +115,32 @@ export function StepArt({ art, place }: { art?: ArtName; place?: PlaceArtName })
   return art ? <Art name={art} size="xl" className="place-mark h-16" /> : null;
 }
 
-/** The hello. On a cloud the desktop app set up it greets the person by the name and picture that computer knows. */
+/** The hello: the brand's sign switching on, what dusk bot is, and the way in. On a cloud the desktop app set up it
+ * greets the person by the name and picture that computer knows instead. */
 export function WelcomeStep({ onStart, cloud }: { onStart: () => void; cloud?: { name: string; picture?: string } }) {
   const reduced = usePrefersReducedMotion();
-  const art = cloud?.picture
+  const start = <button type="button" data-primary="" data-funnel-start="" autoFocus onClick={onStart} className={PRIMARY}>{t("funnel.welcome.start")}</button>;
+  if (!cloud) return <SignHello start={start} reduced={reduced} />;
+  const art = cloud.picture
     ? <img src={cloud.picture} alt="" data-welcome-picture="" className="size-[72px] rounded-full object-cover" />
     : <MausAvatar color="purple" gradient={BRAND_LILAC} size={72} state="excited" animated={!reduced} label={DEFAULT_BOT_NAME} />;
   return (
     <div className="flex min-h-full w-full flex-col">
-      <StepFrame
-        art={art}
-        title={cloud ? (cloud.name ? t("funnel.welcome.cloudNamed", { name: cloud.name }) : t("funnel.welcome.cloud")) : t("funnel.welcome.title")}
-        sub={cloud ? t("funnel.welcome.cloudSub") : t("funnel.welcome.sub")}
-        footer={<button type="button" data-primary="" data-funnel-start="" autoFocus onClick={onStart} className={PRIMARY}>{t("funnel.welcome.start")}</button>}
-      />
+      <StepFrame art={art} title={cloud.name ? t("funnel.welcome.cloudNamed", { name: cloud.name }) : t("funnel.welcome.cloud")} sub={t("funnel.welcome.cloudSub")} footer={start} />
+    </div>
+  );
+}
+
+function SignHello({ start, reduced }: { start: ReactNode; reduced: boolean }) {
+  const rise = useCascade();
+  return (
+    <div data-welcome-sign="" className="mx-auto my-auto flex w-full max-w-[640px] flex-col items-center px-6 pb-12 pt-20 text-center">
+      <motion.div className="welcome-sign-plate" {...rise(0)}>
+        <LedSign text="dusk bot" lighting={!reduced} className="w-[min(460px,78vw)]" />
+      </motion.div>
+      <motion.h1 id="welcome-title" tabIndex={-1} className="sr-only" {...rise(1)}>{t("funnel.welcome.title")}</motion.h1>
+      <motion.p className="mt-9 max-w-[420px] text-pretty text-[17px] leading-[24px] text-ink-secondary" {...rise(2)}>{t("funnel.welcome.sub")}</motion.p>
+      <motion.div className="mt-8 flex w-full flex-col items-center" {...rise(3)}>{start}</motion.div>
     </div>
   );
 }

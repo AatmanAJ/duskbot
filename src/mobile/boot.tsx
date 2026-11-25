@@ -58,7 +58,7 @@ export function mountMobile(platform: MobilePlatform): void {
   applySkinChoice(phoneSkin(params));
   applyFont(readFont());
   applyMotionSpeed(document.documentElement);
-  const dark = document.documentElement.dataset.skin === THEME_SKINS.dark;
+  const dark = document.documentElement.dataset.look === THEME_SKINS.dark;
   platform.setStatusBar?.(dark ? "light" : "dark");
   document.title = productName();
   // the install is claimed before anything this launch writes a preference, which would make a new install look like an

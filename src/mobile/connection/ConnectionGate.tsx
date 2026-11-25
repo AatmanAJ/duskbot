@@ -306,7 +306,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
 
   const success = (
     <AnimatePresence>
-      {celebrate && <Success key={celebrate.sequence} name={celebrate.name} onDone={() => { setCelebrate(null); platform.setStatusBar?.(document.documentElement.dataset.skin === THEME_SKINS.dark ? "light" : "dark"); }} />}
+      {celebrate && <Success key={celebrate.sequence} name={celebrate.name} onDone={() => { setCelebrate(null); platform.setStatusBar?.(document.documentElement.dataset.look === THEME_SKINS.dark ? "light" : "dark"); }} />}
     </AnimatePresence>
   );
   const onboarding = state.kind !== "ready" || (forcePair && !entered);

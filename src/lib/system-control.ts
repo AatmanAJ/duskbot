@@ -92,7 +92,7 @@ const hexColours = new Map<string, string | undefined>();
 
 /** A css colour as #rrggbb, read in `el`'s place in the page so its custom properties resolve. */
 function hexColour(css: string, el: HTMLElement): string | undefined {
-  const skin = document.documentElement.dataset.skin ?? "";
+  const skin = document.documentElement.dataset.look ?? "";
   const key = `${skin}|${css}`;
   if (hexColours.has(key)) return hexColours.get(key);
   const probe = document.createElement("span");

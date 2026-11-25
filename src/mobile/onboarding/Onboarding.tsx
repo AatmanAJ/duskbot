@@ -150,7 +150,7 @@ export function Onboarding({ initial = null, initialSignIn, reason = null, start
   useKeyboardSync(platform, mainRef);
 
   useEffect(() => {
-    platform.setStatusBar?.(step === "scan" || document.documentElement.dataset.skin === THEME_SKINS.dark ? "light" : "dark");
+    platform.setStatusBar?.(step === "scan" || document.documentElement.dataset.look === THEME_SKINS.dark ? "light" : "dark");
   }, [platform, step]);
 
   // the link under way: any way out of its screen (Cancel, Back, closing the scanner) stops it, and its answer is dropped

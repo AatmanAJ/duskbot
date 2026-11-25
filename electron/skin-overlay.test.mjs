@@ -9,10 +9,17 @@ const { SKIN_CHROME, DEFAULT_SKIN, skinChrome, isKnownSkin, skinIsLight } = requ
 
 const here = dirname(fileURLToPath(import.meta.url));
 const css = readFileSync(join(here, "../src/styles.css"), "utf8");
+const looks = readFileSync(join(here, "../src/styles/signal.css"), "utf8");
 const skinIds = readFileSync(join(here, "../src/lib/skins.ts"), "utf8");
 
+/** A skin's own block, or a look's, which is written over the skin it wears. */
+function skinBlock(skin) {
+  return css.match(new RegExp(`\\[data-skin="${skin}"\\]\\s*\\{([^}]*)\\}`))?.[1]
+    ?? looks.match(new RegExp(`\\[data-look="${skin}"\\]\\s*\\{([^}]*)\\}`))?.[1] ?? "";
+}
+
 function cssToken(skin, name) {
-  const block = css.match(new RegExp(`\\[data-skin="${skin}"\\]\\s*\\{([^}]*)\\}`))?.[1] ?? "";
+  const block = skinBlock(skin);
   return block.match(new RegExp(`${name}\\s*:\\s*(#[0-9a-fA-F]+)`))?.[1]?.toLowerCase() ?? null;
 }
 
@@ -21,7 +28,7 @@ describe("skin overlay chrome", () => {
     // SKIN_IDS (src/lib/skins.ts) is the source of truth: a skin without a chrome entry keeps the previous caption colour.
     const registered = [...skinIds.matchAll(/"([a-z-]+)"/g)]
       .map(([, id]) => id)
-      .filter((id) => css.includes(`[data-skin="${id}"]`));
+      .filter((id) => css.includes(`[data-skin="${id}"]`) || looks.includes(`[data-look="${id}"]`));
     expect(new Set(registered)).toEqual(new Set(Object.keys(SKIN_CHROME)));
   });
 
@@ -33,7 +40,7 @@ describe("skin overlay chrome", () => {
 
   it("tells light skins from dark ones as the renderer's --code-color-scheme does", () => {
     for (const skin of Object.keys(SKIN_CHROME)) {
-      const scheme = css.match(new RegExp(`\\[data-skin="${skin}"\\]\\s*\\{[^}]*--code-color-scheme:\\s*(light|dark)`))?.[1];
+      const scheme = skinBlock(skin).match(/--code-color-scheme:\s*(light|dark)/)?.[1];
       expect(skinIsLight(skin) ? "light" : "dark", skin).toBe(scheme);
     }
   });
@@ -62,6 +69,13 @@ describe("skin overlay chrome", () => {
   it("paints Pop's cream page behind the caption buttons", () => {
     expect(skinChrome("pop")).toEqual({ color: "#fdf5ea", symbolColor: "#3a322d" });
     expect(isKnownSkin("pop")).toBe(true);
+  });
+
+  it("paints Signal's grounds behind the caption buttons", () => {
+    expect(skinChrome("signal").color).toBe("#fcf9f8");
+    expect(skinChrome("signal-dark").color).toBe("#100c0c");
+    expect(skinIsLight("signal")).toBe(true);
+    expect(skinIsLight("signal-dark")).toBe(false);
   });
 
   it("paints Halloween's plum ground behind the caption buttons", () => {

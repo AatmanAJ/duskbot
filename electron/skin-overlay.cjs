@@ -16,6 +16,8 @@ const SKIN_CHROME = Object.freeze({
   grok: Object.freeze({ color: "#fdfdfd", symbolColor: "#575757" }),
   "grok-dark": Object.freeze({ color: "#121212", symbolColor: "#b5b5b5" }),
   halloween: Object.freeze({ color: "#110d16", symbolColor: "#c2b3cc" }),
+  signal: Object.freeze({ color: "#fcf9f8", symbolColor: "#5f5353" }),
+  "signal-dark": Object.freeze({ color: "#100c0c", symbolColor: "#c4b6b3" }),
 });
 
 const DEFAULT_SKIN = "midnight";

@@ -99,7 +99,7 @@ function Shell() {
   useEffect(() => {
     // an open sheet steps the page back onto a dark ground, so the clock turns light over it
     // (the system's sheet dims the page itself and the status bar follows it)
-    const apply = () => platform.setStatusBar?.((sheetOpen && !platform.chrome) || document.documentElement.dataset.skin === THEME_SKINS.dark ? "light" : "dark");
+    const apply = () => platform.setStatusBar?.((sheetOpen && !platform.chrome) || document.documentElement.dataset.look === THEME_SKINS.dark ? "light" : "dark");
     apply();
     const system = window.matchMedia?.("(prefers-color-scheme: dark)");
     const later = () => setTimeout(apply, 0);

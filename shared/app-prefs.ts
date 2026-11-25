@@ -1,7 +1,7 @@
 /** The person's app preferences a bot may change when they ask (app_settings): the synced preference each one is kept
  * under, and the values the page accepts for it. */
 export const APP_PREF_SETTINGS = {
-  theme: { pref: "dusk-skin", values: ["system", "midnight", "atelier", "foundry", "lagoon", "graphite", "linen", "dusk", "daylight", "meadow", "pop", "grok", "grok-dark", "halloween"] },
+  theme: { pref: "dusk-skin", values: ["system", "midnight", "atelier", "foundry", "lagoon", "graphite", "linen", "dusk", "daylight", "meadow", "pop", "grok", "grok-dark", "halloween", "signal", "signal-dark"] },
   font: { pref: "dusk-font", values: ["skin", "system", "inter", "poppins", "serif"] },
   chat_width: { pref: "dusk-chat-width", values: ["standard", "wide", "full"] },
   send_key: { pref: "dusk-send-key", values: ["enter", "shift-enter", "mod-enter"] },
