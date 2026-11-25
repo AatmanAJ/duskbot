@@ -4,12 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { parseMobileLink, type MobilePairingResponse, type MobileRedeemResponse } from "../../shared/mobile-link.ts";
+import { DEFAULT_MOBILE_RELAY, parseMobileLink, type MobilePairingResponse, type MobileRedeemResponse } from "../../shared/mobile-link.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import { SessionRegistry } from "../sessions.ts";
 import { generateKeyPairSync } from "node:crypto";
 
-import { createMobileLink, mobileLookupRelay, PUSH_GRACE_MS } from "./link.ts";
+import { createMobileLink, mobileLookupRelay, PUSH_GRACE_MS, typedCodeRelay } from "./link.ts";
 import { PRESENCE_OVERDUE_MS } from "./presence.ts";
 import { lookupKeys, openLookup } from "./lookup.ts";
 import type { PushMessage, PushTarget } from "./push.ts";
@@ -168,6 +168,21 @@ describe("mobile link", () => {
     sessions.revoke(sessions.authenticate(phone.token)!.id);
     const after = await call(mobile, owner, "POST", "/api/mobile/relay/sync", { ...agent, applied: next.body.rev, wait: 0 });
     expect(after.body.channels.some((one: { kind: string }) => one.kind === "device")).toBe(false);
+  });
+
+  it("posts a typed code where the phone looks it up, even when the server's link agent lives on another dusk bot node", async () => {
+    const mobile = link({ publicOrigin: () => null, lookupRelay: null });
+    const agent = { base: "https://link-in.dusk.bot", tunnel: "abcdefghij", pub: "A".repeat(43) };
+    await call(mobile, owner, "POST", "/api/mobile/relay/sync", { ...agent, applied: 0, wait: 0 });
+    const syncing = call(mobile, owner, "POST", "/api/mobile/relay/sync", { ...agent, applied: 1, wait: 5 });
+    const pairing = call(mobile, owner, "POST", "/api/mobile/pairing");
+    const held = await syncing;
+    void call(mobile, owner, "POST", "/api/mobile/relay/sync", { ...agent, applied: held.body.rev, wait: 5 });
+    const answer = (await pairing).body as MobilePairingResponse;
+    expect(answer.payload.via.find((one) => one.kind === "relay")).toMatchObject({ base: "https://link-in.dusk.bot" });
+    expect(answer.code).toEqual(expect.any(String));
+    expect(lookups.map((one) => one.url)).toEqual([`${DEFAULT_MOBILE_RELAY}/v1/lookups`]);
+    expect(typedCodeRelay("https://link.example.org")).toBe("https://link.example.org");
   });
 
   it("leaves the link agent's https address out of a code while it answers 5xx or nothing, so a phone pairs over the relay", async () => {
