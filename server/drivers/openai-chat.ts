@@ -25,7 +25,7 @@ import { completionError, httpErrorDetail, refusedToolCall, refusedToolCallFailu
 import { ChatRepeatGuard } from "./chat-repeat-guard.ts";
 import { TextCallHoldback, textToolCalls } from "./chat-text-tool-calls.ts";
 import { createModelRoutes, ModelRouteRefused, noRouteLeft, readResponsesStream, responsesRequest, routeRefusal, type ModelRoute, type ResponseItem } from "./openai-responses.ts";
-import { appendNative } from "./native.ts"; import { backupNotice, movesToBackup, TurnBackups, type ChatBackup } from "./chat-fallback.ts"; import { fingerprint, MAX_DELIVERED_THREADS, replayDelivered, type DeliveredUserMessage } from "./openai-chat-replay.ts";
+import { appendNative } from "./native.ts"; import { backupNotice, movesToBackup, TurnBackups, type ChatBackup } from "./chat-fallback.ts"; import { modelSwapNotice, namesUnknownModel, unavailableModelMessage } from "./model-intent.ts"; import { fingerprint, MAX_DELIVERED_THREADS, replayDelivered, type DeliveredUserMessage } from "./openai-chat-replay.ts";
 import { classifyError, interruptibleDelay, RETRY_MAX_ATTEMPTS } from "./retry.ts";
 import { carriedSteps, carriedWorkFile, chatLimitFacts, sharedCarriedWork } from "./openai-chat-carry.ts";
 import { CORRECTIVE_ROUND, CORRECTIVE_ROUNDS, announcesAction, ownsFailure, withoutRepeats, claimsUnmadeChange, effectfulCall, leakedReasoning, leakedToolSyntax, LeakHoldback, NUDGE_ANNOUNCED_ACTION, REASONING_AGAIN, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
@@ -134,6 +134,8 @@ interface RuntimeOptions<Config> {
   localModel?: boolean;
   /** Which models take a reasoning effort, and at which levels; any other model is sent none. */
   effort?: ModelEffort;
+  /** The models the server lists now, and the one of them a model it refused clearly means; null when it lists none. */
+  resolveModel?: (model: string) => Promise<{ use?: string; listed: string[] } | null>;
 }
 
 const usageFrom = (usage: CompletionJson["usage"]): Usage | null =>
@@ -479,7 +481,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     const request = messages.at(-1)!;
     const retainImages = chatImageBudget();
     for (const message of messages) retainImages(message.content);
-    const model = turn.model || options.models().default;
+    let model = turn.model || options.models().default;
     const secrets = [options.apiKey].filter((value): value is string => Boolean(value));
     for (const integration of Object.values(turn.integrations ?? {})) {
       const entries = object(integration);
@@ -556,8 +558,10 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       let unread: string[] = [];
       let callsAtNudge = -1; const gates = new TurnGates(), repeats = new ChatRepeatGuard({ stops: Boolean(options.localModel) });
       let unreadable: false | "call" | "reasoning" = false, askedAgain = false, nudged = false;
-      const backups = new TurnBackups(turn.chatBackups); let carrier: ChatBackup | undefined;
+      const backups = new TurnBackups(turn.chatBackups); let carrier: ChatBackup | undefined, modelChecked = false, serverModels: string[] | undefined;
       try {
+        if (!model.trim()) { await options.refreshModels?.().catch(() => {}); model = options.models().default; }
+        if (!model.trim()) throw new ChatProtocolError(unavailableModelMessage("", options.models().options.map((option) => option.id)), "model_not_set");
         const parsed = parseToolScope(turn.toolScope);
         if (!parsed.ok) throw new Error(parsed.error);
         const scope = parsed.scope;
@@ -670,6 +674,12 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
                 continue;
               }
               // The failed request ran nothing: the calls this turn already handled ride in `messages` and never run again.
+              if (options.resolveModel && !carrier && !modelChecked && !streamed && !abort.signal.aborted && !(error instanceof ChatProtocolError) && namesUnknownModel(error)) {
+                modelChecked = true;
+                const found = await options.resolveModel(model).catch(() => null);
+                if (found?.use) { emit({ ...base(turn.threadId, turnId), type: "runtime.notice", message: modelSwapNotice(model, found.use) }); model = found.use; attempt = 0; continue; }
+                serverModels = found?.listed.includes(model) ? undefined : found?.listed;
+              }
               const delayMs = abort.signal.aborted || streamed || error instanceof ChatProtocolError ? null : retryDelay(error, verdict, attempt);
               const backup = delayMs === null && !answerStreamed && !abort.signal.aborted && movesToBackup(error) ? backups.next() : undefined;
               if (backup) {
@@ -678,7 +688,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
                 carrier = backup; attempt = 0;
                 continue;
               }
-              if (delayMs === null) throw error;
+              if (delayMs === null) throw serverModels && !carrier ? new ChatProtocolError(unavailableModelMessage(model, serverModels), "model_not_found") : error;
               attempt += 1;
               emit({ ...base(turn.threadId, turnId), type: "turn.retrying", attempt, delayMs, reason: verdict.reason });
               await interruptibleDelay(delayMs * (options.retryScale ?? Number(process.env.FAKE_CHAT_RETRY_SCALE ?? "1")), abort.signal).promise;

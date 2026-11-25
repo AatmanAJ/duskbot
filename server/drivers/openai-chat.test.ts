@@ -934,7 +934,7 @@ describe("createOpenAIChatRuntime HTTP error text", () => {
 describe("createOpenAIChatRuntime rejected keys", () => {
   const create = (key: string) => OpenAICompatDriver.create({
     instanceId: "openaiCompat", displayName: "Other", enabled: true,
-    config: OpenAICompatDriver.decodeConfig({ url: "https://rejected-key.invalid/v1" }),
+    config: OpenAICompatDriver.decodeConfig({ url: "https://rejected-key.invalid/v1", model: "fixture" }),
     environment: { OPENAI_COMPAT_API_KEY: key },
   });
   const turn = async (instance: Awaited<ReturnType<typeof create>>) => {
