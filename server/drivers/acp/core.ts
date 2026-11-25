@@ -61,7 +61,7 @@ import { commandSummary, toolDetailPreview } from "../../tool-summary.ts";
 import { acpToolEndEvents } from "./tool-items.ts";
 import { AcpHost } from "./host.ts";
 import { exitDetail } from "./exit-report.ts";
-import { availableCommandNames, endTurn, isAccountError, lookupResultArrived, skipSubscriptionAuthForLocalInject, trackRunningTool, type AccountErrorCode, type AcpAskFinish, type AcpConfig, type AcpSession, type AcpTurn } from "./turn-state.ts";
+import { availableCommandNames, endTurn, isAccountError, lookupResultArrived, needsRemount, skipSubscriptionAuthForLocalInject, trackRunningTool, type AccountErrorCode, type AcpAskFinish, type AcpConfig, type AcpSession, type AcpTurn } from "./turn-state.ts";
 export { skipSubscriptionAuthForLocalInject, type AccountErrorCode, type AcpConfig };
 import { recoveryPromptFor } from "../../resume-recovery.ts";
 import { engineIdleMs, keepWarm, sessionIdlePolicy, stopIdleClose } from "../session-idle.ts";
@@ -69,7 +69,7 @@ import { classifyError } from "../retry.ts";
 import { engineFailureKind, engineFailureMessage, stopCause } from "../engine-errors.ts";
 import { cliExitCode, failureCode, rpcCode } from "../../../shared/usage-signals.ts";
 import { narrowsNativeTools, parseToolScope } from "../../../shared/tool-scope.ts";
-import { acpMcpServers, type AcpMcpServer } from "../turn-mcp.ts"; import { acpToolOutput, acpToolProgress } from "../tool-progress.ts";
+import { acpMcpMountKey, acpMcpServers, type AcpMcpServer } from "../turn-mcp.ts"; import { acpToolOutput, acpToolProgress } from "../tool-progress.ts";
 import { learnedMcpToolBudget, retryUnderToolLimit } from "../../tool-count-limit.ts"; import { instanceEnvNames } from "../../bot-box/env.ts"; import { botBox } from "../../bot-box/box.ts";
 
 /** Per-CLI specifics plugged into the shared ACP runtime; `askTool` is the native tool `questionRequests` come from. */
@@ -261,7 +261,7 @@ const ACP_STUCK_AFTER_MS = 180_000;
 const FIRST_REPLY_CHECK_MS = 2_000;
 const SHARED_SESSIONS_MAX = 6, SHARED_SESSIONS_LIFETIME = 12;
 /** Closing a session for these leaves its process fit for other threads' sessions; any other reason retires it. */
-const HEALTHY_CLOSE = new Set(["idle", "reset", "contract", "stop", "stopAll", "dispose", "approval-unconfirmed"]);
+const HEALTHY_CLOSE = new Set(["idle", "reset", "contract", "remount", "stop", "stopAll", "dispose", "approval-unconfirmed"]);
 /** ACP agents may compact their history silently; re-send the full prompt after this many bare turns. */
 const ACP_PROMPT_RE_ANCHOR_TURNS = 8;
 function isHermesReasoningReplay(chunk: string, streamed: string): boolean {
@@ -414,7 +414,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         host.recycle = null;
       // EOF is no guaranteed exit: Qwen is tracked before another turn can resume its history.
         try { session.child.stdin.end(); } catch {}
-        if (support.restartOnMcpChange) void retireChild(threadId, session.child);
+        if (support.restartOnMcpChange || why === "remount") void retireChild(threadId, session.child);
         else setTimeout(() => { void killCliTree(session.child); }, 5_000).unref?.();
       };
       // A session that ignores session/cancel goes on working, and EOF on stdin does not stop it either. Only a confirmed
@@ -974,7 +974,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           env,
           cwd,
           contractKey,
-          sessionKey: null,
+          sessionKey: null, mountKey: null,
           get sessionId() { return acp.sessionId; },
           set sessionId(id: string | null) { acp.sessionId = id; },
           sessionConfigResult: null,
@@ -1134,7 +1134,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           launchedThisTurn = true;
           return opened;
         };
-        const sessionKey = JSON.stringify([mcpServers, turn.toolScope ?? null, inheritedScopeFingerprint]);
+        const sessionKey = JSON.stringify([mcpServers, turn.toolScope ?? null, inheritedScopeFingerprint]), mountKey = JSON.stringify([acpMcpMountKey(mcpServers), turn.toolScope ?? null, inheritedScopeFingerprint]);
 
         if (turn.sessionReset) {
           closeSession(threadId, "reset");
@@ -1142,7 +1142,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         }
         const pooled = sessions.get(threadId);
         let session: AcpSession;
-        if (pooled && !pooled.dead && !pooled.closing && pooled.contractKey === contractKey
+        if (pooled && !pooled.dead && !pooled.closing && pooled.contractKey === contractKey && !needsRemount(pooled, mountKey, support.shareProcess === true)
             && (!support.restartOnMcpChange || pooled.sessionKey === sessionKey)) {
           if (pooled.idleTimer) clearTimeout(pooled.idleTimer);
           pooled.idleTimer = null; stopIdleClose(hostIdleKey(pooled.host), null);
@@ -1150,7 +1150,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         } else {
           if (pooled) {
             if (pooled.dead) sessions.delete(threadId);
-            else closeSession(threadId, "contract");
+            else closeSession(threadId, needsRemount(pooled, mountKey, support.shareProcess === true) ? "remount" : "contract");
           }
           const joining = sharedHost(hostKey);
           await turn.engineAdmission?.(joining ? "session" : "process", joining?.child.pid);
@@ -1337,7 +1337,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
                       if (result) {
                         loaded = true;
                         session.sessionId = cursor;
-                        session.sessionKey = sessionKey;
+                        session.sessionKey = sessionKey; session.mountKey = mountKey;
                         receiveModelVariants(result, true);
                       }
                     },
@@ -1378,7 +1378,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
               session.availableCommands = [];
               await request("session/new", { cwd, mcpServers: support.mcpServersFromLaunch ? [] : mcpServers, ...selectionParams }, NEW_SESSION_TIMEOUT, (result) => {
                 session.sessionId = typeof result?.sessionId === "string" ? result.sessionId : null;
-                session.sessionKey = sessionKey;
+                session.sessionKey = sessionKey; session.mountKey = mountKey;
                 receiveModelVariants(result, true);
               });
               break;

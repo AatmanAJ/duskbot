@@ -1297,7 +1297,7 @@ describe("Antigravity driver over shared ACP", () => {
         cwd: fake.directory,
           // The harness mints fresh MCP credentials every turn, so later turns resume on the pooled process.
         ...(index ? { resumeCursor: "fake-acp-session" } : {}),
-        integrations: { agents: { command: "agents-mcp", args: [], env: { TOKEN: `turn-${index}` } } },
+        integrations: { agents: { command: "agents-mcp", args: [], env: { DUSK_COMMS_TOKEN: `turn-${index}` } } },
       });
       expect(await recorder.until((event) => event.type === "turn.completed" && event.turnId === turnId)).toMatchObject({ ok: true });
       expect(promptModes()).toHaveLength(index + 1);
@@ -1577,7 +1577,7 @@ describe("Antigravity driver over shared ACP", () => {
       approvalMode: "ask",
       model: "gemini-3.8-flash",
       cwd: fake.directory,
-      integrations: { agents: { command: "agents-mcp", args: [], env: { TOKEN: "turn-1" } } },
+      integrations: { agents: { command: "agents-mcp", args: [], env: { DUSK_COMMS_TOKEN: "turn-1" } } },
     });
     expect(await recorder.until((event) => event.type === "turn.completed" && event.turnId === first.turnId)).toMatchObject({ ok: true });
     expect(JSON.parse(readFileSync(`${dump}.prompt.json`, "utf8"))[0].text).toContain("/ ephemeral-cmd");
@@ -1590,12 +1590,94 @@ describe("Antigravity driver over shared ACP", () => {
       model: "gemini-3.8-flash",
       resumeCursor: "fake-acp-session",
       cwd: fake.directory,
-      integrations: { agents: { command: "agents-mcp", args: [], env: { TOKEN: "turn-2" } } },
+      integrations: { agents: { command: "agents-mcp", args: [], env: { DUSK_COMMS_TOKEN: "turn-2" } } },
     });
     expect(await recorder.until((event) => event.type === "turn.completed" && event.turnId === second.turnId)).toMatchObject({ ok: true });
     const turn2Prompt = JSON.parse(readFileSync(`${dump}.prompt.json`, "utf8"))[0].text as string;
     expect(turn2Prompt).toContain("/ ephemeral-cmd");
     expect(turn2Prompt).not.toContain("/ephemeral-cmd");
+  });
+
+  const appsTurnSetup = async (instanceId: string) => {
+    ensureDirs();
+    const fake = fakeRuntime();
+    const dump = join(fake.directory, "dump-apps.json");
+    const rpcDump = join(fake.directory, "rpc-apps.json");
+    const launches = join(fake.directory, "launches-apps");
+    const tokenDirectory = join(antigravityProfileDirectory(instanceId), "antigravity-acp");
+    mkdirSync(tokenDirectory, { recursive: true });
+    writeFileSync(join(tokenDirectory, "antigravity-oauth-token"), JSON.stringify({ token: { access_token: "ok" } }), { mode: 0o600 });
+    instance = await AntigravityDriver.create({
+      instanceId,
+      displayName: "Antigravity Apps",
+      environment: {
+        FAKE_ACP_AUTH_METHOD: "oauth-personal",
+        FAKE_ACP_MODELS: "gemini-3.8-flash",
+        FAKE_ACP_MODES: "default",
+        FAKE_ACP_DUMP: dump,
+        FAKE_ACP_RPC_DUMP: rpcDump,
+        FAKE_ACP_LAUNCH_COUNT_FILE: launches,
+        FAKE_ACP_TEXT_REPLY: "ok",
+      },
+      enabled: true,
+      config: { cli: fake.executable, fullAuto: false },
+    });
+    const started = instance;
+    await started.startupModelRefresh;
+    rmSync(launches, { force: true });
+    const events = recorder = recordEvents(started.adapter);
+    const connectorBridge = (token: string, appTools?: string[]) => ({
+      command: process.execPath,
+      args: [join(fake.directory, "connector-proxy.ts")],
+      env: {
+        DUSK_CONNECTOR_TOKEN: token,
+        DUSK_CONNECTOR_UPSTREAM_HEADERS: JSON.stringify({ authorization: `Bearer ${token}` }),
+        DUSK_THREAD_ID: "thread-apps",
+        ...(appTools ? { DUSK_CONNECTOR_APP_TOOLS: JSON.stringify(appTools) } : {}),
+      },
+    });
+    const turn = async (text: string, integrations: NonNullable<Parameters<ProviderInstance["adapter"]["sendTurn"]>[0]["integrations"]>, resume: boolean) => {
+      const { turnId } = await started.adapter.sendTurn({
+        threadId: "thread-apps", text, approvalMode: "ask", model: "gemini-3.8-flash", cwd: fake.directory,
+        ...(resume ? { resumeCursor: "fake-acp-session" } : {}), integrations,
+      });
+      expect(await events.until((event) => event.type === "turn.completed" && event.turnId === turnId)).toMatchObject({ ok: true });
+    };
+    const mounted = () => JSON.parse(readFileSync(`${dump}.mcp.json`, "utf8")) as Array<{ name: string; command: string; args: string[]; env: Array<{ name: string; value: string }> }>;
+    const launchCount = () => Number(readFileSync(launches, "utf8"));
+    const methods = () => JSON.parse(readFileSync(rpcDump, "utf8")) as string[];
+    return { connectorBridge, turn, mounted, launchCount, methods };
+  };
+
+  it("hands a fresh chat the connected-apps server, fitted to Antigravity's schema check", async () => {
+    const { connectorBridge, turn, mounted, methods } = await appsTurnSetup("antigravity-apps-fresh");
+    await turn("read my latest email", { composio: connectorBridge("session-bearer", ["gmail.search_emails"]) }, false);
+    expect(methods()).toContain("session/new");
+    const composio = mounted().find((server) => server.name === "composio");
+    expect(composio).toMatchObject({ command: process.execPath, args: [expect.stringMatching(/connector-proxy\.ts$/u)] });
+    const env = Object.fromEntries(composio!.env.map(({ name, value }) => [name, value]));
+    expect(env).toMatchObject({ DUSK_CONNECTOR_APP_TOOLS: JSON.stringify(["gmail.search_emails"]), DUSK_TOOL_SCHEMA_PROFILE: "antigravity" });
+  });
+
+  it("mounts an app connected mid-chat on the next turn: a new process resumes the same session with its tools", async () => {
+    const { connectorBridge, turn, mounted, launchCount, methods } = await appsTurnSetup("antigravity-apps-mid-chat");
+    await turn("hi", { agents: { command: "agents-mcp", args: [], env: { DUSK_COMMS_TOKEN: "a" } } }, false);
+    expect(mounted().map((server) => server.name)).toEqual(["agents"]);
+    // Gmail connects between turns; the bearers rotate too.
+    await turn("now check my gmail", {
+      agents: { command: "agents-mcp", args: [], env: { DUSK_COMMS_TOKEN: "b" } },
+      composio: connectorBridge("b", ["gmail.search_emails"]),
+    }, true);
+    expect(launchCount()).toBe(2);
+    expect(methods()).toContain("session/resume");
+    expect(methods()).not.toContain("session/new");
+    expect(mounted().map((server) => server.name)).toEqual(["agents", "composio"]);
+    // A later turn whose only change is a rotated bearer stays on the warm process.
+    await turn("and the one before", {
+      agents: { command: "agents-mcp", args: [], env: { DUSK_COMMS_TOKEN: "c" } },
+      composio: connectorBridge("c", ["gmail.search_emails"]),
+    }, true);
+    expect(launchCount()).toBe(2);
   });
 
   it("neutralizes slash commands in both normal turns and background one-shot prompts sent to Antigravity ACP", async () => {
