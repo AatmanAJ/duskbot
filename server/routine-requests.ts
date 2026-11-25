@@ -647,9 +647,9 @@ function effectiveDefinition(operation: RoutineRequestOperation, manager: Routin
 function chainLines(chain: RoutineRequestDefinition["chain"], manager: RoutineManager): string[] {
   const name = (id: string) => redactSecretsInText(manager.listRoutines().find((routine) => routine.id === id)?.name ?? "a removed automation");
   return [
-    ...(chain?.readFrom?.length ? [`Reads from: ${chain.readFrom.map(name).join(", ")}`] : []),
-    ...(chain?.after?.length ? [`Runs after: ${chain.after.map(name).join(", ")}`] : []),
-    ...(chain?.handTo ? ["Hands each report on to another " + ("botId" in chain.handTo ? "bot" : "room")] : []),
+    ...(chain?.readFrom?.length ? [serverLine(undefined, "server.routine.chainReads", { routines: chain.readFrom.map(name).join(", ") })] : []),
+    ...(chain?.after?.length ? [serverLine(undefined, "server.routine.chainAfter", { routines: chain.after.map(name).join(", ") })] : []),
+    ...(chain?.handTo ? [serverLine(undefined, "botId" in chain.handTo ? "server.routine.chainToBot" : "server.routine.chainToRoom")] : []),
   ];
 }
 
@@ -722,7 +722,7 @@ function cardCopy(
         : []),
       `Runs on: ${destination}`,
       `Run limit: ${definition.timeoutMinutes === undefined ? "No limit" : `${definition.timeoutMinutes} minutes`}`,
-      ...(definition.catchUpMinutes === undefined ? [] : [`Late start: ${definition.catchUpMinutes === 0 ? "Never, a missed run is skipped" : `Up to ${definition.catchUpMinutes} minutes after its time`}`]),
+      ...(definition.catchUpMinutes === undefined ? [] : [definition.catchUpMinutes === 0 ? serverLine(undefined, "server.routine.lateStartNever") : serverLine(undefined, "server.routine.lateStartUpTo", { minutes: definition.catchUpMinutes })]),
       `Continuity: ${definition.continuity ? "Carries the previous run's report into the next run" : "Each run starts fresh"}`, ...(definition.probe?.kind === "script" ? [(definition.probe.post ? serverLine(undefined, "server.routine.scriptPost", { command: redactSecretsInText(definition.probe.command ?? "") }) : serverLine(undefined, "server.routine.scriptCheck", { command: redactSecretsInText(definition.probe.command ?? "") })), ...(definition.probe.access === "full" ? [serverLine(undefined, "server.routine.scriptFullAccess")] : [])] : []),
       `While busy: ${definition.overlap === "queue" ? "Queue one scheduled run; skip further occurrences until it starts" : "Skip overlapping scheduled occurrences"}`,
       ...(definition.runOnStartup || (operation.action === "update" && operation.changes.runOnStartup !== undefined)
