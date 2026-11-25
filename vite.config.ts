@@ -8,6 +8,7 @@ import { devApiProxy } from "./scripts/testing/dev-api-proxy.ts";
 import { DurationSequencer } from "./scripts/testing/duration-sequencer.ts";
 import { hostE2eOnly, portableE2eFiles } from "./scripts/testing/host-e2e.ts";
 import { hostTimeout } from "./server/testing/host-timeout.ts";
+import { PAGES_WITHOUT_THE_APP } from "./src/lib/pages-without-the-app.ts";
 
 // The About dialog's version, inlined at build time: the preload bridge is
 // absent in dev.
@@ -88,7 +89,8 @@ const include = [
 ];
 
 /** The app is a dynamic import of src/main.tsx, found only once the entry and its imports have arrived and run: on a
- * slow link that is a second round of downloads. The page names it and what it imports, so both rounds go at once. */
+ * slow link that is a second round of downloads. The page names it and what it imports, so both rounds go at once,
+ * except on the pages that never run it. */
 function preloadApp(): Plugin {
   return {
     name: "preload-app",
@@ -100,12 +102,12 @@ function preloadApp(): Plugin {
         const app = Object.values(ctx.bundle).find((file) => file.type === "chunk" && file.isDynamicEntry && file.moduleIds.some((id) => id.endsWith("/src/App.tsx")));
         if (!app || app.type !== "chunk") return;
         const named = (file: string) => html.includes(`/${file}"`);
-        return [
-          ...[app.fileName, ...app.imports].filter((file) => !named(file))
-            .map((file) => ({ tag: "link", attrs: { rel: "modulepreload", crossorigin: true, href: `/${file}` }, injectTo: "head" as const })),
-          ...[...(app.viteMetadata?.importedCss ?? [])].filter((file) => !named(file))
-            .map((file) => ({ tag: "link", attrs: { rel: "preload", as: "style", crossorigin: true, href: `/${file}` }, injectTo: "head" as const })),
+        const links = [
+          ...[app.fileName, ...app.imports].filter((file) => !named(file)).map((file) => ({ rel: "modulepreload", href: `/${file}` })),
+          ...[...(app.viteMetadata?.importedCss ?? [])].filter((file) => !named(file)).map((file) => ({ rel: "preload", as: "style", href: `/${file}` })),
         ];
+        const children = `if (!${JSON.stringify([...PAGES_WITHOUT_THE_APP])}.includes(location.pathname)) for (const link of ${JSON.stringify(links)}) document.head.append(Object.assign(document.createElement("link"), { crossOrigin: "", ...link }));`;
+        return [{ tag: "script", children, injectTo: "head" as const }];
       },
     },
   };
