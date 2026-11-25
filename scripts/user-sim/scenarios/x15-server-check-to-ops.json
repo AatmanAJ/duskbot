@@ -1,0 +1,77 @@
+{
+  "title": "Health-check routine hands errors to the Ops bot, then reports back",
+  "world": "developer",
+  "tags": [
+    "x-usage",
+    "routine",
+    "chained",
+    "handoff"
+  ],
+  "source": "x-usage #15: chained: one routine's finding goes to another bot, whose answer comes back to the person. Server check adapted to a health log file that gets an error mid-run.",
+  "bots": [
+    {
+      "name": "Ops",
+      "soul": "You are Ops, Tidepool's DevOps bot. When handed an error, find the likely cause and a concrete next step. Be brief."
+    }
+  ],
+  "seed": {
+    "files": {
+      "Documents/health/api-health.log": "09:20 OK /healthz 200 40ms\n09:35 OK /healthz 200 38ms\n09:50 OK /healthz 200 41ms\n"
+    }
+  },
+  "steps": [
+    {
+      "chat": {
+        "goal": "Set up a check every 30 minutes on Documents/health/api-health.log; when it finds an ERROR line, hand it to Ops to look into and then tell you what Ops found.",
+        "opener": "every 30 min check Documents/health/api-health.log. when there's an ERROR line hand it to Ops to look into, then tell me what ops found",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "inject": {
+        "files": {
+          "Documents/health/api-health.log": "09:50 OK /healthz 200 41ms\n10:05 OK /healthz 200 39ms\n10:20 ERROR /healthz 503 timeout after 10000ms: pg pool exhausted (max 20, waiting 57)\n10:21 ERROR /v2/match 500 too many clients already\n"
+        }
+      },
+      "label": "error"
+    },
+    {
+      "advance": "+45m"
+    },
+    {
+      "settle": {
+        "seconds": 120
+      },
+      "label": "report"
+    }
+  ],
+  "checks": [
+    {
+      "label": "check routine",
+      "routine": {
+        "where": {
+          "prompt": "health|log"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "Ops looked into it",
+      "said": {
+        "bot": "Ops",
+        "match": "pool|clients|connection|postgres|pg"
+      }
+    },
+    {
+      "label": "Arjun told what Ops found",
+      "proactive": {
+        "after": "error",
+        "bot": "Kiran",
+        "match": "pool|connection|clients|ops"
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Kiran's check spots the pool-exhausted errors, passes them to Ops, and reports back in a few lines what Ops thinks (connection pool too small or a leak) and the suggested next step."
+}

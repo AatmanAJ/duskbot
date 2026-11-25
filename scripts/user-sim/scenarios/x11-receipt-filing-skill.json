@@ -1,0 +1,81 @@
+{
+  "title": "Teach receipt filing once, then it happens on its own",
+  "world": "creator",
+  "tags": [
+    "x-usage",
+    "teach",
+    "routine",
+    "file"
+  ],
+  "source": "x-usage #11: saved as a reusable way of working, applied next time without being asked. Drive adapted to ~/Documents/Receipts/2026 plus a receipts.csv as the sheet.",
+  "seed": {
+    "files": {
+      "Documents/Receipts/2026/receipts.csv": "date,vendor,amount,file\n2026-11-02,Laguna Clay,148.00,2026-11-02_LagunaClay_148.00.txt\n",
+      "Documents/Receipts/2026/2026-11-02_LagunaClay_148.00.txt": "Laguna Clay Co, 4 boxes B-Mix 5, $148.00\n"
+    }
+  },
+  "steps": [
+    {
+      "chat": {
+        "goal": "Teach how receipts get filed: save as date_vendor_amount in Documents/Receipts/2026, add a row to receipts.csv there. Do the Pirate Ship one now and every one you forward from now on.",
+        "opener": "here's how i file receipts: save it as date_vendor_amount in Documents/Receipts/2026 and add a row to receipts.csv in that folder. do the pirate ship one now, and do this every time i forward you one",
+        "maxTurns": 4,
+        "label": "teach"
+      }
+    },
+    {
+      "inject": {
+        "mail": [
+          {
+            "from": "Lucía Navarro <lucia.navarro.ceramics@gmail.com>",
+            "subject": "Fwd: Your Blick order receipt",
+            "body": "---------- Forwarded message ---------\nFrom: Blick Art Materials <orders@dickblick.com>\nOrder #BK-55120\nUnderglaze set x2, sponges, wax resist\nTotal: $64.20",
+            "attachments": [
+              {
+                "name": "blick-receipt.txt",
+                "text": "Blick Art Materials, order BK-55120, total $64.20"
+              }
+            ]
+          }
+        ]
+      },
+      "label": "forward"
+    },
+    {
+      "advance": "+1h"
+    },
+    {
+      "settle": {
+        "seconds": 120
+      },
+      "label": "filed"
+    }
+  ],
+  "checks": [
+    {
+      "label": "Pirate Ship filed",
+      "file": {
+        "path": "Documents/Receipts/2026/receipts.csv",
+        "match": "pirate"
+      }
+    },
+    {
+      "label": "forwarded Blick receipt filed unprompted",
+      "file": {
+        "path": "Documents/Receipts/2026/receipts.csv",
+        "match": "blick[\\s\\S]*64\\.20|64\\.20[\\s\\S]*blick"
+      },
+      "recall": true
+    },
+    {
+      "label": "a standing watcher for forwards",
+      "routine": {
+        "where": {
+          "prompt": "receipt"
+        }
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Wren files the Pirate Ship receipt exactly as taught, sets itself up to catch forwards, and files the Blick one within the hour without being asked, then tells Lucía briefly where it went."
+}

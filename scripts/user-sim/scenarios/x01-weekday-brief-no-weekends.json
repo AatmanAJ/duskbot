@@ -1,0 +1,76 @@
+{
+  "title": "7:30 weekday brief that stays quiet on weekends",
+  "world": "founder",
+  "tags": [
+    "x-usage",
+    "routine"
+  ],
+  "source": "x-usage #1: weekday-only schedule, one message per morning, empty sections left out, nothing on Sat/Sun. Starts Friday, clock runs over the weekend to Monday.",
+  "start": "fri 08:40",
+  "steps": [
+    {
+      "chat": {
+        "goal": "Set up a 7:30 brief every weekday: meetings, clashes, and only the emails that actually need you. Skip weekends.",
+        "opener": "every weekday at 7:30 send me my day: meetings, clashes, and only the emails that actually need me. skip weekends",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "advance": "+1d 07:35",
+      "label": "sat"
+    },
+    {
+      "settle": {
+        "seconds": 60
+      }
+    },
+    {
+      "advance": "+2d 07:35",
+      "label": "mon"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      },
+      "label": "monbrief"
+    }
+  ],
+  "checks": [
+    {
+      "label": "weekday schedule",
+      "routine": {
+        "where": {
+          "schedule": "1-5|1,2,3,4,5|mon-fri"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "at 7:30",
+      "routine": {
+        "where": {
+          "schedule": "30 7|07:30|7:30"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "exactly one brief from Saturday to Monday morning",
+      "proactive": {
+        "after": "sat"
+      },
+      "min": 1,
+      "max": 1
+    },
+    {
+      "label": "Monday brief arrived",
+      "proactive": {
+        "after": "mon",
+        "match": "meeting|today|sync|board"
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Juniper sets a Mon-Fri 7:30 routine without fuss. Saturday and Sunday stay silent; Monday's single message lists the day and the clashes, flags only mail that needs Daniel, and leaves out empty sections."
+}

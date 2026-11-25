@@ -1,0 +1,60 @@
+{
+  "title": "Never before 10, remembered when booking days later",
+  "world": "founder",
+  "tags": [
+    "x-usage",
+    "memory",
+    "multi-step"
+  ],
+  "source": "x-usage #7: proposes and books 10:00 or later without being reminded.",
+  "steps": [
+    {
+      "chat": {
+        "goal": "Tell the assistant you never take meetings before 10am.",
+        "opener": "remember i never take meetings before 10am",
+        "maxTurns": 2,
+        "label": "pref"
+      }
+    },
+    {
+      "advance": "+2d 08:50"
+    },
+    {
+      "chat": {
+        "goal": "Book a 30 minute intro call with Meera (Ostara) tomorrow and send her the invite.",
+        "opener": "book a 30 min intro with meera from ostara tomorrow, send her the invite",
+        "knows": "Any time that works is fine.",
+        "maxTurns": 4,
+        "thread": "new",
+        "label": "book"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "call booked with Meera",
+      "app": "events",
+      "where": {
+        "attendees": "meera"
+      },
+      "min": 1
+    },
+    {
+      "label": "not before 10",
+      "app": "events",
+      "where": {
+        "attendees": "meera",
+        "start": "T0\\d:"
+      },
+      "max": 0,
+      "recall": true
+    },
+    {
+      "label": "rule remembered",
+      "memory": {
+        "match": "10"
+      }
+    }
+  ],
+  "judge": "Juniper books Meera at 10:00 or later on Thursday (around the 8am dentist, 1pm pipeline review and 3pm interview) without asking, and the invite goes out. It never offers 9:00 even though the calendar's working hours start at 9."
+}

@@ -1,0 +1,97 @@
+{
+  "title": "Notes on Acme ready before the 3pm call",
+  "world": "founder",
+  "tags": [
+    "x-usage",
+    "proactive",
+    "multi-step"
+  ],
+  "source": "x-usage #20: prep delivered on time from mail and CRM history (no web here).",
+  "seed": {
+    "events": [
+      {
+        "title": "Call: Acme Robotics (Lena Brandt)",
+        "start": "@0d 15:00",
+        "end": "@0d 15:45",
+        "attendees": [
+          "lena.brandt@acmerobotics.io",
+          "marcus@loomware.co"
+        ],
+        "location": "Zoom"
+      }
+    ],
+    "mail": [
+      {
+        "from": "Lena Brandt <lena.brandt@acmerobotics.io>",
+        "subject": "Re: yard automation",
+        "body": "Daniel, we have 4 DCs in Ohio and Kentucky and want to pair Loomware with our yard robots. Budget is approved for Q1. Main question: do you price per site or per dock? Lena Brandt, VP Operations, Acme Robotics",
+        "date": "@-3d 11:00",
+        "read": true
+      },
+      {
+        "from": "Marcus Bell <marcus@loomware.co>",
+        "subject": "Acme background",
+        "body": "Acme Robotics raised a $40M Series B in October. Lena came from Halvorsen. They trialled DockFlow last year and dropped it over NetSuite sync. M",
+        "date": "@-1d 17:00"
+      }
+    ],
+    "crm": {
+      "contacts": [
+        {
+          "name": "Lena Brandt",
+          "email": "lena.brandt@acmerobotics.io",
+          "company": "Acme Robotics",
+          "notes": "VP Ops. 4 DCs. Ex-Halvorsen."
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "chat": {
+        "goal": "Ask for notes on Acme Robotics ready by 2:30 for the 3pm meeting.",
+        "opener": "meeting at 3 with acme. have notes on them ready by 2:30",
+        "maxTurns": 3,
+        "label": "ask"
+      }
+    },
+    {
+      "advance": "+0d 14:35",
+      "label": "prep"
+    },
+    {
+      "settle": {
+        "seconds": 60
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "Acme notes exist",
+      "app": "notes",
+      "where": {
+        "title": "acme",
+        "body": "lena|4 (DC|distribution)|four|yard|q1"
+      },
+      "min": 1
+    },
+    {
+      "label": "nothing sent to Acme",
+      "app": "sent",
+      "where": {
+        "to": "acmerobotics"
+      },
+      "max": 0
+    },
+    {
+      "label": "meeting untouched",
+      "app": "events",
+      "where": {
+        "title": "acme"
+      },
+      "min": 1,
+      "max": 1
+    }
+  ],
+  "judge": "Juniper builds a short brief from the Acme emails and CRM (Lena Brandt, 4 DCs, yard automation, Q1 budget, the pricing question) and has it ready before 2:30, telling Daniel where it is."
+}

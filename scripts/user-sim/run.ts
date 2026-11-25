@@ -107,6 +107,14 @@ function render(messages: ApiMsg[], names: { user: string; bot: string }): strin
   }).join("\n\n");
 }
 
+const live = new Set<StressServer>();
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => {
+    log(`${signal}: stopping ${live.size} servers`);
+    void Promise.all([...live].map((srv) => srv.close(values.keep))).finally(() => process.exit(130));
+  });
+}
+
 async function runScenario(s: Scenario, run: number): Promise<Record<string, unknown>> {
   const world: World = deepMerge(loadWorld(s.world), s.seed ?? {});
   const tz = world.persona.tz;
@@ -141,6 +149,7 @@ async function runScenario(s: Scenario, run: number): Promise<Record<string, unk
     }
   };
   const srv = await launch();
+  live.add(srv);
   const api = client(srv.url);
   const watcher = watchFirstText(srv.url);
   const wallStart = Date.now();
@@ -150,6 +159,7 @@ async function runScenario(s: Scenario, run: number): Promise<Record<string, unk
   const stepAt: Record<string, number> = {};
   const turns: TurnMetric[] = [];
   let personTurns = 0;
+  const said: string[] = [];
   try {
     await api.call("PATCH", "/api/config", { profile: { name: world.persona.name, ...(world.persona.aboutMe ? { aboutMe: world.persona.aboutMe } : {}) } });
     const writeFiles = (files: Record<string, string>) => {
@@ -250,17 +260,19 @@ async function runScenario(s: Scenario, run: number): Promise<Record<string, unk
         replyToId = pool.filter((m) => m.role === "bot" && m.kind === "text" && pattern.test(m.text ?? "")).sort((a, b) => b.at - a.at)[0]?.id;
         if (replyToId) narration.push({ at: fakeNow(), text: `[${first} replies to the bot's message: "${(pool.find((m) => m.id === replyToId)?.text ?? "").slice(0, 160)}"]` });
       }
-      let text = c.opener ?? await personReply(personGateway, { persona: world.persona, goal: c.goal, knows: c.knows, now: localTime(), transcript: "(nothing yet: you open the conversation)", turnsLeft: maxTurns });
+      const saidBefore = said.length;
+      let text = c.opener ?? await personReply(personGateway, { persona: world.persona, goal: c.goal, knows: c.knows, now: localTime(), transcript: "(nothing yet: you open the conversation)", turnsLeft: maxTurns, before: said.slice(0, saidBefore) });
       for (let turn = 0; turn < maxTurns; turn++) {
         if (text.includes(DONE)) break;
         watcher.arm(threadId);
         const sent = Date.now();
         await api.call("POST", `/api/bots/${bot.id}/messages`, { text, threadId, sendId: randomUUID().replaceAll("-", ""), ...(turn === 0 && replyToId ? { replyToId } : {}) });
         personTurns += 1;
+        said.push(`${localTime()} (to ${botName}): ${text.slice(0, 300)}`);
         const state = await waitIdle(api, threadId, TURN_TIMEOUT_MS);
         turns.push({ latencyMs: Date.now() - sent, ttftMs: watcher.read(threadId), state });
         if (turn === maxTurns - 1) break;
-        text = await personReply(personGateway, { persona: world.persona, goal: c.goal, knows: c.knows, now: localTime(), transcript: await transcript(), turnsLeft: maxTurns - turn - 1 });
+        text = await personReply(personGateway, { persona: world.persona, goal: c.goal, knows: c.knows, now: localTime(), transcript: await transcript(), turnsLeft: maxTurns - turn - 1, before: said.slice(0, saidBefore) });
       }
       record.end = fakeNow();
       // memory upkeep files facts once a conversation is quiet; a later conversation should be able to use them
@@ -322,6 +334,7 @@ async function runScenario(s: Scenario, run: number): Promise<Record<string, unk
     };
   } finally {
     watcher.close();
+    live.delete(srv);
     await srv.close(values.keep);
     if (!values.keep) rmSync(root, { recursive: true, force: true });
   }

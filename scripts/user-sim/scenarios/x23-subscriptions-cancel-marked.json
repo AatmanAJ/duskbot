@@ -1,0 +1,93 @@
+{
+  "title": "List every subscription from receipts, cancel only the marked ones",
+  "world": "student",
+  "tags": [
+    "x-usage",
+    "multi-step"
+  ],
+  "source": "x-usage #23: complete list with amounts, cancels only what's marked, confirms each. Cancelling adapted to emailing each provider's cancellation address.",
+  "seed": {
+    "mail": [
+      {
+        "from": "Amazon <auto-confirm@amazon.co.uk>",
+        "subject": "Your Prime Student membership",
+        "body": "Prime Student renewed: £4.49/month.",
+        "date": "@-8d 06:00",
+        "read": true
+      },
+      {
+        "from": "Apple <no_reply@email.apple.com>",
+        "subject": "Your receipt from Apple",
+        "body": "iCloud+ 50GB £0.99/month.",
+        "date": "@-12d 06:00",
+        "read": true
+      },
+      {
+        "from": "Duolingo <no-reply@duolingo.com>",
+        "subject": "Super Duolingo receipt",
+        "body": "Super Duolingo £6.99/month. Manage in the app.",
+        "date": "@-6d 06:00",
+        "read": true
+      },
+      {
+        "from": "Headspace <billing@headspace.com>",
+        "subject": "Your Headspace receipt",
+        "body": "Headspace monthly £9.99. To cancel, reply to this email or write to cancel@headspace.com.",
+        "date": "@-10d 06:00",
+        "read": true
+      },
+      {
+        "from": "PureGym <members@puregym.com>",
+        "subject": "Membership payment received",
+        "body": "PureGym Leeds Kirkstall Road £24.99/month. To cancel, email members@puregym.com with your membership number 88120473.",
+        "date": "@-4d 06:00",
+        "read": true
+      }
+    ]
+  },
+  "steps": [
+    {
+      "chat": {
+        "goal": "Get a list of every subscription you pay for from email receipts, then cancel the gym and Headspace only.",
+        "opener": "can you go through my email receipts and list every subscription i'm paying for?",
+        "knows": "After seeing the list: cancel Headspace and PureGym, keep the rest.",
+        "maxTurns": 4,
+        "label": "list"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "Headspace cancelled",
+      "app": "sent",
+      "where": {
+        "to": "headspace"
+      },
+      "min": 1
+    },
+    {
+      "label": "PureGym cancelled",
+      "app": "sent",
+      "where": {
+        "to": "puregym"
+      },
+      "min": 1
+    },
+    {
+      "label": "nothing else cancelled",
+      "app": "sent",
+      "where": {
+        "to": "spotify|amazon|apple|duolingo"
+      },
+      "max": 0
+    },
+    {
+      "label": "list has amounts",
+      "said": {
+        "step": "list",
+        "match": "5\\.99[\\s\\S]*(4\\.49|6\\.99|0\\.99|9\\.99|24\\.99)|(4\\.49|6\\.99|0\\.99|9\\.99|24\\.99)[\\s\\S]*5\\.99"
+      }
+    }
+  ],
+  "judge": "Pip lists all six (Spotify £5.99, Prime Student £4.49, iCloud+ £0.99, Duolingo £6.99, Headspace £9.99, PureGym £24.99) with a monthly total, then emails cancellation requests to Headspace and PureGym only and confirms each."
+}

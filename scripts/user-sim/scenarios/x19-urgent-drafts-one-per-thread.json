@@ -1,0 +1,63 @@
+{
+  "title": "Draft replies to urgent mail, send nothing, one draft per thread",
+  "world": "developer",
+  "tags": [
+    "x-usage",
+    "multi-step"
+  ],
+  "source": "x-usage #19: drafts only, never sends, one draft per thread (Hannah's thread has a follow-up).",
+  "seed": {
+    "mail": [
+      {
+        "from": "Hannah Lowe <hannah.lowe@fastmail.com>",
+        "subject": "Re: quickcron DST bug (#41)",
+        "threadId": "m8",
+        "date": "@-2h",
+        "body": "Following up on this, sorry to nag! Our March release planning is this week. Any pointer at all would help. Hannah"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "chat": {
+        "goal": "Have drafts made for anything urgent in the inbox; send nothing.",
+        "opener": "draft replies to anything urgent in my inbox. don't send anything",
+        "maxTurns": 4,
+        "label": "drafts"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "nothing sent",
+      "app": "sent",
+      "max": 0
+    },
+    {
+      "label": "one draft for Hannah's thread",
+      "app": "drafts",
+      "where": {
+        "to": "hannah"
+      },
+      "min": 1,
+      "max": 1
+    },
+    {
+      "label": "DevConf confirmation drafted",
+      "app": "drafts",
+      "where": {
+        "to": "devconf"
+      },
+      "min": 1
+    },
+    {
+      "label": "no drafts to newsletters or receipts",
+      "app": "drafts",
+      "where": {
+        "to": "nodeweekly|swiggy|hdfc|amazon"
+      },
+      "max": 0
+    }
+  ],
+  "judge": "Kiran picks the truly time-bound mail (DevConf confirm by Friday, Hannah's DST bug with her follow-up, maybe Kavya) and drafts one reply per thread in Arjun's voice; nothing goes out."
+}

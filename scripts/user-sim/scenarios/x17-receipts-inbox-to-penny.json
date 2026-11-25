@@ -1,0 +1,80 @@
+{
+  "title": "Mail to receipts@ goes to the bookkeeping bot",
+  "world": "creator",
+  "tags": [
+    "x-usage",
+    "routine",
+    "handoff",
+    "proactive"
+  ],
+  "source": "x-usage #17: triggered by mail to an address, not blind polling; the bookkeeping bot gets each receipt.",
+  "bots": [
+    {
+      "name": "Penny",
+      "soul": "You are Penny, Lucía's bookkeeping assistant for Clay & Kiln. Log each receipt you get: vendor, amount, date, category. Keep it short."
+    }
+  ],
+  "seed": {
+    "profile": {
+      "aliases": [
+        "receipts@clayandkiln.shop"
+      ]
+    }
+  },
+  "steps": [
+    {
+      "chat": {
+        "goal": "Whenever an email comes in to receipts@clayandkiln.shop, forward it to Penny.",
+        "opener": "when an email comes to receipts@ can you forward it to penny?",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "inject": {
+        "mail": [
+          {
+            "from": "Laguna Clay Co <orders@lagunaclay.com>",
+            "subject": "Invoice LC-20931",
+            "body": "Invoice LC-20931: 6 boxes B-Mix 5 cone 5 clay, $222.00, paid by card ending 0937.",
+            "to": "receipts@clayandkiln.shop"
+          }
+        ]
+      },
+      "label": "receipt"
+    },
+    {
+      "advance": "+30m"
+    },
+    {
+      "settle": {
+        "seconds": 120
+      },
+      "label": "passed"
+    }
+  ],
+  "checks": [
+    {
+      "label": "mail-triggered routine",
+      "routine": {
+        "where": {
+          "checks": "mail"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "Penny got the receipt",
+      "said": {
+        "bot": "Penny",
+        "match": "laguna|222|LC-20931"
+      }
+    },
+    {
+      "label": "no email sent outside",
+      "app": "sent",
+      "max": 0
+    }
+  ],
+  "judge": "Wren sets a watcher that wakes only on new mail to receipts@, hands the Laguna invoice ($222) to Penny inside dusk bot (not by emailing anyone), and Penny logs it."
+}

@@ -1,8 +1,7 @@
 // Stateful stand-ins for a person's connected apps: one stdio MCP server per app (`node connectors.mjs <app>`), all
 // reading and writing one JSON state file (APP_STATE), so every send, invite, post, comment and refund is ground truth.
-// `state.faults[tool] = { times, error }` makes the next
-// `times` calls of a tool fail with `error`, as a flaky upstream would. Standard library only; newline-delimited
-// JSON-RPC as MCP stdio.
+// `state.faults[tool] = { times, error }` makes the next `times` calls of a tool fail with `error`, as a flaky upstream
+// would. Standard library only; newline-delimited JSON-RPC as MCP stdio.
 import { readFileSync, writeFileSync, renameSync } from "node:fs";
 import { createInterface } from "node:readline";
 
@@ -86,6 +85,8 @@ const APPS = {
       run: (s, x) => Object.entries(s.slack?.channels ?? {}).flatMap(([name, c]) => c.messages.filter((m) => has(`${m.user} ${m.text}`, x.query)).map((m) => ({ channel: name, ...m }))).slice(-25) },
     slack_post: { d: "Post a message to a channel or DM (dm:<person>); thread_ts replies in a thread.", a: outward, s: { channel: str, text: str, thread_ts: str }, req: ["channel", "text"],
       run: (s, x) => { const name = x.channel.replace(/^#/, ""); const c = (s.slack.channels[name] ??= { topic: "", members: [], messages: [] }); const m = { ts: String(Date.now() / 1000), user: s.profile?.slack ?? s.profile?.name, text: x.text, thread_ts: x.thread_ts, by_assistant: true }; c.messages.push(m); log(s, "slack_post", { channel: name, text: x.text.slice(0, 200) }); return { ok: true, ts: m.ts }; } },
+    slack_leave_channel: { d: "Leave a channel: you stop being a member and stop getting its messages.", a: write, s: { channel: str }, req: ["channel"],
+      run: (s, x) => { const name = x.channel.replace(/^#/, ""); const c = must(s.slack?.channels?.[name], "channel"); const me = s.profile?.slack ?? s.profile?.name; c.members = (c.members ?? []).filter((m) => m !== me); c.left = true; log(s, "slack_leave", { channel: name }); return { ok: true }; } },
   },
   github: {
     github_list_repos: { d: "Repositories the account can access.", a: read, s: {}, run: (s) => (s.github?.repos ?? []).map(({ name, description, default_branch, issues, pulls }) => ({ name, description, default_branch, open_issues: issues.filter((i) => i.state === "open").length, open_prs: pulls.filter((p) => p.state === "open").length })) },

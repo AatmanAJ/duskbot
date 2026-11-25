@@ -1,0 +1,62 @@
+{
+  "title": "Reply to an old budget message: 'do this again but for January'",
+  "world": "student",
+  "tags": [
+    "x-usage",
+    "reply-context"
+  ],
+  "source": "x-usage #9: the quoted old message is the context. March adapted to January (the month after the first budget).",
+  "steps": [
+    {
+      "chat": {
+        "goal": "Get a December budget note built from the budget CSV and what you know.",
+        "opener": "can you make me a december budget note from my budget csv? rent's £520, loan doesn't come till jan",
+        "maxTurns": 3,
+        "label": "dec"
+      }
+    },
+    {
+      "advance": "+1d 18:00"
+    },
+    {
+      "chat": {
+        "goal": "Replying to yesterday's budget message, ask for the same for January.",
+        "opener": "do this again but for january, loan comes in on the 6th (£1,673)",
+        "maxTurns": 3,
+        "thread": "same",
+        "replyTo": "budget|december",
+        "label": "jan"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "December note",
+      "app": "notes",
+      "where": {
+        "by_assistant": "true",
+        "title": "dec"
+      },
+      "min": 1
+    },
+    {
+      "label": "January note in the same shape",
+      "app": "notes",
+      "where": {
+        "by_assistant": "true",
+        "title": "jan"
+      },
+      "min": 1
+    },
+    {
+      "label": "January has the loan",
+      "app": "notes",
+      "where": {
+        "title": "jan",
+        "body": "1,?673"
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Pip understands 'this' is the December budget note from the quoted message and makes a January one in the same layout with the £1,673 loan on the 6th, without asking what 'this' means."
+}

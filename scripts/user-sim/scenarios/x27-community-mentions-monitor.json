@@ -1,0 +1,96 @@
+{
+  "title": "Daily mentions digest, complaints right away, no repeats",
+  "world": "creator",
+  "tags": [
+    "x-usage",
+    "routine",
+    "proactive"
+  ],
+  "source": "x-usage #27: dedup, severity bypass for complaints, no repeats. X/Reddit/HN adapted to the community Slack channels.",
+  "steps": [
+    {
+      "chat": {
+        "goal": "Watch the community Slack for anyone mentioning Clay & Kiln: once-a-day summary at 6pm, but complaints right away.",
+        "opener": "can you watch the community slack for anyone talking about clay & kiln? tell me once a day at 6pm, but tell me right away if it's a complaint",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "inject": {
+        "slack": {
+          "channels": {
+            "general": {
+              "messages": [
+                {
+                  "user": "jordan_p",
+                  "text": "my clay & kiln order arrived smashed and nobody's answered my email in 4 days, pretty annoyed",
+                  "at": "@0m"
+                },
+                {
+                  "user": "ana",
+                  "text": "the ep.12 bud vase from clay & kiln is gorgeous, mine came today",
+                  "at": "@0m"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "label": "posts"
+    },
+    {
+      "advance": "+30m"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      }
+    },
+    {
+      "advance": "+0d 18:05"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      },
+      "label": "digest"
+    }
+  ],
+  "checks": [
+    {
+      "label": "complaint flagged",
+      "proactive": {
+        "after": "posts",
+        "match": "smashed|complain|annoyed|jordan"
+      },
+      "min": 1
+    },
+    {
+      "label": "complaint not repeated",
+      "proactive": {
+        "after": "posts",
+        "match": "smashed"
+      },
+      "max": 1
+    },
+    {
+      "label": "daily digest has the praise",
+      "proactive": {
+        "after": "digest",
+        "match": "gorgeous|bud vase|ana"
+      },
+      "min": 1
+    },
+    {
+      "label": "6pm schedule",
+      "routine": {
+        "where": {
+          "schedule": "18|6 ?pm"
+        }
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Wren pings Lucía about Jordan's smashed order within the half hour with a suggested reply, then the 6pm digest covers Ana's praise and doesn't re-alert about the complaint."
+}

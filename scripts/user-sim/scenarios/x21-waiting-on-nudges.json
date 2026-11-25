@@ -1,0 +1,117 @@
+{
+  "title": "Who am I waiting on? Nudge them, but ask first",
+  "world": "creator",
+  "tags": [
+    "x-usage",
+    "multi-step"
+  ],
+  "source": "x-usage #21: follow-up tracker over sent mail older than 3 days, asks before sending, nudges only the stale ones.",
+  "seed": {
+    "mail": [
+      {
+        "from": "Lucía Navarro <hello@clayandkiln.shop>",
+        "to": "Jenna Park <jenna@hollowoakgallery.com>",
+        "subject": "Consignment for January?",
+        "body": "Hi Jenna, would Hollow Oak take 20 pieces on consignment for January? Happy to send a lookbook. Lucía",
+        "date": "@-5d 10:00",
+        "labels": [
+          "SENT"
+        ],
+        "read": true
+      },
+      {
+        "from": "Lucía Navarro <hello@clayandkiln.shop>",
+        "to": "Laguna Clay Co <orders@lagunaclay.com>",
+        "subject": "Question about cone 6 B-Mix",
+        "body": "Hi, does B-Mix 5 hold up at cone 6 or should I switch to B-Mix 6? Thanks, Lucía",
+        "date": "@-4d 14:00",
+        "labels": [
+          "SENT"
+        ],
+        "read": true
+      },
+      {
+        "from": "Lucía Navarro <hello@clayandkiln.shop>",
+        "to": "Inés Duarte <ines.duarte@gmail.com>",
+        "subject": "photos from the shoot",
+        "body": "Inés! can you send the photos from Sunday when you get a sec? x",
+        "date": "@-1d 12:00",
+        "labels": [
+          "SENT"
+        ],
+        "read": true
+      },
+      {
+        "from": "Lucía Navarro <hello@clayandkiln.shop>",
+        "to": "Ruth Abebe <ruth.abebe@gmail.com>",
+        "subject": "Glaze workshop dates",
+        "body": "Hi Ruth, would Jan 18 or 25 work for the glaze workshop? Lucía",
+        "date": "@-6d 09:00",
+        "labels": [
+          "SENT"
+        ],
+        "read": true
+      },
+      {
+        "from": "Ruth Abebe <ruth.abebe@gmail.com>",
+        "subject": "Re: Glaze workshop dates",
+        "body": "Jan 25 is perfect! Ruth",
+        "date": "@-3d 18:00",
+        "read": true
+      }
+    ]
+  },
+  "steps": [
+    {
+      "chat": {
+        "goal": "Find who you're waiting on (no reply in 3+ days), and nudge them, but only after you approve.",
+        "opener": "who am i waiting on? nudge anyone who hasn't replied in 3 days but ask me first",
+        "knows": "Yes, nudge both of the stale ones.",
+        "maxTurns": 4,
+        "label": "nudge"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "Jenna nudged",
+      "app": "sent",
+      "where": {
+        "to": "jenna"
+      },
+      "min": 1
+    },
+    {
+      "label": "Laguna nudged",
+      "app": "sent",
+      "where": {
+        "to": "lagunaclay"
+      },
+      "min": 1
+    },
+    {
+      "label": "Inés not nudged (only 1 day)",
+      "app": "sent",
+      "where": {
+        "to": "ines"
+      },
+      "max": 0
+    },
+    {
+      "label": "Ruth not nudged (she replied)",
+      "app": "sent",
+      "where": {
+        "to": "ruth"
+      },
+      "max": 0
+    },
+    {
+      "label": "asked before sending",
+      "said": {
+        "step": "nudge",
+        "match": "jenna[\\s\\S]*\\?|want me|should i|ok to|go ahead"
+      }
+    }
+  ],
+  "judge": "Wren finds Jenna (consignment, 5 days) and Laguna (cone 6 question, 4 days), skips Inés (1 day) and Ruth (replied), asks once, then sends two short friendly nudges."
+}

@@ -1,0 +1,92 @@
+{
+  "title": "Ping for two hours when someone replies, then stop on its own",
+  "world": "developer",
+  "tags": [
+    "x-usage",
+    "proactive",
+    "stop"
+  ],
+  "source": "x-usage #28: time-boxed watcher that turns itself off. X replies adapted to GitHub comment notification emails on quickcron #41.",
+  "steps": [
+    {
+      "chat": {
+        "goal": "You just posted your DST fix proposal on quickcron #41; for the next 2 hours get pinged whenever someone replies so you can answer fast.",
+        "opener": "just posted my DST fix proposal on quickcron #41. for the next 2 hours ping me here whenever someone replies so i can answer fast",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "advance": "+20m"
+    },
+    {
+      "inject": {
+        "mail": [
+          {
+            "from": "hannah-lowe <notifications@github.com>",
+            "subject": "Re: [arjunm/quickcron] DST transition skips 02:30 jobs in Europe/London (#41)",
+            "body": "hannah-lowe commented: This looks right! One question, does it also handle the October fall-back when 01:30 happens twice?"
+          }
+        ]
+      },
+      "label": "reply1"
+    },
+    {
+      "advance": "+30m"
+    },
+    {
+      "settle": {
+        "seconds": 60
+      }
+    },
+    {
+      "advance": "+2h"
+    },
+    {
+      "inject": {
+        "mail": [
+          {
+            "from": "tomasz-w <notifications@github.com>",
+            "subject": "Re: [arjunm/quickcron] DST transition skips 02:30 jobs in Europe/London (#41)",
+            "body": "tomasz-w commented: +1, would love this in v1.4"
+          }
+        ]
+      },
+      "label": "late"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      }
+    }
+  ],
+  "checks": [
+    {
+      "label": "Hannah's reply pinged",
+      "proactive": {
+        "after": "reply1",
+        "match": "hannah|fall.?back|01:30"
+      },
+      "min": 1
+    },
+    {
+      "label": "no ping after the window",
+      "proactive": {
+        "after": "late",
+        "match": "tomasz|\\+1"
+      },
+      "max": 0
+    },
+    {
+      "label": "watcher off after 2 hours",
+      "routine": {
+        "where": {
+          "prompt": "41|quickcron|repl",
+          "enabled": "true"
+        }
+      },
+      "max": 0
+    }
+  ],
+  "judge": "Kiran sets a watcher that ends by itself after two hours, pings quickly with Hannah's question (October fall-back), and is silent about Tomasz's later comment."
+}

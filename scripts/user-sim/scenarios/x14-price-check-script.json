@@ -1,0 +1,89 @@
+{
+  "title": "Price-check script every 30 minutes, posts only when it prints",
+  "world": "creator",
+  "tags": [
+    "x-usage",
+    "routine",
+    "script-only"
+  ],
+  "source": "x-usage #14: script-only routine, empty output sends nothing; the price file changes mid-run via a files inject.",
+  "seed": {
+    "files": {
+      "Documents/scripts/kiln-shelf-price.sh": "#!/bin/sh\np=$(tr -dc '0-9' < \"$HOME/Documents/prices/kiln-shelf.txt\")\nif [ \"$p\" -lt 60 ]; then\n  echo \"Kiln shelf 16in is \\$$p at Bay Ceramic Supply (usually \\$74)\"\nfi\n",
+      "Documents/prices/kiln-shelf.txt": "74\n"
+    }
+  },
+  "steps": [
+    {
+      "chat": {
+        "goal": "Run the price-check script in Documents/scripts every 30 minutes and only post when it prints something. No AI for it.",
+        "opener": "can you run my price-check script (Documents/scripts/kiln-shelf-price.sh) every 30 min and only post when it prints something? don't use AI for it",
+        "maxTurns": 3,
+        "label": "setup"
+      }
+    },
+    {
+      "advance": "+1h"
+    },
+    {
+      "settle": {
+        "seconds": 60
+      },
+      "label": "quiet"
+    },
+    {
+      "inject": {
+        "files": {
+          "Documents/prices/kiln-shelf.txt": "55\n"
+        }
+      },
+      "label": "drop"
+    },
+    {
+      "advance": "+40m"
+    },
+    {
+      "settle": {
+        "seconds": 90
+      },
+      "label": "post"
+    }
+  ],
+  "checks": [
+    {
+      "label": "script-only routine",
+      "routine": {
+        "where": {
+          "probe.kind": "script"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "every 30 minutes",
+      "routine": {
+        "where": {
+          "schedule": "\\*/30|0,30|everyMinutes\\W+30|30"
+        }
+      },
+      "min": 1
+    },
+    {
+      "label": "nothing posted while output empty",
+      "proactive": {
+        "after": "quiet",
+        "match": "^(?![\\s\\S]*55)"
+      },
+      "max": 0
+    },
+    {
+      "label": "posted the drop",
+      "proactive": {
+        "after": "drop",
+        "match": "55"
+      },
+      "min": 1
+    }
+  ],
+  "judge": "Wren sets a 30-minute script-only routine on the given file with no AI turn; the first hour is silent, and once the price file says 55 the script's line is posted as is."
+}
