@@ -1,13 +1,14 @@
 # Proactive routines
 
 Dusk keeps an eye on the person's day with one ordinary routine,
-"Keep an eye on my day". It is never made without a yes: on a personal install
-or Cloud that can reach connected apps, Dusk posts one card in its chat with
-**Turn it on** and **Not now**. Turn it on makes the routine, daily at 08:00 in
-the person's time zone (the computer's clock, or the owner's zone on a Cloud).
-Not now is kept and the card never comes back. An install that already made the
-routine, or whose bot already has a briefing routine, is never asked, and a
-watch it made earlier on a 15-minute schedule is left as it is. It is built from
+"Keep an eye on my day". It is on by default: on a personal install or Cloud
+that can reach connected apps, Dusk makes it, daily at 08:00 in the person's
+time zone (the computer's clock, or the owner's zone on a Cloud), with no card.
+Pausing or deleting it is the off switch, and it is never made again after
+that. Before it was on by default, Dusk asked with a card (**Turn it on** /
+**Not now**): Not now is kept and the watch is never made, an unanswered card
+is marked on when the watch is made, and Turn it on still works. A bot that
+already has a briefing routine gets no second one, and a watch made earlier on a 15-minute schedule is left as it is. It is built from
 four upgrades every routine can use, plus the helper models for the inbox.
 The bot that is proactive is the one `proactiveOwner` names
 (`server/host/proactive-owner.ts`): the place's Dusk, shown in the sidebar or
@@ -65,7 +66,9 @@ desktop, headless and on a Cloud.
 - **Meeting prep**: a card in the same chat when a meeting with other people is
   within four hours.
 - **The 10-minute reminder**: a card posted by the server, with no AI.
-- One notification per update that adds something that needs the person.
+- One notification per update that adds something that needs the person,
+  and none while the person's quiet hours last: the brief is still posted,
+  unread, and opens on the first open of the day.
 
 Pausing or deleting the routine in the bot panel is the off switch: with it off
 there is no brief at all. Its row says

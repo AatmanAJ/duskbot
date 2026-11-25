@@ -18,11 +18,10 @@ result picked by a marker in its prompt (`FAKE_CLAUDE_MARKER_REPLIES`).
 
 Expected:
 
-- Dusk, hidden from the sidebar for the whole scenario, has no routine until
-  the one suggestion card in its chat (`setupSuggestion: { kind: "watch" }`) is
-  answered Turn it on through `POST /api/watch/suggestion`. Then it has the
-  one routine, "Keep an eye on my day", daily at 08:00, with checks,
-  `read-and-draft` and `deliver: brief`, and the card shows the answer.
+- Dusk, hidden from the sidebar for the whole scenario, gets the one routine
+  "Keep an eye on my day" by default within a minute of connected apps being
+  there, with no card: daily at 08:00, with checks, `read-and-draft` and
+  `deliver: brief`.
 - The first open of the day, with nothing for the person yet, posts no brief,
   opens nothing and starts no AI turn. The first brief, posted by the watch's
   run, carries the intro line, and every later change edits it in place.
@@ -61,9 +60,8 @@ Each step starts the store, the routines and the proactive side from the files
 on disk, as a restart does, with a stand-in for connected apps and no model.
 Expected:
 
-- A new install's Dusk is its Chief and gets the one watch once it is turned
-  on. On an install where Dusk came after the Chief, the watch is suggested and
-  made on Dusk.
+- A new install's Dusk is its Chief and gets the one watch by default. On an
+  install where Dusk came after the Chief, the watch is made on Dusk.
 - An existing install's watch moves from the Chief to Dusk once: same id,
   paused if it was paused, the edited instructions, the checks' state file
   unchanged, the day's run count kept. The brief's home becomes Dusk's chat,

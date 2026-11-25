@@ -8,7 +8,7 @@ import type { RequestAuth } from "../request-auth.ts";
 import { createWatchSuggestionRoutes } from "../routes/watch-suggestion.ts";
 import { RoutineManager } from "../routines.ts";
 import { Store } from "../store.ts";
-import { watchAsMade, WATCH_SUGGESTION_TEXT } from "./default-watch.ts";
+import { watchAsMade } from "./default-watch.ts";
 import { createProactive, WATCH_FILE, WATCH_INSTRUCTIONS, WATCH_NAME } from "./proactive.ts";
 
 const dirs: string[] = [];
@@ -46,58 +46,70 @@ function setup(options: { team?: boolean; driver?: string; configured?: () => bo
 const owner: RequestAuth = { kind: "loopback", scopes: ["admin", "client"] };
 const guest: RequestAuth = { kind: "loopback", scopes: ["client"], trust: "service" };
 const cards = (s: ReturnType<typeof setup>) => s.store.messagesFor(s.store.bot(s.chief.id)!.threadId).filter((message) => message.setupSuggestion?.kind === "watch");
-/** The card, then Turn it on: the routine the person said yes to. */
+/** The watch as the server makes it by default. */
 function turnOn(s: ReturnType<typeof setup>) {
-  const card = s.proactive.ensureWatch()!;
-  expect(s.proactive.answerWatch(s.chief.threadId, card, "on", owner)).toBe("kept");
+  expect(s.proactive.ensureWatch()).toBeTruthy();
   return s.routines().listRoutines().find((routine) => routine.name === WATCH_NAME)!;
 }
+/** A card the server posted when the watch still waited for a yes. */
+function legacyCard(s: ReturnType<typeof setup>, extra: Record<string, unknown> = {}) {
+  const card = s.store.appendMessage(s.chief.threadId, { role: "bot", kind: "text", text: "Want me to keep an eye on your day?", setupSuggestion: { kind: "watch" } });
+  writeFileSync(join(s.dir, WATCH_FILE), JSON.stringify({ version: 1, offered: { at: 1, threadId: s.chief.threadId, messageId: card.id }, ...extra }));
+  return card.id;
+}
 
-describe("the Chief's watch, suggested", () => {
-  it("is never made without a yes: one card in the Chief's chat, posted once, and no routine", () => {
-    const s = setup();
-    const card = s.proactive.ensureWatch();
-    expect(card).toBeTruthy();
-    expect(cards(s)).toMatchObject([{ id: card, text: WATCH_SUGGESTION_TEXT, setupSuggestion: { kind: "watch" } }]);
-    expect(s.proactive.ensureWatch()).toBeNull();
-    expect(s.make().ensureWatch()).toBeNull();
-    expect(cards(s)).toHaveLength(1);
-    expect(s.routines().listRoutines()).toEqual([]);
-  });
-
-  it("Turn it on makes the watch once, daily at 08:00, and as the server made it", () => {
+describe("the Chief's watch, on by default", () => {
+  it("is made once, daily at 08:00, as the server made it, with no card", () => {
     const s = setup();
     const watch = turnOn(s);
     expect(watch).toMatchObject({ name: WATCH_NAME, botId: s.chief.id, checks: ["calendar", "mail", "runs"], access: "read-and-draft", deliver: "brief", enabled: true,
       schedule: { type: "daily", time: "08:00", weekdays: [0, 1, 2, 3, 4, 5, 6] } });
     expect(watchAsMade(watch)).toBe(true);
-    expect(cards(s)[0]!.setupSuggestion).toEqual({ kind: "watch", answer: "on" });
-    expect(s.proactive.answerWatch(s.chief.threadId, cards(s)[0]!.id, "on", owner)).toBe("kept");
+    expect(cards(s)).toEqual([]);
+    expect(s.proactive.ensureWatch()).toBeNull();
+    expect(s.make().ensureWatch()).toBeNull();
     expect(s.routines().listRoutines()).toHaveLength(1);
+  });
+
+  it("stays off once the person pauses or deletes it, after a restart too", () => {
+    const s = setup();
+    const watch = turnOn(s);
+    s.routines().update(watch.id, { enabled: false });
+    expect(s.make().ensureWatch()).toBeNull();
+    expect(s.routines().listRoutines().map((routine) => routine.enabled)).toEqual([false]);
     s.routines().remove(watch.id);
     expect(s.make().ensureWatch()).toBeNull();
     expect(s.routines().listRoutines()).toEqual([]);
-    expect(cards(s)).toHaveLength(1);
   });
 
-  it("Not now is kept: no routine, and never asked again, after a restart too", () => {
+  it("keeps Not now on the card that asked before: no watch, ever", () => {
     const s = setup();
-    const card = s.proactive.ensureWatch()!;
-    expect(s.proactive.answerWatch(s.chief.threadId, card, "notNow", owner)).toBe("kept");
-    expect(cards(s)[0]!.setupSuggestion).toEqual({ kind: "watch", answer: "notNow" });
-    expect(s.proactive.answerWatch(s.chief.threadId, card, "on", owner)).toBe("kept");
+    const card = legacyCard(s);
+    expect(s.make().answerWatch(s.chief.threadId, card, "notNow", owner)).toBe("kept");
     expect(s.make().ensureWatch()).toBeNull();
-    expect(cards(s)).toHaveLength(1);
+    expect(s.routines().listRoutines()).toEqual([]);
+    expect(cards(s)[0]!.setupSuggestion).toEqual({ kind: "watch", answer: "notNow" });
+    expect(s.make().answerWatch(s.chief.threadId, card, "on", owner)).toBe("kept");
     expect(s.routines().listRoutines()).toEqual([]);
   });
 
-  it("only the owner answers, and only the card it posted", async () => {
+  it("turns on for a card nobody answered, and marks the card on", () => {
     const s = setup();
-    const card = s.proactive.ensureWatch()!;
-    expect(s.proactive.answerWatch(s.chief.threadId, card, "on", guest)).toBe("refused");
+    legacyCard(s);
+    const proactive = s.make();
+    expect(proactive.ensureWatch()).toBeTruthy();
+    expect(s.routines().listRoutines().map((routine) => routine.name)).toEqual([WATCH_NAME]);
+    expect(cards(s)[0]!.setupSuggestion).toEqual({ kind: "watch", answer: "on" });
+  });
+
+  it("an old card's Turn it on still works: only the owner, only the card it posted, once", async () => {
+    const s = setup({ configured: () => false });
+    const card = legacyCard(s);
+    const proactive = s.make();
+    expect(proactive.answerWatch(s.chief.threadId, card, "on", guest)).toBe("refused");
     const other = s.store.appendMessage(s.chief.threadId, { role: "bot", kind: "text", text: "hello" });
-    expect(s.proactive.answerWatch(s.chief.threadId, other.id, "on", owner)).toBe("unknown");
-    const route = createWatchSuggestionRoutes({ answer: s.proactive.answerWatch });
+    expect(proactive.answerWatch(s.chief.threadId, other.id, "on", owner)).toBe("unknown");
+    const route = createWatchSuggestionRoutes({ answer: proactive.answerWatch });
     const answer = async (auth: RequestAuth, body: unknown) => {
       let status = 0;
       await route({ req: {} as never, res: {} as never, url: new URL("http://x/"), path: "/api/watch/suggestion", method: "POST", auth, json: (_res: unknown, code: number) => { status = code; }, readBody: async () => body } as never);
@@ -108,46 +120,42 @@ describe("the Chief's watch, suggested", () => {
     expect(await answer(owner, { threadId: s.chief.threadId, messageId: "nope", answer: "on" })).toBe(404);
     expect(s.routines().listRoutines()).toEqual([]);
     expect(await answer(owner, { threadId: s.chief.threadId, messageId: card, answer: "on" })).toBe(200);
+    expect(proactive.answerWatch(s.chief.threadId, card, "on", owner)).toBe("kept");
     expect(s.routines().listRoutines().map((routine) => routine.name)).toEqual([WATCH_NAME]);
   });
 
-  it("waits for connected apps and a quiet chat, then is suggested within a minute", () => {
+  it("waits for connected apps, then is on within a minute", () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     let configured = false;
-    let busy = true;
-    const s = setup({ configured: () => configured, busy: () => busy });
+    const s = setup({ configured: () => configured });
     expect(s.proactive.ensureWatch()).toBeNull();
     s.proactive.start();
     vi.advanceTimersByTime(60_000);
+    expect(s.routines().listRoutines()).toEqual([]);
     configured = true;
     vi.advanceTimersByTime(60_000);
-    expect(cards(s)).toEqual([]);
-    busy = false;
-    vi.advanceTimersByTime(60_000);
     s.proactive.stop();
-    expect(cards(s)).toHaveLength(1);
-    expect(s.routines().listRoutines()).toEqual([]);
+    expect(s.routines().listRoutines().map((routine) => routine.name)).toEqual([WATCH_NAME]);
   });
 
-  it("is never suggested on a hosted team workspace or a Team Cloud", () => {
+  it("is never made on a hosted team workspace or a Team Cloud", () => {
     const s = setup({ team: true });
     expect(s.proactive.ensureWatch()).toBeNull();
-    expect(cards(s)).toEqual([]);
     expect(s.routines().listRoutines()).toEqual([]);
   });
 
-  it("is not suggested when one arrived with the Chief, nor on an install that already made it", () => {
+  it("is not made again when one arrived with the Chief, nor on an install that already made it", () => {
     const s = setup();
     s.routines().create({ name: "Moved watch", prompt: "Watch.", botId: s.chief.id, schedule: { type: "interval", everyMinutes: 15, anchorAt: Date.now() + 60_000 },
       checks: ["mail"], access: "read-and-draft", deliver: "brief" });
     expect(s.proactive.ensureWatch()).toBeNull();
-    expect(cards(s)).toEqual([]);
+    expect(s.routines().listRoutines()).toHaveLength(1);
+    expect(s.make().ensureWatch()).toBeNull();
     expect(s.routines().listRoutines()).toHaveLength(1);
 
     const made = setup();
     writeFileSync(join(made.dir, WATCH_FILE), JSON.stringify({ version: 1, routineId: "gone", createdAt: 1 }));
     expect(made.make().ensureWatch()).toBeNull();
-    expect(cards(made)).toEqual([]);
     expect(made.routines().listRoutines()).toEqual([]);
   });
 
@@ -204,8 +212,7 @@ describe("the watch's checks", () => {
 describe("the suggestion to add a helper-model key", () => {
   const suggested = async (options: { cloud?: boolean; team?: boolean }) => {
     const s = setup(options);
-    const card = s.proactive.ensureWatch();
-    if (card) s.proactive.answerWatch(s.chief.threadId, card, "on", owner);
+    s.proactive.ensureWatch();
     const watch = s.routines().listRoutines()[0] ?? { id: "none", botId: s.chief.id, deliver: "brief", checks: ["mail"] } as never;
     await s.proactive.checks.check(watch, { manual: true });
     return s.store.messagesFor(s.store.bot(s.chief.id)!.threadId).filter((message) => message.setupSuggestion?.kind === "helperKey");

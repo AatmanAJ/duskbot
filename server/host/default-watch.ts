@@ -19,7 +19,6 @@ const EARLIER_INSTRUCTIONS = [FIRST_LINES.join("\n")];
 export const upgradedWatchPrompt = (prompt: string): string | null => (EARLIER_INSTRUCTIONS.includes(prompt) ? WATCH_INSTRUCTIONS : null);
 export const WATCH_TIME = "08:00";
 const FIRST_WATCH_EVERY_MINUTES = 15;
-export const WATCH_SUGGESTION_TEXT = "Want me to keep an eye on your day? Every morning I'll pick out the email you shouldn't miss and get you ready for your meetings.";
 
 export const watchSchedule = (): RoutineScheduleInput => ({ type: "daily", time: WATCH_TIME, weekdays: [0, 1, 2, 3, 4, 5, 6] });
 
