@@ -390,7 +390,7 @@ export const ABOUT_ME_LIMIT = 24_000;
 
 /** About me with the person's facts and their standing instructions added under a heading for the app, lines it already
  * has left out; null when nothing is new. What doesn't fit the limit is left out from the end. */
-const LEARNED_PREFIX = /^\s*-\s*\d{4}-\d{2}-\d{2} · learned by [^·\n]* · /;
+const LEARNED_PREFIX = /^\s*-\s*\d{4}-\d{2}-\d{2} · learned by ([^·\n]*) · /;
 
 function localDay(now = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -399,7 +399,8 @@ function localDay(now = new Date()): string {
 
 /** Imported facts join the general memory as learned lines (`- date · learned by ChatGPT · fact`), so the nightly
  * consolidation merges them with what bots learn, lets a newer fact replace one, and keeps them within its budget;
- * the custom instructions stay the person's own words. */
+ * the custom instructions stay the person's own words. Facts from the app whose list the text ends with carry on that
+ * list, so several bots moved from one app read as one list about the person. */
 export function aboutMeWithNotes(current: string, notes: Pick<AssistantNotes, "from" | "aboutMe" | "instructions">, today = localDay()): { text: string; added: number } | null {
   const fold = (line: string) => line.replace(LEARNED_PREFIX, "").replace(BULLET, "").replace(/\s+/g, " ").trim().toLowerCase();
   const have = new Set(current.split("\n").map(fold).filter(Boolean));
@@ -412,6 +413,7 @@ export function aboutMeWithNotes(current: string, notes: Pick<AssistantNotes, "f
     ...(instructions ? [`How I like answers (from ${notes.from.name}):\n${instructions}`] : []),
   ];
   const lead = current.trimEnd();
-  const text = `${lead}${lead ? "\n\n" : ""}${parts.join("\n\n")}`.slice(0, ABOUT_ME_LIMIT);
+  const sameList = facts.length > 0 && LEARNED_PREFIX.exec(lead.slice(lead.lastIndexOf("\n") + 1))?.[1] === source;
+  const text = `${lead}${lead ? (sameList ? "\n" : "\n\n") : ""}${parts.join("\n\n")}`.slice(0, ABOUT_ME_LIMIT);
   return { text, added: facts.length + (instructions ? 1 : 0) };
 }
