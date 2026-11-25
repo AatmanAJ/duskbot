@@ -112,6 +112,17 @@ export function ArchivedBotRow({
   );
 }
 
+function keepTabInside(event: KeyboardEvent, root: HTMLElement | null) {
+  if (!root || event.defaultPrevented) return;
+  const controls = [...root.querySelectorAll<HTMLElement>("button:not([disabled]), a[href], input:not([disabled])")];
+  const first = controls[0], last = controls.at(-1);
+  if (!first || !last) { event.preventDefault(); root.focus(); return; }
+  const at = document.activeElement;
+  if (!root.contains(at) || at === root) { event.preventDefault(); (event.shiftKey ? last : first).focus(); return; }
+  if (event.shiftKey && at === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && at === last) { event.preventDefault(); first.focus(); }
+}
+
 export function ArchivedBotsPanel({
   bots,
   onClose,
@@ -128,20 +139,27 @@ export function ArchivedBotsPanel({
   const [pendingDelete, setPendingDelete] = useState<Bot | "all" | null>(null);
   const [error, setError] = useState("");
   const deleting = bots.some((bot) => Boolean(state.deletingBots[bot.id]));
-  const locked = restoringAll || Boolean(busyId) || deleting || Boolean(pendingDelete);
+  const confirming = pendingDelete !== null;
+  const locked = restoringAll || Boolean(busyId) || deleting || confirming;
 
   useEffect(() => {
     if (bots.length === 0) onClose();
   }, [bots.length, onClose]);
 
   useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     dialogRef.current?.focus();
+    return () => { if (opener?.isConnected) opener.focus(); };
+  }, []);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !locked) onClose();
+      if (event.key === "Tab" && !confirming) keepTabInside(event, dialogRef.current);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [locked, onClose]);
+  }, [confirming, locked, onClose]);
 
   const restore = async (bot: Bot) => {
     setBusyId(bot.id);
