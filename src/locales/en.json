@@ -2096,6 +2096,7 @@
   "sidebar.archived.restored": "{name} restored",
   "sidebar.archived.restoredOne": "1 bot restored",
   "sidebar.archived.restoredMany": "{count} bots restored",
+  "sidebar.archived.restoreFailed": "Couldn't restore {names}: {reason}",
   "sidebar.resize": "Resize sidebar",
   "sidebar.new": "New",
   "sidebar.newOrShare": "New or share",
