@@ -532,6 +532,28 @@ describe("Adding an MCP server on a Team Cloud", () => {
 });
 
 describe("A saved server's switch", () => {
+  it("tests a switched-off server before turning it on, and keeps it off with the reason when it can't connect", async () => {
+    fixture.servers = [{ name: "companies-house", type: "http", url: "https://mcp.companies-house.example/mcp", headerKeys: [], enabled: false }];
+    fixture.test = { ok: false, error: "Could not reach this address. Check the URL and your network.", reason: "unreachable" };
+    await act(async () => host.querySelector<HTMLButtonElement>("[aria-label='Refresh MCP servers']")!.click());
+    await settle();
+    await act(async () => host.querySelector<HTMLButtonElement>('[role="switch"][aria-label="Turn companies-house on"]')!.click());
+    await settle();
+
+    expect(calls("POST", "/api/mcp/servers/companies-house/test")).toHaveLength(1);
+    expect(calls("PATCH"), "a server that can't connect is never switched on").toEqual([]);
+    expect(host.querySelector('[role="switch"][aria-label="Turn companies-house on"]')?.getAttribute("aria-checked")).toBe("false");
+    expect(host.textContent).toContain("Couldn't connect, so it stays off. Could not reach this address.");
+    expect(host.textContent).not.toContain("companies-house is now on");
+
+    fixture.test = { ok: true, tools: [{ name: "search" }] };
+    await act(async () => host.querySelector<HTMLButtonElement>('[role="switch"][aria-label="Turn companies-house on"]')!.click());
+    await settle();
+    expect(calls("PATCH", "/api/mcp/servers/companies-house")).toEqual([{ url: "/api/mcp/servers/companies-house", body: { enabled: true } }]);
+    expect(host.querySelector('[role="switch"][aria-label="Turn companies-house off"]')?.getAttribute("aria-checked")).toBe("true");
+    expect(host.textContent).toContain("Connected: 1 tool");
+  });
+
   it("says it's off until it passes a test while that test runs", async () => {
     let answer: (result: Record<string, unknown>) => void = () => {};
     const previous = fixture.api.getMockImplementation()!;
