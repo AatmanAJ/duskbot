@@ -10,6 +10,8 @@ import type { AppTrigger } from "@/lib/app-triggers";
 import { appProblem, appStatusParts, appWhen, skippedToday } from "@/lib/app-automations";
 import { limitResetWhen } from "@/lib/limit-resets";
 import { isLimitSkip, partlyDone } from "@/lib/routine-display";
+import { plainFailureWords } from "@/lib/failed-reply";
+import { plainErrorLine } from "@/lib/plain-error";
 import type { OptionCardData } from "@/state/store";
 import { deviceHourCycle } from "@/lib/format-time";
 
@@ -369,10 +371,26 @@ export function statusLine(automation: Automation, now = Date.now()): string {
   return parts.join(" · ");
 }
 
+const firstLine = (text: string | undefined) => (text ?? "").split("\n").map((line) => line.trim()).find(Boolean) ?? "";
+const short = (text: string) => (text.length > 110 ? `${text.slice(0, 109).trimEnd()}…` : text);
+
+/** A run's stored error as its line says it: the failed-reply card's plain words when the engine's own are technical. */
+function runReason(raw: string): string {
+  return (raw && (plainFailureWords(raw) ?? plainErrorLine(raw))) || short(firstLine(raw));
+}
+
+const DETAIL_CHARS = 600;
+
+export interface RunLine {
+  when: string;
+  mark: "✓" | "✗" | "…" | "!" | "–";
+  text: string;
+  /** The run's own error words, kept when `text` puts them plainly. */
+  detail?: string;
+}
+
 /** One recent run in plain words: "Today 9:02 AM", a mark, and its one-line result or reason. */
-export function runLine(run: RoutineRun, now = Date.now()): { when: string; mark: "✓" | "✗" | "…" | "!" | "–"; text: string } {
-  const firstLine = (text: string | undefined) => (text ?? "").split("\n").map((line) => line.trim()).find(Boolean) ?? "";
-  const short = (text: string) => (text.length > 110 ? `${text.slice(0, 109).trimEnd()}…` : text);
+export function runLine(run: RoutineRun, now = Date.now()): RunLine {
   const when = lastWhen(runTime(run), now);
   if (run.status === "completed") return { when, mark: "✓", text: run.report?.state === "quiet" ? t("automations.run.nothingNew") : short(firstLine(run.output)) || t("automations.run.done") };
   if (run.status === "waiting") {
@@ -382,12 +400,14 @@ export function runLine(run: RoutineRun, now = Date.now()): { when: string; mark
   if (isLimitSkip(run)) return { when, mark: "–", text: t("routines.strip.skipped") };
   if (run.status === "queued" && run.attention?.trim()) return { when, mark: "…", text: short(firstLine(run.attention)) };
   if (run.status === "running" || run.status === "queued") return { when, mark: "…", text: t("automations.runningNow") };
-  if (run.status === "cancelled") {
-    const reason = short(firstLine(run.error));
-    return { when, mark: "✗", text: reason ? t("automations.run.stoppedBecause", { reason }) : t("automations.run.stopped") };
-  }
-  if (partlyDone(run)) return { when, mark: "!", text: t("automations.run.partial", { reason: short(firstLine(run.error)) }) };
-  return { when, mark: "✗", text: ownerFix(run)?.reason ?? (short(firstLine(run.error)) || t("automations.run.failed")) };
+  const raw = run.error?.trim() ?? "";
+  const reason = runReason(raw);
+  const line = (mark: RunLine["mark"], text: string, said: string): RunLine =>
+    ({ when, mark, text, ...(raw && said !== short(firstLine(raw)) ? { detail: raw.slice(0, DETAIL_CHARS) } : {}) });
+  if (run.status === "cancelled") return line("✗", reason ? t("automations.run.stoppedBecause", { reason }) : t("automations.run.stopped"), reason);
+  if (partlyDone(run)) return line("!", t("automations.run.partial", { reason }), reason);
+  const plain = ownerFix(run)?.reason ?? reason;
+  return line("✗", plain || t("automations.run.failed"), plain);
 }
 
 export const AUTOMATION_FIX_LABEL: Record<AutomationFix, LocaleKey> = {

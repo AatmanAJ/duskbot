@@ -399,7 +399,7 @@ function AutomationDetail({ id, bot, automation, routine, actions, focusEdit, on
                       <span className="shrink-0 text-ink-secondary">{line.when}</span>
                       <span className={cn("shrink-0", line.mark === "✓" ? "text-success" : line.mark === "✗" ? "text-danger" : line.mark === "–" ? "text-ink-tertiary" : "text-warning")}>{line.mark}</span>
                       {run.dryRun && <span className="shrink-0 rounded bg-ink/6 px-1 text-[11px] leading-4 text-ink-secondary">{t("automations.run.test")}</span>}
-                      <span className="min-w-0 truncate">{line.text}</span>
+                      <span className="min-w-0 truncate" title={line.detail}>{line.text}</span>
                       {forecast?.runCosts?.[run.id] ? <span className="ms-auto shrink-0 tabular-nums text-ink-secondary">{formatCost(forecast.runCosts[run.id])}</span> : null}
                     </button>
                   </li>
