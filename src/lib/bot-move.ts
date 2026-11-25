@@ -82,8 +82,10 @@ export const movable = (plan: BotMovePlan) => plan.apps.reduce((total, app) => t
 
 export interface MoveCounts { bots: number; skills: number; routines: number; memories: number; facts?: number; apps?: number }
 
+const factKey = (fact: string) => fact.replace(/\s+/g, " ").toLowerCase();
+
 export function planCounts(app: AppMove): MoveCounts {
-  const facts = new Set(app.preview.plans.flatMap((plan) => plan.facts.map((fact) => fact.replace(/\s+/g, " ").toLowerCase())));
+  const facts = new Set(app.preview.plans.flatMap((plan) => plan.facts.map(factKey)));
   return app.preview.plans.reduce((sum, plan) => ({
     ...sum, bots: sum.bots + 1, skills: sum.skills + plan.skills.length, routines: sum.routines + plan.routines, memories: sum.memories + plan.memories + plan.notes,
     apps: (sum.apps ?? 0) + plan.apps,
@@ -107,6 +109,13 @@ async function groupUnder(name: string, bots: GrokReport["bots"], dispatch: (act
 }
 
 export interface AppReport { app: AppMove; report: GrokReport }
+
+/** Facts about the person the bots that came over knew, each once however many of them knew it. */
+export function factsBrought(reports: readonly AppReport[]): number {
+  return new Set(reports.flatMap(({ app, report }) => app.preview.plans
+    .filter((plan) => !report.failed.includes(plan.name) && !report.moved.includes(plan.name))
+    .flatMap((plan) => plan.facts.map(factKey)))).size;
+}
 
 /** Moves app by app, bot by bot; one that fails is named and the rest carry on. `onBot` hears each as it starts. Each
  * app's bots end up together in one sidebar section named after it. */

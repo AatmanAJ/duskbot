@@ -5,7 +5,7 @@ import { activeLocale, t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
 import { api, type Action, type ConfigStatus } from "@/state/store";
 import type { ActivitySource, MemoryTopics, SetupDetection, SetupSource } from "../../shared/setup-import";
-import { movable, planCounts, runBotMove, type AppMove, type BotMovePlan } from "./bot-move";
+import { factsBrought, movable, planCounts, runBotMove, type AppMove, type BotMovePlan } from "./bot-move";
 import { GROK_FROM } from "../../shared/grok-import";
 import { aboutMeSaver } from "./assistant-notes";
 import { postImportNote } from "./import-note";
@@ -231,7 +231,8 @@ export async function bringChosen(finds: readonly LocalFind[], context: {
         const moved = reports.flatMap((one) => one.report.bots);
         bots = moved.length;
         botNames.push(...moved.map((bot) => bot.name));
-        facts = moved.reduce((sum, bot) => sum + (bot.facts ?? 0), 0);
+        facts = factsBrought(reports);
+        skills += moved.reduce((sum, bot) => sum + bot.skills, 0);
         memories = moved.reduce((sum, bot) => sum + bot.memories + bot.notes, 0);
         routines = moved.reduce((sum, bot) => sum + bot.routines, 0);
         reconnect = moved.reduce((sum, bot) => sum + bot.apps, 0);
