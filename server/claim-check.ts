@@ -23,7 +23,7 @@ const VERBS: Record<Exclude<Deed, "setup">, string> = {
   remove: "deleted|removed|forgot|forgotten|erased|cleared|cancell?ed|archived|unsubscribed|trashed",
 };
 const SETUP = String.raw`\bset up\b|\bturned (?:on|off)\b|\bpaused\b|\b(?:is|are) now (?:on|live|active|running)\b|^set up[.!]`;
-const READY = /\b(?:notes?|doc(?:ument)?s?|files?|sheets?|spreadsheets?|pages?)\b[^.!?\n:]{0,40}\b(?:is|are) (?:now )?(?:ready|saved|in your)\b(?![^.!?\n]{0,30}(?:below|here|in (?:this|the) chat))(?![^.!?\n]*:\s*$)/i;
+const READY = /\b(?:notes?|doc(?:ument)?s?|files?|sheets?|spreadsheets?|pages?|briefing|brief|prep|one-pager)\b[^.!?\n:]{0,40}\b(?:is|are) (?:now )?(?:ready|saved|in your)\b(?![^.!?\n]{0,30}(?:below|here|in (?:this|the) chat))(?![^.!?\n]*:\s*$)/i;
 /** A sentence that offers, plans, asks, quotes or denies claims nothing. */
 const NOT_A_CLAIM = /\b(?:not|never|no|nothing|haven['’]?t|hasn['’]?t|didn['’]?t|wasn['’]?t|weren['’]?t|isn['’]?t|couldn['’]?t|can['’]?t|cannot|won['’]?t|wouldn['’]?t|would|will|could|should|can|shall|might|ready to|about to|want me|if you|once you|when you|after you|before|draft(?:ed|s)?|earlier|yesterday|last (?:week|time|night)|already (?:been|was))\b|\?/i;
 /** "Sent you the summary above" is this chat's own reply, not an outside send. */

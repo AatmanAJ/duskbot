@@ -11,6 +11,7 @@ describe("claimedDeeds", () => {
     ["Sent the refund note to Grace.", ["send"]],
     ["I've booked the dentist for Thursday at 10.", ["schedule"]],
     ["I've created a reminder for 2:15.", ["schedule"]],
+    ["Your Acme Robotics briefing is ready. The call is with Lena.", ["save"]],
   ])("hears %s", (text, deeds) => {
     expect(claimedDeeds(text)).toEqual(deeds);
   });
