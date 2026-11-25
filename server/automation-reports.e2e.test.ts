@@ -109,6 +109,8 @@ it("answers each run in the main chat as the bot's own reply, with no conversati
   const saved = await s.savedBot();
   expect(saved.tasks.map((task: any) => task.threadId)).toEqual([s.main]);
   expect(saved.tasks[0].routineRunId).toBeUndefined();
+  expect(s.notified().filter((notification) => notification.kind === "done" && notification.threadId === s.main).map((notification) => notification.body))
+    .toEqual(["Inbox watch: Acme replied: they need the invoice by Friday."]);
 }, 120_000);
 
 it("waits for the person's own turn in the main chat, never interrupts it, and answers right after", async () => {
