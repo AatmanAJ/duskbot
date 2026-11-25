@@ -602,3 +602,40 @@ describe("POST /api/bots/:id/messages spoken on a voice call", () => {
     expect(state.accepted.at(-1)?.app?.context ?? "").not.toContain("Voice call");
   });
 });
+
+describe("POST /api/bots/:id/messages while a question card waits", () => {
+  const answering = () => {
+    const asked: string[] = [];
+    const typedCardAnswer: BotMessageRouteDeps["typedCardAnswer"] = async (_auth, _thread, text) => {
+      asked.push(text);
+      return null;
+    };
+    return { asked, typedCardAnswer };
+  };
+
+  it("offers a plain typed line, and one naming only this bot, to the card as its answer", async () => {
+    const { asked, typedCardAnswer } = answering();
+    const { threadId, post } = await fixture({ typedCardAnswer });
+    expect((await post({ threadId, text: "Yes, ship it" })).status).toBe(202);
+    expect((await post({ threadId, text: "@Scout yes, ship it" })).status).toBe(202);
+    expect(asked).toEqual(["Yes, ship it", "@Scout yes, ship it"]);
+  });
+
+  it("never offers a line said on a voice call; it goes in as a spoken line", async () => {
+    const { asked, typedCardAnswer } = answering();
+    const { threadId, state, post } = await fixture({ typedCardAnswer });
+    expect((await post({ threadId, sendId: SEND, text: "what's on my calendar", voiceCall: { callId: "vc-abcdef123" } })).status).toBe(202);
+    expect(asked).toEqual([]);
+    expect(state.accepted.at(-1)).toMatchObject({ text: "what's on my calendar", via: "call" });
+  });
+
+  it("never offers a line that names another bot; it goes in as a mention", async () => {
+    const { asked, typedCardAnswer } = answering();
+    const { store, threadId, state, post } = await fixture({ typedCardAnswer });
+    const rivet = store.createBot({ name: "Rivet" });
+    expect((await post({ threadId, text: "@Rivet can you check the build?" })).status).toBe(202);
+    expect((await post({ threadId, text: "@Rivet and this one", mentions: [rivet.id] })).status).toBe(202);
+    expect(asked).toEqual([]);
+    expect(state.accepted.map((input) => input.text)).toEqual(["@Rivet can you check the build?", "@Rivet and this one"]);
+  });
+});

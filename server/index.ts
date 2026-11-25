@@ -5082,7 +5082,7 @@ async function answerRequest(
   message?: string,
   decidedFor?: { id: string; name: string },
   always?: boolean,
-  rememberCommand?: boolean,
+  rememberCommand?: boolean, engineMessage?: string,
 ): Promise<RequestOutcome> {
   threadId = memberRunAsking(threadId, requestId, decidedFor?.id) ?? threadId;
   // Snapshot the card BEFORE delivering: delivery synchronously consumes the askMessageByRequest entry.
@@ -5099,7 +5099,7 @@ async function answerRequest(
   if (instance) {
     try {
       // Only a card that offered "Always allow this session" can keep one: never a guest's turn, a sandbox widening or the person's own computer.
-      outcome = await instance.adapter.respondToRequest(threadId, requestId, { behavior, message, always: always && behavior === "allow" && card?.allowSession === true });
+      outcome = await instance.adapter.respondToRequest(threadId, requestId, { behavior, message: engineMessage ?? message, always: always && behavior === "allow" && card?.allowSession === true });
     } catch {
       outcome = "unavailable";
     }
@@ -5160,11 +5160,11 @@ async function respondToCard(input: {
   threadId: string;
   requestId: string;
   behavior: "allow" | "deny" | "answer";
-  message?: string;
+  message?: string; engineMessage?: string;
   callId?: string;
   via?: DecisionVia;
 }): Promise<CardRespondResult> {
-  const { auth, requestId, behavior, message, callId, via } = input, threadId = automationReports.answeredIn(teamMessages.inbox.answeredIn(input.threadId, requestId), requestId);
+  const { auth, requestId, behavior, message, engineMessage, callId, via } = input, threadId = automationReports.answeredIn(teamMessages.inbox.answeredIn(input.threadId, requestId), requestId);
   // A call outlives the request that started it: the session must still be valid.
   if (auth.kind === "session" && !sessions.isLive(auth.session.id)) {
     return { ok: false, status: 401, error: "The session that started this call has ended." };
@@ -5182,7 +5182,7 @@ async function respondToCard(input: {
     if (card && resolvePeerComms(approvalBus, requestId, behavior)) return;
     const outcome = await answerRequest(
       threadId, botForThread(bot.id, threadId)?.modelSelection.instanceId ?? "", requestId, behavior, message,
-      { id: bot.id, name: bot.name },
+      { id: bot.id, name: bot.name }, undefined, undefined, engineMessage,
     );
     if (outcome === "unavailable" && isPersistentQuestionCard(card) && behavior === "answer" && cardMessage) {
       const answer = message?.trim() ?? "";
