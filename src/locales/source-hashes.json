@@ -9903,7 +9903,10 @@
       "signIn.legal.terms": "ede5489964834a514b61c7a4a8370be2452dd4a7d807180f14991ccc11ad2430",
       "signIn.legal.and": "6201111b83a0cb5b0922cb37cc442b9a40e24e3b1ce100a4bb204f4c63fd2ac0",
       "signIn.legal.privacy": "ba445cff3898a3f24f415f90fbef1c8169ea21949a40680c5e1c5975843d1b5e",
-      "signIn.legal.after": "cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8"
+      "signIn.legal.after": "cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8",
+      "createBot.title": "38b3c55f9fede851f8c0a7c63ffdedf4f30d9ca02d7f54f56551eceb3f3433ef",
+      "createBot.namePlaceholder": "d3750c70d49978a74b1e69b877bb079fd6bc3c99743f7f58f86a55836492fbc8",
+      "createBot.create": "4759498ac2a719c619e2c8cf8ee60af2d2407425e95d308eb208425b2a6d427a"
     },
     "es": {
       "updates.updated": "da0fcccdc519425a9c333fda0838bbdd50d67fb0266194753bd1044abd0ecbb4",
@@ -19786,7 +19789,10 @@
       "signIn.legal.terms": "ede5489964834a514b61c7a4a8370be2452dd4a7d807180f14991ccc11ad2430",
       "signIn.legal.and": "6201111b83a0cb5b0922cb37cc442b9a40e24e3b1ce100a4bb204f4c63fd2ac0",
       "signIn.legal.privacy": "ba445cff3898a3f24f415f90fbef1c8169ea21949a40680c5e1c5975843d1b5e",
-      "signIn.legal.after": "cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8"
+      "signIn.legal.after": "cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8",
+      "createBot.title": "38b3c55f9fede851f8c0a7c63ffdedf4f30d9ca02d7f54f56551eceb3f3433ef",
+      "createBot.namePlaceholder": "d3750c70d49978a74b1e69b877bb079fd6bc3c99743f7f58f86a55836492fbc8",
+      "createBot.create": "4759498ac2a719c619e2c8cf8ee60af2d2407425e95d308eb208425b2a6d427a"
     },
     "fr": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
