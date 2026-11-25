@@ -3480,7 +3480,7 @@
   "funnel.making.retry": "Try again",
   "funnel.making.here": "Use this computer for now",
   "funnel.making.openFailed": "Couldn't open your cloud. Try again.",
-  "helperIntro.improve": "Share usage counts and crash reports to help improve dusk bot. Now and then your own AI also reads a few recent messages where your bots run and writes a short note on how a session went, using a little of your AI plan. Your messages are never sent.",
+  "helperIntro.improve": "Share usage stats and crash reports to help us fix problems. These never include your messages or files.",
   "onboarding.shell.noBots": "No bots yet",
   "onboarding.hint.approval": "Bots ask before doing anything important.",
   "onboarding.hint.connector": "Sign in once in your browser and every bot can use it.",

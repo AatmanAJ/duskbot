@@ -3404,7 +3404,7 @@
   "funnel.making.retry": "Reintentar",
   "funnel.making.here": "Usar este ordenador por ahora",
   "funnel.making.openFailed": "No se pudo abrir tu nube. Inténtalo de nuevo.",
-  "helperIntro.improve": "Comparte recuentos de uso e informes de fallos para ayudar a mejorar dusk bot. De vez en cuando, tu propia AI también lee algunos mensajes recientes donde se ejecutan tus bots y escribe una nota breve sobre cómo fue una sesión, usando un poco de tu plan de AI. Tus mensajes nunca se envían.",
+  "helperIntro.improve": "Comparte estadísticas de uso e informes de fallos para ayudarnos a resolver problemas. Nunca incluyen tus mensajes ni tus archivos.",
   "onboarding.shell.noBots": "Aún no hay bots",
   "onboarding.hint.approval": "Los bots preguntan antes de hacer algo importante.",
   "onboarding.hint.connector": "Inicia sesión una vez en tu navegador y todos los bots podrán usarlo.",

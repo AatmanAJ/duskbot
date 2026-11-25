@@ -3427,7 +3427,7 @@
   "funnel.making.retry": "Erneut versuchen",
   "funnel.making.here": "Vorerst diesen Computer verwenden",
   "funnel.making.openFailed": "Deine Cloud konnte nicht geöffnet werden. Versuch es erneut.",
-  "helperIntro.improve": "Teile Nutzungszahlen und Absturzberichte, um dusk bot zu verbessern. Ab und zu liest deine eigene AI außerdem ein paar aktuelle Nachrichten dort, wo deine Bots laufen, und schreibt eine kurze Notiz, wie eine Sitzung lief. Das verbraucht ein wenig von deinem AI-Plan. Deine Nachrichten werden nie gesendet.",
+  "helperIntro.improve": "Teile Nutzungsstatistiken und Absturzberichte, damit wir Probleme beheben können. Deine Nachrichten und Dateien sind nie enthalten.",
   "onboarding.shell.noBots": "Noch keine Bots",
   "onboarding.hint.approval": "Bots fragen nach, bevor sie etwas Wichtiges tun.",
   "onboarding.hint.connector": "Melde dich einmal in deinem Browser an, und jeder Bot kann es nutzen.",
