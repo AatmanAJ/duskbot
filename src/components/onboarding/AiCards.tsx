@@ -118,9 +118,13 @@ function useOpenedCard(panel: { current: HTMLElement | null }, opened: AiTileId 
   useEffect(() => {
     const element = panel.current;
     if (!opened || !element) return;
-    element.querySelector<HTMLElement>("input:not([type=hidden]), textarea, select")?.focus({ preventScroll: true });
-    const timer = setTimeout(() => revealIfCovered(element), CONNECT_LEAVE_MS);
-    return () => clearTimeout(timer);
+    const FIELD = "input:not([type=hidden]), textarea, select";
+    const focusField = () => { const field = element.querySelector<HTMLElement>(FIELD); field?.focus({ preventScroll: true }); return !!field; };
+    // a setup card still loading draws its field a little later
+    const watch = focusField() ? null : new MutationObserver(() => { if (focusField()) watch?.disconnect(); });
+    watch?.observe(element, { childList: true, subtree: true });
+    const timer = setTimeout(() => { watch?.disconnect(); revealIfCovered(element); }, CONNECT_LEAVE_MS);
+    return () => { clearTimeout(timer); watch?.disconnect(); };
   }, [opened]);
 }
 
@@ -149,6 +153,8 @@ export function AiCards({ onMore, className, onConnected, onManage, suggested = 
   const nextKey = [...next].sort().join(",");
   useEffect(() => { writeConnectedCache(new Set(nextKey ? nextKey.split(",") as AiTileId[] : [])); }, [nextKey]);
   useEffect(() => { void Promise.resolve(refreshInstances?.({ cached: true })).catch(() => {}); }, [refreshInstances]);
+  // the setup card is its own chunk: fetched with the grid, so an opened card can draw its field in the same frame
+  useEffect(() => { void EngineSetupCard.preload().catch(() => {}); }, []);
   // a card drawn connected in the first frame stays still; only one that connects while the grid is open fades in
   const [firstShown] = useState(() => new Set(shown));
   const pick = (tile: AiTile<InstanceInfo>) => {
