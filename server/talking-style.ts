@@ -14,7 +14,7 @@ function guide(style: TalkingStyle): string {
   const path = [join(here, "prompts", "talking-style", `${style}.md`), join(here, "..", "prompts", "talking-style", `${style}.md`)].find((file) => existsSync(file));
   // a build without the guides still talks, just without the style section
   if (!path) return "";
-  const text = readFileSync(path, "utf8").trim();
+  const text = readFileSync(path, "utf8").trim().replace(/^(#+) /gm, "#$1 ");
   guides.set(style, text);
   return text;
 }
@@ -24,5 +24,5 @@ function guide(style: TalkingStyle): string {
 export function talkingStylePrompt(style: TalkingStyle | undefined): string {
   const text = guide(talkingStyleOf(style));
   if (!text) return VOICE_RULES;
-  return `\n\nHow you talk (the person's choice for all their bots, in a 1:1 chat, a group, a routine or a hand-off alike; their standing instructions win where they differ):\n${text}\n${VOICE_RULES}`;
+  return `\n\nYour talking style (the person's choice for all their bots, everywhere you write; their standing instructions win where they differ):\n${text}\n${VOICE_RULES}`;
 }

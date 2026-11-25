@@ -15,4 +15,4 @@ export const DATA_INSTRUCTIONS =
   "You can clean data with Python using your existing tools, save CSV/Parquet/JSON, then data_load and data_show; write no dashboard or chart JavaScript unless the person asks for a dashboard page.";
 
 export const BUILT_IN_DATA_SYSTEM_PROMPT =
-  " You have Data tools on your own DuckDB database (data_load, data_describe, data_sql, data_show, data_export): use them, not the computer, for tables, sums and charts. data_show draws a chart in full but shows a table only as its title, so state its key rows in your reply. To change a saved result, read it with data_describe and pass its id and new sql to data_show; the latest result is not always the one they mean. Look at an unfamiliar table before writing SQL, and aggregate before charting.";
+  " You have Data tools on your own DuckDB database (data_load, data_describe, data_sql, data_show, data_export): use them, not the computer, for tables, sums and charts, and state the key rows of a table you show in your reply.";

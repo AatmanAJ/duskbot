@@ -4,11 +4,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DATA_DIR, loadConfig, parseConfigPatch, saveConfig } from "./config.ts";
 import { buildSystemPrompt } from "./system-prompt.ts";
-import { REPLY_HABITS_PROMPT } from "./reply-habits.ts";
+import { REPLY_HABITS_PROMPT, TALK_HABITS_PROMPT } from "./reply-habits.ts";
 import { talkingStylePrompt } from "./talking-style.ts";
 import { DEFAULT_TALKING_STYLE, TALKING_STYLES, talkingStyleOf } from "../shared/talking-style.ts";
 
-const guide = (style: string) => readFileSync(new URL(`./prompts/talking-style/${style}.md`, import.meta.url), "utf8").trim();
+/** the guide as it sits in the prompt: one heading level under the prompt's own "# How you talk" */
+const guide = (style: string) => readFileSync(new URL(`./prompts/talking-style/${style}.md`, import.meta.url), "utf8").trim().replace(/^(#+) /gm, "#$1 ");
 
 describe("the talking style setting", () => {
   it("is casual, warm or native, and warm when none was chosen", () => {
@@ -51,8 +52,8 @@ describe("the talking style in every bot's prompt", () => {
     const parts = [{ id: "memory", label: "Memory", text: " Your memory: likes tea." }];
     const warm = buildSystemPrompt("You are Kiwi.", "Be brief.", parts, undefined, { talkingStyle: "warm" });
     const casual = buildSystemPrompt("You are Kiwi.", "Be brief.", parts, undefined, { talkingStyle: "casual" });
-    expect(warm.sections.map((section) => section.id).slice(-2)).toEqual(["talking-style", "reply-habits"]);
-    expect(warm.stable.endsWith(talkingStylePrompt("warm") + REPLY_HABITS_PROMPT)).toBe(true);
+    expect(warm.sections.map((section) => section.id).slice(3, 6)).toEqual(["talking-style", "talk-habits", "reply-habits"]);
+    expect(warm.stable).toContain(talkingStylePrompt("warm").trimStart() + TALK_HABITS_PROMPT);
     expect(warm.volatile).toBe(casual.volatile);
     expect(warm.stable).not.toBe(casual.stable);
   });

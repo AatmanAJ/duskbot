@@ -8,7 +8,7 @@ import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk } from "../scripts/control-dusk.ts";
 
 const SNAPSHOT = join(import.meta.dirname, "prompt-surface", "personal-chat.txt");
-const BUDGET_CHARS = 36_000;
+const BUDGET_CHARS = 35_500;
 const RATCHET_SLACK = 1_500;
 
 function normalise(system: string, dataDir: string, scratch: string): string {
