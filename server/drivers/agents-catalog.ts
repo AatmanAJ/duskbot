@@ -27,6 +27,7 @@ import { STATUS_TOOL_DEFINITION } from "./agents-status-tool.ts";
 import { SEND_MESSAGE_TOOL_DEFINITION } from "./agents-send-message-tool.ts";
 import type { CatalogProfile } from "./agents-catalog-profile.ts";
 import { advertisedSchema } from "./agents-schema.ts";
+import { OTHER_CHATS, withoutOtherChats } from "./other-chats-catalog.ts";
 export { catalogProfileFromEnv, type CatalogProfile } from "./agents-catalog-profile.ts";
 
 export const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
@@ -205,9 +206,6 @@ const TRIGGER_FIELDS_SCHEMA = {
 const CHIEF_PROFILE_TARGET = " A Chief of Staff may pass for_bot_id (from list_bots) for a requested change to another bot.";
 const APPLIES_OUTCOME = " Read the result: it applies immediately at every access level, and the person sees it with an Undo where possible. If applied, continue the work without another confirmation. Only a pending result (a Cloud conversation its owner did not drive) means ending the turn to wait for the owner. Never claim success without an applied result; report failures honestly. This does not elevate another bot's execution permissions.";
 
-
-/** Only in the catalog of a bot whose person let it read other bots' chats; every other catalog leaves it and bot out. */
-const OTHER_CHATS = " The person also let you read other bots' chats, read-only: pass bot only when another bot's chat likely holds what this request needs (what the person told it, what it found), never by habit.";
 
 const TOOL_DEFINITIONS = [
   STATUS_TOOL_DEFINITION,
@@ -997,9 +995,4 @@ function catalogTools(profile: CatalogProfile) {
     });
   const READ_TOOLS = profile.readsOtherChats === true ? ROLE_TOOLS : ROLE_TOOLS.map((tool) => tool.name === "session_search" ? withoutOtherChats(tool) : tool);
   return [...READ_TOOLS, ...(profile.dusk === true ? DUSK_TOOL_DEFINITIONS : [])];
-}
-
-function withoutOtherChats<T extends { description: string; inputSchema: { properties: Record<string, unknown> } }>(tool: T): T {
-  const properties = Object.fromEntries(Object.entries(tool.inputSchema.properties).filter(([key]) => key !== "bot"));
-  return { ...tool, description: tool.description.replace(OTHER_CHATS, ""), inputSchema: { ...tool.inputSchema, properties } };
 }

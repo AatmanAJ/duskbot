@@ -1,3 +1,5 @@
+import { canReach, reachRefusal, resolveTeammate, type RosterMember } from "./peer-roster.ts";
+
 // Reading another bot's chats, read-only, for context: only a bot whose person turned "Can read other bots' chats" on,
 // only on the person's own message in their one-on-one chat with it, and never on a dusk cloud, where other people's
 // chats can share a bot. The reader never posts there: it gets the words, labelled as another bot's.
@@ -32,4 +34,20 @@ export function crossReadRefusal(input: { enabled: boolean; cloudHome: boolean; 
 /** The other bot's own one-on-one chats and threads: never a room, whose members and people the reader may not share. */
 export function crossReadThreads(ownThreads: readonly string[], roomThreads: ReadonlySet<string>): string[] {
   return ownThreads.filter((id) => !roomThreads.has(id));
+}
+
+/** The bot a session_search `bot` names, with the chats this turn may read of it; null when it names none. */
+export function crossReadTarget<T extends RosterMember & { readsOtherChats?: boolean }>(raw: string | null, from: T, deps: {
+  bots: readonly T[]; bot(id: string): T | undefined; cloudHome: boolean; turn: CrossReadTurn;
+  threads(bot: T): { ownThreads: string[]; roomByThread: ReadonlyMap<string, unknown> };
+}): { bot: T; threads: string[] } | { status: number; error: string } | null {
+  const wanted = raw?.trim();
+  if (!wanted) return null;
+  const found = resolveTeammate(deps.bots, from, wanted), target = "id" in found ? deps.bot(found.id) : undefined;
+  const refusal = crossReadRefusal({ enabled: from.readsOtherChats === true, cloudHome: deps.cloudHome, self: target?.id === from.id || wanted === from.id || wanted.replace(/^@/, "").toLowerCase() === from.name.toLowerCase(), turn: deps.turn });
+  if (refusal) return { status: 403, error: refusal };
+  if (!target) return { status: 404, error: "error" in found ? found.error : "no such bot" };
+  if (!canReach(from, target)) return { status: 403, error: reachRefusal(from, target) ?? "that bot cannot be reached" };
+  const recall = deps.threads(target);
+  return { bot: target, threads: crossReadThreads(recall.ownThreads, new Set(recall.roomByThread.keys())) };
 }

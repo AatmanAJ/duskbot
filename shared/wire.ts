@@ -394,15 +394,12 @@ export interface WireBot extends DefaultBotFields, BotAccessFields {
   limitMode?: LimitMode;
   /** Whether this bot gets the app's built-in browser. */
   browser?: boolean;
-  /** Record a screenshot and a short note of each browser action, kept with
-   * the conversation. Off unless true. */
+  /** Record a screenshot and a short note of each browser action, kept with the conversation. Off unless true. */
   recordBrowserSteps?: boolean;
-  /** session_search may read other bots' one-on-one chats, read-only, on the person's own message. Off unless true;
-   * never on dusk cloud. */
+  /** session_search may read other bots' one-on-one chats, read-only, on the person's own message. Off unless true. */
   readsOtherChats?: boolean;
-  /** Memory upkeep: the harness captures facts from finished chats into
-   * MEMORY.md and topic files, adds facts about the person to About me and
-   * tidies nightly. On unless explicitly false. */
+  /** Memory upkeep: the harness captures facts from finished chats into MEMORY.md and topic files, adds facts about
+   * the person to About me and tidies nightly. On unless explicitly false. */
   memoryUpkeep?: boolean;
   /** Prompt-cache keep-warm for this bot's Claude threads: true or false
    * overrides the workspace setting; absent follows it. */

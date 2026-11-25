@@ -84,8 +84,7 @@ import { RoomTurnDeadline, RoomTurnStallRegistry, effectiveRoomTurnTimeoutMinute
 import { roomTurnEnd, type RoomClaimEnd } from "./room-turn-end.ts";
 import { applyHoldDirective, classifyHoldDirective, heldMemberLine, rememberHeldMessage, stopWordPlacement } from "./room-holds.ts";
 import { createPersonStop } from "./host/person-stop.ts"; import { createTurnOrder } from "./host/turn-order.ts"; import { createQueuedNotes, createWaitWords } from "./host/wait-words.ts"; import { settleParkedFiles, type ParkedTurnAttachment } from "./host/turn-attachments.ts"; import type { DirectSendInput, DirectSendReceipt } from "./direct-send.ts";
-import { AWAITED_SENT_NOTE } from "./peer-brief.ts";
-import { crossReadRefusal, crossReadThreads } from "./cross-bot-read.ts";
+import { AWAITED_SENT_NOTE } from "./peer-brief.ts"; import { crossReadTarget } from "./cross-bot-read.ts";
 import { finishedWithoutSummaryLine, isPassText, ROOM_SUMMARY_REASK, roomTurnNarrationIds, roomTurnReply } from "./room-reply.ts"; import { createStreamedReply, runsNotice } from "./host/streamed-reply.ts"; import { answeredAboveNote, cleanBotVoice, mentionCueNote, roomTalkRules, roomTurnVoiceNote } from "./group-voice.ts"; import { asksFor, MentionChain } from "./room-mention-chain.ts"; import { teammatesNote, workInProgressNote, type InHand } from "./room-team-context.ts"; import { createRoomEarlier, ROOM_EARLIER_LABEL } from "./host/room-earlier.ts"; import { replyBubbles } from "./reply-bubbles.ts";
 import { pickComputer } from "./computer-selection.ts";
 import { keyHint, keyStatus, nestedKeyStatus, withoutKeyHints } from "./key-hint.ts";
@@ -142,7 +141,7 @@ import { createSideJobs, helperSelection } from "./side-jobs.ts";
 import type { CaptureTurn, RoomLine } from "./memory-capture.ts";
 import { createAboutMe } from "./about-me.ts"; import { createPersonPreference } from "./host/person-preference.ts";
 import { botMemoryUpdate, ownersOwnAsk, type WriteTrust } from "./memory-forget.ts";
-import { canManage, canReach, hasTeamAuthority, reachRefusal, livePeerRoster, livePeerRosterBlock, peerName, peerRosterSystemPrompt, peerStatus, peerStatusWords, reachablePeers, resolveTeammate, roomPeerRosterSystemPrompt, roomRosterLine } from "./peer-roster.ts"; import { roomPostRefusal, sharedNamesNote, unreachedMentionLines } from "./same-name-mentions.ts";
+import { canManage, canReach, hasTeamAuthority, livePeerRoster, livePeerRosterBlock, peerName, peerRosterSystemPrompt, peerStatus, peerStatusWords, reachablePeers, resolveTeammate, roomPeerRosterSystemPrompt, roomRosterLine } from "./peer-roster.ts"; import { roomPostRefusal, sharedNamesNote, unreachedMentionLines } from "./same-name-mentions.ts";
 import {
   containerComputerAction,
   containerComputerFrame,
@@ -14791,17 +14790,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
           tool: { name: recallCrossingLabel(bot.name, crossing.count, threadLanguage(roomThreadId)), ok: true },
         });
       };
-      const otherChats = (from: BotRecord): { bot: BotRecord; threads: string[] } | { status: number; error: string } | null => {
-        const raw = url.searchParams.get("bot")?.trim();
-        if (!raw) return null;
-        const found = resolveTeammate(store.bots, from, raw), target = "id" in found ? store.bot(found.id) : undefined;
-        const refusal = crossReadRefusal({ enabled: from.readsOtherChats === true, cloudHome: Boolean(CLOUD_HOME), self: target?.id === from.id, turn: jobTurn(internalCapability, from) });
-        if (refusal) return { status: 403, error: refusal };
-        if (!target) return { status: 404, error: "error" in found ? found.error : "no such bot" };
-        if (!canReach(from, target)) return { status: 403, error: reachRefusal(from, target) ?? "that bot cannot be reached" };
-        const recall = recallThreads(target, internalCapability);
-        return { bot: target, threads: crossReadThreads(recall.ownThreads, new Set(recall.roomByThread.keys())) };
-      };
+      const otherChats = (from: BotRecord) => crossReadTarget(url.searchParams.get("bot"), from, { bots: store.bots, bot: (id) => store.bot(id) ?? undefined, cloudHome: Boolean(CLOUD_HOME), turn: jobTurn(internalCapability, from), threads: (bot) => recallThreads(bot, internalCapability) });
       if (method === "GET" && path === "/api/internal/session-search") {
         const fromBotId = String(url.searchParams.get("fromBotId") ?? "");
         const from = store.bot(fromBotId);
@@ -14832,10 +14821,8 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         }
         const memoryHits = other || scope === "conversations" || !q || from.memoryEnabled === false ? [] : teamHost.memoryIds(from.id, fromThreadId).flatMap((id) => searchMemoryFiles(id, q, limit)).slice(0, limit);
         if (scope === "memory") return json(res, 200, { hits: [], memoryHits });
-        if (other) {
-          const found = q ? recallMessages(q, other.threads, limit, range) : recentMessages(other.threads, range ?? {}, limit);
-          return json(res, 200, { otherBot: other.bot.name, memoryHits: [], hits: found.map((hit) => ({ ...hit, task: store.taskByThread(other.bot.id, hit.threadId)?.title, current: false, crossed: false })) });
-        }
+        if (other) return json(res, 200, { otherBot: other.bot.name, memoryHits: [], hits: (q ? recallMessages(q, other.threads, limit, range) : recentMessages(other.threads, range ?? {}, limit))
+          .map((hit) => ({ ...hit, task: store.taskByThread(other.bot.id, hit.threadId)?.title, current: false, crossed: false })) });
         const { roomByThread, ownThreads } = recallThreads(from, internalCapability);
         const inRoom = Boolean(store.groupByThread(fromThreadId));
         const found = q ? recallMessages(q, ownThreads, limit, range) : recentMessages(ownThreads, range ?? {}, limit);
@@ -14870,12 +14857,9 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         if (!threadId || !messageId) return json(res, 400, { error: "threadId and messageId are required" });
         const other = otherChats(from);
         if (other && "error" in other) return json(res, other.status, { error: other.error });
-        if (other) {
-          const read = other.threads.includes(threadId) ? readMessageText(threadId, messageId) : null;
-          if (!read) return json(res, 404, { error: `no such message in ${other.bot.name}'s chats` });
-          return json(res, 200, { ...read, otherBot: other.bot.name, crossed: false, text: read.text.length > SESSION_READ_MAX_CHARS ? `${read.text.slice(0, SESSION_READ_MAX_CHARS)}…` : read.text,
-            task: store.taskByThread(other.bot.id, threadId)?.title });
-        }
+        const read = other && other.threads.includes(threadId) ? readMessageText(threadId, messageId) : null;
+        if (other) return read ? json(res, 200, { ...read, otherBot: other.bot.name, crossed: false, text: read.text.length > SESSION_READ_MAX_CHARS ? `${read.text.slice(0, SESSION_READ_MAX_CHARS)}…` : read.text,
+          task: store.taskByThread(other.bot.id, threadId)?.title }) : json(res, 404, { error: `no such message in ${other.bot.name}'s chats` });
         const recall = recallThreads(from, internalCapability);
         const own = recall.ownThreads.includes(threadId);
         const message = own ? readMessageText(threadId, messageId) : null;
