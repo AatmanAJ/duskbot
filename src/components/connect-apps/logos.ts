@@ -1,4 +1,4 @@
-const FILES = import.meta.glob<string>("../../assets/app-logos/*.svg", { eager: true, import: "default" });
+const FILES = import.meta.glob<string>("../../assets/app-logos/*.svg", { eager: true, import: "default", query: "?no-inline" });
 
 export interface AppLogo {
   src: string;
