@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { modelPlace } from "./agents-bridge-switch.ts";
+import { planBox, visibleInBox } from "./bot-box/plan.ts";
 import { commandEnvironment, findFiles, hostShellLaunch, findInvocations, handleHostShellRpc, mountsHostShell, runCommand, type Runner } from "./host-shell-mcp.ts";
 
 const desktopTurn = { engineHasShell: false, desktopApp: true, cloudHome: false, worksOn: undefined, remoteComputer: false, thisComputerRefused: false, guest: false, testRun: false,
@@ -64,6 +65,15 @@ describe("hostShellLaunch", () => {
     expect(launch!.args.join(" ")).not.toContain(folder);
     expect(launch!.env).toMatchObject({ DUSK_SHELL_CWD: folder, DUSK_SHELL_HIDDEN: "[\"/data\"]" });
     expect(hostShellLaunch(undefined, [])).toBeNull();
+  });
+
+  it.skipIf(process.platform === "win32")("asks the bot box to keep its working folder and the bot's own folder writable, so a boxed cloud shell can run there", () => {
+    const dataDir = "/data/.duskbot", folder = join(dataDir, "workspaces", "bot-a");
+    const launch = { command: "/usr/bin/node", args: [], env: {}, box: { rw: [folder], botId: "bot-a" } };
+    expect(hostShellLaunch(join(mkdtempSync(join(tmpdir(), "host-shell-")), "chat"), [], "bot-a")!.box).toMatchObject({ botId: "bot-a" });
+    const plan = planBox({ dataDir, home: "/data", codeRoots: ["/app"], engineRoots: [], seccompFd: 3, bridges: [] }, { ...launch, ...launch.box });
+    expect(visibleInBox(plan, join(folder, "notes.txt"))).toBe("rw");
+    expect(visibleInBox(plan, join(dataDir, "workspaces", "bot-b", "MEMORY.md"))).not.toBe("rw");
   });
 });
 

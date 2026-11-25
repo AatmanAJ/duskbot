@@ -219,11 +219,13 @@ export function mountsHostShell(input: {
   return lent && input.model === "loopback" && input.platform !== "win32" && input.watched;
 }
 
-/** The server's launch line, working in `folder`, its search never listing what lies under `hidden`. */
-export function hostShellLaunch(folder: string | undefined, hidden: readonly string[]): { command: string; args: string[]; env: Record<string, string> } | null {
+/** The server's launch line, working in `folder`, its search never listing what lies under `hidden`; where the bot box
+ * is on (a dusk cloud home) it runs boxed with `folder` and the bot's own folder writable, as the bot's engine would. */
+export function hostShellLaunch(folder: string | undefined, hidden: readonly string[], botId?: string): { command: string; args: string[]; env: Record<string, string>; box: { rw: string[]; botId?: string } } | null {
   if (!folder || !isAbsolute(folder)) return null;
   mkdirSync(folder, { recursive: true, mode: 0o700 });
-  return { command: process.execPath, args: [SPAWNED_PROXIES.hostShell], env: { ...AGENTS_NODE_FLAG, [HOST_SHELL_CWD_ENV]: folder, [HOST_SHELL_HIDDEN_ENV]: JSON.stringify(hidden) } };
+  return { command: process.execPath, args: [SPAWNED_PROXIES.hostShell], env: { ...AGENTS_NODE_FLAG, [HOST_SHELL_CWD_ENV]: folder, [HOST_SHELL_HIDDEN_ENV]: JSON.stringify(hidden) },
+    box: { rw: [folder], ...(botId ? { botId } : {}) } };
 }
 
 export interface HostShellOptions { cwd: string; hidden: readonly string[] }

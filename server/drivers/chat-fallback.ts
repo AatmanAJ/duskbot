@@ -41,12 +41,14 @@ export const backupNotice = (from: string, to: string): string => `${from} didn'
 /** The backups still untried for this turn, read once, on the first failure that needs one. */
 export class TurnBackups {
   private left: ChatBackup[] | undefined;
-  private readonly read: (() => readonly ChatBackup[]) | undefined;
-  constructor(read: (() => readonly ChatBackup[]) | undefined) { this.read = read; }
+  private readonly read: ((why: "limit" | "outage") => readonly ChatBackup[]) | undefined;
+  constructor(read: ((why: "limit" | "outage") => readonly ChatBackup[]) | undefined) { this.read = read; }
 
-  next(): ChatBackup | undefined {
+  /** `error`: the failure that needs a backup; the first one decides which list is read. */
+  next(error: Error): ChatBackup | undefined {
     if (!this.left) {
-      try { this.left = [...(this.read?.() ?? [])]; } catch { this.left = []; }
+      const reason = classifyError(error).reason;
+      try { this.left = [...(this.read?.(reason === "quota" || reason === "rate_limited" ? "limit" : "outage") ?? [])]; } catch { this.left = []; }
     }
     return this.left.shift();
   }

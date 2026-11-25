@@ -60,7 +60,8 @@ export interface ChatToolSession {
   close(): Promise<void>;
 }
 
-type Server = { command: string; args: string[]; env: Record<string, string> };
+/** `box`: the paths it writes (and the bot whose folder it may use) where the bot box is on. */
+type Server = { command: string; args: string[]; env: Record<string, string>; box?: { rw: string[]; botId?: string } };
 type RegisteredTool = { client: McpPeer; server: string; launch: string; builtInBrowser: boolean; agents: boolean; computer: boolean; hostComputer: boolean; name: string; schema: ValidateFunction; searched: boolean; parallel: boolean };
 function chatToolName(server: string, tool: string): string {
   return `${server}_${tool}`.toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 64) || "mcp_tool";
@@ -165,7 +166,7 @@ export class ChatMcpClient extends McpPeer {
       // The desktop shell inherits Finder's bare PATH, where `npx`-style servers cannot find `node`.
       this.child = spawnCli(server.command, server.args, {
         stdio: ["pipe", "pipe", "pipe"], env: chatMcpEnvironment(server.env),
-        ...(configured ? { box: { allowEnv: Object.keys(server.env) } } : {}),
+        ...(configured || server.box ? { box: { ...(configured ? { allowEnv: Object.keys(server.env) } : {}), ...server.box } } : {}),
       }, "bot");
     } catch { throw new Error("MCP server could not start; check its command and installation"); }
     this.child.stdout.setEncoding("utf8");

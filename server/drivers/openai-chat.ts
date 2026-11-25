@@ -685,7 +685,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
                 serverModels = found?.listed.includes(model) ? undefined : found?.listed;
               }
               const delayMs = abort.signal.aborted || streamed || error instanceof ChatProtocolError ? null : retryDelay(error, verdict, attempt);
-              const backup = delayMs === null && !answerStreamed && !abort.signal.aborted && movesToBackup(error) ? backups.next() : undefined;
+              const backup = delayMs === null && !answerStreamed && !abort.signal.aborted && movesToBackup(error) ? backups.next(error) : undefined;
               if (backup) {
                 console.warn(`${options.driverKind}: ${carrier?.model ?? model} failed (${verdict.reason}); falling back to ${backup.name} ${backup.model}`);
                 emit({ ...base(turn.threadId, turnId), type: "runtime.notice", message: backupNotice(carrier?.name ?? input.displayName ?? options.driverKind, backup.name) });
@@ -717,7 +717,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           abort.signal.throwIfAborted();
           if (unreadable) {
             askedAgain = true;
-            messages.push(assistantReply(model, completion, completion.text), { role: "user", content: unreadable === "reasoning" ? REASONING_AGAIN : UNREADABLE_CALL });
+            messages.push(assistantReply(carrier?.model ?? model, completion, completion.text), { role: "user", content: unreadable === "reasoning" ? REASONING_AGAIN : UNREADABLE_CALL });
             continue;
           }
           if (!completion.toolCalls.length) {
@@ -727,7 +727,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
               // A person's "no" is never answered with another attempt; a failure may first get the configured corrective rounds.
               if (correcting(completion)) {
                 correctiveRounds += 1;
-                messages.push(assistantReply(model, completion, reply), { role: "user", content: CORRECTIVE_ROUND });
+                messages.push(assistantReply(carrier?.model ?? model, completion, reply), { role: "user", content: CORRECTIVE_ROUND });
                 continue;
               }
               if (denials.length || !ownsFailure(reply)) {
@@ -747,15 +747,15 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
               nudges += 1;
               callsAtNudge = seenCalls.size;
               forceTool = true;
-              messages.push(assistantReply(model, completion, completion.text), { role: "user", content: NUDGE_ANNOUNCED_ACTION });
+              messages.push(assistantReply(carrier?.model ?? model, completion, completion.text), { role: "user", content: NUDGE_ANNOUNCED_ACTION });
               continue;
             }
             if (turnEntry.asides.length || (!claimNudged && tools.definitions.some((tool) => tool.function.name !== ASK_USER_TOOL) && options.nudgeAnnouncedAction !== false && claimsUnmadeChange(completion.text, effectful))) {
-              messages.push(assistantReply(model, completion, reply), ...(turnEntry.asides.length ? [] : [{ role: "user" as const, content: NUDGE_CLAIMED_CHANGE }]));
+              messages.push(assistantReply(carrier?.model ?? model, completion, reply), ...(turnEntry.asides.length ? [] : [{ role: "user" as const, content: NUDGE_CLAIMED_CHANGE }]));
               claimNudged ||= !turnEntry.asides.length;
               continue;
             }
-            const gateNote = options.nudgeAnnouncedAction === false || turnEntry.ending ? null : gates.gate(reply); if (gateNote) { messages.push(assistantReply(model, completion, reply), { role: "user", content: gateNote }); continue; }
+            const gateNote = options.nudgeAnnouncedAction === false || turnEntry.ending ? null : gates.gate(reply); if (gateNote) { messages.push(assistantReply(carrier?.model ?? model, completion, reply), { role: "user", content: gateNote }); continue; }
             ok = true;
             break;
           }
@@ -765,7 +765,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
             seenCalls.add(call.id);
           }
           if (seenCalls.size > MAX_TURN_TOOL_CALLS) throw stoppedAfter(`${MAX_TURN_TOOL_CALLS} tool calls`);
-          messages.push(assistantReply(model, completion, completion.text || null, completion.toolCalls));
+          messages.push(assistantReply(carrier?.model ?? model, completion, completion.text || null, completion.toolCalls));
           if (!denials.length) { toolFailed = false; failedCalls.length = 0; }
           const screenshotParts: ChatContentPart[] = [];
           const session = tools;

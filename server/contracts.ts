@@ -181,7 +181,7 @@ export interface SendTurnInput {
     /** The built-in browser's MCP proxy: one tab per bot, in its own persistent partition. */
     browser?: { command: string; args: string[]; env: Record<string, string> };
     /** This computer's shell (run_command, find_files) for an engine with none of its own, on the desktop app's own server. */
-    shell?: { command: string; args: string[]; env: Record<string, string> };
+    shell?: { command: string; args: string[]; env: Record<string, string>; box?: { rw: string[]; botId?: string } };
     /** The Data tools' MCP proxy: DuckDB on this bot's own database. */
     data?: { command: string; args: string[]; env: Record<string, string> };
     /** The Email tools' MCP proxy: the harness holds the passwords and the per-bot verdict. */
@@ -214,8 +214,8 @@ export interface SendTurnInput {
    * (`loopGuard.correctiveRounds`); absent is the driver's default (2); never after a denial. */
   toolErrorCorrectiveRounds?: number;
   /** The chat-completions AIs a chat-engine turn falls back to, best first, when its own AI's provider refuses or drops a
-   * request after its retries; read only on such a failure. */
-  chatBackups?: () => readonly ChatBackup[];
+   * request after its retries; read only on such a failure: `limit` for a usage or rate limit, `outage` for anything else. */
+  chatBackups?: (why: "limit" | "outage") => readonly ChatBackup[];
 }
 
 /** An MCP server this machine starts and talks to over stdio. */
