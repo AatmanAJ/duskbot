@@ -632,17 +632,14 @@ describe("the Bot settings page", () => {
     expect(find(settingsPage(makeBot({ soul: "" })), "data-panel-page", "instructions").props.value).toBe("None");
   });
 
-  it("shows a backup saved as Automatic, Off or a list on Backup AIs and the Details tab's Backup model", () => {
+  it("shows a backup saved as Automatic, Off or a list on Backup AIs, and no backup row on the Details tab", () => {
     const backups = (fallback?: Array<{ instanceId: string; model: string }>) => find(settingsPage(makeBot(fallback ? { fallback } : {})), "data-panel-page", "backups").props.value;
-    const pill = (fallback?: Array<{ instanceId: string; model: string }>) => {
-      const html = botTab(makeBot(fallback ? { fallback } : {})).html;
-      return html.slice(html.indexOf('data-panel-row="backup-model"'));
-    };
     expect(backups()).toBe("None");
     expect(backups([])).toBe("None");
     expect(backups([{ instanceId: "codex", model: "gpt-6" }])).toBe("1 set up");
-    expect(pill()).toContain(">Automatic<");
-    expect(pill([])).toContain(">No backup<");
+    for (const fallback of [undefined, [], [{ instanceId: "codex", model: "gpt-6" }]]) {
+      expect(botTab(makeBot(fallback ? { fallback } : {})).html).not.toContain('data-panel-row="backup-model"');
+    }
   });
 
   it("has no rows for apps, signed-in sites, the API, conversations, Work until done, Hide, Call mode or the label", () => {
