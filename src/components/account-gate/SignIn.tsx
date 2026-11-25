@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { MausAvatar } from "@/components/Avatar";
+import { SignInLegal } from "@/components/SignInLegal";
 import { CodeBoxes, codeDigits } from "@/components/cloud-buy/CodeBoxes";
 import { problemLine } from "@/components/cloud-buy/SignInScreen";
 import type { CloudSignInProblem } from "@/lib/cloud-plan";
@@ -110,5 +111,6 @@ export function SignIn({ emailStart, emailVerify, browser, cancelEmail, onSigned
       {note && !sent && !recover && <p className="text-center text-[13px] leading-5 text-ink-tertiary">{note}</p>}
       {!sent && !recover && children}
     </div>
+    {!mobile && !recover && <SignInLegal className="mt-6 w-full max-w-[360px]" />}
   </main>;
 }

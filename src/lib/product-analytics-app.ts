@@ -9,16 +9,7 @@ export function startDesktopAnalytics(): void {
   if (platform !== "darwin" && platform !== "win32" && platform !== "linux") return;
   const relay = bridge.productEvents;
   if (bridge.desktopAnalytics) { setTimeout(() => void syncHelpImprove(), 15_000); setInterval(() => void syncHelpImprove(), 10 * 60_000); }
-  if (relay) {
-    configure({ origin: null, token: null, relay, platform, version: bridge.app?.version || __APP_VERSION__, kind: "desktop" });
-    return;
-  }
-  const apply = (staging = false) => configure({
-    origin: import.meta.env.VITE_DUSK_ACCOUNT_ORIGIN || (staging ? "https://preview.dusk.bot" : "https://dusk.bot"),
-    token: null, platform, version: bridge.app?.version || __APP_VERSION__, kind: "desktop",
-  });
-  if (bridge.cloudAccount) void bridge.cloudAccount.state().then(state => apply(state.staging === true), () => apply());
-  else apply();
+  configure({ origin: null, token: null, ...(relay ? { relay } : {}), platform, version: bridge.app?.version || __APP_VERSION__, kind: "desktop" });
 }
 
 export function useProductScreen(path: string, chatId?: string | null): void {

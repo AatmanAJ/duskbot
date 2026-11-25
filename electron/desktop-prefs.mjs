@@ -55,6 +55,7 @@ function parse(raw) {
     ? Object.fromEntries(Object.entries(record.quickAsks).flatMap(([server, chat]) => { const parsed = parseChat(chat); return parsed ? [[server, parsed]] : []; }))
     : {};
   return { seen, ...(typeof record.analytics === "boolean" ? { analytics: record.analytics } : {}),
+    ...(Number.isSafeInteger(record.signedInAt) && record.signedInAt > 0 ? { signedInAt: record.signedInAt } : {}),
     ...(isLanguage(record.language) ? { language: record.language } : {}),
     ...(typeof record.talkShortcut === "boolean" ? { talkShortcut: record.talkShortcut } : {}),
     ...(isTalkKey(record.talkKey) ? { talkKey: record.talkKey } : {}),
@@ -89,9 +90,13 @@ export function createDesktopPrefs({ read, write, frameByDefault = true }) {
       if (current().language !== language) save({ ...current(), language });
       return true;
     },
+    /** When this app first signed in to a dusk bot account, agreeing to the terms and privacy policy; null until then.
+     * Usage events, notes and crash reports are sent only after it. */
+    signedInAt: () => current().signedInAt ?? null,
+    markSignedIn(at = Date.now()) { if (current().signedInAt === undefined) save({ ...current(), signedInAt: at }); },
     /** crash and error reports, only ever sent by a build that names where to (electron/error-report.mjs); they follow
-     * the one "help improve dusk bot" switch, unset counting as on */
-    errorReports: () => current().analytics !== false,
+     * the one "help improve dusk bot" switch, unset counting as on, and only once this app has signed in */
+    errorReports: () => current().analytics !== false && current().signedInAt !== undefined,
     talkShortcut: () => current().talkShortcut ?? false,
     setTalkShortcut(enabled) { save({ ...current(), talkShortcut: enabled === true }); },
     talkKey: () => current().talkKey ?? DEFAULT_TALK_KEY,

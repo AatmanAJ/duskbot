@@ -62,8 +62,9 @@ export function analyticsAllowed({ packaged, env = process.env, custom = false }
 
 /** Posts the desktop renderer's usage events to the account service from main, with this computer's account token when
  * it is signed in and the renderer's install id either way; batches, retries with backoff and keeps at most MAX_QUEUE
- * events while offline. */
-export function createProductEvents({ origin, token = () => null, platform, version, fetch: fetcher = globalThis.fetch, now = Date.now,
+ * events while offline. `signedInSince()` is when this app first signed in (agreeing to the terms and privacy policy),
+ * or null: before then nothing is kept or sent, and an event from before that moment is dropped, never sent later. */
+export function createProductEvents({ origin, token = () => null, signedInSince = () => null, platform, version, fetch: fetcher = globalThis.fetch, now = Date.now,
   setTimer = setTimeout, clearTimer = clearTimeout, random = Math.random, enabled = true }) {
   const endpoint = `${new URL(origin).origin}/v1/app/events`;
   const app = { platform: String(platform), version: VERSION.test(String(version)) ? String(version) : "0.0.0" };
@@ -101,6 +102,7 @@ export function createProductEvents({ origin, token = () => null, platform, vers
     return batch;
   }
   const retryable = status => status === 408 || status === 429 || status >= 500;
+  const agreed = event => { const since = signedInSince(); return Number.isFinite(since) && event.at >= since; };
 
   async function flush() {
     stop();
@@ -130,13 +132,14 @@ export function createProductEvents({ origin, token = () => null, platform, vers
     /** One renderer batch: `{ install, session?, events }`; anything malformed is dropped, never sent. */
     send(input) {
       if (closed || !input || typeof input !== "object" || !ID.test(input.install) || !Array.isArray(input.events)) return false;
+      if (!Number.isFinite(signedInSince())) { waiting = []; return false; }
       const session = typeof input.session === "string" && ID.test(input.session) ? input.session : null;
       const at = now();
       rider = { install: input.install, session };
       for (const event of waiting.splice(0)) queue.push({ ...rider, event });
       for (const raw of input.events.slice(0, MAX_QUEUE)) {
         const event = cleanAppEvent(raw, at);
-        if (event) queue.push({ install: input.install, session, event });
+        if (event && agreed(event)) queue.push({ install: input.install, session, event });
       }
       if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE);
       enqueue();
@@ -147,7 +150,7 @@ export function createProductEvents({ origin, token = () => null, platform, vers
     action(name, props = {}, at = now()) {
       if (closed) return false;
       const event = cleanAppEvent({ name: "app_action", at, props: { ...props, name } }, now());
-      if (!event) return false;
+      if (!event || !agreed(event)) return false;
       if (!rider) { waiting.push(event); if (waiting.length > BATCH) waiting.splice(0, waiting.length - BATCH); return true; }
       queue.push({ ...rider, event });
       if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE);
@@ -162,7 +165,7 @@ export function createProductEvents({ origin, token = () => null, platform, vers
       queue = []; waiting = []; rider = null; stop(); failures = 0;
       if (closed || !input || typeof input !== "object" || !ID.test(input.install) || !Array.isArray(input.events)) return false;
       const session = typeof input.session === "string" && ID.test(input.session) ? input.session : null;
-      const events = input.events.slice(0, BATCH).map(raw => cleanAppEvent(raw, now())).filter(Boolean);
+      const events = input.events.slice(0, BATCH).map(raw => cleanAppEvent(raw, now())).filter(event => event && agreed(event));
       if (!events.length) return false;
       if (sending) await sending.catch(() => {});
       try { return (await post(events.map(event => ({ install: input.install, session, event })))) < 300; } catch { return false; }

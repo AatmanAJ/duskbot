@@ -9898,7 +9898,12 @@
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
       "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
       "settings.dataSharing.improveNote": "ba07fea090372578bae2547da816cb9afbd8fce2827f8f4874349e78d6d718bf",
-      "settings.dataSharing.whatsShared": "8ff4d52e95859d28b284cb9063cf5b640fec13ada3e3d3a0e817be314d205775"
+      "settings.dataSharing.whatsShared": "8ff4d52e95859d28b284cb9063cf5b640fec13ada3e3d3a0e817be314d205775",
+      "signIn.legal.before": "9fc6d3635a76f1c44419bebc8362abaeeb4115bd59ea782f559bbfcb3e4987a8",
+      "signIn.legal.terms": "ede5489964834a514b61c7a4a8370be2452dd4a7d807180f14991ccc11ad2430",
+      "signIn.legal.and": "6201111b83a0cb5b0922cb37cc442b9a40e24e3b1ce100a4bb204f4c63fd2ac0",
+      "signIn.legal.privacy": "ba445cff3898a3f24f415f90fbef1c8169ea21949a40680c5e1c5975843d1b5e",
+      "signIn.legal.after": "cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8"
     },
     "es": {
       "updates.updated": "da0fcccdc519425a9c333fda0838bbdd50d67fb0266194753bd1044abd0ecbb4",
@@ -19776,7 +19781,12 @@
       "botPanel.backupModel.automaticHint": "ee96c57278a21c25efd33cce44c9a20f227c589ab6fe8a72fbcb8f5e17e042ef",
       "botPanel.backupModel.none": "9cb4bac0d495d846359f5d5575e7b7e361b86570903c36a3ffa240e5c4d7f346",
       "settings.dataSharing.improveNote": "ba07fea090372578bae2547da816cb9afbd8fce2827f8f4874349e78d6d718bf",
-      "settings.dataSharing.whatsShared": "8ff4d52e95859d28b284cb9063cf5b640fec13ada3e3d3a0e817be314d205775"
+      "settings.dataSharing.whatsShared": "8ff4d52e95859d28b284cb9063cf5b640fec13ada3e3d3a0e817be314d205775",
+      "signIn.legal.before": "9fc6d3635a76f1c44419bebc8362abaeeb4115bd59ea782f559bbfcb3e4987a8",
+      "signIn.legal.terms": "ede5489964834a514b61c7a4a8370be2452dd4a7d807180f14991ccc11ad2430",
+      "signIn.legal.and": "6201111b83a0cb5b0922cb37cc442b9a40e24e3b1ce100a4bb204f4c63fd2ac0",
+      "signIn.legal.privacy": "ba445cff3898a3f24f415f90fbef1c8169ea21949a40680c5e1c5975843d1b5e",
+      "signIn.legal.after": "cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8"
     },
     "fr": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",

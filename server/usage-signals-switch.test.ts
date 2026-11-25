@@ -53,4 +53,17 @@ describe("help improve dusk bot switch, one setting with the account's", () => {
     expect(sw.fromAccount(false)).toBeNull();
     expect(sw.pending()).toBe(true); expect(sw.enabled()).toBe(false);
   });
+  it("records and sends nothing until the workspace belongs to an account, while the switch still reads on", () => {
+    const { dir, open } = make(), sw = open();
+    expect(sw.choice()).toEqual({ enabled: true });
+    expect(sw.enabled()).toBe(false);
+    expect(open().enabled()).toBe(false);
+    sw.fromAccount(false);
+    expect(sw.enabled()).toBe(true);
+    expect(open().enabled()).toBe(true);
+    const file = join(dir, "usage-signals.json"), legacy = JSON.parse(readFileSync(file, "utf8"));
+    delete legacy.account;
+    writeFileSync(file, JSON.stringify(legacy));
+    expect(open().enabled()).toBe(true);
+  });
 });

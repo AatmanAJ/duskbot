@@ -5,6 +5,7 @@ import { phoneAppEnabled } from "@/lib/feature-flags";
 import { Check, LoaderCircle } from "../../icons";
 import { CodeBoxes, codeDigits } from "@/components/cloud-buy/CodeBoxes";
 import { problemLine } from "@/components/cloud-buy/SignInScreen";
+import { SignInLegal } from "@/components/SignInLegal";
 import type { CloudSignInProblem } from "@/lib/cloud-plan";
 import { cn } from "@/lib/cn";
 import { useDesktopCapabilities } from "@/components/DesktopCapabilities";
@@ -227,7 +228,7 @@ export function AccountStep({ account, known, onDone, onSkip }: {
         </button>
       )}
       <StepFrame art={<StepArt art="key" />} title={t("funnel.account.title")} sub={t(sent ? "funnel.account.codeSub" : phoneAppEnabled() ? "funnel.account.sub" : "funnel.account.subNoPhone", { email: sent?.email ?? "" })}
->
+        footer={<SignInLegal />}>
         <div className="flex w-full max-w-[320px] flex-col gap-3">
           {!sent && providers.length > 0 && (
             <>

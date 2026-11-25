@@ -6979,6 +6979,8 @@ const usageOutbox = createUsageOutbox({ enabled: usageSignals.enabled, file: joi
   return { bots: store.bots.length, rooms: store.groups.length, routines: routines?.listRoutines().length ?? 0, webhooks: webhooks.list().length, appEvents: appTriggers.manager?.list().length ?? 0,
     skills: Object.keys(readSkillLibraryIndex()).length, chats: tasks.filter((task) => !task.archivedAt).length, archived: tasks.filter((task) => task.archivedAt).length, memory: usageMemoryBucket(), botEngines };
 } });
+// notes kept from before this workspace signed in are dropped, never sent once it does
+if (!usageSignals.enabled()) usageOutbox.take();
 /** a workspace signal through the shared catalogue; anything it does not allow is dropped */
 const usageSignal = (name: string, props: Record<string, unknown> = {}) => { try { usageOutbox.signal(name, props, (n, p) => cleanSignal(n, p, "workspace")); } catch {} };
 const experienceOutbox = createExperienceOutbox({ enabled: usageSignals.enabled });

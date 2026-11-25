@@ -61,7 +61,7 @@ export function usageAnalyticsEnabled(): boolean {
     // no storage: the choice made in this session stands; the phone app stays off
     if (options?.kind !== "desktop") optedOut = true;
   }
-  const enabled = !optedOut && (import.meta.env?.MODE !== "test" || forced);
+  const enabled = !optedOut && (!options || sendable()) && (import.meta.env?.MODE !== "test" || forced);
   if (!enabled) clear();
   return enabled;
 }
@@ -70,6 +70,12 @@ export function setUsageAnalytics(enabled: boolean): void {
   optedOut = !enabled;
   try { localStorage.setItem("dusk-usage-analytics", enabled ? "on" : "off"); } catch {}
   if (!enabled) { clear(); options?.relay?.clear().catch(() => {}); }
+}
+
+/** whether this page can send: through the desktop's main process (which sends only once the app has signed in), or
+ * straight to the account service with a signed-in account's token. Before then nothing is queued. */
+function sendable(): boolean {
+  return Boolean(options && (options.relay || (options.origin && options.token)));
 }
 
 function randomId(): string {
@@ -165,7 +171,7 @@ export function usageSharingChanged(on: boolean, where: SharingPlace): void {
     const wasOn = usageAnalyticsEnabled();
     const current = options;
     setUsageAnalytics(false);
-    if (!wasOn || !props || !current || !(current.origin || current.relay)) return;
+    if (!wasOn || !props || !current || !sendable()) return;
     identity();
     const batch: Batch = { install, session, events: [{ name: "app_action", at: Date.now(), props }] };
     if (current.relay) { void current.relay.last?.(batch)?.catch(() => {}); return; }
@@ -224,7 +230,8 @@ export async function flush(): Promise<void> {
   try {
     clearTimeout(timer);
     timer = undefined;
-    if (!usageAnalyticsEnabled() || !(options?.origin || options?.relay)) { schedule(); return; }
+    const current = options;
+    if (!usageAnalyticsEnabled() || !current || !sendable()) { schedule(); return; }
     identity();
     if (sent || replies) {
       latencies.sort((a, b) => a - b);
@@ -236,7 +243,6 @@ export async function flush(): Promise<void> {
     }
     const pending = queue.splice(0);
     const stamp = revision;
-    const current = options;
     const failed = await Promise.all(Array.from({ length: Math.ceil(pending.length / 50) }, async (_, index): Promise<Pending[]> => {
       const batch = pending.slice(index * 50, (index + 1) * 50);
       try {
@@ -282,7 +288,7 @@ export function configure(next: Options): void {
     options = { ...next, origin, version: VERSION.test(next.version) ? next.version : "0.0.0" };
     if (!usageAnalyticsEnabled()) return;
     listen();
-    if ((origin || next.relay) && !opened) {
+    if (!opened) {
       opened = true;
       track("app_open", { kind: next.kind, platform: next.platform, appVersion: options.version });
       const env = environment(next.platform, typeof window === "undefined" ? undefined : window.duskDesktop?.arch);

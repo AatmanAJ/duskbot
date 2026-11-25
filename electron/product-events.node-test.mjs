@@ -6,7 +6,7 @@ import { BATCH, FLUSH_MS, MAX_BACKOFF_MS, MAX_QUEUE, analyticsAllowed, cleanAppE
 const INSTALL = "AbCdEfGhIjKlMnOpQrStUv", SESSION = "ZyXwVuTsRqPoNmLkJiHgFe", TOKEN = `omc_${"a".repeat(43)}`;
 const NOW = 1_800_000_000_000;
 
-function harness({ token = () => null, statuses = [], enabled } = {}) {
+function harness({ token = () => null, statuses = [], enabled, signedInSince = () => 0 } = {}) {
   const calls = [], timers = [];
   const fetch = async (url, init) => {
     calls.push({ url, init, body: JSON.parse(init.body) });
@@ -14,7 +14,7 @@ function harness({ token = () => null, statuses = [], enabled } = {}) {
     if (next === "offline") throw new TypeError("fetch failed");
     return new Response(null, { status: next });
   };
-  const events = createProductEvents({ origin: "https://preview.dusk.bot", token, platform: "darwin", version: "1.2.3", fetch, now: () => NOW,
+  const events = createProductEvents({ origin: "https://preview.dusk.bot", token, signedInSince, platform: "darwin", version: "1.2.3", fetch, now: () => NOW,
     setTimer: (fn, ms) => { const timer = { fn, ms }; timers.push(timer); return timer; }, clearTimer: timer => { const at = timers.indexOf(timer); if (at >= 0) timers.splice(at, 1); }, random: () => 1,
     ...(enabled === undefined ? {} : { enabled }) });
   return { events, calls, timers };
@@ -186,4 +186,35 @@ test("an app with analytics off posts nothing: no page batch, no main action, no
   await on.events.flush();
   assert.equal(on.calls.length, 1, "the packaged app's batch is posted");
   assert.equal(on.calls[0].url, "https://preview.dusk.bot/v1/app/events");
+});
+
+test("an app that never signed in sends nothing: no page batch, no main action, no last batch, no install for notes", async () => {
+  const { events, calls, timers } = harness({ signedInSince: () => null });
+  assert.equal(events.send({ install: INSTALL, session: SESSION, events: [event()] }), false);
+  assert.equal(events.action("crash", { kind: "page", reason: "crashed" }), false);
+  assert.equal(events.install(), null);
+  assert.equal(await events.last({ install: INSTALL, session: SESSION, events: [event("app_action", { name: "usage_sharing", on: false })] }), false);
+  await events.flush();
+  await events.close();
+  assert.equal(events.size(), 0);
+  assert.equal(timers.length, 0);
+  assert.equal(calls.length, 0);
+});
+
+test("signing in starts sending, and what happened before the sign-in is dropped, never sent after it", async () => {
+  let since = null;
+  const { events, calls } = harness({ token: () => (since === null ? null : TOKEN), signedInSince: () => since });
+  events.send({ install: INSTALL, session: SESSION, events: [event("app_screen", { screen: "/first" })] });
+  events.action("crash", { kind: "page", reason: "crashed" }, NOW - 5000);
+  await events.flush();
+  assert.equal(calls.length, 0);
+  since = NOW - 2000;
+  events.send({ install: INSTALL, session: SESSION, events: [{ name: "app_screen", at: NOW - 3000, props: { screen: "/before" } }, { name: "app_screen", at: NOW - 1000, props: { screen: "/after" } }] });
+  events.action("routine_done", { outcome: "ok" }, NOW - 4000);
+  events.action("routine_done", { outcome: "failed" }, NOW - 500);
+  await events.flush();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].init.headers.authorization, `Bearer ${TOKEN}`);
+  assert.deepEqual(calls[0].body.events.map(item => item.props.screen ?? item.props.outcome), ["/after", "failed"]);
+  assert.equal(events.install(), INSTALL);
 });

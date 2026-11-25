@@ -253,7 +253,7 @@ export function AuthScreen({ mode, note, forApp = false }: { mode: Mode; note?: 
       scene={scene}
       card={<SceneCard />}
       aside={<a href={SITE_URL} className="text-link -me-2 inline-flex h-11 items-center gap-1.5 rounded-full px-2 text-14"><ArrowLeft size={15} strokeWidth={1.75} aria-hidden />back to {SITE_NAME === "dusk.bot" ? SITE_NAME : "the site"}</a>}
-      foot={signup ? <>by continuing you agree to the <a href={siteUrl("/terms")} className={LINK}>terms</a> and <a href={siteUrl("/privacy")} className={LINK}>privacy policy</a>.</> : "your chats and files stay on your own computers."}
+      foot={<>by continuing you agree to the <a href={siteUrl("/terms")} className={LINK}>terms</a> and <a href={siteUrl("/privacy")} className={LINK}>privacy policy</a>.</>}
     >
       {step === "done" ? (
         <div key="done" className="step-in" role="status">

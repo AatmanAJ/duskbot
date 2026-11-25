@@ -1,7 +1,8 @@
 # Product analytics
 
-The desktop app shares anonymous usage information to help improve dusk bot. **Help improve dusk bot** is on on a new
-install (an opt-out). It covers usage counts, crash reports and short notes on how sessions went: when a chat goes
+The desktop app shares anonymous usage information to help improve dusk bot, but only once it has signed in to a dusk
+bot account: signing in is when a person agrees to the terms and privacy policy, and nothing is sent from the apps
+before that. **Help improve dusk bot** is on by default (an opt-out). It covers usage counts, crash reports and short notes on how sessions went: when a chat goes
 badly, after a long session and once a week, the person's own AI reads a few recent messages where the bots run (at
 most the last 12 or 14 of that chat, or for the weekly note the last 6 of each of the 12 most recent chats), writes a
 short note on that machine using a little of their AI plan, and only the scrubbed note is sent (kept 90 days). The
@@ -10,6 +11,22 @@ records nothing more, clears anything still queued and sends nothing.
 
 There is no third-party analytics SDK. Everything below goes to the dusk bot account service, the same service your
 sign-in uses.
+
+## Before sign-in
+
+An app or workspace that has never signed in sends nothing: no app events, no usage records, no notes on how sessions
+went, no "how things went" events and no crash reports. It does not write session notes either, so it uses none of the
+person's AI plan for them. Nothing is queued for later: events from before the first sign-in are dropped, never sent
+once it happens.
+
+- The desktop app records when it first signed in (`signedInAt` in `desktop-prefs.json`). Its main process drops every
+  page event and every event of its own stamped before then, and crash reports start only after it.
+- A workspace starts recording once the account service answers a report for it, which happens only for a workspace
+  linked to an account (`account` in `usage-signals.json`). Notes left from before are dropped at start.
+- A page with no relay through the desktop's main process (the phone app, another server's page in the desktop
+  window) sends only with a signed-in account's token.
+
+The switch in Settings shows on before sign-in too; it just has nothing to send yet.
 
 ## What the switch covers
 
@@ -35,7 +52,7 @@ when the app closes. The desktop app hands its batches to its own main process, 
 token and posts them. A batch that fails is retried once. Turning the switch off clears anything still queued.
 
 Each batch carries a random install id (kept in the app's local storage), a random id for this launch, the platform
-and the app version.
+and the app version. Every batch is from an app that has signed in, so the install is linked to that account.
 
 ## Events
 
