@@ -156,3 +156,9 @@ export function createProactivePrefs(deps: ProactivePrefsDeps) {
 }
 
 export type ProactivePrefsStore = ReturnType<typeof createProactivePrefs>;
+
+/** A routine's plain report waits in its chat, unread, while the person's quiet hours last; a question, a failure or an
+ * approval still notifies at once. */
+export function routineNewsHeld(kind: string, quiet: QuietHours | null, minute: number): boolean {
+  return kind === "done" && isQuiet(quiet, minute);
+}

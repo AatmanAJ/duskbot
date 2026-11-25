@@ -141,3 +141,19 @@ describe("automation names", () => {
   });
 });
 
+
+describe("a routine's proof of life", () => {
+  it("shows when its checks last found nothing, its last outcomes and its links, and nothing extra for a plain routine", () => {
+    const plain = routine("plain", "b1");
+    const watched: Routine = { ...routine("watched", "b1"), checkedAt: now - 60_000, checkTrouble: "Couldn't read Gmail. I'll try again soon.",
+      strip: [{ at: now - 120_000, outcome: "quiet" }, { at: now - 60_000, outcome: "ok" }], chain: { after: ["plain"] } };
+    const listed = listTriggers({ botId: "b1", routines: [plain, watched], webhooks: [], runs: [], timeZone: "UTC", now });
+    const [first, second] = listed.triggers as Array<Record<string, unknown>>;
+    expect(first).not.toHaveProperty("lastOutcomes");
+    expect(first).not.toHaveProperty("lastCheckedQuiet");
+    expect(second).toMatchObject({
+      lastCheckedQuiet: new Date(now - 60_000).toISOString(), checkProblem: "Couldn't read Gmail. I'll try again soon.",
+      lastOutcomes: [`${new Date(now - 120_000).toISOString()} quiet`, `${new Date(now - 60_000).toISOString()} ok`], chain: { after: ["plain"] },
+    });
+  });
+});
