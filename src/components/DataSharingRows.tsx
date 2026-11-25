@@ -28,7 +28,7 @@ export function DataSharingRows() {
       </SettingRow>
       <SettingRow icon="bubble" title={t("settings.dataSharing.notes")} subtitle={<>
         {t("settings.dataSharing.notesHint")}
-        <span className="mt-1 block">{t(counts ? "settings.dataSharing.notesDeletes" : "settings.dataSharing.notesNeedsImprove")}</span>
+        {" "}{t(counts ? "settings.dataSharing.notesDeletes" : "settings.dataSharing.notesNeedsImprove")}
       </>}>
         <Switch checked={notes} disabled={!counts} data-session-notes="" aria-label={t("settings.dataSharing.notes")} onClick={() => void set({ notes: !notes })} />
       </SettingRow>
