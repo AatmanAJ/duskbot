@@ -163,7 +163,7 @@ export function AddVpsFlow({ onClose }: { onClose: () => void }) {
     : { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0, transition: { duration: 0.24, ease: EASE.out } } };
 
   return createPortal(
-    <div ref={root} role="dialog" aria-modal="true" aria-labelledby={TITLE_ID} tabIndex={-1} data-panel-modal="add-vps" data-vps-stage={at} data-vps-screen={screen}
+    <div ref={root} role="dialog" aria-modal="true" aria-labelledby={TITLE_ID} tabIndex={-1} data-panel-modal="add-vps" data-vps-stage={at} data-vps-screen={screen} data-screen=""
       className="fixed inset-0 z-[61] overflow-y-auto bg-app text-ink outline-none">
       <button type="button" onClick={onClose} aria-label={t("common.close")}
         className="dusk-press fixed end-4 top-4 z-10 flex size-8 items-center justify-center rounded-full text-ink-secondary outline-none hover:bg-ink/6 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus [-webkit-app-region:no-drag]">

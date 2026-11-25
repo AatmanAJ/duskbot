@@ -317,6 +317,7 @@ export function WelcomeFlow({
       onClickCapture={swallowDoubleClick}
       onPaste={onPaste}
       data-welcome={at}
+      data-screen=""
       className={cn("welcome-screen flex overflow-y-auto bg-app outline-none", embedded ? "relative h-full w-full" : "fixed inset-y-0 left-[var(--rail-beside,0px)] right-0 z-50")}
     >
       {/* first, so the back button and every control after it stay clickable (styles.css) */}
