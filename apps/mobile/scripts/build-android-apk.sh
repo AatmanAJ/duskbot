@@ -41,6 +41,7 @@ pnpm --filter @duskbot/mobile build
 echo "== release gate"
 node apps/mobile/scripts/release-gate.mjs
 echo "== cap sync android"
+dusk_google_services "$mobile"
 (cd "$mobile" && npx cap sync android)
 echo "== gradle assembleRelease ($DUSK_ANDROID_VERSION_NAME, code $DUSK_ANDROID_VERSION_CODE, $DUSK_ANDROID_ABIS)"
 # the upload key must not sign this one: apksigner signs it with the release key below

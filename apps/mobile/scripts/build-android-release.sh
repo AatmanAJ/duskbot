@@ -35,6 +35,7 @@ pnpm --filter @duskbot/mobile build
 echo "== release gate"
 node apps/mobile/scripts/release-gate.mjs
 echo "== cap sync android"
+dusk_google_services "$mobile"
 (cd "$mobile" && npx cap sync android)
 echo "== gradle bundleRelease"
 (cd "$mobile/android" && ./gradlew --no-daemon -q bundleRelease)
