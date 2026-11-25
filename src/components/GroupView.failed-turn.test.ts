@@ -95,13 +95,13 @@ describe("failed replies in a room", () => {
 
   it("folds a sign-out notice into the same card, one card total", () => {
     const notice: Message = { id: "n", role: "bot", kind: "activity", at: T0 + 3, from: { botId: "echo", name: "Echo", color: "blue" },
-      tool: { name: "notice: Claude is signed out on this computer. Sign in again in Settings → AI to keep using it.", ok: true, setup: true } };
+      tool: { name: "notice: Claude is signed out on this computer. Sign in again in Settings → Models to keep using it.", ok: true, setup: true } };
     const rows = trailingRows([ask, signedOut[0]!, notice]);
     expect(rows.notices.map((m) => m.id)).toEqual(["n"]);
     const markup = card([ask, signedOut[0]!, notice]);
     expect(count(markup, "data-chat-error")).toBe(1);
     expect(count(markup, "Sign in</button>")).toBe(1);
-    expect(markup).not.toContain("Settings → AI");
+    expect(markup).not.toContain("Settings → Models");
   });
 
   it("titles a direct chat's card the way grok does", () => {

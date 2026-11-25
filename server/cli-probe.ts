@@ -1,4 +1,4 @@
-// Settings → engines "Test": run a CLI's `--version` with only PATH, never inherited credentials.
+// Settings → Models "Test": run a CLI's `--version` with only PATH, never inherited credentials.
 import { PROVIDER_CREDENTIAL_ENV, stripWorkspaceCredentialEnv } from "./config.ts";
 import { clientInstall } from "./contracts.ts";
 import type { BUILT_IN_DRIVERS } from "./drivers/builtIn.ts";

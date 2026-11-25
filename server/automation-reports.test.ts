@@ -230,9 +230,9 @@ describe("automation reports", () => {
   it("says once in the chat that a run failed, and stays out of chats a run does not report to", () => {
     const f = fixture();
     const failed = f.finished(null, "Inbox brief", { status: "failed", error: "Signed out" });
-    f.reports.runFailed(failed, "This bot's engine is signed out. Sign in again in Settings → Model providers.");
+    f.reports.runFailed(failed, "This bot's engine is signed out. Sign in again in Settings → Models.");
     expect(f.lines()).toEqual([expect.objectContaining({
-      text: "This run didn't finish: This bot's engine is signed out. Sign in again in Settings → Model providers.",
+      text: "This run didn't finish: This bot's engine is signed out. Sign in again in Settings → Models.",
       automation: expect.objectContaining({ failed: true }),
     })]);
     expect(f.notified).toEqual([]);

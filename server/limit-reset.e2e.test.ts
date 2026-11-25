@@ -325,7 +325,7 @@ it("a signed-out Claude with Automatic recovery on: its turns go to the chosen b
     expect((await control("wait", "--bot", bot.id, "--task", threadId, "--timeout", "30")).status).toBe("settled");
     expect(await reply(threadId)).toBe("done from fake codex");
     const first = await messagesOf(api, threadId);
-    const told = "Verification fixture is signed out on this computer, so Kai is using Codex meanwhile. Sign in again in Settings → AI to keep using Verification fixture.";
+    const told = "Verification fixture is signed out on this computer, so Kai is using Codex meanwhile. Sign in again in Settings → Models to keep using Verification fixture.";
     expect(first.flatMap((message) => message.tool?.name?.match(/^(?:recovery|notice):/) ? [message.tool] : [])).toEqual([
       { name: "recovery: Verification fixture is signed out, so Codex took over.", ok: true },
       { name: `notice: ${told}`, ok: true, setup: true },
@@ -356,7 +356,7 @@ it.each([
     const { bot } = await control("new-bot", "--name", "Kai");
     const threadId = bot.activeTaskId;
     if (recovering) await api("PUT", "/api/config", { automaticRecovery: { enabled: true, backup: bot.modelSelection } });
-    const told = "Verification fixture is signed out on this computer. Sign in again in Settings → AI to keep using it.";
+    const told = "Verification fixture is signed out on this computer. Sign in again in Settings → Models to keep using it.";
     await control("send", "--bot", bot.id, "--task", threadId, "--text", "Draft the launch plan");
     expect((await control("wait", "--bot", bot.id, "--task", threadId, "--timeout", "30")).status).toBe("failed");
     await control("send", "--bot", bot.id, "--task", threadId, "--text", "Are you there?");

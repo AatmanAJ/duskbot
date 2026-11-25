@@ -182,7 +182,7 @@ describe("the brief", () => {
     const today = s.store.messagesFor(home).findLast((message) => message.serverCard)!;
     expect(today.id).not.toBe(first);
     expect(today).toMatchObject({ role: "bot", kind: "text" });
-    expect(today.text).toBe("Quick heads-up, one thing needs you:\n- Claude is signed out: Sign in again in Settings, Model providers.");
+    expect(today.text).toBe("Quick heads-up, one thing needs you:\n- Claude is signed out: Sign in again in Settings → Models.");
   });
 
   it("speaks the language set in Settings", async () => {

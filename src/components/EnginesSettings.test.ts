@@ -30,7 +30,7 @@ function render(authenticated: boolean, options: { email?: string; signOut?: boo
   return renderToStaticMarkup(createElement(EnginesSettings));
 }
 
-describe("Settings → Engines → ChatGPT accounts", () => {
+describe("Settings → Models → ChatGPT accounts", () => {
   it("lists a signed-out account with one Sign in button", () => {
     const html = render(false);
     expect(html).toContain('data-account="codex" data-account-state="signedOut"');
@@ -62,7 +62,7 @@ describe("Settings → Engines → ChatGPT accounts", () => {
   });
 });
 
-describe("Settings → Engines → Grok", () => {
+describe("Settings → Models → Grok", () => {
   function renderGrok(authenticated: boolean): string {
     vi.stubGlobal("window", {});
     vi.stubGlobal("navigator", { userAgent: "Linux" });
@@ -92,7 +92,7 @@ describe("Settings → Engines → Grok", () => {
   });
 });
 
-describe("Settings → Engines → setup cards", () => {
+describe("Settings → Models → setup cards", () => {
   it.each([true, false])("offers exactly one way to add an account, inside its provider card (authenticated: %s)", (authenticated) => {
     vi.stubGlobal("window", {});
     vi.stubGlobal("navigator", { userAgent: "Linux" });
@@ -295,7 +295,7 @@ describe("Settings → Engines → setup cards", () => {
   });
 });
 
-describe("Settings → Engines → Antigravity → Free up space", () => {
+describe("Settings → Models → Antigravity → Free up space", () => {
   const antigravity = (freeUpSpace?: boolean): InstanceInfo => ({
     instanceId: "agy", displayName: "Antigravity", driverKind: "antigravityAgent", cliDefault: "agy",
     snapshot: { state: "available", authenticated: true }, models: { default: "model", options: [] },
@@ -343,7 +343,7 @@ describe("Settings → Engines → Antigravity → Free up space", () => {
   });
 });
 
-describe("Settings → Engines → Claude accounts", () => {
+describe("Settings → Models → Claude accounts", () => {
   function claude(instanceId: string, displayName: string, authenticated?: boolean, extra: Partial<InstanceInfo> = {}): InstanceInfo {
     return {
       instanceId,
@@ -425,7 +425,7 @@ describe("Settings → Engines → Claude accounts", () => {
 
 });
 
-describe("Settings → AI in Simple mode", () => {
+describe("Settings → Models in Simple mode", () => {
   const engine = (instanceId: string, driverKind: string, authenticated: boolean, extra: Partial<InstanceInfo> = {}): InstanceInfo => ({
     instanceId, driverKind, displayName: instanceId, cliDefault: instanceId,
     snapshot: { state: "available", authenticated }, models: { default: "model", options: [] }, ...extra,

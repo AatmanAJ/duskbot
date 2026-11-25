@@ -13,7 +13,7 @@ import { hostTimeout } from "./testing/host-timeout.ts";
 import { openSse, type SseRecorder } from "./testing/sse.ts";
 
 const STALLED = "No activity for 20 minutes: the routine was stopped";
-const SIGN_IN = "This bot's AI is signed out. Sign in again in Settings → AI.";
+const SIGN_IN = "This bot's AI is signed out. Sign in again in Settings → Models.";
 const ROUTINE_HEADER = '[Routine "Inbox brief", do this now:]';
 
 let fixture: VerificationServer | undefined;

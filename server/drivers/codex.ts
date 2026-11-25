@@ -1659,7 +1659,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       providerArgs = managedCodexArgs(config.managed);
     }
     const route = codexBackgroundRoute(models, smallModelsUsable(), options.fallback);
-    if (!route) throw new Error("Codex lists no model for background calls. Refresh models in Settings → Model providers → Codex.");
+    if (!route) throw new Error("Codex lists no model for background calls. Refresh models in Settings → Models → ChatGPT.");
     return runCodexBackgroundRoute(route, (id) => {
       const selection = planAuth || config.managed ? { model: id, modelProvider: null } : decodeCodexSelection(id);
       return runCodexOneShot({
