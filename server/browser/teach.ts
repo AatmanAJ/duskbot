@@ -138,6 +138,9 @@ class Recording {
     this.stoppedAt = now;
   }
 
+  /** Settles once every input noted so far is recorded. */
+  settled(): Promise<void> { return this.#turn; }
+
   note(input: TeachInput, evaluate: Evaluate, now: number): Promise<void> {
     const turn = this.#turn.then(() => this.#note(input, evaluate, now));
     this.#turn = turn.catch(() => undefined);
@@ -180,6 +183,7 @@ class Recording {
   #page(url: string, title: string): void {
     if (!url || url === this.#url) return;
     this.#url = url;
+    if (this.steps.at(-1)?.kind === "page") this.steps.pop();
     this.#push({ kind: "page", url, title });
   }
 
@@ -245,10 +249,11 @@ export class TeachRecorders {
     return Boolean(recording && !recording.stopped);
   }
 
-  /** Records one input of the person's, before the browser takes it, while they record in this browser. */
+  /** Records one input of the person's, before the browser takes it, while they record in this browser. An input that
+   * shows nothing of the task (a release, a move) still waits for the ones before it, so none overtakes another. */
   note(session: string, person: string, input: TeachInput | null, evaluate: Evaluate): Promise<void> {
-    if (!input) return Promise.resolve();
     const recording = this.#own(session, person);
-    return recording && !recording.stopped ? recording.note(input, evaluate, this.#now()) : Promise.resolve();
+    if (!recording || recording.stopped) return Promise.resolve();
+    return input ? recording.note(input, evaluate, this.#now()) : recording.settled();
   }
 }

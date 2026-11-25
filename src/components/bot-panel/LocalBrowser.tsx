@@ -20,6 +20,8 @@ import { BROWSER_HELD_ELSEWHERE } from "../../../shared/browser-held";
 import type { BrowserNav } from "../browser/ChromeRow";
 import { StreamSurface, type StreamSurfaceHandle, type SurfaceConnect } from "../browser/StreamSurface";
 import { SignInBanner } from "../SignInRequestCard";
+import { TeachBar, TeachReview, useTeachTask } from "../browser/TeachTask";
+import { useTeachRequest } from "@/lib/teach-task";
 import { BrowserHeader, BrowserToolbar, FRAME_TONE, StartPill, TabStrip, tabName, type StripTab } from "./browser-strip";
 import { buttonCls } from "./rows";
 import { BOT_PANEL_ID } from "./side-panel";
@@ -148,6 +150,8 @@ export function LocalBrowserLive({ bot, from, started = false, signIn = null, on
   tabsRef.current = tabs;
   const latest = useRef({ onClosed, onEnded });
   latest.current = { onClosed, onEnded };
+  // this view's input runs beside the bot's with no hold, so recording only needs the page wide enough to aim at
+  const task = useTeachTask({ bot, scope: browserScope(state.config?.team, bot.threadId), connected: connected && !fixture, takeControl: () => { if (!phone) setPanelWide(true); } });
 
   useEffect(() => () => { browserControl.current?.close(); }, []);
 
@@ -337,6 +341,7 @@ export function LocalBrowserLive({ bot, from, started = false, signIn = null, on
     <section ref={sectionRef} data-local-browser="live" data-wide={wide || undefined} aria-label={t("localBrowser.label", { name: bot.name })} className="flex flex-col gap-1.5">
       <BrowserHeader bot={bot} headline={headline} wide={wide} closing={closing} failed={Boolean(error) && !closing} ready={ready} onExpand={toggleWide} onClose={closeBrowser}
         onKeyboard={phone ? () => surfaceRef.current?.focusPage() : undefined} />
+      <TeachBar task={task} botName={bot.name} you onTake={() => {}} />
       <div ref={frameRef} data-local-browser-frame="" className={cn("relative flex w-full flex-col overflow-hidden rounded-[16px] p-1", FRAME_TONE)}>
         <div ref={insideRef} className="flex min-w-0 flex-col">
           {interactive && <TabStrip bot={bot} tabs={strip} selected={selected} wide={wide} ready={ready} onSelect={select} onClose={closeTab} onNew={() => send({ type: "tabNew", url: START_PAGE })} />}
@@ -403,6 +408,13 @@ export function LocalBrowserLive({ bot, from, started = false, signIn = null, on
         </div>
       )}
       {error && <p role="alert" className="m-0 ps-1 text-[12px] leading-4 text-danger">{error}</p>}
+      {!fixture && !task.recording && (
+        <button type="button" data-local-browser-action="teach" disabled={!connected || task.busy} onClick={() => void task.start()}
+          className="flex min-h-8 items-center gap-2 self-start rounded-lg px-2 text-[13px] leading-[18px] text-ink-secondary hover:bg-inset hover:text-ink disabled:opacity-40">
+          <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-danger shadow-[0_0_6px_var(--color-danger)]" />{t("browser.teach.menu", { name: bot.name })}
+        </button>
+      )}
+      <TeachReview task={task} botName={bot.name} />
     </section>
   );
 }
@@ -502,6 +514,8 @@ export function LocalBrowserSection({ bot, after, askFirst = null, onBrowserClos
     const dy = was - box.getBoundingClientRect().top;
     if (Math.abs(dy) > 1) box.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: MORPH_MS, easing: MORPH_EASE });
   }, [live]);
+
+  useTeachRequest(bot.id, () => { if (!live) start(); if (!phoneApp()) setPanelWide(true); }, { peek: true });
 
   const from = override?.kind === "started" ? override.from : null;
   const wide = usePanelWidth() > panelRest();

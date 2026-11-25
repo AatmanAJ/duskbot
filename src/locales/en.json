@@ -3750,6 +3750,7 @@
   "browser.teach.stoppedSteps": "The recording stopped at {steps} steps. Everything up to then is below.",
   "browser.teach.removeStep": "Remove step {number}",
   "browser.teach.discard": "Discard",
+  "browser.teach.close": "Close and discard the recording",
   "browser.teach.again": "Record again",
   "browser.teach.send": "Teach {name}",
   "browser.teach.target.page": "the page",

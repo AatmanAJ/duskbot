@@ -65,6 +65,7 @@ Use only mapped, tested commands:
 - [Chat UI, driven headlessly](chat-ui.md)
 - [Computer panel focus hand-off](computer-panel-focus.md)
 - [Taking control of a bot's computer](take-control.md)
+- [Teach a task: show a bot once in its browser](teach-a-task.md)
 - [What a bot can do on its VPS desktop](vps-computer-tools.md)
 - [Native dictation retention and send-to-stop](dictation.md)
 - [Voice calls with the built-in voice](voice-calls.md)

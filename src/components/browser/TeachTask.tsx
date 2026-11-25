@@ -42,7 +42,10 @@ export function useTeachTask({ bot, scope, connected, takeControl }: { bot: Bot;
   useEffect(() => {
     if (!connected) return;
     let active = true;
-    void readTeach(bot.id, scoped.current).then((next) => { if (active && (next.recording || next.steps.length)) settle(next); }).catch(() => {});
+    void (async () => {
+      const next = await readTeach(bot.id, scoped.current);
+      if (active && (next?.recording || next?.steps.length)) settle(next);
+    })().catch(() => {});
     return () => { active = false; };
   }, [bot.id, scopeKey, connected, settle]);
 
@@ -51,7 +54,7 @@ export function useTeachTask({ bot, scope, connected, takeControl }: { bot: Bot;
     if (!recording) return;
     const timer = setInterval(() => {
       setNow(Date.now());
-      void readTeach(bot.id, scoped.current).then(settle).catch(() => {});
+      void (async () => { const next = await readTeach(bot.id, scoped.current); if (next) settle(next); })().catch(() => {});
     }, POLL_MS);
     return () => clearInterval(timer);
   }, [bot.id, recording, settle]);
@@ -147,7 +150,7 @@ export function TeachReview({ task, botName }: { task: TeachTask; botName: strin
           <h2 id="teach-review-title" className="text-[15px] font-medium">{t("browser.teach.reviewTitle", { name: botName })}</h2>
           <p className="mt-1 text-[12px] leading-relaxed text-ink-secondary">{t("browser.teach.reviewBody", { name: botName })}</p>
         </div>
-        <button type="button" className="rounded-md p-1.5 text-ink-secondary hover:bg-inset hover:text-ink" aria-label={t("browser.teach.discard")} onClick={task.discard}><X size={16} /></button>
+        <button type="button" className="rounded-md p-1.5 text-ink-secondary hover:bg-inset hover:text-ink" aria-label={t("browser.teach.close")} onClick={task.discard}><X size={16} /></button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-3">
         {stopped === "time" || stopped === "steps" ? <p className="text-[12px] text-ink-secondary">{t(stopped === "time" ? "browser.teach.stoppedTime" : "browser.teach.stoppedSteps", { steps: TEACH_LIMITS.steps })}</p> : null}

@@ -94,6 +94,33 @@ describe("teach a task: recording", () => {
     expect(status.steps).toHaveLength(TEACH_LIMITS.steps);
   });
 
+  it("holds a release behind the press still being read, so the page gets them in order", async () => {
+    const { recorders } = recorder();
+    recorders.start(SESSION, ME);
+    const order: string[] = [];
+    let read: (value: unknown) => void = () => {};
+    const slow: Evaluate = () => new Promise((resolve) => { read = resolve; });
+    const down = recorders.note(SESSION, ME, teachInputOf({ type: "mouse", action: "down", button: "left", x: 1, y: 1 }), slow).then(() => order.push("down"));
+    const up = recorders.note(SESSION, ME, teachInputOf({ type: "mouse", action: "up", button: "left", x: 1, y: 1 }), slow).then(() => order.push("up"));
+    await Promise.resolve();
+    expect(order).toEqual([]);
+    read({ url: "https://a.example/", title: "", target: { role: "button", name: "Go", type: "", hints: [] } });
+    await Promise.all([down, up]);
+    expect(order).toEqual(["down", "up"]);
+  });
+
+  it("keeps only the last of pages passed through with nothing done on them", async () => {
+    const { recorders } = recorder();
+    recorders.start(SESSION, ME);
+    await recorders.note(SESSION, ME, { kind: "open", url: "https://start.example/" }, page("https://start.example/", null));
+    await recorders.note(SESSION, ME, { kind: "open", url: "https://shop.example/" }, page("https://shop.example/", null));
+    await recorders.note(SESSION, ME, { kind: "press", x: 1, y: 1 }, page("https://shop.example/", { role: "link", name: "Teas", type: "", hints: [] }, "Shop"));
+    expect(recorders.status(SESSION, ME).steps).toEqual([
+      { kind: "page", url: "https://shop.example/", title: "" },
+      { kind: "click", target: { role: "link", name: "Teas" } },
+    ]);
+  });
+
   it("still records the step when the page cannot be read", async () => {
     const { recorders } = recorder();
     recorders.start(SESSION, ME);
