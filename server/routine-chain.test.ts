@@ -129,8 +129,9 @@ describe("a chain in the routine manager", () => {
     const dir = mkdtempSync(join(tmpdir(), "dusk-chain-")); dirs.push(dir);
     let now = START;
     const posted: Array<{ group: string; bot: string; text: string }> = [];
+    const checked: string[] = [];
     const checks: RoutineChecks = {
-      check: async (one) => (one.name === "Scraper" ? { run: { key: "prb-k", prompt: "p", post: "Found 3 new listings" } } : {}),
+      check: async (one) => { checked.push(one.name); return one.name === "Scraper" ? { run: { key: "prb-k", prompt: "p", post: "Found 3 new listings" } } : {}; },
       release: () => {}, settled: () => {},
     };
     const routines = new RoutineManager({
@@ -138,37 +139,44 @@ describe("a chain in the routine manager", () => {
       postReply: () => {}, checks,
       chainHost: { botName: () => "Pepper", handThread: (botId) => `main-${botId}`, postToRoom: (group, bot, text) => posted.push({ group, bot, text }) },
     });
-    return { routines, posted, later: async () => { now += CHECK_BOOT_HOLD_MS + HOUR; await routines.tick(); await settle(); }, now: () => now };
+    return { routines, posted, checked, later: async () => { now += CHECK_BOOT_HOLD_MS + HOUR; await routines.tick(); await settle(); }, now: () => now };
   }
   const every = { type: "interval" as const, everyMinutes: 60, anchorAt: START + HOUR };
 
   it("wakes the routine that runs after it and hands the report to another bot as an outside event", async () => {
-    const { routines, later, now } = setup();
+    const { routines, later, checked } = setup();
     const scraper = routines.create({ name: "Scraper", prompt: "p", botId: "b1", schedule: every, probe: { kind: "script", url: "", command: "scrape" }, chain: { handTo: { botId: "b2" } } });
     const digest = routines.create({ name: "Digest", prompt: "Summarise", botId: "b1", schedule: { type: "interval", everyMinutes: 1440, anchorAt: START + 48 * HOUR }, chain: { after: [scraper.id] } });
     expect(digest.checks).toEqual(["runs"]);
     await later();
     const done = routines.listRuns().find((one) => one.routineId === scraper.id && one.status === "completed")!;
     expect(done.output).toBe("Found 3 new listings");
-    expect(routines.listRoutines().find((one) => one.id === digest.id)!.wakeAt).toBeUndefined();
-    routines.noteReport(done.id, { state: "posted", threadId: "t-1", messageId: "m-1" });
-    expect(routines.listRoutines().find((one) => one.id === digest.id)!.wakeAt).toBeLessThanOrEqual(now());
+    await settle();
+    expect(checked).toEqual(["Scraper", "Digest"]);
     const handed = routines.listRuns().find((one) => one.eventSource === "routine")!;
     expect(handed).toMatchObject({ botId: "b2", triggerSource: "webhook", chainHops: 1, resultsThreadId: "main-b2", routineId: `routine:${scraper.id}` });
     expect(handed.prompt).toContain("not the person");
-    routines.noteReport(done.id, { state: "posted", threadId: "t-1", messageId: "m-1" });
-    expect(routines.listRuns().filter((one) => one.eventSource === "routine")).toHaveLength(1);
   });
 
-  it("posts into a room, and a quiet report goes nowhere", async () => {
+  it("posts into a room once, from a run that answered in its own chat", async () => {
     const { routines, posted, later } = setup();
-    const scraper = routines.create({ name: "Scraper", prompt: "p", botId: "b1", schedule: every, probe: { kind: "script", url: "", command: "scrape" }, chain: { handTo: { groupId: "g1" } } });
+    routines.create({ name: "Scraper", prompt: "p", botId: "b1", schedule: every, probe: { kind: "script", url: "", command: "scrape" }, chain: { handTo: { groupId: "g1" } } });
     await later();
-    const done = routines.listRuns().find((one) => one.routineId === scraper.id)!;
-    routines.noteReport(done.id, { state: "quiet" });
-    expect(posted).toEqual([]);
-    routines.noteReport(done.id, { state: "posted", threadId: "t-1", messageId: "m-1" });
     expect(posted).toEqual([{ group: "g1", bot: "b1", text: "Scraper:\nFound 3 new listings" }]);
+  });
+
+  it("carries on an AI run's reply when its turn completes, but not a NOTHING NEW one", async () => {
+    const { routines, posted } = setup();
+    const ai = routines.create({ name: "Watcher", prompt: "p", botId: "b1", schedule: every, chain: { handTo: { groupId: "g1" } } });
+    for (const [index, text] of ["NOTHING NEW", "Price dropped to 90"].entries()) {
+      const run = routines.runNow(ai.id)!;
+      await settle();
+      const threadId = routines.listRuns().find((one) => one.id === run.id)!.threadId!;
+      routines.handleRuntimeEvent({ type: "item.completed", itemType: "assistant_text", threadId, text } as never);
+      routines.handleRuntimeEvent({ type: "turn.completed", threadId, ok: true } as never);
+      expect(posted).toHaveLength(index);
+    }
+    expect(posted.at(-1)!.text).toBe("Watcher:\nPrice dropped to 90");
   });
 
   it("drops the runs check with the after links, and keeps routines without links as they were", () => {

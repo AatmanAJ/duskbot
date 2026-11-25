@@ -33,7 +33,7 @@ import { attachmentPathsOf, attachmentsMalformed } from "./routine-attachments.t
 import { loadInstalledPackage, loadRequestReceipts, loadRoutine, loadRun } from "./routine-load.ts";
 import { applyHolds, holdCauses, type AppliedHolds } from "./routine-holds.ts";
 import { sanitizeInput } from "./routine-input.ts";
-import { chainReads, handPrompt, roomPost, wokenBy } from "./routine-chain.ts";
+import { chainReads, handPrompt, reportedRun, roomPost, wokenBy } from "./routine-chain.ts";
 import { checkHold, CHECK_BOOT_HOLD_MS, type CheckHold, type RoutineCheckContext } from "./routine-check-pacing.ts";
 import { cloneRoutine, cloneRun, ranApart, routineRequestOwnerKey, resolveRoutineResultsThread, routineRunDefinition, type ResultsThreadAllocation } from "./routine-run-definition.ts";
 
@@ -517,18 +517,17 @@ export class RoutineManager {
   noteReport(id: string, report: RoutineRunReport | undefined): RoutineRun | null {
     const run = this.runs.find((candidate) => candidate.id === id);
     if (!run) return null;
-    const posted = report?.state === "posted" && run.report?.state !== "posted";
     if (report) run.report = report;
     else delete run.report;
     this.saveLater();
     this.emitRun(run);
-    if (posted && run.status === "completed") this.carryOn(run);
     return cloneRun(run);
   }
 
-  /** A report just posted goes on down its chain: the routines that run after its routine check now, and its routine's
-   * hand_to gets it. */
+  /** A run that just completed with something to say goes on down its chain: the routines that run after its routine
+   * check now, and its routine's hand_to gets its report. */
   private carryOn(run: RoutineRun): void {
+    if (!reportedRun(run)) return;
     const woken = wokenBy(run, this.routines);
     if (woken.length) {
       const now = this.now();
@@ -538,14 +537,14 @@ export class RoutineManager {
     }
     const routine = run.triggerSource === "webhook" || run.dryRun ? undefined : this.routines.find((candidate) => candidate.id === run.routineId);
     const hand = routine?.chain?.handTo, host = this.options.chainHost;
-    if (!hand || !host || !run.output?.trim()) return;
+    if (!hand || !host) return;
     if ((run.chainHops ?? 0) >= MAX_CHAIN_HOPS) return;
     try {
-      if ("groupId" in hand) host.postToRoom(hand.groupId, run.botId, roomPost(run.routineName, run.output));
+      if ("groupId" in hand) host.postToRoom(hand.groupId, run.botId, roomPost(run.routineName, run.output!));
       else {
         this.enqueueWebhook({
           webhookId: `routine:${routine!.id}`, webhookName: routine!.name, botId: hand.botId, runOn: "maus", deliveryId: run.id, receivedAt: this.now(), eventSource: "routine",
-          prompt: handPrompt({ routine: routine!.name, bot: host.botName(run.botId) ?? "another bot", finishedAt: run.finishedAt ?? this.now(), output: run.output }),
+          prompt: handPrompt({ routine: routine!.name, bot: host.botName(run.botId) ?? "another bot", finishedAt: run.finishedAt ?? this.now(), output: run.output! }),
           resultsThreadId: host.handThread(hand.botId), chainHops: (run.chainHops ?? 0) + 1,
         });
       }
@@ -1326,6 +1325,7 @@ export class RoutineManager {
     this.saveLater();
     this.emitRun(run);
     if (event.type === "turn.completed") queueMicrotask(() => this.tickInBackground());
+    if (event.type === "turn.completed" && run.status === "completed" && run.target === "bot") this.carryOn(run);
     return cloneRun(run);
   }
 
@@ -1337,6 +1337,7 @@ export class RoutineManager {
     Object.assign(run, { status: "completed", output: redactSecretsInText(text).trim().slice(0, 2_000), attention: undefined, error: undefined, finishedAt: this.now() } satisfies Partial<RoutineRun>);
     try { this.options.postReply(run.botId, threadId, text, cloneRun(run)); } catch (error) { return this.rejectResult(run.id, error instanceof Error ? error.message : String(error)); }
     this.ownerNotices = this.ownerNotices.filter((notice) => notice.botId !== run.botId); this.saveLater(); this.emitRun(run); queueMicrotask(() => this.tickInBackground());
+    this.carryOn(run);
   }
 
   /** A completed run whose answer its consumer could not use: it fails like any run, so its items go back. */
