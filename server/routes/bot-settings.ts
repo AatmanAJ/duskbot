@@ -5,7 +5,7 @@ import type { WireBot } from "../../shared/wire.ts";
 import { deleteAttachment, saveImage } from "../attachments.ts";
 import { avatarGenerationRequestSchema, avatarGenerationStateMatches, generateAvatarImage, snapshotAvatarGenerationState } from "../avatar-image.ts";
 import { parseBotProfilePatch } from "../bot-profile.ts";
-import { commandAllowlistCandidate, type CommandAllowlistStore } from "../command-allowlist.ts";
+import { HIDDEN_COMMAND_REFUSAL, commandAllowlistCandidate, hasHiddenCommand, type CommandAllowlistStore } from "../command-allowlist.ts";
 import type { AppConfig } from "../config.ts";
 import type { ModelSelection } from "../contracts.ts";
 import type { createApprovalModeSupport } from "../harness-capabilities.ts";
@@ -176,8 +176,11 @@ export function createBotSettingsRoutes(deps: BotSettingsRouteDeps): RouteHandle
       const bot = requestedTaskBot(m[1], url.searchParams.get("threadId") ?? undefined);
       if (method === "GET" && !m[2]) return json(res, 200, commandAllowlistResponse(bot));
       if (method === "POST" && !m[2]) {
-        const candidate = commandAllowlistCandidate(await readBody(req));
-        if (!candidate) return json(res, 400, { error: "Enter an exact command without secret values, an absolute working folder, and a provider." });
+        const body = await readBody(req);
+        const candidate = commandAllowlistCandidate(body);
+        if (!candidate) {
+          return json(res, 400, { error: hasHiddenCommand(body) ? HIDDEN_COMMAND_REFUSAL : "Enter an exact command without secret values, an absolute working folder, and a provider." });
+        }
         const instance = registry.get(candidate.providerInstanceId);
         if (!instance || !COMMAND_ALLOWLIST_DRIVERS.has(instance.driverKind)) {
           return json(res, 400, { error: "This provider does not supply structured command approvals." });

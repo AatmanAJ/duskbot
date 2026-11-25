@@ -61,6 +61,35 @@ cover owner/admin gating and the existing once/session/peer choices:
 pnpm exec vitest run src/components/ApprovalModeSelector.allowlist.test.ts src/components/PendingApproval.command-allowlist.test.ts src/components/ApprovalModeSelector.test.ts
 ```
 
+## Hidden characters
+
+A command that holds a character a reviewer cannot see (zero-width and other
+invisible format characters, direction controls such as right-to-left override,
+spaces that only look like a space, terminal controls, tag letters) is shown
+with each one drawn as a mark naming it (`U+202E`, with its Unicode name for
+screen readers and on hover), under a note that counts them. Such a command
+never becomes a rule: the card offers neither **Always allow this command** nor
+**Always allow this session**, the allowlist API refuses it with a reason, and
+an older saved rule holding one stays listed but never allows. Joiners and
+selectors inside an emoji are not marked.
+
+Launch a fixture whose fake Claude holds its turn open, then run the recipe:
+
+```sh
+node --experimental-strip-types scripts/control-dusk.ts ui launch --mode hang
+node --experimental-strip-types scripts/verify-hidden-characters-ui.ts /tmp/duskbot-verify-data-XXXXXX/ui.json
+```
+
+It sets Pepper to Ask, sends a message through the real composer, raises a
+`Bash` request through the fake engine's native permission socket with a
+command holding a left-to-right isolate, a pop isolate and a zero-width space,
+and proves: the card names all three marks and none of the raw characters
+reaches the card or the transcript row; the server's card carries no rule and
+no session grant; **Allow once** answers the socket `allow` and saves nothing;
+a hand-entered command with a hidden character gets a 400 saying why. It saves
+`approval-card.png` under `.dusk-scratch/verify-evidence/hidden-characters/`
+and asserts an error-free renderer console.
+
 ## Evidence and cleanup
 
 The recipe prints its passing checks, asserts an error-free renderer console,
@@ -76,7 +105,7 @@ The printed server log and screenshots remain.
 ## Server and provider verification
 
 ```sh
-pnpm exec vitest run server/command-allowlist.e2e.test.ts server/command-allowlist.test.ts server/auto-approve.test.ts server/workspace-backup-policy.test.ts
+pnpm exec vitest run server/command-allowlist.e2e.test.ts server/command-allowlist.test.ts server/auto-approve.test.ts server/workspace-backup-policy.test.ts shared/hidden-characters.test.ts src/components/RevealedText.test.ts
 pnpm exec vitest run server/drivers/claude.test.ts server/drivers/codex.test.ts server/drivers/acp/acp.test.ts
 ```
 

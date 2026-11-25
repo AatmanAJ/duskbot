@@ -9,6 +9,7 @@ import { phoneApp } from "@/lib/store-app";
 import { wakeSystemControls } from "@/lib/system-control";
 import { dialogPrimaryCls, fieldLabelCls, footnoteCls, formBodyCls, formCloseCls, formHeaderCls, formSheetCls, formTitleCls, listCardCls, rowHintCls, textAreaCls, textFieldCls } from "./ui/GrokDialog";
 import { friendlyError } from "@/lib/plain-error";
+import { RevealedText } from "./RevealedText";
 
 // Electron collects -webkit-app-region from layout boxes and ignores z-index, so the chat header's drag strip swallows
 // clicks on top of it.
@@ -168,7 +169,7 @@ export function CommandAllowlistDialog({ botId, botName, threadId, onClose }: {
             {data.rules.length ? <ul className={cn(listCardCls, "m-0 list-none p-0 py-1")}>
               {data.rules.map((rule) => <li key={rule.id} className="flex items-start gap-3 py-2.5 pl-3.5 pr-2.5">
                 <div className="min-w-0 flex-1">
-                  <pre tabIndex={0} className="m-0 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-[4px] font-mono text-[12px] leading-[18px] text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus">{rule.command}</pre>
+                  <pre tabIndex={0} className="m-0 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-[4px] font-mono text-[12px] leading-[18px] text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"><RevealedText text={rule.command} /></pre>
                   <p className="m-0 mt-1 break-words text-[12px] leading-4 text-ink/56">{providerName(rule.providerInstanceId)} · <span className="break-all font-mono">{rule.cwd}</span></p>
                 </div>
                 <button type="button" disabled={Boolean(saving)} onClick={() => void save(rule)}

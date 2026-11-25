@@ -30,7 +30,7 @@ import { createPersonWaits } from "./host/person-waits.ts"; import { askToolName
 import { assertRequestTarget, guardedRequestPath, requestConflict, requestNeedsInput } from "./guarded-requests.ts";
 import { botAvatarUrlFromStoredPath } from "../shared/bot-avatar.ts";
 import { BOT_PROFILE_LIMITS } from "../shared/bot-profile.ts";
-import { ERROR_DUMP_REFUSAL, sendsErrorDump, withoutEchoedPrompt } from "../shared/failed-turn.ts"; import { failedTurnRow } from "./failed-turn-row.ts";
+import { ERROR_DUMP_REFUSAL, sendsErrorDump, withoutEchoedPrompt } from "../shared/failed-turn.ts"; import { failedTurnRow } from "./failed-turn-row.ts"; import { hasHiddenCharacters } from "../shared/hidden-characters.ts";
 import { plainComputerFailure } from "../shared/computer-unreachable.ts";
 import { routinePromptName, routineStartMark, routineStartOf } from "../shared/routine-run.ts";
 import { assistantTranscript, errorTranscript } from "../shared/client-cancel.ts"; import { PersonStops, stoppedTurnRow } from "./person-stops.ts"; import { LiveTurns } from "./live-turns.ts"; import { askedElsewhereAt, personClock, previousPersonMessageAt } from "./turn-gap.ts";
@@ -7419,8 +7419,8 @@ bus.subscribe((event: RuntimeEvent) => {
             : undefined,
           commandAllowlist: command ?? undefined,
           allowKey: toolAllowKey ?? undefined,
-          // Never on a guest's turn: an "always" would outlive it.
-          allowSession: permission && event.allowSession && !event.requiresExplicitApproval && !guestDriven ? true : undefined,
+          // Never on a guest's turn, whom an "always" would outlive, nor for a command a reviewer cannot fully see.
+          allowSession: permission && event.allowSession && !event.requiresExplicitApproval && !guestDriven && !hasHiddenCharacters(event.command?.command ?? "") ? true : undefined,
           held: approvalHeldReason(heldContext) ?? (permission && guestDriven && routineRun ? confinedWhy(event.threadId) : undefined),
           heldCode: approvalHeldNote(heldContext),
           approvalScope: event.approvalScope, ...(permission && event.sendKey ? { send: { key: event.sendKey } } : {}),

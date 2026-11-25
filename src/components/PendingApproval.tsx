@@ -6,6 +6,7 @@ import { cn } from "@/lib/cn";
 import { t, tFromServer } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
 import { SkillRequestPreview } from "@/components/SkillRequestPreview";
+import { RevealedText } from "@/components/RevealedText";
 import { AppActionLogo, titledCard, toolLabel } from "./ApprovalCard";
 import { appActionLine } from "@/lib/app-action";
 import { AskDetail, CARD_BUTTON_MD, CardTitlebar, cardPrimary, cardSecondary, cardTertiary, type Asker } from "./AskCard";
@@ -285,7 +286,7 @@ export const PendingApprovalPanel = memo(function PendingApprovalPanel({
             {hidden && (
               <pre tabIndex={0} aria-label={t("approval.aria.reviewDetails")}
                 className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-[12px] border border-transparent bg-(--card-code-fill) px-3 py-2 font-mono text-[13px] leading-[18px] text-ink">
-                {hidden}
+                <RevealedText text={hidden} />
               </pre>
             )}
             {skill && <SkillRequestPreview request={skill} />}
