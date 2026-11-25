@@ -1,21 +1,30 @@
 # Welcome flow
 
-The first run is a funnel of calm, single screens with back and a progress
-bar: the welcome (with the "help improve dusk bot" switch, on by default and
-saved the moment it changes), a dusk bot account (Google or an emailed code;
-only where this window can sign in and isn't yet, and "continue without an
-account" only where the app works without one), where the bots live (this
-Mac, dusk cloud whose sheet opens over the funnel, or your own server), an AI
-(a grid of ChatGPT, Claude, Grok, Gemini, Cursor, GitHub Copilot, OpenRouter
-and a local model, more ways, and the free model when it is ready; skipped
-when a Claude account or a ChatGPT plan already answers), bringing bots from
-other apps or connecting email and calendar, and the phone (a QR code). It
-ends in Dusk's chat, where Dusk greets in three bubbles, follows up and offers
-chips for what is still missing. There is no job screen. Dusk becomes Chief
-only when there is no existing Chief. Where, how far and which step are in
-`src/components/onboarding/funnel.ts`. The packaged app's account gate
-(`src/components/account-gate`) still comes before the app itself, so there the
-funnel's account step is passed over.
+The first run is two calm screens with back and a progress bar: the hello
+("Meet dusk bot", one Get started button; the free model warms up meanwhile)
+and one AI choice. The AI choice offers the AI already signed in on this
+computer in one tap ("Use the Claude you're already signed into"), free
+models, and "Use my plan": a grid of the AIs this server knows from ChatGPT,
+Claude, Grok, Antigravity, Cursor, GitHub Copilot, OpenRouter and a local model
+(`aiTiles` in `funnel.ts`), plus more providers or an API key. An account is a step only
+where the install requires one, and a run on its way to dusk cloud keeps its
+checkout and making steps; where the bots live, bringing in from other apps,
+the phone and the Mac's permissions are not steps. A run saved on a retired
+screen resumes on the AI choice. It ends in Dusk's chat: one message, a "What
+should we start with?" card with three first jobs and Something else, and
+chips for what is still missing (Connect an AI, Connect email & calendar,
+Connect your phone, Try cloud), all gone once the person writes. Dusk becomes
+Chief only when there is no existing Chief. Which steps, in which order, are
+in `src/components/onboarding/funnel.ts`. The packaged app's account gate
+(`src/components/account-gate`) still comes before the app itself. The "help
+improve dusk bot" switch (`src/lib/help-improve.ts`) is on by default and is
+not in the first run; it is in Settings → General → Privacy.
+
+On a Mac the desktop app asks for no system permission during the first run:
+Accessibility and Screen Recording are asked by the card in a chat when a bot
+first needs this Mac, the microphone by the mic button, and a Mac never posts
+system notifications. Grok Bot exports in Downloads are not read until the
+person opens Settings → General → Bring in from other apps.
 
 Headless walk (Nov 13 2026): `~/.playwright-mcp/funnel-sheet.png`, both cases
 (nothing signed in; Claude already signed in) on a fresh fixture with a fake
@@ -140,8 +149,9 @@ desktop's preload bridge are not exercised here; they are covered by
 ## Bring what you already use (Oct 16 2026)
 
 Skills and MCP servers another AI tool keeps on this computer, brought in with
-one button: in Settings → Import, and offered by Dusk's first messages as a
-"Bring in your skills" chip when its look around finds some within two seconds.
+one button: in Settings → General → Bring in from other apps, and offered by
+Dusk's first message as a "Bring in my skills" chip when its look around finds
+some within two seconds.
 Desktop app only.
 
 ```sh
@@ -176,13 +186,14 @@ retired Chief selector, app tour, first-conversation spotlight component and Mee
 Dusk popup have no current renderer fixture; their removed tests must not
 be treated as acceptance evidence.
 
-## Notch and dock step (Nov 9 2026)
+## Island and dock
 
-On the desktop app on a Mac (the island bridge reports `available`), the first run shows one step after the jobs:
-a demo display where the island cycles every mood, the dock bots can be pointed at, tapped or dragged into the
-notch, and the real island is on while it shows. "Keep the notch on" saves `{ island: true }`, "Just the side dock"
-saves `{ island: false, dock: true }`, and leaving with neither puts the island back as it was. Settings →
-Appearance → "Island and dock tour" plays it again; dev builds also expose `window.duskIslandIntro()`.
+On the desktop app on a Mac (the island bridge reports `available`), the island at the notch and the bot dock at the
+right edge come on as the first run ends, both on by default (`AMBIENT_DEFAULTS` in `electron/ambient-state.mjs`);
+their switches are in Settings → General. Closing the app's window closes them too, until the window opens again. The
+notch and dock tour (`IslandIntro`) is in no step and no Settings row: dev builds play it with
+`window.duskIslandIntro()`. "Keep the notch on" saves `{ island: true }`, "Just the side dock" saves
+`{ island: false, dock: true }`, and leaving with neither puts the island back as it was.
 
 ```sh
 pnpm exec vitest run src/components/onboarding/IslandIntro.test.ts src/components/onboarding/WelcomeFlow.test.ts
@@ -193,11 +204,9 @@ For a look without the app, `pnpm dev` and open `/src/windows/previews/island-in
 
 ## Bring your bots from another app (Nov 12 2026)
 
-On the desktop app's own first run, before the first job, Dusk looks (within 2.5 s) for bots another agent app keeps
-on this computer and, when it finds some, offers them on one screen: each app with its bots as mascots and what comes
-over in counts, "bring them over" and "skip for now". Progress names each bot as it moves; the done screen says what
-moved in one line and what stayed behind in another. Settings → general → bring in from other apps → "look for bots"
-opens the same step later, and says when nothing is found or everything is already here.
+On the desktop app, Settings → General → Bring in from other apps → Start import looks (within 2.5 s) for bots another
+agent app keeps on this computer and, when it finds some, offers each app with what comes over in counts. Progress names each bot as it moves; the done line says what moved and what stayed behind. The first
+run does not look. A dusk cloud the desktop app set up gets the same offer as a step of its own first run (`bring`).
 
 | App | Read from | Becomes |
 |---|---|---|
