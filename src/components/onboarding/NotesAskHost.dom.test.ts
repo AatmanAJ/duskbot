@@ -7,6 +7,8 @@ const f = vi.hoisted(() => ({
   signals: { enabled: true, notes: null as boolean | null, askUsage: false, askNotes: true } as Record<string, unknown> | null,
   calls: [] as Array<{ method: string; body?: unknown }>,
   failPut: false,
+  slowNo: null as null | (() => void),
+  done: [] as unknown[],
   signedIn: true,
   state: { connected: true, config: {}, bots: [] as Array<{ busy?: boolean }>, groups: [] as unknown[] },
 }));
@@ -20,6 +22,8 @@ vi.mock("@/state/api", () => ({
       return f.signals;
     }
     if (f.failPut && body?.notes === true) throw new Error("offline");
+    if (f.slowNo && body?.notes === false) await new Promise<void>((resolve) => { f.slowNo = resolve; });
+    f.done.push(body);
     return { ...f.signals, ...body };
   }),
 }));
@@ -27,7 +31,7 @@ vi.mock("@/state/store", () => ({ useStore: () => ({ state: f.state }) }));
 vi.mock("./funnel-account", () => ({ funnelAccount: () => ({ state: async () => ({ signedIn: f.signedIn, required: false, browser: false }) }) }));
 vi.mock("../Avatar", () => ({ MausAvatar: () => null }));
 
-const { NotesAskHost } = await import("./NotesAskHost");
+const { NotesAskHost, NOTES_ASK_BEAT_MS } = await import("./NotesAskHost");
 const { resetNotesAsk } = await import("./notes-ask");
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -36,9 +40,14 @@ let root: Root | null = null;
 const host = document.createElement("div");
 document.body.append(host);
 const settle = async () => { for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); }); };
-async function render() {
+async function render(wait = NOTES_ASK_BEAT_MS + 300) {
   root ??= createRoot(host);
   await act(async () => { root!.render(createElement(NotesAskHost)); });
+  await settle();
+  await pass(wait);
+}
+async function pass(ms: number) {
+  await act(async () => { vi.advanceTimersByTime(ms); });
   await settle();
 }
 const card = () => document.querySelector("[data-notes-ask]");
@@ -50,14 +59,23 @@ const click = async (selector: string) => {
 };
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
   resetNotesAsk();
+  f.slowNo = null;
+  f.done = [];
   f.signals = { enabled: true, notes: null, askUsage: false, askNotes: true };
   f.calls = [];
   f.failPut = false;
   f.signedIn = true;
   f.state = { connected: true, config: {}, bots: [], groups: [] };
 });
-afterEach(async () => { await act(async () => root?.unmount()); root = null; });
+afterEach(async () => {
+  await act(async () => root?.unmount()); root = null;
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  document.body.querySelectorAll("[data-test-extra]").forEach((node) => node.remove());
+});
 
 describe("the session notes card", () => {
   it("shows on app open when the server asks, recording no at once; Share session notes turns notes on", async () => {
@@ -135,5 +153,80 @@ describe("the session notes card", () => {
     await render();
     expect(gets()).toBe(2);
     expect(card()).not.toBeNull();
+  });
+
+  it("waits a beat after a reply finishes, so the reply is read first", async () => {
+    f.state = { ...f.state, bots: [{ busy: true }] };
+    await render();
+    f.state = { ...f.state, bots: [{ busy: false }] };
+    await render(NOTES_ASK_BEAT_MS - 500);
+    expect(card()).toBeNull();
+    expect(gets()).toBe(0);
+    await pass(800);
+    expect(card()).not.toBeNull();
+  });
+
+  it("never opens over another sheet, a menu or a half-written message", async () => {
+    const sheet = Object.assign(document.createElement("div"), { role: "dialog" });
+    sheet.setAttribute("aria-modal", "true");
+    sheet.setAttribute("data-test-extra", "");
+    document.body.append(sheet);
+    await render(NOTES_ASK_BEAT_MS * 3);
+    expect(card()).toBeNull();
+    sheet.remove();
+    const box = document.createElement("textarea");
+    box.setAttribute("data-test-extra", "");
+    document.body.append(box);
+    box.value = "half a thought";
+    box.focus();
+    await pass(NOTES_ASK_BEAT_MS * 3);
+    expect(card()).toBeNull();
+    box.value = "";
+    await pass(NOTES_ASK_BEAT_MS + 300);
+    expect(card()).not.toBeNull();
+  });
+
+  it("waits while the window is in the background, so the one ask is never spent unseen", async () => {
+    vi.mocked(document.hasFocus).mockReturnValue(false);
+    await render(NOTES_ASK_BEAT_MS * 4);
+    expect(card()).toBeNull();
+    expect(puts()).toEqual([]);
+    vi.mocked(document.hasFocus).mockReturnValue(true);
+    await pass(NOTES_ASK_BEAT_MS + 300);
+    expect(card()).not.toBeNull();
+  });
+
+  it("focuses the card, not Share summaries, so a stray Enter never says yes", async () => {
+    await render();
+    expect(document.activeElement?.getAttribute("role")).toBe("dialog");
+    expect(document.activeElement?.hasAttribute("data-notes-yes")).toBe(false);
+    expect(card()!.querySelector("[role=dialog]")!.getAttribute("aria-describedby")).toBeTruthy();
+  });
+
+  it("Escape and a click outside both mean no", async () => {
+    await render();
+    await act(async () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    await settle();
+    expect(card()).toBeNull();
+    await act(async () => root?.unmount()); root = null;
+    resetNotesAsk();
+    await render();
+    const scrim = document.querySelector<HTMLElement>("[data-notes-ask]")!;
+    await act(async () => { scrim.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })); });
+    await settle();
+    expect(card()).toBeNull();
+    expect(puts().every((body) => (body as { notes: boolean }).notes === false)).toBe(true);
+  });
+
+  it("a yes is saved after the no recorded on showing, even when that no is slow", async () => {
+    f.slowNo = () => {};
+    await render();
+    const release = () => f.slowNo?.();
+    await act(async () => { document.querySelector<HTMLButtonElement>("[data-notes-yes]")!.click(); });
+    await settle();
+    expect(f.done).toEqual([]);
+    await act(async () => { release(); });
+    await settle();
+    expect(f.done).toEqual([{ notes: false }, { notes: true }]);
   });
 });

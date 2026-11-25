@@ -21,6 +21,7 @@ export function NotesAskCard({ onDone }: { onDone: (yes: boolean) => void }) {
   const sheet = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const exampleId = useId();
+  const bodyId = useId();
   const [example, setExample] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -42,8 +43,9 @@ export function NotesAskCard({ onDone }: { onDone: (yes: boolean) => void }) {
   useDialogKeys(sheet, close);
 
   return (
-    <div data-notes-ask="" className="ui-scrim fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4">
-      <div ref={sheet} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
+    <div data-notes-ask="" className="ui-scrim fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4"
+      onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
+      <div ref={sheet} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={bodyId} tabIndex={-1}
         className="ui-modal relative my-auto flex w-[360px] max-w-full flex-col items-center border-0 px-5 pb-3 pt-5 text-center text-ink outline-none">
         <motion.div aria-hidden="true" className="flex h-11 items-end justify-center" {...rise(0)}>
           <MausAvatar color={MASCOT} gradient={BRAND_LILAC} size={44} state="excited" animated={!reduced} label={DEFAULT_BOT_NAME} />
@@ -52,7 +54,7 @@ export function NotesAskCard({ onDone }: { onDone: (yes: boolean) => void }) {
           {t("notesAsk.title")}
         </motion.h2>
         <motion.div className="w-full" {...rise(2)}>
-          <p className="m-0 mt-1.5 text-pretty text-[14px] leading-5 text-ink-secondary">{t("notesAsk.body")}</p>
+          <p id={bodyId} className="m-0 mt-1.5 text-pretty text-[14px] leading-5 text-ink-secondary">{t("notesAsk.body")}</p>
           <p className="m-0 mt-2 text-pretty text-[13px] leading-[18px] text-ink-tertiary">{t("notesAsk.facts")}</p>
           <button type="button" data-notes-example="" aria-expanded={example} aria-controls={exampleId} onClick={() => setExample((open) => !open)}
             className="mt-1 inline-flex min-h-8 items-center rounded-full px-2 text-[13px] text-ink-secondary underline underline-offset-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
@@ -75,7 +77,7 @@ export function NotesAskCard({ onDone }: { onDone: (yes: boolean) => void }) {
           </div>
         )}
         <motion.div className="flex w-full flex-col items-center" {...rise(3)}>
-          <button type="button" data-autofocus="" data-notes-yes="" disabled={busy} aria-busy={busy || undefined} onClick={() => void share()}
+          <button type="button" data-notes-yes="" disabled={busy} aria-busy={busy || undefined} onClick={() => void share()}
             className={YES.className} style={YES.style}>
             {t("notesAsk.yes")}
           </button>
