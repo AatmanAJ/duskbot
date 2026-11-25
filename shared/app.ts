@@ -180,6 +180,7 @@ export interface UpdateHtmlInput {
   jsx?: string;
   path?: string;
   title?: string;
+  fallbackText?: string;
   /** Change whether the page has the card frame; kept as it was when omitted. */
   frameless?: boolean;
 }
@@ -264,6 +265,14 @@ function checkFrameless(value: unknown): AppInputResult<boolean | undefined> {
   return { ok: true, value };
 }
 
+function checkFallback(value: unknown): AppInputResult<string | undefined> {
+  if (value === undefined || value === null) return { ok: true, value: undefined };
+  if (typeof value !== "string") return { ok: false, error: "fallback_text: must be a string." };
+  const fallback = value.trim();
+  if (fallback.length > APP_LIMITS.fallback) return { ok: false, error: `fallback_text: must be at most ${APP_LIMITS.fallback} characters.` };
+  return { ok: true, value: fallback || undefined };
+}
+
 export function parseShowHtmlInput(input: unknown): AppInputResult<ShowHtmlInput> {
   if (!isRecord(input)) return { ok: false, error: "show_html needs {html, jsx or path, title, height?, fallback_text?}." };
   const page = checkPage(input);
@@ -278,17 +287,14 @@ export function parseShowHtmlInput(input: unknown): AppInputResult<ShowHtmlInput
     if (typeof input.height !== "number" || !Number.isFinite(input.height)) return { ok: false, error: "height: must be a number of pixels, 80 to 720." };
     out.height = Math.round(Math.min(APP_LIMITS.heightMax, Math.max(APP_LIMITS.heightMin, input.height)));
   }
-  if (input.fallback_text !== undefined && input.fallback_text !== null) {
-    if (typeof input.fallback_text !== "string") return { ok: false, error: "fallback_text: must be a string." };
-    const fallback = input.fallback_text.trim();
-    if (fallback.length > APP_LIMITS.fallback) return { ok: false, error: `fallback_text: must be at most ${APP_LIMITS.fallback} characters.` };
-    if (fallback) out.fallbackText = fallback;
-  }
+  const fallback = checkFallback(input.fallback_text);
+  if (!fallback.ok) return fallback;
+  if (fallback.value) out.fallbackText = fallback.value;
   return { ok: true, value: out };
 }
 
 export function parseUpdateHtmlInput(input: unknown): AppInputResult<UpdateHtmlInput> {
-  if (!isRecord(input)) return { ok: false, error: "Replacing a page needs {app_id, html, jsx or path, title?}." };
+  if (!isRecord(input)) return { ok: false, error: "Replacing a page needs {app_id, html, jsx or path, title?, fallback_text?}." };
   if (typeof input.app_id !== "string" || !/^[\w-]{1,128}$/.test(input.app_id.trim())) {
     return { ok: false, error: "app_id: is required, the id show_html returned." };
   }
@@ -298,6 +304,9 @@ export function parseUpdateHtmlInput(input: unknown): AppInputResult<UpdateHtmlI
   const frameless = checkFrameless(input.frameless);
   if (!frameless.ok) return frameless;
   if (frameless.value !== undefined) out.frameless = frameless.value;
+  const fallback = checkFallback(input.fallback_text);
+  if (!fallback.ok) return fallback;
+  if (fallback.value) out.fallbackText = fallback.value;
   if (input.title !== undefined && input.title !== null) {
     const title = checkTitle(input.title);
     if (!title.ok) return title;
