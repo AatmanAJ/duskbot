@@ -3,17 +3,22 @@ import { EnrollRefusedError } from "../dashboard-reporter.ts";
 import type { createDashboardReporter } from "../dashboard-reporter.ts";
 import { ownerOrAdmin } from "../request-auth.ts";
 import { PASS } from "./table.ts";
+import { MAX_FORGET_NOTES, type UsageReport } from "../../shared/usage-signals.ts";
+import type { SharedLog } from "../usage-shared.ts";
+import type { UsageSignalsChoice } from "../usage-signals-switch.ts";
 import type { RouteHandler } from "./table.ts";
 
 export interface DashboardRouteDeps {
   reporter: Omit<ReturnType<typeof createDashboardReporter>, "syncChoice">;
   linkAgentBase(): string | null;
   /** the usage-signals switch the desktop app's usage-analytics setting drives */
-  usageSignals?: { choice(): { enabled: boolean }; set(next: { enabled: boolean }): void };
+  usageSignals?: { choice(): UsageSignalsChoice; set(next: { enabled?: boolean; notes?: boolean }): void };
   /** called after the person changes the switch, so the account hears of it at once */
   onUsageChoice?(): void;
   /** the usage outbox's waiting notes (usage-signals.ts) */
-  usageNotes?: { notes(): object | null; sent(ids: readonly string[]): void };
+  usageNotes?: { notes(): object | null; sent(ids: readonly string[]): Pick<UsageReport, "frustrations" | "sessions" | "digests"> };
+  /** what this workspace sent, for "see what's been shared", and the deletes it owes (usage-shared.ts) */
+  usageShared?: Pick<SharedLog, "list" | "forget" | "forgetting" | "forgotten" | "sentNotes">;
   /** experience signals for the desktop app to forward (server/experience.ts); taking them removes them */
   experience?: { take(max?: number): object[] };
   env?: NodeJS.ProcessEnv;
@@ -34,9 +39,11 @@ export function createDashboardRoutes(deps: DashboardRouteDeps): RouteHandler {
       res.setHeader("cache-control", "no-store");
       if (!ownerOrAdmin(auth)) return json(res, 403, { error: "Only the owner or an admin can change usage signals." });
       if (method === "PUT") {
-        const body = await readBody(req) as { enabled?: unknown } | null;
-        if (!body || typeof body !== "object" || typeof body.enabled !== "boolean") return json(res, 400, { error: "Expected { enabled: boolean }." });
-        deps.usageSignals.set({ enabled: body.enabled });
+        const body = await readBody(req) as { enabled?: unknown; notes?: unknown } | null;
+        const valid = !!body && typeof body === "object" && (body.enabled === undefined || typeof body.enabled === "boolean") && (body.notes === undefined || typeof body.notes === "boolean")
+          && (body.enabled !== undefined || body.notes !== undefined);
+        if (!valid) return json(res, 400, { error: "Expected { enabled?: boolean, notes?: boolean }." });
+        deps.usageSignals.set({ ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}), ...(typeof body.notes === "boolean" ? { notes: body.notes } : {}) });
         deps.onUsageChoice?.();
       }
       return json(res, 200, deps.usageSignals.choice());
@@ -49,12 +56,26 @@ export function createDashboardRoutes(deps: DashboardRouteDeps): RouteHandler {
     if (path === "/api/dashboard/usage-notes" && deps.usageNotes && (method === "GET" || method === "POST")) {
       res.setHeader("cache-control", "no-store");
       if (!ownerOrAdmin(auth)) return json(res, 403, { error: "Only the owner or an admin can read usage notes." });
-      if (method === "GET") return json(res, 200, { notes: deps.reporter.status().connected ? null : deps.usageNotes.notes() });
-      const body = await readBody(req) as { sent?: unknown } | null;
-      const ids = body && typeof body === "object" && Array.isArray(body.sent) ? body.sent.filter((id): id is string => typeof id === "string" && id.length <= 64).slice(0, 100) : null;
-      if (!ids) return json(res, 400, { error: "Expected { sent: string[] }." });
-      deps.usageNotes.sent(ids);
+      // a workspace no account dashboard hears from sends its notes, and the note deletes it owes, through the app
+      const linked = deps.reporter.status().connected;
+      if (method === "GET") return json(res, 200, { notes: linked ? null : deps.usageNotes.notes(), forget: linked ? null : deps.usageShared?.forgetting()?.notes ?? null });
+      const body = await readBody(req) as { sent?: unknown; forgotten?: unknown } | null;
+      const ids = (value: unknown) => Array.isArray(value) ? value.filter((id): id is string => typeof id === "string" && id.length <= 64).slice(0, MAX_FORGET_NOTES) : null;
+      const sent = body && typeof body === "object" ? ids(body.sent ?? []) : null, forgotten = body && typeof body === "object" ? ids(body.forgotten ?? []) : null;
+      if (!sent || !forgotten) return json(res, 400, { error: "Expected { sent?: string[], forgotten?: string[] }." });
+      if (sent.length) deps.usageShared?.sentNotes(deps.usageNotes.sent(sent));
+      if (forgotten.length) deps.usageShared?.forgotten({ notes: forgotten, records: false });
       return json(res, 200, { ok: true });
+    }
+    if (path === "/api/dashboard/usage-shared" && deps.usageShared && (method === "GET" || method === "DELETE")) {
+      res.setHeader("cache-control", "no-store");
+      if (!ownerOrAdmin(auth)) return json(res, 403, { error: "Only the owner or an admin can see what was shared." });
+      if (method === "DELETE") {
+        deps.usageShared.forget({ records: true });
+        deps.onUsageChoice?.();
+        return json(res, 200, { ok: true, removing: deps.usageShared.list().removing });
+      }
+      return json(res, 200, deps.usageShared.list());
     }
     if (path !== "/api/dashboard/link" || !["GET", "POST", "DELETE"].includes(method)) return PASS;
     res.setHeader("cache-control", "no-store");

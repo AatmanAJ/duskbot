@@ -107,6 +107,26 @@ describe("what leaves the workspace", () => {
     outbox.turn(turnRecord({ driverKind: "codex", status: "ok", toolNames: [], trigger: { kind: "owner" }, room: false }, "desktop", NOW));
     expect(outbox.size().turns).toBe(0);
   });
+
+  it("keeps and sends notes only while notes are on, and drops any left waiting when they go off", () => {
+    let notes = false;
+    const outbox = createUsageOutbox({ now: () => NOW, enabled: () => true, notes: () => notes });
+    const note = { id: "frust00001", at: NOW, engine: "claude" as const, category: "email" as const, tools: [], apps: [], signals: ["retried" as const], retries: 1 };
+    outbox.frustration(note);
+    expect(outbox.size().frustrations).toBe(0);
+    notes = true;
+    outbox.frustration(note);
+    expect(outbox.notes()).toEqual({ frustrations: [note] });
+    notes = false;
+    expect(outbox.notes()).toBeNull();
+    outbox.turn(turnRecord({ driverKind: "codex", status: "ok", toolNames: [], trigger: { kind: "owner" }, room: false }, "desktop", NOW));
+    const report = outbox.take()!;
+    expect(report.turns).toHaveLength(1); expect(report.frustrations).toBeUndefined();
+    notes = true;
+    outbox.frustration(note);
+    expect(outbox.sent(["frust00001"])).toEqual({ frustrations: [note], sessions: [], digests: [] });
+    expect(outbox.size().frustrations).toBe(0);
+  });
 });
 
 describe("scrubSummary", () => {

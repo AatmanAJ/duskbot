@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { writeFileAtomic } from "./atomic.ts";
 import { isToolFailureStop } from "./drivers/tool-failure.ts";
 import {
-  MAX_REPORT_FRUSTRATIONS, MAX_REPORT_RUNS, cleanUsageDigest, MAX_REPORT_SESSIONS, SESSION_NOTE_MAX, cleanUsageSession, MAX_REPORT_SIGNALS, MAX_REPORT_TURNS, categorize, cleanUsageFrustration, cleanUsageRun, cleanUsageSnapshot, cleanUsageTurn, engineFamily, failureOf, failureReason, opencodeProvider, toolErrorClass, toolFailures,
+  MAX_REPORT_FRUSTRATIONS, MAX_REPORT_RUNS, cleanUsageDigest, MAX_REPORT_SESSIONS, SESSION_NOTE_MAX, DIGEST_CHATS, DIGEST_LINES, cleanUsageSession, MAX_REPORT_SIGNALS, MAX_REPORT_TURNS, categorize, cleanUsageFrustration, cleanUsageRun, cleanUsageSnapshot, cleanUsageTurn, engineFamily, failureOf, failureReason, opencodeProvider, toolErrorClass, toolFailures,
   appAction, modelFamily, runTrigger, scrubSummary, toolSignals, type RunEvery, type UsageSignal,
   type FrustrationSignal, type UsageFrom, type UsageFrustration, type UsageOutcome, type UsagePlace, type UsageReport, type UsageRun, type UsageSnapshot, type UsageTurn, type UsageDigest, type UsageSession,
 } from "../shared/usage-signals.ts";
@@ -69,7 +69,8 @@ export function turnRecord(facts: TurnFacts, place: UsagePlace, now: number): Us
 }
 
 /** records waiting for the next dashboard report: memory only, oldest dropped past the cap */
-export function createUsageOutbox(options: { now?: () => number; snapshot?: () => UsageSnapshot | null; enabled?: () => boolean; file?: string } = {}) {
+/** `notes`: whether session notes may be kept and sent (a yes to them, with usage on); without it they follow `enabled` */
+export function createUsageOutbox(options: { now?: () => number; snapshot?: () => UsageSnapshot | null; enabled?: () => boolean; notes?: () => boolean; file?: string } = {}) {
   const now = options.now ?? Date.now;
   let turns: UsageTurn[] = [], runs: UsageRun[] = [], frustrations: UsageFrustration[] = [], sessions: UsageSession[] = [], digests: UsageDigest[] = [], signals: UsageSignal[] = [];
   // the notes (a bad chat, a big session, the weekly one) wait on disk until a report carries them, so quitting the app
@@ -89,6 +90,8 @@ export function createUsageOutbox(options: { now?: () => number; snapshot?: () =
   };
   const seenRuns = new Set<string>();
   const on = () => options.enabled?.() !== false;
+  const notesOn = () => on() && options.notes?.() !== false;
+  const dropNotes = () => { const had = frustrations.length + sessions.length + digests.length; frustrations = []; sessions = []; digests = []; if (had) persist(); };
   const cap = <T>(list: T[], max: number) => list.length > max ? list.slice(-max) : list;
   return {
     turn(record: UsageTurn | null) { if (record && on()) turns = cap([...turns, record], OUTBOX_TURNS); },
@@ -103,9 +106,9 @@ export function createUsageOutbox(options: { now?: () => number; snapshot?: () =
         ...(ms !== undefined ? { ms } : {}), ...about }, now());
       if (record) runs = cap([...runs, record], OUTBOX_RUNS);
     },
-    frustration(record: UsageFrustration | null) { if (record && on()) { frustrations = cap([...frustrations, record], MAX_REPORT_FRUSTRATIONS); persist(); } },
-    session(record: UsageSession | null) { if (record && on()) { sessions = cap([...sessions, record], MAX_REPORT_SESSIONS); persist(); } },
-    digest(record: UsageDigest | null) { if (record && on()) { digests = cap([...digests, record], 2); persist(); } },
+    frustration(record: UsageFrustration | null) { if (record && notesOn()) { frustrations = cap([...frustrations, record], MAX_REPORT_FRUSTRATIONS); persist(); } },
+    session(record: UsageSession | null) { if (record && notesOn()) { sessions = cap([...sessions, record], MAX_REPORT_SESSIONS); persist(); } },
+    digest(record: UsageDigest | null) { if (record && notesOn()) { digests = cap([...digests, record], 2); persist(); } },
     /** a named workspace signal; `clean` is cleanSignal from shared/product-signals.ts, and a signal it refuses is dropped */
     signal(name: string, props: Record<string, unknown>, clean: (name: unknown, props: unknown) => UsageSignal["props"] | null) {
       if (!on()) return;
@@ -114,7 +117,8 @@ export function createUsageOutbox(options: { now?: () => number; snapshot?: () =
     },
     /** the next report's usage section, taken out of the outbox; `requeue` puts it back when the report fails */
     take(): UsageReport | null {
-      if (!on()) { const had = frustrations.length + sessions.length + digests.length; turns = []; runs = []; frustrations = []; sessions = []; digests = []; signals = []; if (had) persist(); return null; }
+      if (!on()) { turns = []; runs = []; signals = []; dropNotes(); return null; }
+      if (!notesOn()) dropNotes();
       const snapshot = (() => { try { return cleanUsageSnapshot(options.snapshot?.()); } catch { return null; } })();
       const report: UsageReport = { turns: turns.slice(0, MAX_REPORT_TURNS), runs: runs.slice(0, MAX_REPORT_RUNS), ...(frustrations.length ? { frustrations } : {}), ...(sessions.length ? { sessions } : {}),
         ...(digests.length ? { digests } : {}), ...(signals.length ? { signals: signals.slice(0, MAX_REPORT_SIGNALS) } : {}), ...(snapshot ? { snapshot } : {}) };
@@ -133,13 +137,17 @@ export function createUsageOutbox(options: { now?: () => number; snapshot?: () =
     /** the notes waiting, left in place: a workspace with no account dashboard sends them through the app (usage-notes.mjs)
      * and calls `sent` once they landed, so a failed send keeps them for the next try */
     notes(): Pick<UsageReport, "frustrations" | "sessions" | "digests"> | null {
-      if (!on() || !(frustrations.length || sessions.length || digests.length)) return null;
+      if (!notesOn()) { dropNotes(); return null; }
+      if (!(frustrations.length || sessions.length || digests.length)) return null;
       return { ...(frustrations.length ? { frustrations } : {}), ...(sessions.length ? { sessions } : {}), ...(digests.length ? { digests } : {}) };
     },
-    sent(ids: readonly string[]) {
+    /** returns the notes that were waiting under those ids */
+    sent(ids: readonly string[]): Pick<UsageReport, "frustrations" | "sessions" | "digests"> {
       const gone = new Set(ids), before = frustrations.length + sessions.length + digests.length;
+      const out = { frustrations: frustrations.filter(item => gone.has(item.id)), sessions: sessions.filter(item => gone.has(item.id)), digests: digests.filter(item => gone.has(item.id)) };
       frustrations = frustrations.filter(item => !gone.has(item.id)); sessions = sessions.filter(item => !gone.has(item.id)); digests = digests.filter(item => !gone.has(item.id));
       if (frustrations.length + sessions.length + digests.length !== before) persist();
+      return out;
     },
     size: () => ({ turns: turns.length, runs: runs.length, frustrations: frustrations.length, sessions: sessions.length, digests: digests.length, signals: signals.length }),
     /** this week's turns so far by category and tool, for the digest's prompt */
@@ -430,15 +438,15 @@ export function digestChats(chats: ReadonlyArray<{ messages: ReadonlyArray<{ rol
     at: Math.max(0, ...chat.messages.map((message) => message.at ?? 0)),
     lines: chat.messages.filter((message): message is { role: "user" | "bot"; text: string } => message.kind === "text" && (message.role === "user" || message.role === "bot") && typeof message.text === "string" && message.text.trim().length > 0)
       .map((message) => ({ role: message.role, text: message.text })),
-  })).filter((chat) => chat.lines.some((line) => line.role === "user")).sort((a, b) => b.at - a.at).slice(0, 12);
+  })).filter((chat) => chat.lines.some((line) => line.role === "user")).sort((a, b) => b.at - a.at).slice(0, DIGEST_CHATS);
 }
 
 /** the weekly digest's instruction: a compact view of recent chats, written up by the person's own engine on its quick model */
 export function digestPrompt(chats: ReadonlyArray<{ lines: ReadonlyArray<{ role: "user" | "bot"; text: string }> }>, stats: { turns: number; days: number; categories: string[]; tools: string[] }): string {
   let budget = 9000;
   const blocks: string[] = [];
-  for (const [index, chat] of chats.slice(0, 12).entries()) {
-    const block = chat.lines.slice(-6).map(line => `${line.role === "user" ? "person" : "bot"}: ${line.text.replace(/\s+/g, " ").slice(0, 220)}`).join("\n");
+  for (const [index, chat] of chats.slice(0, DIGEST_CHATS).entries()) {
+    const block = chat.lines.slice(-DIGEST_LINES).map(line => `${line.role === "user" ? "person" : "bot"}: ${line.text.replace(/\s+/g, " ").slice(0, 220)}`).join("\n");
     if (block.length > budget) break;
     budget -= block.length;
     blocks.push(`chat ${index + 1}:\n${block}`);

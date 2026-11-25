@@ -651,7 +651,7 @@ import { createMcpServerRoutes } from "./routes/mcp-servers.ts";
 import { teamAdminSummary } from "./cloud-team-admin.ts";
 import { createSetupImportRoutes } from "./routes/setup-import.ts";
 import { createComputerRoutes } from "./routes/computers.ts";
-import { browserNeedsAutoInstall, createStatusRoutes, startBrowserEngineInstall } from "./routes/status.ts"; import { createBrowserChat } from "./host/browser-chat.ts"; import { createBrowserPartHost } from "./host/browser-part.ts"; import { createMyChromeSwitch } from "./host/my-chrome-switch.ts"; import { sealedFixture, throwawayWorkspace } from "./env-path.ts"; import { browserEngineKind } from "./browser/config.ts"; import { createDashboardRoutes } from "./routes/dashboard.ts"; import { createDashboardCollector } from "./dashboard-report.ts"; import { createDashboardReporter } from "./dashboard-reporter.ts"; import { createPulseSampler } from "./dashboard-pulse.ts"; import { memoryFiles } from "./cloud-send-memory.ts"; import { createFrustrationWatch, createUsageOutbox, digestChats, digestPrompt, hashId, sessionPrompt, summaryPrompt, turnRecord } from "./usage-signals.ts"; import { DIGEST_MAX, SESSION_NOTE_MAX, cleanUsageDigest, engineFamily, failureReason, runEvery, runTrigger, scrubSummary } from "../shared/usage-signals.ts"; import { attachmentKind, cleanSignal, sizeBucket } from "../shared/product-signals.ts"; import { createUsageSignalsSwitch } from "./usage-signals-switch.ts"; import { createConfusionWatch, createExperienceOutbox, downloadFailReason } from "./experience.ts"; import { createDashboardCommands } from "./dashboard-commands.ts"; import { createCompanionEndpointsBridge, type CompanionEndpointsRequest } from "./companion-endpoints.ts"; import { connectedInApp, dashboardApps } from "./dashboard-apps.ts"; import { connectCallback } from "../shared/dashboard-protocol.ts"; import { createAppSignIns } from "./app-sign-ins.ts";
+import { browserNeedsAutoInstall, createStatusRoutes, startBrowserEngineInstall } from "./routes/status.ts"; import { createBrowserChat } from "./host/browser-chat.ts"; import { createBrowserPartHost } from "./host/browser-part.ts"; import { createMyChromeSwitch } from "./host/my-chrome-switch.ts"; import { sealedFixture, throwawayWorkspace } from "./env-path.ts"; import { browserEngineKind } from "./browser/config.ts"; import { createDashboardRoutes } from "./routes/dashboard.ts"; import { createDashboardCollector } from "./dashboard-report.ts"; import { createDashboardReporter } from "./dashboard-reporter.ts"; import { createPulseSampler } from "./dashboard-pulse.ts"; import { memoryFiles } from "./cloud-send-memory.ts"; import { createFrustrationWatch, createUsageOutbox, digestChats, digestPrompt, hashId, sessionPrompt, summaryPrompt, turnRecord } from "./usage-signals.ts"; import { DIGEST_LINES, DIGEST_MAX, NOTE_LINES_BAD, NOTE_LINES_BIG, SESSION_NOTE_MAX, cleanUsageDigest, engineFamily, failureReason, runEvery, runTrigger, scrubSummary } from "../shared/usage-signals.ts"; import { attachmentKind, cleanSignal, sizeBucket } from "../shared/product-signals.ts"; import { createUsageSignalsSwitch } from "./usage-signals-switch.ts"; import { createSharedLog } from "./usage-shared.ts"; import { createConfusionWatch, createExperienceOutbox, downloadFailReason } from "./experience.ts"; import { createDashboardCommands } from "./dashboard-commands.ts"; import { createCompanionEndpointsBridge, type CompanionEndpointsRequest } from "./companion-endpoints.ts"; import { connectedInApp, dashboardApps } from "./dashboard-apps.ts"; import { connectCallback } from "../shared/dashboard-protocol.ts"; import { createAppSignIns } from "./app-sign-ins.ts";
 import { findAntigravityLeftovers, removeAntigravityLeftovers } from "./drivers/antigravity-temp.ts";
 import { createLiveRoutes } from "./routes/live.ts";
 import { createNotificationRoutes } from "./routes/notifications.ts";
@@ -6962,7 +6962,7 @@ async function localVmInventoryPayload() {
 const usageTrace = createTraceRecorder({ dataDir: DATA_DIR });
 const usagePlace = CLOUD_HOME ? "cloud" as const : isThisServerVps("this-server") ? "server" as const : "desktop" as const;
 const browserInComputerTab = usagePlace === "desktop";
-const usageSignals = createUsageSignalsSwitch(DATA_DIR);
+const usageShared = createSharedLog({ file: join(DATA_DIR, "usage-shared.json") }), usageSignals = createUsageSignalsSwitch(DATA_DIR, process.env, (what) => { usageShared.forget({ records: what === "usage" }); dashboardReporterRef?.syncChoice(); });
 let memoryBucket: { at: number; bucket: number } | null = null;
 /** the bots' memory files' total size as a bucket, read at most every 30 minutes */
 function usageMemoryBucket(): number {
@@ -6973,7 +6973,7 @@ function usageMemoryBucket(): number {
   memoryBucket = { at: Date.now(), bucket };
   return bucket;
 }
-const usageOutbox = createUsageOutbox({ enabled: usageSignals.enabled, file: join(DATA_DIR, "usage-outbox.json"), snapshot: () => {
+const usageOutbox = createUsageOutbox({ enabled: usageSignals.enabled, notes: usageSignals.notesEnabled, file: join(DATA_DIR, "usage-outbox.json"), snapshot: () => {
   const tasks = store.bots.flatMap((bot) => bot.tasks ?? []), botEngines: Record<string, number> = {};
   for (const bot of store.bots) { const engine = engineFamily(registry.get(bot.modelSelection.instanceId)?.driverKind); botEngines[engine] = (botEngines[engine] ?? 0) + 1; }
   return { bots: store.bots.length, rooms: store.groups.length, routines: routines?.listRoutines().length ?? 0, webhooks: webhooks.list().length, appEvents: appTriggers.manager?.list().length ?? 0,
@@ -7013,13 +7013,13 @@ const noteLines = (threadId: string, count: number) => store.messagesTail(thread
 const noteAvoid = () => store.bots.map((bot) => bot.name).filter((name): name is string => typeof name === "string");
 /** a note on how a chat went, written by the person's own engine here and scrubbed against the very lines it read */
 async function chatNote(botId: string, lines: ReturnType<typeof noteLines>, prompt: string, max?: number): Promise<string | null> {
-  const writer = usageSignals.enabled() && lines.length ? sideJobs.text("frustration-summary", botId) : null;
+  const writer = usageSignals.notesEnabled() && lines.length ? sideJobs.text("frustration-summary", botId) : null;
   if (!writer) return null;
   return scrubSummary(await writer.generateText(prompt, { timeoutMs: 60_000 }), max, { sources: lines.map((line) => line.text), avoid: noteAvoid() });
 }
 const frustration = createFrustrationWatch({ dataDir: DATA_DIR, report: usageOutbox.frustration, reportSession: usageOutbox.session,
-  summarize: ({ threadId, botId, signals }) => { const lines = noteLines(threadId, 12); return chatNote(botId, lines, summaryPrompt(lines, signals)); },
-  describe: ({ threadId, botId, stats }) => { const lines = noteLines(threadId, 14); return chatNote(botId, lines, sessionPrompt(lines, stats), SESSION_NOTE_MAX); } });
+  summarize: ({ threadId, botId, signals }) => { const lines = noteLines(threadId, NOTE_LINES_BAD); return chatNote(botId, lines, summaryPrompt(lines, signals)); },
+  describe: ({ threadId, botId, stats }) => { const lines = noteLines(threadId, NOTE_LINES_BIG); return chatNote(botId, lines, sessionPrompt(lines, stats), SESSION_NOTE_MAX); } });
 setInterval(() => { try { frustration.sweep(); } catch {} }, 5 * 60_000).unref();
 // a session left open by the last quit gets its note a minute after start, when the engines are ready
 setTimeout(() => { try { frustration.sweep(); } catch {} }, 60_000).unref();
@@ -7027,13 +7027,13 @@ let digestRunning = false;
 /** once a week for someone who uses Dusk enough: their own engine writes what they use it for, from a short digest of
  * recent chats read on this computer; only the scrubbed result is sent */
 function maybeUsageDigest(botId: string): void {
-  if (digestRunning || !usageSignals.enabled() || !frustration.digestDue()) return;
+  if (digestRunning || !usageSignals.notesEnabled() || !frustration.digestDue()) return;
   const writer = sideJobs.text("frustration-summary", botId);
   if (!writer) return;
   digestRunning = true;
   frustration.digestSent();
   const threads = store.bots.flatMap((bot) => [bot.threadId, ...(bot.tasks ?? []).map((task) => task.threadId)].filter((id): id is string => typeof id === "string"))
-    .map((threadId) => ({ messages: store.messagesTail(threadId, 6).messages }));
+    .map((threadId) => ({ messages: store.messagesTail(threadId, DIGEST_LINES).messages }));
   const chats = digestChats(threads);
   if (!chats.length) { digestRunning = false; return; }
   const recent = frustration.recent();
@@ -7055,7 +7055,7 @@ function noteUsageTurn(row: Omit<UsageRow, "costSource"> & { costSource?: unknow
     if (!record) return;
     usageOutbox.turn(record);
     noteTurnExperience(row.threadId, record);
-    if (record.from === "app" || record.from === "remote") { frustration.turn(row.threadId, row.botId, record); maybeUsageDigest(row.botId); }
+    if (record.from === "app" || record.from === "remote") { frustration.turn(row.threadId, row.botId, record); maybeUsageDigest(row.botId); if (record.outcome === "ok") usageSignals.used("turn"); }
   } catch (error) { console.warn(`usage signals: ${error instanceof Error ? error.name : "error"}`); }
 }
 function noteTurnExperience(threadId: string, record: NonNullable<ReturnType<typeof turnRecord>>): void {
@@ -9956,7 +9956,7 @@ const runHealth = startRunHealth({ dataDir: DATA_DIR, turns: () => liveTurnByThr
     }
   },
   interruptGoal: interruptRoutineGroupGoal,
-  onRunChanged: (run) => { trail("routine.run", { routine: run.routineId, run: run.id, bot: run.botId, thread: run.threadId, status: run.status, trigger: run.triggerSource }); const routine = routines?.listRoutines().find((one) => one.id === run.routineId); if (["completed", "failed", "cancelled", "missed"].includes(run.status) && !routineRunsSeen.has(run.id)) { routineRunsSeen.add(run.id); if (routineRunsSeen.size > 2000) routineRunsSeen.delete(routineRunsSeen.values().next().value!); experience("routine_done", { outcome: run.status === "completed" ? "ok" : run.status === "cancelled" ? "cancelled" : "failed", trigger: runTrigger(run), ...(run.status === "failed" || run.status === "missed" ? { reason: run.status === "missed" ? "timeout" : failureReason(run.error) } : {}) }); } usageOutbox.run(run, { every: runEvery(routine?.schedule as Parameters<typeof runEvery>[0], run.triggerSource === "webhook"), routine: hashId(usageSignals.salt(), run.routineId) }); cloudHealth?.noteRoutineRun(run); if (!routineHost.limitSkipped(run.id)) syncRoutineRunToSource(run); routineGuard.changed(run); },
+  onRunChanged: (run) => { trail("routine.run", { routine: run.routineId, run: run.id, bot: run.botId, thread: run.threadId, status: run.status, trigger: run.triggerSource }); const routine = routines?.listRoutines().find((one) => one.id === run.routineId); if (["completed", "failed", "cancelled", "missed"].includes(run.status) && !routineRunsSeen.has(run.id)) { routineRunsSeen.add(run.id); if (routineRunsSeen.size > 2000) routineRunsSeen.delete(routineRunsSeen.values().next().value!); experience("routine_done", { outcome: run.status === "completed" ? "ok" : run.status === "cancelled" ? "cancelled" : "failed", trigger: runTrigger(run), ...(run.status === "failed" || run.status === "missed" ? { reason: run.status === "missed" ? "timeout" : failureReason(run.error) } : {}) }); } if (run.status === "completed" && usageSignals.enabled()) usageSignals.used("routine"); usageOutbox.run(run, { every: runEvery(routine?.schedule as Parameters<typeof runEvery>[0], run.triggerSource === "webhook"), routine: hashId(usageSignals.salt(), run.routineId) }); cloudHealth?.noteRoutineRun(run); if (!routineHost.limitSkipped(run.id)) syncRoutineRunToSource(run); routineGuard.changed(run); },
   onRunCut: (run) => run.groupId ? coordinator.cancelRoom(run.groupId, run.threadId!, ROUTINE_RESTARTED) : coordinator.cancelDirect(run.threadId!, ROUTINE_RESTARTED),
   onRunFailed: (run, alert) => {
     cloudHealth?.noteRoutineRun(run); routineGuard.failed(run); if (routineHost.limitSkipped(run.id)) { routines?.markSeen(run.id); routines?.adopt(({ routines: all }) => all.filter((one) => one.id === run.routineId)); return; }
@@ -13591,7 +13591,7 @@ async function saveConfigAsApp(patch: Record<string, unknown>): Promise<{ ok: tr
 }
 let settingsChangedSoon: NodeJS.Timeout | null = null;
 const settingsSync = createSettingsSync({ dataDir: DATA_DIR, config: () => cfg, saveConfig: saveConfigAsApp,
-  usageSignals: { get: () => usageSignals.choice().enabled, set: (enabled) => { usageSignals.set({ enabled }); dashboardReporterRef?.syncChoice(); } },
+  usageSignals: { get: () => usageSignals.setting(), set: (enabled) => { usageSignals.set({ enabled }); dashboardReporterRef?.syncChoice(); } },
   appAccounts: { defaults: () => readAccountChoices(DATA_DIR).defaults, set: (slug, accountId) => { setAccountChoice({ slug, accountId }, DATA_DIR); } },
   place: { id: ENVIRONMENT_ID, label: (process.env.DUSK_ENVIRONMENT_LABEL?.trim() || hostname()).slice(0, 120).trim() || "dusk bot" },
   // the desktop brings the person's other places level at once
@@ -13636,7 +13636,7 @@ ROUTES.push(createStatusRoutes({
   browserEngineInstall: browserInstallDeps.browserEngineInstall,
   browserEngineInstallError: browserInstallDeps.browserEngineInstallError,
   browserPart, sealer,
-})); const dashboardCollector = createDashboardCollector({ dataDir: DATA_DIR, cfg, environmentId: ENVIRONMENT_ID, bots: () => store.bots, managedVpsOwners, teamComputers: () => teamComputers.list(), localInventory: localVmInventoryPayload, localRuntime: containerRuntimeStatus, vps, lastUsedAt: (id) => { const bot = store.bot(id); return bot ? Math.max(0, ...(bot.tasks ?? []).map((task) => task.updatedAt ?? 0)) || null : null; }, phones: phoneHost.listOwner, sessions: () => sessions.list(), mobile: mobileLink.state, publicUrl, deviceLabel: () => cfg.computerName || "", checkUpdate: serverUpdates.check, prices: () => null, computerKind: (id) => { const bot = store.bot(id); return bot && inheritedTeamComputer(bot) ? "team" : undefined; }, busy: botHasActiveTurn, engine: (id) => registry.get(id) ?? undefined, routines: () => { const runs = routines?.listRuns() ?? []; return (routines?.listRoutines() ?? []).map((routine) => ({ ...routine, lastRunAt: runs.find((run) => run.routineId === routine.id && run.startedAt !== undefined)?.startedAt ?? null, running: runs.some((run) => run.routineId === routine.id && run.status === "running") })); }, planUsage: () => loadPlanUsage({ accounts: planAccountsFromInstances(instanceConfigs(cfg)) }), apps: () => dashboardApps(cfg, composio, () => cloudComposio.apps(), () => connectedInApp(mcpServerResponse().servers, emailService.store.list().map((account) => account.address))).then((apps) => { appSignIns.settled(apps.services.filter((app) => app.connected).map((app) => app.slug)); return apps; }), workspaceKind: isThisServerVps("this-server") || CLOUD_HOME ? "vps" : undefined }); const dashboardCommands = createDashboardCommands({ port: PORT, dataDir: DATA_DIR, collect: dashboardCollector, dashboardUrl: () => dashboardReporterRef?.status().url ?? null, companion: utilityParentPort && DESKTOP_MANAGED ? () => companionEndpoints.request() : undefined }); dashboardCommandOwner = dashboardCommands.owns; const machinePulse = process.platform === "linux" ? createPulseSampler() : undefined; machinePulse?.start(); const dashboardReporter = createDashboardReporter({ dataDir: DATA_DIR, collect: dashboardCollector, usage: usageOutbox, choice: usageSignals, pulse: machinePulse, execute: dashboardCommands.execute, log: (line) => console.warn(line) }); dashboardReporterRef = dashboardReporter; dashboardReporter.start(); ROUTES.push(createDashboardRoutes({ reporter: dashboardReporter, usageSignals, usageNotes: usageOutbox, experience: experienceOutbox, onUsageChoice: () => { dashboardReporter.syncChoice(); settingsSyncRef?.touch(); }, linkAgentBase: () => mobileLink.state().agent?.base ?? null }));
+})); const dashboardCollector = createDashboardCollector({ dataDir: DATA_DIR, cfg, environmentId: ENVIRONMENT_ID, bots: () => store.bots, managedVpsOwners, teamComputers: () => teamComputers.list(), localInventory: localVmInventoryPayload, localRuntime: containerRuntimeStatus, vps, lastUsedAt: (id) => { const bot = store.bot(id); return bot ? Math.max(0, ...(bot.tasks ?? []).map((task) => task.updatedAt ?? 0)) || null : null; }, phones: phoneHost.listOwner, sessions: () => sessions.list(), mobile: mobileLink.state, publicUrl, deviceLabel: () => cfg.computerName || "", checkUpdate: serverUpdates.check, prices: () => null, computerKind: (id) => { const bot = store.bot(id); return bot && inheritedTeamComputer(bot) ? "team" : undefined; }, busy: botHasActiveTurn, engine: (id) => registry.get(id) ?? undefined, routines: () => { const runs = routines?.listRuns() ?? []; return (routines?.listRoutines() ?? []).map((routine) => ({ ...routine, lastRunAt: runs.find((run) => run.routineId === routine.id && run.startedAt !== undefined)?.startedAt ?? null, running: runs.some((run) => run.routineId === routine.id && run.status === "running") })); }, planUsage: () => loadPlanUsage({ accounts: planAccountsFromInstances(instanceConfigs(cfg)) }), apps: () => dashboardApps(cfg, composio, () => cloudComposio.apps(), () => connectedInApp(mcpServerResponse().servers, emailService.store.list().map((account) => account.address))).then((apps) => { appSignIns.settled(apps.services.filter((app) => app.connected).map((app) => app.slug)); return apps; }), workspaceKind: isThisServerVps("this-server") || CLOUD_HOME ? "vps" : undefined }); const dashboardCommands = createDashboardCommands({ port: PORT, dataDir: DATA_DIR, collect: dashboardCollector, dashboardUrl: () => dashboardReporterRef?.status().url ?? null, companion: utilityParentPort && DESKTOP_MANAGED ? () => companionEndpoints.request() : undefined }); dashboardCommandOwner = dashboardCommands.owns; const machinePulse = process.platform === "linux" ? createPulseSampler() : undefined; machinePulse?.start(); const dashboardReporter = createDashboardReporter({ dataDir: DATA_DIR, collect: dashboardCollector, usage: usageOutbox, choice: usageSignals, shared: usageShared, pulse: machinePulse, execute: dashboardCommands.execute, log: (line) => console.warn(line) }); dashboardReporterRef = dashboardReporter; dashboardReporter.start(); ROUTES.push(createDashboardRoutes({ reporter: dashboardReporter, usageSignals, usageNotes: usageOutbox, usageShared, experience: experienceOutbox, onUsageChoice: () => { dashboardReporter.syncChoice(); settingsSyncRef?.touch(); }, linkAgentBase: () => mobileLink.state().agent?.base ?? null }));
 
 ROUTES.push(desktopViewer.route);
 // the bot browser's stream on the same direct peer as the desktop (server/routes/direct-sockets.ts)

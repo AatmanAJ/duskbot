@@ -178,7 +178,7 @@ describe("dashboard reporter and the help-improve switch", () => {
     let optOutAnswer: boolean | undefined, failReports = 0;
     const calls: string[] = [];
     let pending: boolean | null = true;
-    const choice = { pending: () => pending, pushed: (value: boolean) => { calls.push(`pushed:${value}`); if (pending === value) pending = null; }, fromAccount: (value: boolean) => { calls.push(`account:${value}`); } };
+    const choice = { pending: () => pending, pushed: (value: boolean) => { calls.push(`pushed:${value}`); if (pending === value) pending = null; }, fromAccount: (value: { optOut: boolean }) => { calls.push(`account:${value.optOut}`); } };
     const fetcher = (async (input: string, init?: { body?: string }) => {
       const url = String(input), reply = (status: number, body: object) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
       if (url.endsWith("/v1/enroll")) return reply(200, { v: 1, workspaceId: "workspace", claimUrl: "http://x/claim", dashboardUrl: "http://x", claimExpiresAt: 0 });
@@ -199,5 +199,29 @@ describe("dashboard reporter and the help-improve switch", () => {
     await vi.waitFor(() => expect(bodies.length).toBeGreaterThan(2));
     expect(bodies.at(-1)!.usageOptOut).toBeUndefined();
   }, 30_000);
+  it("carries the notes answer and owed deletes until a report gets through, and hands the account's notes state back", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "dashboard-notes-")); dirs.push(dir);
+    const bodies: WorkspaceReport[] = [], calls: unknown[] = [];
+    let failReports = 1, notesPending: boolean | null = true, owed: { notes: string[]; records: boolean } | null = { notes: ["noteid0001"], records: true };
+    const choice = { pending: () => null, notesPending: () => notesPending, pushed: (_: boolean, notes?: boolean | null) => { calls.push(`pushed:${notes}`); if (notes === notesPending) notesPending = null; },
+      fromAccount: (answer: unknown) => { calls.push(answer); } };
+    const shared = { sent: () => { calls.push("sent"); }, forgetting: () => owed, forgotten: (done: { notes: string[] }) => { calls.push(`forgotten:${done.notes.join()}`); owed = null; } };
+    const fetcher = (async (input: string, init?: { body?: string }) => {
+      const url = String(input), reply = (status: number, body: object) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+      if (url.endsWith("/v1/enroll")) return reply(200, { v: 1, workspaceId: "workspace", claimUrl: "http://x/claim", dashboardUrl: "http://x", claimExpiresAt: 0 });
+      if (url.endsWith("/v1/report")) {
+        bodies.push(JSON.parse(init!.body!));
+        if (failReports > 0) { failReports--; return reply(500, {}); }
+        return reply(200, { v: 1, watching: false, nextReportMs: 600_000, commands: [], usageOptOut: true, usageNotes: true, usageNotesAnswered: true, usageAsk: true });
+      }
+      return new Promise(() => {});
+    }) as unknown as typeof fetch;
+    const usage = { take: () => ({ turns: [], runs: [] }), requeue: () => {} };
+    const reporter = createDashboardReporter({ dataDir: dir, collect: collector(), choice, shared, usage, execute: async (c) => ({ id: c.id, ok: true, message: null, at: Date.now() }), fetch: fetcher }); reporters.push(reporter);
+    await reporter.link("http://127.0.0.1:1");
+    await vi.waitFor(() => expect(calls).toContain("forgotten:noteid0001"), { timeout: 15_000 });
+    expect(bodies[0]).toMatchObject({ usageNotes: true, usageForget: { notes: ["noteid0001"], records: true } });
+    expect(bodies[1]).toMatchObject({ usageNotes: true, usageForget: { notes: ["noteid0001"], records: true } });
+    expect(calls).toEqual(["pushed:true", "sent", "forgotten:noteid0001", { optOut: true, notes: true, notesAnswered: true, askUsage: true }]);
+  }, 30_000);
 });
-
