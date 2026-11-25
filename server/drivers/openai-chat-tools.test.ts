@@ -191,6 +191,75 @@ async function fixture(script: Script, provider: Provider = "openai-compat", api
 }
 
 
+async function backupAi(script: (body: ChatRequest, response: ServerResponse) => void) {
+  const seen: ChatRequest[] = [];
+  const server = createServer(async (request, response) => {
+    if (request.method !== "POST") { response.setHeader("content-type", "application/json"); response.end('{"data":[]}'); return; }
+    let data = "";
+    for await (const part of request) data += part.toString();
+    const body = JSON.parse(data) as ChatRequest;
+    seen.push(body);
+    script(body, response);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("backup fixture did not bind TCP");
+  const instance = await OpenAICompatDriver.create({ instanceId: randomUUID(), displayName: "Backup fixture", enabled: true,
+    config: { url: `http://127.0.0.1:${address.port}/v1`, apiKeyEnv: "BACKUP_KEY" }, environment: { BACKUP_KEY: "backup-fixture-key" } });
+  cleanups.push(async () => {
+    await instance.dispose();
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+  return { seen, backup: { name: "Backup fixture", model: "backup-model", complete: instance.adapter.chatCompletion! } };
+}
+
+function refuse(response: ServerResponse, status: number, message: string) {
+  response.writeHead(status, { "content-type": "application/json" });
+  response.end(JSON.stringify({ error: { message } }));
+}
+
+describe("falling back mid-turn to the bot's backup AI", () => {
+  it("carries the reply on with the backup, tool results and all, when the provider runs out of credit after a tool ran", async () => {
+    const backup = await backupAi((_body, response) => answer(response, "Stored the receipt; all done."));
+    const f = await fixture((_body, response, round) => round === 1
+      ? sse(response, [chunk({ tool_calls: [toolCall()] }, "tool_calls")])
+      : refuse(response, 402, "Insufficient Balance"));
+    await f.start({ approvalMode: "full", chatBackups: () => [backup.backup] });
+    expect(await f.completed()).toMatchObject({ ok: true });
+    expect(f.requests).toHaveLength(2);
+    expect(f.effects()).toEqual([{ name: "receipt", value: "done" }]);
+    // the rest of the turn stays on the backup, its check-the-result gate included
+    expect(backup.seen.length).toBeGreaterThanOrEqual(1);
+    expect(backup.seen[0]!.messages.find((message) => message.role === "tool")).toMatchObject({ tool_call_id: "call_write" });
+    expect(backup.seen[0]!.tools?.map((tool) => tool.function.name)).toContain("audit_write");
+    expect(f.recorder.events).toContainEqual(expect.objectContaining({ type: "runtime.notice", message: expect.stringContaining("Backup fixture is carrying on") }));
+    expect(f.recorder.events).toContainEqual(expect.objectContaining({ type: "item.completed", itemType: "assistant_text", text: "Stored the receipt; all done." }));
+    expect(f.recorder.events.some((event) => event.type === "runtime.error")).toBe(false);
+  });
+
+  it("retries a rate limit first, then falls back, and fails as before with no backup", async () => {
+    const backup = await backupAi((_body, response) => answer(response, "Answered by the backup."));
+    const limited = await fixture((_body, response) => refuse(response, 429, "Rate limit exceeded"));
+    await limited.start({ approvalMode: "full", chatBackups: () => [backup.backup] });
+    expect(await limited.completed()).toMatchObject({ ok: true });
+    expect(limited.requests).toHaveLength(3);
+    expect(backup.seen).toHaveLength(1);
+    const alone = await fixture((_body, response) => refuse(response, 429, "Rate limit exceeded"));
+    await alone.start({ approvalMode: "full" });
+    expect(await alone.completed()).toMatchObject({ ok: false });
+    expect(alone.recorder.events.find((event) => event.type === "runtime.error")).toMatchObject({ message: expect.stringContaining("429") });
+  });
+
+  it("never falls back once the reply has started showing, nor on a provider's safety block", async () => {
+    const backup = await backupAi((_body, response) => answer(response));
+    const blocked = await fixture((_body, response) => refuse(response, 400, "Your request was flagged by our content policy (content_policy_violation)"));
+    await blocked.start({ approvalMode: "full", chatBackups: () => [backup.backup] });
+    expect(await blocked.completed()).toMatchObject({ ok: false });
+    expect(backup.seen).toHaveLength(0);
+  });
+});
+
 describe("independent read-only tool batches", () => {
   const readCall = (name: string, index: number) => ({ ...toolCall("audit_read", JSON.stringify({ name, value: name }), `read_${index}`), index });
 

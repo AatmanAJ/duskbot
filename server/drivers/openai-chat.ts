@@ -25,7 +25,7 @@ import { completionError, httpErrorDetail, refusedToolCall, refusedToolCallFailu
 import { ChatRepeatGuard } from "./chat-repeat-guard.ts";
 import { TextCallHoldback, textToolCalls } from "./chat-text-tool-calls.ts";
 import { createModelRoutes, ModelRouteRefused, noRouteLeft, readResponsesStream, responsesRequest, routeRefusal, type ModelRoute, type ResponseItem } from "./openai-responses.ts";
-import { appendNative } from "./native.ts"; import { fingerprint, MAX_DELIVERED_THREADS, replayDelivered, type DeliveredUserMessage } from "./openai-chat-replay.ts";
+import { appendNative } from "./native.ts"; import { backupNotice, movesToBackup, TurnBackups, type ChatBackup } from "./chat-fallback.ts"; import { fingerprint, MAX_DELIVERED_THREADS, replayDelivered, type DeliveredUserMessage } from "./openai-chat-replay.ts";
 import { classifyError, interruptibleDelay, RETRY_MAX_ATTEMPTS } from "./retry.ts";
 import { carriedSteps, carriedWorkFile, chatLimitFacts, sharedCarriedWork } from "./openai-chat-carry.ts";
 import { CORRECTIVE_ROUND, CORRECTIVE_ROUNDS, announcesAction, ownsFailure, withoutRepeats, claimsUnmadeChange, effectfulCall, leakedReasoning, leakedToolSyntax, LeakHoldback, NUDGE_ANNOUNCED_ACTION, REASONING_AGAIN, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
@@ -556,6 +556,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       let unread: string[] = [];
       let callsAtNudge = -1; const gates = new TurnGates(), repeats = new ChatRepeatGuard({ stops: Boolean(options.localModel) });
       let unreadable: false | "call" | "reasoning" = false, askedAgain = false, nudged = false;
+      const backups = new TurnBackups(turn.chatBackups); let carrier: ChatBackup | undefined;
       try {
         const parsed = parseToolScope(turn.toolScope);
         if (!parsed.ok) throw new Error(parsed.error);
@@ -600,12 +601,14 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
               if (visible) emit({ ...base(turn.threadId, turnId), type: "content.delta", streamKind, delta: visible });
             };
             try {
-              completion = await complete(messages, model, true, abort.signal, (text, streamKind) => {
+              const onDelta = (text: string, streamKind: keyof typeof pending) => {
                 streamed = true;
                 if (streamKind === "assistant_text" && text.trim()) answerStreamed = true;
                 const shown = streamKind !== "assistant_text" ? text : leakHold.feed(holdback ? holdback.feed(text) : text);
                 if (shown) delta(shown, streamKind);
-              }, tools.definitions, undefined, turn.effort);
+              };
+              completion = await (carrier ? carrier.complete({ messages, model: carrier.model, signal: abort.signal, tools: tools.definitions, effort: turn.effort, onDelta })
+                : complete(messages, model, true, abort.signal, onDelta, tools.definitions, undefined, turn.effort));
               // A reply cut off at the token limit may be a call cut short; running half of one is worse than saying so.
               const written = holdback && !completion.toolCalls.length && completion.finishReason !== "length" ? textToolCalls(completion.text, tools.definitions) : null;
               const leaked = written || completion.toolCalls.length ? false : tools.definitions.length > 0 && leakedToolSyntax(completion.text) ? "call" : leakedReasoning(completion.text) ? "reasoning" : false;
@@ -635,7 +638,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
               if (nudge) { nudged = true; messages.push({ role: "user", content: nudge }); emit({ ...base(turn.threadId, turnId), type: "turn.retrying", attempt: 1, delayMs: 0, reason: "empty_reply" }); continue; }
               // A rejected reasoning echo executed nothing upstream, so the stripped resend repeats nothing.
               if (error instanceof UnsupportedReasoningReplayError && !streamed && !abort.signal.aborted) {
-                reasoningReplayRejected.add(model);
+                reasoningReplayRejected.add(carrier?.model ?? model);
                 for (const message of messages) delete message.reasoning_content;
                 continue;
               }
@@ -668,6 +671,13 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
               }
               // The failed request ran nothing: the calls this turn already handled ride in `messages` and never run again.
               const delayMs = abort.signal.aborted || streamed || error instanceof ChatProtocolError ? null : retryDelay(error, verdict, attempt);
+              const backup = delayMs === null && !answerStreamed && !abort.signal.aborted && movesToBackup(error) ? backups.next() : undefined;
+              if (backup) {
+                console.warn(`${options.driverKind}: ${carrier?.model ?? model} failed (${verdict.reason}); falling back to ${backup.name} ${backup.model}`);
+                emit({ ...base(turn.threadId, turnId), type: "runtime.notice", message: backupNotice(carrier?.name ?? input.displayName ?? options.driverKind, backup.name) });
+                carrier = backup; attempt = 0;
+                continue;
+              }
               if (delayMs === null) throw error;
               attempt += 1;
               emit({ ...base(turn.threadId, turnId), type: "turn.retrying", attempt, delayMs, reason: verdict.reason });
@@ -916,6 +926,10 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         ...(options.tools !== false ? { askTool: { kind: "native" as const, name: ASK_USER_TOOL } } : {}),
         guestTurns: "confined", thinkingSignal: false },
       sendTurn,
+      chatCompletion: ({ messages, model, signal, tools, effort, onDelta }) => {
+        if (!options.apiKey) return Promise.reject(new Error(options.missingKeyError));
+        return complete(messages, model, true, signal, onDelta, tools, undefined, effort);
+      },
       interruptTurn: async (threadId, turnId) => {
         const turn = active.get(threadId);
         if (!turn || (turnId && turn.turnId !== turnId)) return;

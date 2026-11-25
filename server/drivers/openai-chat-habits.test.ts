@@ -84,6 +84,15 @@ describe("retryDelay", () => {
     expect(retryDelay(new Error("401"), { transient: false, reason: "auth" }, 0)).toBeNull();
     expect(retryDelay(Object.assign(new Error("429"), { retryAfterMs: MAX_RETRY_WAIT_MS + 1 }), transient, 0)).toBeNull();
   });
+  it("retries a 429 worded as quota when it names a wait within the minute, and only then", () => {
+    const quota = { transient: false, reason: "quota" };
+    const body = "You exceeded your current quota, please check your plan and billing details. Please retry in 20s.";
+    const perMinute = withRetryAfter(new Error(`upstream HTTP 429: ${body}`), new Headers(), Date.now(), body);
+    expect(retryDelay(perMinute, quota, 0)).toBeGreaterThanOrEqual(19_000);
+    expect(retryDelay(perMinute, quota, 2)).toBeNull();
+    expect(retryDelay(new Error("upstream HTTP 429: You exceeded your current quota (insufficient_quota)"), quota, 0)).toBeNull();
+    expect(retryDelay(Object.assign(new Error("upstream HTTP 402: Insufficient Balance"), { retryAfterMs: 1_000 }), quota, 0)).toBeNull();
+  });
 });
 
 describe("withRetryAfter", () => {

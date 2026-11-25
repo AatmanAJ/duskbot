@@ -81,11 +81,15 @@ export function withRetryAfter<T extends Error>(error: T, headers: Pick<Headers,
  * transient failure, within the attempts, and never past MAX_RETRY_WAIT_MS. The request ran nothing, so tool calls
  * that already ran in this turn stay in its messages and are not repeated. */
 export function retryDelay(error: unknown, verdict: ErrorClassification, attempt: number): number | null {
-  if (!verdict.transient || attempt >= RETRY_MAX_ATTEMPTS - 1) return null;
-  const { retryAfterMs: asked, limitResetAt: named } = (error ?? {}) as { retryAfterMs?: unknown; limitResetAt?: unknown };
+  const { retryAfterMs: asked, limitResetAt: named, message } = (error ?? {}) as { retryAfterMs?: unknown; limitResetAt?: unknown; message?: unknown };
+  const hinted = typeof asked === "number" ? asked : typeof named === "number" ? named - Date.now() : undefined;
+  // a 429 naming a wait within the minute is a per-minute limit, whatever its words call it (Gemini's free tier says
+  // "You exceeded your current quota ... Please retry in 33s")
+  const brief = verdict.reason === "quota" && typeof message === "string" && /\bHTTP 429\b/.test(message) && hinted !== undefined && hinted <= MAX_RETRY_WAIT_MS;
+  if ((!verdict.transient && !brief) || attempt >= RETRY_MAX_ATTEMPTS - 1) return null;
   if (typeof asked === "number" && asked > MAX_RETRY_WAIT_MS) return null;
   if (verdict.reason === "rate_limited" && typeof asked !== "number" && typeof named === "number" && named - Date.now() > MAX_RETRY_WAIT_MS) return null;
-  return Math.max(computeBackoff(attempt), typeof asked === "number" ? asked : 0);
+  return Math.max(computeBackoff(attempt), brief || typeof asked === "number" ? Math.max(0, hinted!) : 0);
 }
 
 // gpt-oss's harmony tokens (`<|channel|>commentary to=functions.x <|constrain|>json<|message|>{...}<|call|>`), which a

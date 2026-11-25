@@ -7,6 +7,7 @@ import type {
   DriverKind, InstanceId, ModelVariantOption, RuntimeEventListener, ThreadId, TurnId,
 } from "../shared/runtime-events.ts";
 import type { ProviderIcon } from "../shared/provider-icon.ts";
+import type { ChatBackup, ChatCompletion } from "./drivers/chat-fallback.ts";
 
 export type { CloudBackend, EffortLevel, ModelSelection } from "../shared/wire.ts";
 export type {
@@ -212,6 +213,9 @@ export interface SendTurnInput {
   /** Times an API-model turn that answers after a failed tool call, without saying what failed, is sent back to fix it
    * (`loopGuard.correctiveRounds`); absent is the driver's default (2); never after a denial. */
   toolErrorCorrectiveRounds?: number;
+  /** The chat-completions AIs a chat-engine turn falls back to, best first, when its own AI's provider refuses or drops a
+   * request after its retries; read only on such a failure. */
+  chatBackups?: () => readonly ChatBackup[];
 }
 
 /** An MCP server this machine starts and talks to over stdio. */
@@ -295,6 +299,8 @@ export interface ProviderAdapter {
     askTool?: ToolIdentity;
   };
   sendTurn(input: SendTurnInput): Promise<TurnStartResult>;
+  /** A chat-completions engine's one streamed request, for another chat engine's turn to fall back to. */
+  chatCompletion?: ChatCompletion;
   interruptTurn(threadId: ThreadId, turnId?: TurnId): Promise<void>;
   /** Never throws for a vanished ask: `unavailable` means nobody could take the answer, and the caller treats it as a deny. */
   respondToRequest(

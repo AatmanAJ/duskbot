@@ -220,7 +220,7 @@ import {
   newId,
 } from "./contracts.ts";
 import { retryLine } from "./retry-line.ts";
-import { automaticBackups, recoveryCapabilityError, startupBackups } from "./automatic-recovery.ts";
+import { automaticBackups, recoveryCapabilityError, startupBackups } from "./automatic-recovery.ts"; import { chatBackups } from "./chat-backups.ts";
 import { createQuotaSwitchHost } from "./host/quota-switch.ts"; import { quotaSwitchEnabled } from "./quota-switch.ts";
 import { decodeGeneratedImage } from "./generated-image.ts";
 import { isDiskFull } from "./sqlite-rollback.ts"; import { createMcpServersHost } from "./host/mcp-servers-host.ts"; import { createLimitTakeover, signedOutStop } from "./host/limit-takeover.ts";
@@ -9543,7 +9543,7 @@ async function beginTurn(
         ...settingsTurnFields(cfg, DATA_DIR, managedPolicy.restrictsMcp()),
         cwd,
         ...(worksInWorkspace || guestConfined || cloudGuestOpened(threadId) ? {} : { toolResultFolder: messageFileRootsForThread(bot.id, threadId).find((root) => root !== ATTACHMENTS_DIR) }),
-        botSettingsFile: botSettingsFile(bot),
+        botSettingsFile: botSettingsFile(bot), chatBackups: () => chatBackups(quotaSwitchEnabled() ? limitTakeover.backups(bot.id, { instanceId, model }, "engine", approvalModeFor(liveBot ?? bot)) : startupBackups(liveBot ?? bot, cfg.automaticRecovery), (id) => registry.get(id), engineName),
       }, route.quickModel ? { model, own: bot.modelSelection, onFallback: () => store.patchMessage(threadId, userMessage.id, { quickModel: undefined }) } : undefined)), () => companyShutdown || !directTurnClaimExists(bot.id, dispatchClaimId, threadId), async () => {
         await (runningTurnEngines.get(threadId) ?? instance).adapter.interruptTurn(threadId).catch(() => {});
       });
