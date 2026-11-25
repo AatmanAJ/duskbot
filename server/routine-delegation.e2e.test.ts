@@ -65,7 +65,7 @@ describe("routine delegation through the isolated harness", () => {
     const result = await api("POST", "/api/internal/coordinate-bots", { botIds: [peer.id], message: "Produce the fixture report." }, await token(threadId));
     expect(result.receipts).toHaveLength(1);
     expect(result.receipts[0]).toMatchObject({ botId: peer.id, outcome: "queued", requestId: expect.any(String) });
-    expect(result.message).toContain("End your turn");
+    expect(result.message).toMatch(/end your turn/i);
     return result;
   };
   /** The isolated fake runs every bot: one slot per bot makes "busy" mean busy. */
