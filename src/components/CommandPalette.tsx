@@ -238,6 +238,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
       e.preventDefault();
       const entry = entries[selected];
       if (entry) void activate(entry);
+      else if (searchFailed) setSearchAttempt((n) => n + 1);
     }
   };
 
