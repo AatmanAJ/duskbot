@@ -25,6 +25,7 @@ import { BotSwitch, buttonCls, Card, fieldCls, LinkRow, NoteRow, RadioRow, rowCl
 import { ForgetUndoToast } from "./modals/MemoryModal";
 import { forgetLabel, useMemoryEditor } from "./modals/use-memory-editor";
 import { useSkillActions } from "./modals/use-skill-actions";
+import { skillRowHint } from "./skill-row-hint";
 
 type Derived = ReturnType<typeof useBotSettingsDerived>;
 
@@ -149,7 +150,7 @@ export function SkillsPage({ bot }: PageContext) {
             key={skill.name}
             data-panel-row={`skill:${skill.name}`}
             title={skill.name}
-            hint={skill.description || skill.source}
+            hint={skillRowHint(skill)}
             label={t("botPanel.ui.botSettingsSimpleSkillToggle", { name: skill.name })}
             color={bot.color}
             checked={skill.enabled}

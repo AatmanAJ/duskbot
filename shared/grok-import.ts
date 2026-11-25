@@ -496,13 +496,13 @@ export function grokMovePlan(bot: GrokBot, options: { timeZone?: string; takenSe
 
   const skillNames = new Set<string>();
   const skillSlugs = new Map<string, string>();
-  const skills: Array<NonNullable<ReturnType<typeof skillEntry>>> = [];
+  const skills: Array<NonNullable<ReturnType<typeof skillEntry>> & { source: string }> = [];
   const planned: GrokMovePlan["skills"] = [];
   for (const [index, skill] of bot.skills.entries()) {
     if (skills.length >= AGENT_MAX_SKILLS || !skill.instructions.trim()) continue;
     const entry = skillEntry(skill, uniqueSlug(skill.name, `skill-${index + 1}`, skillNames));
     if (!entry) continue;
-    skills.push(entry);
+    skills.push({ ...entry, source: from.name });
     skillSlugs.set(skill.name.trim().toLowerCase(), entry.name);
     planned.push({ folder: entry.name, name: oneLine(skill.name) || String(index + 1), on: scanSkillText(entry.instructions).length === 0 });
   }
