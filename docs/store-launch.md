@@ -335,7 +335,7 @@ keep the account and its bot running for the whole review.
 | Package name | `bot.dusk.mobile` |
 | versionCode / versionName | `DUSK_ANDROID_VERSION_CODE` (default 1; raise it for every upload) / `DUSK_ANDROID_VERSION_NAME` (default 1.0) |
 | minSdk / compileSdk / targetSdk | 24 / 36 / 36. Play requires new apps and updates to target API 36 (Android 16) since 31 Aug 2026; 36 passes. Expect API 37 to be required from Aug 2027 |
-| Permissions (merged manifest) | INTERNET, ACCESS_NETWORK_STATE, CAMERA, VIBRATE, POST_NOTIFICATIONS, WAKE_LOCK, c2dm RECEIVE (push) |
+| Permissions (merged manifest) | INTERNET, ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE, ACCESS_LOCAL_NETWORK, CAMERA, RECORD_AUDIO, MODIFY_AUDIO_SETTINGS, VIBRATE, POST_NOTIFICATIONS, WAKE_LOCK, c2dm RECEIVE (push) |
 
 ### Upload key and Play App Signing
 
@@ -390,6 +390,15 @@ requires: https://dusk.bot/delete-account, which works without the app installed
 | Device or other IDs | yes (push token; ML Kit, see below) | no | App functionality; Analytics (ML Kit) | no |
 | Messages: Other in-app messages | yes, when the bot runs on our servers | no | App functionality | yes |
 | App info and performance: Diagnostics | yes (ML Kit, see below) | no | Analytics | no |
+| Audio: Voice or sound recordings | yes, during a voice call with a bot on our servers | no | App functionality | yes |
+
+Microphone: asked for the first time the person taps the microphone in the composer or starts a call, never at
+launch. Dictation runs through the phone's own speech recognizer (offline where the phone has the language), and the
+words land in the composer; the app keeps no recording. In a voice call the audio streams live to the computer running
+the bot, which hands it to the voice provider connected there; it reaches our servers only when that computer is a dusk
+cloud one, hence the Audio row. Mark it processed ephemerally only after checking the hosted call path stores no audio
+(not checked for this note). A voice service the person sets up in Settings (their own key) is a choice they make and
+goes straight to that service.
 
 The Android QR scanner is Google's ML Kit (bundled `com.google.mlkit:barcode-scanning` plus
 `play-services-code-scanner`), which sends usage and diagnostics to Google. Check its current disclosure at
@@ -421,11 +430,20 @@ allows both, but drop the apps shot if a reviewer cites impersonation or tradema
 
 ### Android gaps (decide before production)
 
-- No `RECORD_AUDIO`: dictation, voice notes and calls cannot work on Android. Add the permission (with
-  `MODIFY_AUDIO_SETTINGS`) or hide voice on Android.
-- Cleartext http to a computer on the same Wi-Fi is blocked from Android 9; pairing over the local network needs a
-  network security config that allows private addresses, as iOS has. Pairing through the encrypted link is unaffected.
-- No push until FCM is set up.
+- Microphone: done. `RECORD_AUDIO` (with `MODIFY_AUDIO_SETTINGS`, which Capacitor's WebView asks for before it grants a
+  call's microphone) is in the manifest. The first dictation asks through `DuskSpeech.requestPermissions()`; if the
+  person says no, the composer shows one line: "Allow microphone access for dusk bot in your phone's settings, then try
+  again."
+- Cleartext http: still allowed in `network_security_config.xml`'s base config, with dusk.bot pinned to HTTPS. Pairing
+  with a computer on the same Wi-Fi dials `http://<its IPv4 address>:<port>` (`apps/companion/src/endpoints.ts`, kind
+  `lan`), any non-loopback IPv4 the computer has, through native `HttpURLConnection` (CapacitorHttp and DuskStream), so
+  the network security config decides. It cannot be narrowed to private addresses: a `<domain>` matches a name exactly
+  or by suffix, and an IP's network part is on the left, so there is no way to write 10.0.0.0/8 or 192.168.0.0/16.
+  Tailnet (`*.ts.net`) and Bonjour (`*.local`) routes are names and could be listed; the IPv4 routes cannot. iOS allows
+  the same through ATS, which exempts IP literals. Play accepts a base cleartext config (it is a lint and pre-launch
+  report note, not a policy rejection); blocking it by default would need a socket-level HTTP client for the Wi-Fi
+  route. Pairing through the encrypted link or https is unaffected either way.
+- Push: FCM is set up (Messages channel above).
 
 ## Review risks and where they are handled
 
