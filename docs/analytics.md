@@ -6,7 +6,7 @@ before that. **Help improve dusk bot** covers usage counts and crash reports. It
 where the account service places the person in the EU, the EEA, the UK or Switzerland, or cannot place them
 (`cookieless` in `apps/dashboard/server/analytics/context.ts`): there it reads off until they turn it on.
 
-**Session notes** are separate and need a yes. When a chat goes badly, after a long session and once a week, the
+**Session summaries** are separate and need a yes. When a chat goes badly, after a long session and once a week, the
 person's own AI reads a few recent messages where the bots run (at most the last 12 or 14 of that chat, or for the
 weekly note the last 6 of each of the 12 most recent chats), writes a short note on that machine using a little of
 their AI plan, and only the scrubbed note is sent. Notes run only while help improve is on too. They are stored with no
@@ -15,12 +15,13 @@ account and no workspace, under a hash of a random id only the workspace knows, 
 Both switches are in Settings, Privacy, and on the account page. Turning either off stops it, clears anything still
 queued and deletes what was already sent (records by account and workspace, notes by the ids the workspace kept).
 
-## Asking about session notes
+## Asking about session summaries
 
 Nobody is asked at sign-in. The desktop app asks once, with a card, when the person has really started using dusk bot
 (`REAL_USE_TURNS` finished turns with a reply over `REAL_USE_DAYS` days, or one routine that ran and worked, in
-`server/usage-signals-switch.ts`), notes are off, and they never answered, on any device. It shows on app open or after
-a reply finishes, never while a bot is working. Showing the card records "no"; "Share session notes" turns them on.
+`server/usage-signals-switch.ts`), notes are off, and they never answered, on any device. It shows a beat
+(`NOTES_ASK_BEAT_MS`) after the app opens or a reply lands, only while no bot is working, the window is in front, no other
+sheet or menu is open and nothing is half-typed. Showing the card records "no"; "Share summaries" turns them on.
 
 An earlier setting can carry over: the account service reads `DUSK_NOTES_CARRY_OVER` (a file of account ids, one per
 line) once and keeps notes on for those accounts until they answer themselves; a carried-over setting goes off the
@@ -39,7 +40,7 @@ sign-in uses.
 ## Before sign-in
 
 An app or workspace that has never signed in sends nothing: no app events, no usage records, no notes on how sessions
-went, no "how things went" events and no crash reports. It does not write session notes either, so it uses none of the
+went, no "how things went" events and no crash reports. It does not write session summaries either, so it uses none of the
 person's AI plan for them. Nothing is queued for later: events from before the first sign-in are dropped, never sent
 once it happens.
 
@@ -95,7 +96,7 @@ and the app version. Every batch is from an app that has signed in, so the insta
 ## Turning it off
 
 Turn off **help improve dusk bot** in Settings, Privacy, or on the account page. The desktop app, its background
-server (usage records) and its crash reports all follow the same switch, and stop at once. Session notes stop with it. A server you run yourself can also be kept off with `DUSK_USAGE_SIGNALS=off`, and a desktop build's
+server (usage records) and its crash reports all follow the same switch, and stop at once. Session summaries stop with it. A server you run yourself can also be kept off with `DUSK_USAGE_SIGNALS=off`, and a desktop build's
 crash reports with `DUSK_ERROR_REPORTS=0`.
 
 Bot usage, cost accounting, server logs and diagnostics stay available in the app and on your server whether the

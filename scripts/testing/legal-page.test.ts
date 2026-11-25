@@ -38,6 +38,13 @@ describe("the legal page says what the code does", () => {
     says(policy, `lists what your computer sent in the last ${USAGE_RETENTION_DAYS} days`);
   });
 
+  it("calls the switch by the name the app shows", () => {
+    const strings = JSON.parse(readFileSync(new URL("../../src/locales/en.json", import.meta.url), "utf8")) as Record<string, string>;
+    const name = strings["settings.dataSharing.notes"]!.toLowerCase();
+    says(policy.toLowerCase(), name);
+    expect(policy.toLowerCase(), "the legal page names a switch the app does not show").not.toContain("session notes");
+  });
+
   it("names when the app asks", () => {
     says(notes, `${REAL_USE_TURNS} finished replies over at least ${REAL_USE_DAYS} different days`);
   });
