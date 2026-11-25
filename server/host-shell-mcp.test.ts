@@ -16,7 +16,7 @@ describe("mountsHostShell", () => {
     expect(mountsHostShell({ ...desktopTurn, worksOn: "browser" })).toBe(true);
   });
   it("never lends it to an engine with its own shell, off the desktop app, on Off, a remote computer, a guest or a test run", () => {
-    for (const change of [{ engineHasShell: true }, { desktopApp: false }, { cloudHome: true }, { worksOn: "off" }, { remoteComputer: true },
+    for (const change of [{ engineHasShell: true }, { desktopApp: false }, { worksOn: "off" }, { remoteComputer: true },
       { thisComputerRefused: true }, { guest: true }, { testRun: true }]) {
       expect(mountsHostShell({ ...desktopTurn, ...change })).toBe(false);
     }
@@ -28,6 +28,14 @@ describe("mountsHostShell", () => {
       expect(mountsHostShell({ ...local, ...change })).toBe(false);
     }
     expect(mountsHostShell({ ...local, guest: true })).toBe(false);
+  });
+  it("lends a dusk cloud home's own shell to a chat engine there, as Claude Code and Codex have theirs, but never to a guest, a test run or on Off", () => {
+    const cloud = { ...desktopTurn, desktopApp: false, cloudHome: true, platform: "linux" as const };
+    expect(mountsHostShell(cloud)).toBe(true);
+    expect(mountsHostShell({ ...cloud, watched: false })).toBe(true);
+    for (const change of [{ engineHasShell: true }, { guest: true }, { testRun: true }, { worksOn: "off" }, { remoteComputer: true }]) {
+      expect(mountsHostShell({ ...cloud, ...change })).toBe(false);
+    }
   });
   it("keeps a hosted engine's shell on Windows and on unattended turns", () => {
     expect(mountsHostShell({ ...desktopTurn, platform: "win32", watched: false })).toBe(true);

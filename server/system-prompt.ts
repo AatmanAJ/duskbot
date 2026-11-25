@@ -253,6 +253,10 @@ const VM_LONG_COMMANDS_TEXT =
 export const SANDBOX_ESCALATION_PROMPT =
   " When your sandbox blocks a step the person asked for (starting a local server, a network call, writing outside your folder), rerun that command asking for permission to run it outside the sandbox instead of working around it; only if that is refused, say so in one line.";
 /** For an engine with no shell of its own, given this computer's through the shell tools. */
+/** On a dusk cloud home the shell is the cloud computer's, which has no file index to search. */
+export const hostShellPrompt = (cloudHome: boolean): string => cloudHome
+  ? " Your shell on your cloud computer: shell_run_command runs a command there, starting in your working folder (files you make there can be attached to the chat). Use it for every file and command-line task: listing, reading, moving or converting files, running scripts with python3 or node, git, curl. Never say you cannot run commands. A command is stopped after 60 seconds unless you pass a longer timeout_seconds (at most 300); start anything longer in the background with its output in a file and read that file later."
+  : HOST_SHELL_PROMPT;
 export const HOST_SHELL_PROMPT =
   " Your shell on this computer: shell_run_command runs a command on the person's own computer, starting in your working folder (files you make there can be attached to the chat), and shell_find_files finds their files through the system's search index (Spotlight on macOS, Windows Search on Windows). Use them for every file and command-line task on this computer: finding, listing, reading, moving or converting files, running scripts. Never say you cannot search their files or run commands, and never open a terminal on their screen to type a command these can run. Never scan the whole disk with a command; find files by name with shell_find_files. A command is stopped after 60 seconds unless you pass a longer timeout_seconds (at most 300); start anything longer in the background with its output in a file and read that file later.";
 export function longCommandsPrompt(computer: ComputerPromptKind | null): string {
