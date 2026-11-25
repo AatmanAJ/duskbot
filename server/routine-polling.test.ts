@@ -130,7 +130,8 @@ describe("check parts", () => {
     const turn = { owned: true, room: false, guest: false, depth: 0, handedOff: false, outsideDriven: false, routineRun: false, personStarted: true, asksFirst: false };
     const clean = { readOutside: false, fullAccess: false, unfenced: false };
     expect(scriptCheckGate(turn, false, clean)).toEqual({ apply: true });
-    expect(scriptCheckGate(turn, true, clean)).toEqual({ refused: expect.stringMatching(/dusk cloud/) });
+    expect(scriptCheckGate(turn, true, clean)).toEqual({ apply: true });
+    expect(scriptCheckGate(turn, true, { ...clean, unfenced: true })).toEqual({ refused: expect.stringMatching(/dusk cloud/) });
     expect(scriptCheckGate({ ...turn, routineRun: true }, false, clean)).toEqual({ refused: expect.stringMatching(/Only the person/) });
     expect(scriptCheckGate({ ...turn, outsideDriven: true }, false, clean)).toEqual({ refused: expect.stringMatching(/Only the person/) });
     expect(scriptCheckGate(turn, false, { ...clean, readOutside: true })).toEqual({ card: true });
