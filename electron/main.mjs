@@ -958,8 +958,7 @@ function ensureCloudAccount() {
     // account gets the website's first steps there, and this app signs itself in when the website approves it
     openBrowser: url => shell.openExternal(url), awaitingWake: () => cloudPower.awaiting(), appLinks: false,
     onState: state => {
-      if (state?.account && state.status === "connected") desktopPrefs?.markSignedIn();
-      cloudSync.accountChanged(state.account?.id ?? null); rememberCloudHome(state);
+      if (state?.account && state.status === "connected") desktopPrefs?.markSignedIn(); cloudSync.accountChanged(state.account?.id ?? null); rememberCloudHome(state);
       rememberedHome = rememberedCloudHome(rememberedHome, state);
       cloudPower.changed(); try { void oneHome.kick(); void homeWindow.changed(); announceAddedCloud(state); railChanged(); accountEnroll.onState(state); accountGate.changed(state); void botsElsewhere.remember(); void vpsCloudMove?.kick(); void vpsCloudMove?.signedInNow?.(); serverEnroll?.onState(state); } catch {}
       // a server's install line that waited on the account: made at once now (vpsLink may not exist yet at launch)
@@ -3494,8 +3493,7 @@ app.whenReady().then(async () => {
     );
   }
   registerCuaIpc();
-  desktopPrefs = createDesktopPrefs({ ...jsonFile(path.join(app.getPath("userData"), "desktop-prefs.json")), frameByDefault: FRAME_BY_DEFAULT });
-  try { const signIn = cloudAccount?.state(); if (signIn?.account && signIn.status === "connected") desktopPrefs.markSignedIn(); } catch {}
+  desktopPrefs = createDesktopPrefs({ ...jsonFile(path.join(app.getPath("userData"), "desktop-prefs.json")), frameByDefault: FRAME_BY_DEFAULT }); try { const signIn = cloudAccount?.state(); if (signIn?.account && signIn.status === "connected") desktopPrefs.markSignedIn(); } catch {}
   registerDesktopPrefs({ ipcMain, prefs: desktopPrefs, analyticsChanged: syncUsageSignals, localConfig: jsonFile(path.join(desktopDataDir(), "config.json")).read, cloudOffered: () => cloudAccountRestored().then(cloudOffersReady),
     frame: { made: () => windowFrameMade, restarts: process.platform === "win32", changed: () => void broadcastDesktopCapabilities() },
     languageChanged: (language, sender) => {
