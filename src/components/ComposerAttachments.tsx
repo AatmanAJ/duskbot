@@ -173,6 +173,7 @@ export function ComposerAttachmentStrip({ items, onRemove, onRetry, onDisplayInC
     if (grow <= 0) return;
     const easing = getComputedStyle(document.documentElement).getPropertyValue("--composer-spring").trim() || "ease-out";
     strip.animate([{ transform: `translateY(${grow}px)` }, { transform: "none" }], { duration: 300, easing });
+    strip.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, easing: "ease-out" });
   }, [shown]);
   if (!shown) return null;
   const images = items.flatMap((a) => {
