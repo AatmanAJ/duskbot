@@ -39,7 +39,8 @@ export const backupNotice = (from: string, to: string): string => `${from} didn'
 /** The backups still untried for this turn, read once, on the first failure that needs one. */
 export class TurnBackups {
   private left: ChatBackup[] | undefined;
-  constructor(private readonly read: (() => readonly ChatBackup[]) | undefined) {}
+  private readonly read: (() => readonly ChatBackup[]) | undefined;
+  constructor(read: (() => readonly ChatBackup[]) | undefined) { this.read = read; }
 
   next(): ChatBackup | undefined {
     if (!this.left) {
