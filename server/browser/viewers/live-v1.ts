@@ -362,7 +362,7 @@ function inputMessage(message: ObjectValue): ObjectValue {
     const action = message.eventType === "mousePressed" ? "down" : message.eventType === "mouseReleased" ? "up" : "move";
     return { type: "mouse", action, x: message.x, y: message.y, button: message.button, clickCount: message.clickCount, modifiers: message.modifiers };
   }
-  if (message.eventType === "char") return { type: "text", text: message.text };
+  if (message.eventType === "char") return { type: "text", text: message.text, ...(message.secret === true ? { secret: true } : {}) };
   return {
     type: "key", action: message.eventType === "keyUp" ? "up" : "down", key: message.key, code: message.code ?? "",
     modifiers: message.modifiers, ...(message.windowsVirtualKeyCode ? { keyCode: message.windowsVirtualKeyCode } : {}),

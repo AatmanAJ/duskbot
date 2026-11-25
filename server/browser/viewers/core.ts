@@ -14,13 +14,14 @@ import type { AuthChallenge } from "../cdp/auth.ts";
 import type { CdpBrowser } from "../cdp/browser.ts";
 import type { CdpSession, Params } from "../cdp/connection.ts";
 import type { Download } from "../cdp/downloads.ts";
-import { callOnNode } from "../cdp/evaluate.ts";
+import { callOnNode, valueInWorld } from "../cdp/evaluate.ts";
 import type { OpenFileChooser } from "../cdp/files.ts";
 import { editingCommands, keyDescription, US_KEYBOARD } from "../cdp/keyboard.ts";
 import type { ProfileControl, TakeResult } from "../control.ts";
 import { personUrl } from "../dispatch.ts";
 import type { HoldLimits } from "../hold.ts";
 import type { Tab } from "../tabs.ts";
+import { teachInputOf, type TeachInput } from "../teach.ts";
 import { ACCEPT_OF, chooseOption, cursorAt, editableAt, selectAt, selectedText, type SelectPopup } from "./popups.ts";
 import { ViewerHold } from "./hold.ts";
 import { fitsScreen, MIN_WINDOW_WIDTH, requestedSize, VIEWPORT_PRESETS, viewportFor, ZOOM_LIMITS, zoomedLayout, type ViewportSetting } from "./viewport.ts";
@@ -122,6 +123,8 @@ export interface HubHost {
   personActed?(): void;
   /** The person typed on the tab beside the bot: page scripts there are refused for a while. */
   personTyped?(tab: Tab): void;
+  /** Records the person's input while they teach the bot a task in this browser. */
+  teach?(person: string, input: TeachInput | null, evaluate: (script: string) => Promise<unknown>): Promise<void>;
 }
 
 const num = (value: unknown, fallback = 0) => (typeof value === "number" && Number.isFinite(value) ? value : fallback);
@@ -157,7 +160,7 @@ export class Viewer {
   readonly pressedKeys = new Map<string, { key: string; code: string }>();
   readonly pressedButtons = new Map<"left" | "middle" | "right", { x: number; y: number }>();
   /** The <select> this viewer's press opened, drawn by the viewer: its press and release never reach the page. */
-  select: { id: string; tab: Tab } | null = null;
+  select: { id: string; tab: Tab; labels: string[] } | null = null;
   readonly swallowed = new Set<string>();
   cursor = "default";
   cursorAt = 0;
@@ -877,11 +880,15 @@ export class ViewerHub {
         viewer.select = null;
         const index = num(message.index, -1);
         if (!select || select.id !== message.id || select.tab !== tab || !Number.isInteger(index) || index < 0) return;
-        await human(tab, () => chooseOption(tab.page, select.id, index));
+        await human(tab, () => this.#taught(viewer, tab, { kind: "choose", option: select.labels[index] ?? "" }).then(() => chooseOption(tab.page, select.id, index)));
         return;
       }
     }
-    await human(tab, () => this.#dispatch(viewer, tab, message));
+    await human(tab, () => this.#taught(viewer, tab, teachInputOf(message)).then(() => this.#dispatch(viewer, tab, message)));
+  }
+
+  #taught(viewer: Viewer, tab: Tab, input: TeachInput | null): Promise<void> {
+    return this.host.teach?.(viewer.options.person ?? viewer.options.owner, input, (script) => valueInWorld(tab.page.frames, tab.page.frames.mainFrameId, script)) ?? Promise.resolve();
   }
 
   /** A view used together with the bot while nobody holds the browser: its input runs at once, beside the bot's. */
@@ -894,7 +901,7 @@ export class ViewerHub {
     const id = randomUUID();
     const popup = await selectAt(tab.page, x, y, id).catch(() => null);
     if (!popup) return false;
-    viewer.select = { id, tab };
+    viewer.select = { id, tab, labels: popup.options.map((option) => option.label) };
     viewer.push({ type: "selectPopup", id, ...popup });
     return true;
   }

@@ -28,6 +28,7 @@ import { HealthShown, pageHealthLine } from "./health.ts";
 import type { HoldLimits } from "./hold.ts";
 import { errorResult, shapeResult, textResult, withParts, type ToolResult } from "./shape.ts";
 import { TabRegistry, type Tab } from "./tabs.ts";
+import type { Evaluate, TeachInput, TeachRecorders } from "./teach.ts";
 import { RECENT_TABS_LIMIT, within, type ClosingTab } from "../browser-recent-tabs.ts";
 import { parseToolCall, RESTART_TOOL, TOOL_LIST } from "./tools.ts";
 import { ViewerHub, type Viewer, type ViewerOptions, type ViewerOutput } from "./viewers/core.ts";
@@ -69,6 +70,7 @@ export interface BrowserServiceOptions {
   onScratch?: (session: string, path: string) => void;
   /** Told of the tabs a browser had open, each with its last screen, just before it closes; never for a restart or crash. */
   onClosing?: (session: string, tabs: ClosingTab[]) => void;
+  teach?: TeachRecorders;
 }
 
 interface Running {
@@ -840,6 +842,7 @@ export class BrowserService {
         profile.hub.broadcastControl();
       },
       personActed: () => { profile.personActed = true; },
+      teach: (person: string, input: TeachInput | null, evaluate: Evaluate) => this.#options.teach?.note(profile.session, person, input, evaluate) ?? Promise.resolve(),
       personTyped: (tab: Tab) => { this.#holds.personTyped(profile.session, tab.page.url(), PERSON_TYPED_ON_PAGE, tab.page.targetId); },
       download: (id: string): Download | undefined => profile.run?.browser.downloads?.list().find((download) => download.id === id),
     };

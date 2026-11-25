@@ -9,6 +9,7 @@ import { basename, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BrowserHostError, SETUP_COMMAND } from "../browser/chrome/host-setup.ts";
+import { TeachRecorders } from "../browser/teach.ts";
 import type { Audience } from "../audience.ts";
 import type { Download } from "../browser/cdp/downloads.ts";
 import type { BrowserService } from "../browser/service.ts";
@@ -97,6 +98,7 @@ async function serve({ attach, current = () => true, download, audience = () => 
     dataDir: fixture.dataDir,
     person: (auth) => (auth.kind === "session" ? `person-of-${auth.session.id}` : "local-owner"),
     viewers: {
+      teach: new TeachRecorders(),
       open: async (options) => {
         fixture.resumes.push(options.resume);
         fixture.people.push(options.person);

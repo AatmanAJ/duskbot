@@ -29,7 +29,7 @@ const sameSetting = (a: PreviewViewportSetting, b: PreviewViewportSetting) =>
 const item = "flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left hover:bg-inset disabled:cursor-not-allowed disabled:opacity-40";
 const small = "rounded-md border border-transparent p-1 text-ink-secondary hover:bg-inset hover:text-ink disabled:opacity-40";
 
-export function MoreMenu({ stream, ready, typing, setting, zoom, pip, onViewport, onZoom, onPip, onType, onSecret, onReconnect, onRestart }: {
+export function MoreMenu({ stream, ready, typing, setting, zoom, pip, onViewport, onZoom, onPip, onType, onSecret, onReconnect, onRestart, teach }: {
   /** Viewport sizes, zoom and picture in picture come with the v2 stream only. */
   stream: boolean;
   /** The person holds the browser, so its page can be sized and zoomed. */
@@ -46,6 +46,8 @@ export function MoreMenu({ stream, ready, typing, setting, zoom, pip, onViewport
   onSecret: () => void;
   onReconnect: () => void;
   onRestart: () => void;
+  /** Recording a task for the bot to learn: offered while nobody else holds the browser. */
+  teach?: { name: string; ready: boolean; recording: boolean; start: () => void };
 }) {
   const menu = useRef<HTMLDetailsElement>(null);
   const run = (action: () => void) => () => {
@@ -74,6 +76,11 @@ export function MoreMenu({ stream, ready, typing, setting, zoom, pip, onViewport
             </span>
           </div>
         </>) : null}
+        {teach ? section(
+          <button type="button" role="menuitem" className={item} disabled={!teach.ready || teach.recording} onClick={run(teach.start)}>
+            <span className="size-2 shrink-0 rounded-full bg-danger shadow-[0_0_6px_var(--color-danger)]" aria-hidden="true" />{t("browser.teach.menu", { name: teach.name })}
+          </button>,
+        ) : null}
         {section(<>
           {stream && pip ? <button type="button" role="menuitem" className={item} onClick={run(onPip)}>{pip.open ? t("browser.panel.closeFloating") : t("browser.panel.popOut")}</button> : null}
           <button type="button" role="menuitem" className={item} disabled={!typing} onClick={run(onType)}>{t("browser.panel.typeTextMenu")}</button>

@@ -18,6 +18,7 @@ import { requestedSize } from "../browser/viewers/viewport.ts";
 import { messageFileDisposition } from "../message-file.ts";
 import { isSameOrigin, type RequestAuth } from "../request-auth.ts";
 import { PASS, type RouteHandler } from "./table.ts";
+import { TEACH_PATH, teachRoute } from "./browser-teach.ts";
 import type { Upgrades } from "./upgrades.ts";
 import { isScreenFallbackReason, type ScreenFallbackReason } from "../../shared/screen-direct.ts";
 
@@ -36,7 +37,7 @@ type Failure = { status: number; error: string };
 
 export interface BrowserViewerRouteDeps {
   upgrades: Upgrades;
-  viewers: Pick<LiveRouter, "open" | "action" | "stream" | "fileChooserOffered" | "answerFileChooser" | "download">;
+  viewers: Pick<LiveRouter, "open" | "action" | "stream" | "fileChooserOffered" | "answerFileChooser" | "download" | "teach">;
   /** Who is watching, as a hold of the browser knows them: every view and device of one person shares their hold. */
   person(auth: RequestAuth): string;
   /** Whose browser of the bot this person's view shows (`threadId` names the conversation they look at); null when
@@ -152,6 +153,8 @@ export function createBrowserViewerRoutes(deps: BrowserViewerRouteDeps): RouteHa
     if (recent && deps.recent) return recentRoute(deps, recent[1]!, recent[2], { req, res, url, method, auth, json });
     const close = CLOSE.exec(path);
     if (close && deps.close) return closeRoute(deps, close[1]!, { req, res, url, method, auth, json });
+    const teach = TEACH_PATH.exec(path);
+    if (teach) return teachRoute(deps, teach[1]!, { req, res, url, method, auth, json, readBody });
     const live = LIVE.exec(path);
     const stream = live ? null : STREAM.exec(path);
     const upload = live || stream ? null : UPLOAD.exec(path);

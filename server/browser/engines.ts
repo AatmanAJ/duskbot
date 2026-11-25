@@ -14,6 +14,7 @@ import { toolNameOf } from "../browser-runtime-results.ts";
 import { sandboxDisabled } from "./chrome/host-setup.ts";
 import type { HostKind } from "./chrome/flags.ts";
 import { ChromeLauncher } from "./chrome/launcher.ts";
+import { TeachRecorders } from "./teach.ts";
 import { ProcessRegistry, sweep } from "./chrome/processes.ts";
 import { browserRoot } from "./chrome/profile.ts";
 import { browserLanguage, browserTimeZone, languageList } from "./chrome/wrapper.ts";
@@ -56,6 +57,7 @@ export interface ChromeEngineOptions {
   signingIn?: BrowserServiceOptions["signingIn"];
   /** Run with each sweep: the day-old and over-the-disk-limit scratch of this data folder. */
   sweepScratch?: () => void;
+  teach?: BrowserServiceOptions["teach"];
 }
 
 /** The new engine: one Chrome launcher (no agent-browser wrapper), the browser service, its live views and its sweep. */
@@ -108,6 +110,7 @@ export class ChromeEngine {
       ...(options.onScratch ? { onScratch: options.onScratch } : {}),
       ...(options.onClosing ? { onClosing: options.onClosing } : {}),
       ...(options.signingIn ? { signingIn: options.signingIn } : {}),
+      ...(options.teach ? { teach: options.teach } : {}),
     });
     this.live = new LiveV1({ service: this.service, target: (session) => this.target(session) });
     this.stream = new StreamV2({ service: this.service });
@@ -310,10 +313,12 @@ type SessionSpec = { session: string; spec: { command: string; args?: readonly s
 export class LiveRouter {
   readonly #old: BrowserLive;
   readonly #chrome: ChromeEngine;
+  readonly teach: TeachRecorders;
 
-  constructor(old: BrowserLive, chrome: ChromeEngine) {
+  constructor(old: BrowserLive, chrome: ChromeEngine, teach = new TeachRecorders()) {
     this.#old = old;
     this.#chrome = chrome;
+    this.teach = teach;
   }
 
   open(options: OpenOptions): Promise<void> {

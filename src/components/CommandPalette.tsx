@@ -23,6 +23,7 @@ import { usePaletteExits } from "./palette-exits";
 import { pacedMs } from "@/lib/motion-speed";
 import { openSettings } from "@/lib/open-settings";
 import { botPageCommands, settingsCommands } from "./palette-commands";
+import { startTeaching } from "@/lib/teach-task";
 
 const FORMER_PLACE_WORD = "workspace";
 
@@ -183,6 +184,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
     { id: "theme-dark", name: t("palette.theme", { theme: t("settings.theme.dark") }), detail: appearance, also: t("palette.also.theme"), icon: "moon", run: () => applySkinChoice(THEME_SKINS.dark) },
     { id: "theme-light", name: t("palette.theme", { theme: t("settings.theme.light") }), detail: appearance, also: t("palette.also.theme"), icon: "sun", run: () => applySkinChoice(THEME_SKINS.light) },
     ...(currentBot ? botPageCommands(currentBot.name).map(({ page, ...command }): Command => ({ ...command, run: () => openBotSettingsPage(dispatch, currentBot.id, page) })) : []),
+    ...(currentBot && currentBot.browser !== false ? [{ id: "teach-task", name: t("browser.teach.menu", { name: currentBot.name }), detail: currentBot.name, also: t("palette.also.teach"), icon: "window-pointer-arrow" as const, run: () => startTeaching(dispatch, currentBot.id) }] : []),
   ];
   // With nothing typed: the bots, those with news first, then grok's short list; the rest wait for a query.
   const shownCommands = q ? ranked(commands, (command) => (command.also ? `${command.name} ${command.also}` : command.name), q) : commands.filter((command) => IDLE_COMMANDS.has(command.id));

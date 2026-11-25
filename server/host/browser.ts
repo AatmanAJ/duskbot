@@ -14,6 +14,7 @@ import { RelayTimeout, relay, relayCommand, relayInput } from "../browser-relay.
 import { RECENT_TABS_LIMIT, recentTabs, within, type ClosingTab } from "../browser-recent-tabs.ts";
 import { browserSteps } from "../browser-steps.ts";
 import { BrowserLive } from "../browser-live.ts";
+import { TeachRecorders } from "../browser/teach.ts";
 import { browserEgress } from "../browser/egress/registry.ts";
 import {
   agentBrowserIntegration,
@@ -144,7 +145,8 @@ export function createBrowserHost(deps: BrowserHostDeps) {
   if (browserBox) chromeLauncher.boxWith(() => browserBox(LAUNCHER_SECCOMP_FD, []));
   agentBrowserRuntime.onIdleClose((session) => idleClosing.add(session));
   agentBrowserRuntime.refusedSignIn = () => refusedSignInNote(myChromeAvailable() && (cfg.browserProfiles ?? []).some((profile) => profile.browser === "chrome"));
-  const agentBrowserLive = new BrowserLive({ runtime: agentBrowserRuntime, devTools: {
+  const teach = new TeachRecorders();
+  const agentBrowserLive = new BrowserLive({ runtime: agentBrowserRuntime, teach, devTools: {
     url: (port) => relay(port, { action: "cdp_url" }, { timeoutMs: 5_000, maxBytes: 65_536 }).then((answer) => answer.data?.cdpUrl),
   } });
   const host: HostKind = DESKTOP_MANAGED ? "desktop" : CLOUD_HOME || existsSync("/.dockerenv") ? "container" : "server";
@@ -157,6 +159,7 @@ export function createBrowserHost(deps: BrowserHostDeps) {
   });
   const chromeEngine = new ChromeEngine({
     dataDir: DATA_DIR,
+    teach,
     host,
     egressPort: (key) => browserEgress.open(key),
     egressNotice: (key) => browserEgress.takeNotice(key),
@@ -178,7 +181,7 @@ export function createBrowserHost(deps: BrowserHostDeps) {
     refusal: (_session, spec, params) => (attachesToChrome(spec.env) ? null : browserEgress.callRefusal(params)),
     annotate: passkeyAnnotation(CLOUD_HOME ? "cloud" : DESKTOP_MANAGED ? "desktop" : "server"),
   });
-  const browserLive = new LiveRouter(agentBrowserLive, chromeEngine);
+  const browserLive = new LiveRouter(agentBrowserLive, chromeEngine, teach);
   const usedBrowserSessions = new Map<string, Spec>();
   const audiences = new AudienceBrowsers(join(DATA_DIR, "browser", "audiences.json"));
   const browserAudience = (threadId: string | undefined): Audience => (threadId && deps.audienceOf ? deps.audienceOf(threadId) : "team");

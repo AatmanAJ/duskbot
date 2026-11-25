@@ -9,6 +9,7 @@ import { BrowserProfilesManager } from "./BrowserProfilesManager";
 import { ChromeRow, type BrowserNav, type BrowserTab } from "./browser/ChromeRow";
 import { MoreMenu } from "./browser/MoreMenu";
 import { PasskeyNotice } from "./browser/PasskeyNotice";
+import { TeachBar, TeachReview, useTeachTask } from "./browser/TeachTask";
 import { StreamSurface, type StreamSurfaceHandle, type SurfaceConnect } from "./browser/StreamSurface";
 import { createBrowserControl, streamTransport, type BrowserControl, type BrowserTakeStatus } from "@/lib/browser-control";
 import { resolveAddressBarInput } from "@/lib/browser-address";
@@ -278,6 +279,7 @@ export function LiveBrowser({ bot, signIn, page }: { bot: Bot; signIn?: BrowserS
     setError("");
   }, [shown]);
   const typingReady = connected && you;
+  const task = useTeachTask({ bot, scope: browserScope(state.config?.team, bot.threadId), connected: commandsReady, takeControl: () => latest.current.takeControl() });
   const pipSupported = stream && supportsBrowserPictureInPicture();
   const passkeyWall = passkeyWallAt(nav.url);
   return <div ref={panel} className={maximized
@@ -322,10 +324,12 @@ export function LiveBrowser({ bot, signIn, page }: { bot: Bot; signIn?: BrowserS
         onSecret={() => { setMasked(true); setShowTyping(true); }}
         onReconnect={reconnect}
         onRestart={restart}
+        teach={{ name: bot.name, ready: commandsReady, recording: task.recording, start: () => void task.start() }}
       />}
     />
     {error && <div role="alert" className="flex shrink-0 items-center justify-between gap-2 border-b border-transparent px-3 py-2 text-[12px] text-danger"><span>{error}</span>{!connected && <button className="shrink-0 underline" onClick={reconnect}>{t("browser.panel.reconnect")}</button>}</div>}
     {takeStatus === "stale" && <div role="status" className="shrink-0 border-b border-transparent px-3 py-1.5 text-[12px] text-accent-text">{t("browser.control.stale", { name: bot.name })}</div>}
+    <TeachBar task={task} botName={bot.name} you={you} onTake={takeControl} />
     {passkeyWall && passkeyDismissed !== nav.url && <PasskeyNotice wall={passkeyWall} botName={bot.name} onDismiss={() => setPasskeyDismissed(nav.url)} />}
     <div className="relative flex min-h-0 flex-1 flex-col bg-inset/40">
       {shown ? (
@@ -356,6 +360,7 @@ export function LiveBrowser({ bot, signIn, page }: { bot: Bot; signIn?: BrowserS
         </div>
       ) : null}
     </div>
+    <TeachReview task={task} botName={bot.name} />
     <dialog ref={profilesDialog} onClose={() => setShowProfiles(false)} onClick={(e) => { if (e.target === e.currentTarget) setShowProfiles(false); }} className="ui-dialog m-auto max-h-[80vh] w-[min(420px,calc(100%-32px))] overflow-auto p-5 text-ink backdrop:bg-black/50">
       <div className="mb-4 flex items-center justify-between"><h2 className="text-[15px] font-medium">{t("browser.panel.profiles")}</h2><button className={button} aria-label={t("browser.panel.closeProfiles")} onClick={() => setShowProfiles(false)}><X size={16} /></button></div>
       {(heldElsewhere || (you && takeStatus !== "")) && <p className="mb-3 text-[12px] text-ink-secondary">{t(heldElsewhere ? "browser.profiles.heldElsewhere" : "browser.profiles.busy")}</p>}
@@ -366,7 +371,7 @@ export function LiveBrowser({ bot, signIn, page }: { bot: Bot; signIn?: BrowserS
       <div className="mb-3 flex items-center justify-between"><h2 className="text-[14px] font-medium">{masked ? t("browser.typeSecret.title") : t("browser.panel.typeTextTitle")}</h2><button className={button} aria-label={t("browser.panel.closeTyping")} onClick={() => setShowTyping(false)}><X size={16} /></button></div>
       <form className="flex flex-col gap-3" onSubmit={(e) => {
         e.preventDefault(); const field = e.currentTarget.elements.namedItem("pageText") as HTMLInputElement;
-        if (typingReady && field.value) { interact({ type: "text", text: field.value }); field.value = ""; setShowTyping(false); }
+        if (typingReady && field.value) { interact({ type: "text", text: field.value, ...(masked ? { secret: true as const } : {}) }); field.value = ""; setShowTyping(false); }
       }}><input key={masked ? "secret" : "text"} name="pageText" type={masked ? "password" : "text"} aria-label={masked ? t("browser.typeSecret.field") : t("browser.panel.typeTextField")} autoComplete={masked ? "new-password" : "off"} spellCheck={false} maxLength={4096} placeholder={masked ? "••••••••" : t("browser.panel.typeTextPlaceholder")} className="rounded-lg bg-inset px-3 py-2 text-[13px] outline-none focus:ring-1 focus:ring-focus" />
         {masked && <p className="flex items-center gap-1 text-[12px] text-ink-tertiary"><LockKeyhole size={11} aria-hidden="true" />{t("browser.typeSecret.note")}</p>}
         <button disabled={!typingReady} className="self-end rounded-lg bg-accent px-4 py-2 text-[12px] text-accent-ink disabled:opacity-40">{t("browser.panel.typeButton")}</button></form>

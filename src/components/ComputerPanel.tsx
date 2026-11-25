@@ -31,6 +31,7 @@ import { useDesktopCapabilities } from "./DesktopCapabilities";
 import { BotRoutines } from "./routines/BotRoutines";
 import { BrowserPanel } from "./BrowserPanel";
 import { usePanelPage, type PanelPage } from "@/lib/page-open";
+import { useTeachRequest } from "@/lib/teach-task";
 import { browserAvailable, browserUnavailableReason, builtInBrowserEnabled } from "@/lib/feature-flags";
 import { parseComputerHelp, transitionComputerControlLease, type ComputerControlAction } from "@/lib/computer-control";
 import { useComputerTakeover } from "./computer-takeover";
@@ -363,6 +364,7 @@ export function ComputerPanel({
   // A published page's Open (usePageOpener): this bot's browser shows, with the page in a new tab.
   const [pageRequest, setPageRequest] = useState<PanelPage>();
   usePanelPage(fullscreen ? "" : bot.id, (page) => { selectPanelView("browser"); setPageRequest(page); });
+  useTeachRequest(fullscreen ? "" : bot.id, () => selectPanelView("browser"), { peek: true });
   useEffect(() => {
     if (fullscreen || !requestedSignIn || requestedSignIn.consumed) return;
     const view = requestedSignIn.place === "browser" ? "browser" : "computer";

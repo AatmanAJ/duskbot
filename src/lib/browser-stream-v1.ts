@@ -63,7 +63,7 @@ export function liveAction(input: PreviewStreamInput): Body | Body[] | null {
       };
     case "text": {
       const chunks: Body[] = [];
-      for (let at = 0; at < input.text.length; at += CHAR_LIMIT) chunks.push({ type: "input_keyboard", eventType: "char", text: input.text.slice(at, at + CHAR_LIMIT) });
+      for (let at = 0; at < input.text.length; at += CHAR_LIMIT) chunks.push({ type: "input_keyboard", eventType: "char", text: input.text.slice(at, at + CHAR_LIMIT), ...(input.secret ? { secret: true } : {}) });
       return chunks;
     }
     case "copy": return { type: "copy" };

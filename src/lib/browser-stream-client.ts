@@ -120,7 +120,8 @@ export type PreviewStreamInput =
       readonly text?: string;
       readonly modifiers: number;
     }
-  | { readonly type: "text"; readonly text: string }
+  /** `secret`: typed in the panel's secret field, so a recording of the task never keeps it. */
+  | { readonly type: "text"; readonly text: string; readonly secret?: true }
   | { readonly type: "copy" }
   | { readonly type: "resize"; readonly width: number; readonly height: number }
   /** The viewer can show larger frames now: the screencast restarts at the new cap without reconnecting. */

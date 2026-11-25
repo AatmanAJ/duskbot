@@ -4,6 +4,7 @@
 // typed for every client, search and memory, and the server prepends the
 // hint for the model when it composes the turn (promptWithDataContext).
 import { SAVE_RUN_AS_SKILL_LINE } from "./learn-request.ts";
+import { TEACH_TASK_LINE } from "./teach-task.ts";
 
 export interface DataContext {
   cardId: string;
@@ -26,7 +27,7 @@ export const DATA_CONTEXT_HINT = "The person is viewing this Data result. For a 
 export function dataContextFor(text: string, view: DataViewContext | null | undefined, recipient?: { botId: string; threadId: string }): DataContext | undefined {
   if (!text || !view || !recipient || view.botId !== recipient.botId || view.threadId !== recipient.threadId) return undefined;
   const opening = text.trimStart();
-  if (opening.startsWith("/") || opening.startsWith(SAVE_RUN_AS_SKILL_LINE)) return undefined;
+  if (opening.startsWith("/") || opening.startsWith(SAVE_RUN_AS_SKILL_LINE) || opening.startsWith(TEACH_TASK_LINE)) return undefined;
   return { cardId: view.cardId, ...(view.draftSql !== undefined ? { draftSql: view.draftSql } : {}) };
 }
 

@@ -11,6 +11,7 @@ import { buttonCls } from "../rows";
 import { RowIconButton, textFieldCls } from "../../ui/GrokDialog";
 import { Toggle } from "../../ui/Toggle";
 import { useSkillActions } from "./use-skill-actions";
+import { startTeaching } from "@/lib/teach-task";
 import { skillRowHint } from "../skill-row-hint";
 import { ArtState } from "../../ui/Art";
 
@@ -92,6 +93,7 @@ function SkillRows({ bot }: { bot: Bot }) {
               onClick={() => open("installed", t("botPanel.ui.sheetRowsInstalled"))}
             />
             <NavRow data-sheet-row="add-skill" title={t("botPanel.ui.sheetRowsAddSkill")} onClick={() => setAdding(true)} />
+            {bot.browser !== false && <NavRow data-sheet-row="teach-task" title={t("botPanel.skills.teach")} hint={t("botPanel.skills.teachHint", { name: bot.name })} onClick={() => startTeaching(dispatch, bot.id)} />}
           </Card>
           <Card label={t("botPanel.ui.sheetRowsFindMore")}>
             <NavRow data-panel-link="browse-skills" title={t("botPanel.skills.browse")} onClick={browse} />

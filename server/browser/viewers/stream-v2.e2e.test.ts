@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { json, readBody } from "../../harness/http.ts";
 import type { RequestAuth } from "../../request-auth.ts";
 import { createBrowserViewerRoutes } from "../../routes/browser-viewers.ts";
+import { TeachRecorders } from "../teach.ts";
 import { dispatchRoutes } from "../../routes/table.ts";
 import { createUpgrades } from "../../routes/upgrades.ts";
 import { hostTimeout } from "../../testing/host-timeout.ts";
@@ -66,6 +67,7 @@ suite("the v2 stream on real Chrome", () => {
       dataDir: real.dataDir,
       person: () => "local-owner",
       viewers: {
+      teach: new TeachRecorders(),
         open: async () => {},
         action: async () => ({ ok: true }),
         stream: ({ session: _session, spec: _spec, ...request }) => { stream.open({ ...request, target }); return true; },
