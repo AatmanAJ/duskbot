@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useStore } from "@/state/store";
 import { WindowDragStrip } from "@/components/DesktopCapabilities";
 import { t } from "@/lib/i18n";
+import { friendlyError } from "@/lib/plain-error";
 import { AiCards } from "./onboarding/AiCards";
 import { ConnectAiDialog } from "./onboarding/ConnectAi";
 import { StepArt, StepFrame } from "./onboarding/FunnelSteps";
@@ -10,11 +11,15 @@ export function NoEngines() {
   const { refreshInstances } = useStore();
   const remoteClient = window.duskDesktop?.remoteClient?.active === true;
   const [rechecking, setRechecking] = useState(false);
+  const [checkFailed, setCheckFailed] = useState<string | null>(null);
   const [more, setMore] = useState(false);
   const recheck = async () => {
     setRechecking(true);
+    setCheckFailed(null);
     try {
-      await refreshInstances();
+      await refreshInstances({ reportErrors: true });
+    } catch (cause) {
+      setCheckFailed(friendlyError(cause, t("noEngines.checkFailed")));
     } finally {
       setRechecking(false);
     }
@@ -32,6 +37,7 @@ export function NoEngines() {
           <button onClick={() => void recheck()} disabled={rechecking} className="mt-5 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-60">
             {rechecking ? t("common.checking") : t("common.checkAgain")}
           </button>
+          {checkFailed && <p role="alert" className="mt-2 text-[13px] text-danger">{checkFailed}</p>}
         </div>
       </main>
     );
