@@ -4,19 +4,19 @@ import { CROSS_READ_REFUSALS, crossReadRefusal, crossReadTarget, crossReadThread
 
 const own: CrossReadTurn = { owned: true, room: false, guest: false, depth: 0, handedOff: false, routineRun: false, outsideDriven: false, personStarted: true };
 const ask = (over: Partial<Parameters<typeof crossReadRefusal>[0]> = {}, turn: Partial<CrossReadTurn> = {}) =>
-  crossReadRefusal({ enabled: true, cloudHome: false, self: false, ...over, turn: { ...own, ...turn } });
+  crossReadRefusal({ enabled: true, team: false, self: false, ...over, turn: { ...own, ...turn } });
 
 describe("crossReadRefusal", () => {
   it("lets a bot with the setting on read on the person's own message in their chat", () => {
     expect(ask()).toBeNull();
   });
 
-  it("is off unless the person turned it on", () => {
+  it("is on unless the person turned it off", () => {
     expect(ask({ enabled: false })).toBe(CROSS_READ_REFUSALS.off);
   });
 
-  it("never reads on dusk cloud", () => {
-    expect(ask({ cloudHome: true })).toBe(CROSS_READ_REFUSALS.cloud);
+  it("never reads on a Team Cloud", () => {
+    expect(ask({ team: true })).toBe(CROSS_READ_REFUSALS.cloud);
   });
 
   it("refuses every turn the person did not start in their own chat", () => {
@@ -34,15 +34,19 @@ describe("crossReadThreads", () => {
   it("keeps the other bot's own chats and leaves its rooms out", () => {
     expect(crossReadThreads(["th_main", "th_room", "th_task"], new Set(["th_room"]))).toEqual(["th_main", "th_task"]);
   });
+
+  it("leaves out a chat a dusk cloud guest drove", () => {
+    expect(crossReadThreads(["th_main", "th_guest"], new Set(), (id) => id !== "th_guest")).toEqual(["th_main"]);
+  });
 });
 
 describe("crossReadTarget", () => {
   type Bot = { id: string; name: string; hidden?: boolean; readsOtherChats?: boolean };
-  const planner: Bot = { id: "b-plan", name: "Planner", readsOtherChats: true };
+  const planner: Bot = { id: "b-plan", name: "Planner" };
   const scout: Bot = { id: "b-scout", name: "Scout" };
   const hidden: Bot = { id: "b-hid", name: "Hidden", hidden: true };
   const bots: Bot[] = [planner, scout, hidden];
-  const deps = { bots, bot: (id: string) => bots.find((bot) => bot.id === id), cloudHome: false, turn: own,
+  const deps = { bots, bot: (id: string) => bots.find((bot) => bot.id === id), team: false, turn: own,
     threads: () => ({ ownThreads: ["th_main", "th_room"], roomByThread: new Map([["th_room", {}]]) }) };
 
   it("finds a teammate by name and keeps its own chats", () => {

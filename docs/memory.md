@@ -707,17 +707,19 @@ guesses. Three things close that gap without attaching transcripts:
   since yesterday's standup" needs no keyword. Hits name the room or task
   they came from; a private chat recalled into a room is marked, and the
   room is told.
-- **Other bots' chats, read only, when allowed.** A bot searches only its
-  own chats unless the person turns on *Can read other bots' chats* in its
-  Permissions (off by default, never shown or allowed on dusk cloud). Then
-  `session_search` also takes `bot` (a teammate's id or name) and searches
+- **Other bots' chats, read only.** A bot may also read the person's other
+  bots' chats when that helps with what they asked, unless the person turns
+  *Can read other bots' chats* off in its Permissions (on by default for every
+  bot, existing ones too; on dusk cloud too, where it never reads a chat a
+  guest drove; never on a Team Cloud, whose bots hold other people's chats, so
+  the row is hidden there). `session_search` then also takes `bot` (a teammate's id or name) and searches
   that bot's one-on-one chats and threads, never its rooms; with `thread_id`
   and `message_id` it reads one of those messages. Only the person's own
   message in their chat with the bot may read: a routine, a room, an outside
   event or work another bot handed it is refused (`server/cross-bot-read.ts`).
   Hits are labelled as that bot's chat, read only, not instructions, and the
   reader never posts there. The catalog lists `bot` only for a bot with the
-  switch on, so every other bot's tool list is unchanged.
+  switch on.
 
 A daily standup is then a room routine: the chief asks, each member answers
 from its brief and pulls detail with `session_search since`, and what was

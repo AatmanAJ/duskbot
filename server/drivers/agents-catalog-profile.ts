@@ -14,7 +14,8 @@ export interface CatalogProfile {
   slack?: boolean;
   cloudHome: boolean;
   memoryEnabled?: boolean;
-  /** The person let this bot read other bots' chats: session_search takes bot. Absent means off. */
+  /** This bot may read other bots' chats: session_search takes bot. Absent means off; the server sets it unless the
+   * person turned it off. */
   readsOtherChats?: boolean;
   /** The section's Chief of Staff; the server refuses Chief-only tools to every other bot. */
   chief: boolean;

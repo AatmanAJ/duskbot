@@ -14784,7 +14784,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
           tool: { name: recallCrossingLabel(bot.name, crossing.count, threadLanguage(roomThreadId)), ok: true },
         });
       };
-      const otherChats = (from: BotRecord) => crossReadTarget(url.searchParams.get("bot"), from, { bots: store.bots, bot: (id) => store.bot(id) ?? undefined, cloudHome: Boolean(CLOUD_HOME), turn: jobTurn(internalCapability, from), threads: (bot) => recallThreads(bot, internalCapability) });
+      const otherChats = (from: BotRecord) => crossReadTarget(url.searchParams.get("bot"), from, { bots: store.bots, bot: (id) => store.bot(id) ?? undefined, team: Boolean(CLOUD_TEAM), readable: (threadId) => !cloudGuestDriven(threadId), turn: jobTurn(internalCapability, from), threads: (bot) => recallThreads(bot, internalCapability) });
       if (method === "GET" && path === "/api/internal/session-search") {
         const fromBotId = String(url.searchParams.get("fromBotId") ?? "");
         const from = store.bot(fromBotId);

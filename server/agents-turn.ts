@@ -50,7 +50,7 @@ export function agentsServerEnv(conversation: AgentsConversation, turn: AgentsTu
     DUSK_TURN_DEPTH: String(turn.depth),
     DUSK_SKILL_AUTHORING_ENABLED: flag(host.skillAuthoring),
     DUSK_MEMORY_ENABLED: flag(bot.memoryEnabled !== false),
-    DUSK_READS_OTHER_CHATS: flag(bot.readsOtherChats === true && !host.cloudHome && !conversation.room),
+    DUSK_READS_OTHER_CHATS: flag(bot.readsOtherChats !== false && !host.team && !conversation.room),
     DUSK_CLOUD_HOME: flag(host.cloudHome), DUSK_TEAM_PEOPLE: flag(host.team), DUSK_ROOM: flag(conversation.room),
     DUSK_VOICE_NOTES: flag(host.voiceNotes),
     DUSK_SLACK: flag(host.slack === true),

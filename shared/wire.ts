@@ -396,7 +396,7 @@ export interface WireBot extends DefaultBotFields, BotAccessFields {
   browser?: boolean;
   /** Record a screenshot and a short note of each browser action, kept with the conversation. Off unless true. */
   recordBrowserSteps?: boolean;
-  /** session_search may read other bots' one-on-one chats, read-only, on the person's own message. Off unless true. */
+  /** session_search may read other bots' one-on-one chats, read-only, on the person's own message. On unless false. */
   readsOtherChats?: boolean;
   /** Memory upkeep: the harness captures facts from finished chats into MEMORY.md and topic files, adds facts about
    * the person to About me and tidies nightly. On unless explicitly false. */
