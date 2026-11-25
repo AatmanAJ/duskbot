@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/state/api";
 import { setUsageAnalytics, usageSharingChanged, type SharingPlace } from "@/lib/product-analytics";
+import { whenServerHas } from "@/lib/server-compat";
 
 const ROUTE = "/api/dashboard/usage-signals";
 const SHARED_ROUTE = "/api/dashboard/usage-shared";
@@ -16,7 +17,10 @@ export interface SharedCount { kind: "turns" | "runs" | "setup" | "events"; coun
 export interface UsageShared { notes: SharedNote[]; counts: SharedCount[]; removing: boolean }
 
 export const readUsageSignals = () => api<UsageSignals>(ROUTE);
-export const readUsageShared = () => api<UsageShared>(SHARED_ROUTE);
+const NOTHING_SHARED: UsageShared = { notes: [], counts: [], removing: false };
+
+/** A server from before the list kept none, so it has nothing to show. */
+export const readUsageShared = async (): Promise<UsageShared> => (await whenServerHas("usageShared", () => api<UsageShared>(SHARED_ROUTE))) ?? { ...NOTHING_SHARED };
 export const deleteUsageShared = () => api<{ ok: true; removing: boolean }>(SHARED_ROUTE, { method: "DELETE" });
 
 function followEnabled(enabled: boolean, before: boolean | null, where: SharingPlace): void {
