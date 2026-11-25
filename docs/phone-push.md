@@ -51,36 +51,42 @@ phone's push registration (`PUT /api/mobile/push`) answers `delivering: false` o
 
 Checked on 2026-11-25:
 
-- `https://link.dusk.bot/v1/push` answers `{"services":["apns"]}`: the public relay holds APNs keys and no FCM service
-  account.
-- `apps/mobile/android/app/google-services.json` is not in the repo, so the Android build skips the Google services plugin
-  and an Android build has no Firebase project to get a push token from.
-- So a self-hosted server with no `DUSK_APNS_*` and no `DUSK_FCM_SERVICE_ACCOUNT_FILE` of its own:
-  - iPhone: pushes go through the public relay and arrive, as long as the token's environment matches (a TestFlight or
-    App Store build; an Xcode build gives a sandbox token, see below).
-  - Android: no push. The relay refuses FCM; the server logs it once and stops trying for 30 minutes at a time.
-    Notifications show only while the app is open.
+- `https://link.dusk.bot/v1/push` and `https://link-in.dusk.bot/v1/push` answer `{"services":["apns","fcm"]}`: both
+  link nodes hold the APNs key and the FCM service account.
+- Android builds made with `apps/mobile/scripts/build-android-apk.sh` or `build-android-release.sh` carry the Firebase
+  config (Firebase project `dusk-bot-514309`, app `bot.dusk.mobile`), so the app gets an FCM token and registers it.
+  An Android build made without `google-services.json` (CI's smoke build, a plain `cap run android`) has no push and
+  never asks for it.
+- So a self-hosted server with no `DUSK_APNS_*` and no `DUSK_FCM_SERVICE_ACCOUNT_FILE` of its own sends both through
+  the public relay:
+  - iPhone: pushes arrive, as long as the token's environment matches (a TestFlight or App Store build; an Xcode
+    build gives a sandbox token, see below).
+  - Android: pushes arrive on an app built with the Firebase config. An app installed before that build has no token
+    and stays without push until it is updated.
 - A server with its own keys never uses the relay for that service.
 
-## What the owner has to do
+## Where the keys are
 
-Code cannot fix these; they need the developer accounts:
-
-1. Firebase: create (or pick) a Firebase project, add the Android app `bot.dusk.mobile`, and put its
-   `google-services.json` into the Android build (`apps/mobile/android/app/`, git-ignored; ship it through the release
-   build's secrets, not the repo). Rebuild and release the Android app.
-2. FCM on the public relay: in that project, Service accounts, generate a private key and set
-   `DUSK_FCM_SERVICE_ACCOUNT_FILE` on the link service host (`chmod 600`), then restart it. `GET /v1/push` should then
-   list `fcm`. Without this every self-hosted Android phone stays without push, even after step 1.
-3. APNs on the relay: keep `DUSK_APNS_*` there for `bot.dusk.mobile`. The relay picks the sandbox or production APNs host
-   from the token's environment, so a test from an Xcode build needs a development web build (below) or TestFlight.
-4. A self-hosted person who wants no relay at all sets their own `DUSK_APNS_*` / `DUSK_FCM_SERVICE_ACCOUNT_FILE`, which
-   only works with an app they sign themselves (APNs and FCM accept pushes only from the app's own keys), and
-   `DUSK_PUSH_RELAY=off`.
+- Firebase project `dusk-bot-514309` (the Google Cloud project of the same id, account siddz.dev), Android app
+  `bot.dusk.mobile`. Cloud Messaging API (v1) is on.
+- Service account `fcm-sender@dusk-bot-514309.iam.gserviceaccount.com`, role Firebase Cloud Messaging API Admin only.
+  Its JSON key is `~/.config/duskbot/fcm-service-account.json` on the Mac (mode 600, a secret), on contabo at
+  `/root/omb-link-data/fcm-service-account.json` and on oracle-in at `/etc/dusk-link-node-fcm.json` (owner `dusklink`),
+  set as `DUSK_FCM_SERVICE_ACCOUNT_FILE` in each node's env (`deploy/account/PRODUCTION-CLOUD.md`, step 7).
+- `google-services.json` (public identifiers, kept out of the public repo like the other release inputs) is
+  `~/.config/duskbot/google-services.json`; the Android build scripts copy it to `apps/mobile/android/app/`
+  (`DUSK_ANDROID_GOOGLE_SERVICES` overrides the source) and stop when it is missing.
+- APNs: `DUSK_APNS_*` on both nodes for `bot.dusk.mobile` (step 6 of the same file). The relay picks the sandbox or
+  production APNs host from the token's environment, so a test from an Xcode build needs a development web build
+  (below) or TestFlight.
+- A self-hosted person who wants no relay at all sets their own `DUSK_APNS_*` / `DUSK_FCM_SERVICE_ACCOUNT_FILE`, which
+  only works with an app they sign themselves (APNs and FCM accept pushes only from the app's own keys), and
+  `DUSK_PUSH_RELAY=off`.
 
 ## Setup you have to do
 
-None of this is in the repo: keys and Firebase files are secrets or tied to your developer accounts.
+For an app you sign yourself. None of this is in the repo: keys and Firebase files are secrets or tied to your
+developer accounts.
 
 ### iOS (APNs)
 
@@ -105,9 +111,10 @@ token sandbox only when its web part was built in development mode, so for a pus
 ### Android (FCM)
 
 1. In the Firebase console, create a project (or use one), add an Android app with package `bot.dusk.mobile`,
-   and download `google-services.json` into `apps/mobile/android/app/` (it is already git-ignored there; the build
-   applies the Google services plugin only when the file exists). Rebuild the app.
-2. In Project settings, Service accounts, generate a new private key. That JSON file is a secret.
+   and download `google-services.json` into `apps/mobile/android/app/` (git-ignored by `apps/mobile/.gitignore`; the
+   build applies the Google services plugin only when the file exists). Rebuild the app.
+2. Make a service account with only the Firebase Cloud Messaging API Admin role and create a JSON key for it (or, in
+   Project settings, Service accounts, generate a new private key). That JSON file is a secret.
 3. Where the pushes leave from, set `DUSK_FCM_SERVICE_ACCOUNT_FILE` to that file's path (`chmod 600`) and restart.
 
 ### Check it

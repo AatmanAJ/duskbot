@@ -381,8 +381,8 @@ requires: https://dusk.bot/delete-account, which works without the app installed
 
 The Android QR scanner is Google's ML Kit (bundled `com.google.mlkit:barcode-scanning` plus
 `play-services-code-scanner`), which sends usage and diagnostics to Google. Check its current disclosure at
-https://developers.google.com/ml-kit/android-data-disclosure and copy its rows. Push on Android needs FCM
-(`google-services.json`, `docs/phone-push.md`), not set up yet; until it is, push does not work on Android.
+https://developers.google.com/ml-kit/android-data-disclosure and copy its rows. Push on Android uses FCM
+(Firebase project `dusk-bot-514309`, `docs/phone-push.md`): the FCM registration token is the push token above.
 
 ### Content rating (IARC questionnaire)
 

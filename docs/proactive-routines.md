@@ -217,7 +217,6 @@ say in one line that it can't follow up by itself.
 ## Not in v1
 
 - More than one account per app.
-- Phone push on Android while the public relay has no FCM keys (see docs/phone-push.md).
 - Quiet hours.
 - A sweep of old run conversations.
 - A run against a real Google account: the Composio slugs and answer shapes
