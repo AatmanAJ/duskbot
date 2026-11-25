@@ -86,7 +86,13 @@ export function buildApplicationMenu({ environments, activeId, onSwitch, onAddFr
       : openAtLogin || onQuit || stops.length ? { label: "File", submenu: [...stops, ...atLogin, ...(atLogin.length ? [{ type: "separator" }] : []), quit] } : { role: "fileMenu" },
     { role: "editMenu" },
     ...(home && !others.length ? [] : [server]),
-    { role: "viewMenu" },
+    { label: "View", submenu: [
+      { role: "reload" }, { role: "forceReload" }, { role: "toggleDevTools" }, { type: "separator" },
+      { role: "resetZoom" }, { role: "zoomIn" },
+      // electron 43 binds zoomIn to CommandOrControl+Plus, which is ⌘⇧= on most layouts; ⌘= is the key people press
+      { role: "zoomIn", accelerator: "CmdOrCtrl+=", visible: false, acceleratorWorksWhenHidden: true },
+      { role: "zoomOut" }, { type: "separator" }, { role: "togglefullscreen" },
+    ] },
     { role: "windowMenu" },
     { role: "help", submenu: [
       { label: "dusk bot help", click: () => void shell.openExternal("https://dusk.bot/docs") },
