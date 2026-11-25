@@ -3,7 +3,7 @@ import { EVENTS, isEventName, routeOf, type EventName, type Props } from "./even
 import { deviceOf, geoOf, referrerHost, touchContext, type EventContext } from "./context.ts";
 import type { Present } from "./presence.ts";
 import type { UsageRan } from "./usage.ts";
-import { MAX_REPORT_FRUSTRATIONS, MAX_REPORT_SESSIONS, cleanUsageDigest, cleanUsageFrustration, cleanUsageSession, type UsageDigest, type UsageFrustration, type UsageReport, type UsageSession } from "../../../../shared/usage-signals.ts";
+import { MAX_REPORT_FRUSTRATIONS, cleanUsageForget, MAX_REPORT_SESSIONS, cleanUsageDigest, cleanUsageFrustration, cleanUsageSession, type UsageDigest, type UsageFrustration, type UsageReport, type UsageSession } from "../../../../shared/usage-signals.ts";
 
 export const TRACK_PATH = "/v1/t";
 export const APP_EVENTS_PATH = "/v1/app/events";
@@ -155,6 +155,8 @@ export interface NotesDeps {
   rate(req: IncomingMessage, kind: string, max: number): void;
   appAccount(req: IncomingMessage): string | null;
   save(accountId: string | null, workspaceId: string, notes: Notes, ran: UsageRan): Promise<unknown>;
+  /** notes the app sent before and now asks to have deleted, by the ids only it knows */
+  forget?(ids: string[]): Promise<unknown>;
 }
 const OS: Record<string, string> = { darwin: "mac", win32: "windows", linux: "linux" };
 /** notes from a desktop app whose workspace no account dashboard hears from. Security: open to anyone, like the app
@@ -178,6 +180,8 @@ export async function handleAppNotes(req: IncomingMessage, res: ServerResponse, 
   const platform = text(body.platform, 20), version = text(body.version, 20);
   const os = OS[platform ?? ""];
   const ran: UsageRan = { place: "desktop", ...(os ? { os } : {}), ...(version && /^[\w.+-]{1,20}$/.test(version) ? { version } : {}) };
-  await deps.save(deps.appAccount(req), `app:${install}`, notes, ran);
+  const forget = body.forget === undefined ? [] : cleanUsageForget({ notes: body.forget, records: false })?.notes;
+  if (!forget) return done(res, 400);
+  await Promise.all([deps.save(deps.appAccount(req), `app:${install}`, notes, ran), ...(forget.length && deps.forget ? [deps.forget(forget)] : [])]);
   return done(res);
 }

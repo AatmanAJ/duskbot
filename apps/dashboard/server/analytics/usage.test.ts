@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UsageReport, UsageTurn } from "../../../../shared/usage-signals.ts";
-import { createUsage, latencyBucket, memoryUsageStore } from "./usage.ts";
+import { UNLINK_BATCH, createUsage, latencyBucket, memoryUsageStore, noteKey, notesOnly, ttlIndex, unlinkNotes, unlinkedDoc } from "./usage.ts";
 import { focusRules, summarize, themesOf, type UsageAnswer } from "./usage-summary.ts";
 import { dayOf } from "./events.ts";
 
@@ -67,7 +67,7 @@ describe("usage rollups", () => {
     await usage.ingest("acct_quiet", "ws_3", report({ frustrations: [f], sessions: [s], digests: [{ id: "digest0001", at: NOW - 1000, turns: 40, days: 4, summary: "they use it for email." }] }));
     const [stored] = await store.records("frustration", 0, NOW + 1, 10);
     expect((stored!.data as { summary?: string }).summary).toBe(f.summary);
-    expect((await store.records("session", 0, NOW + 1, 10))[0]!.data).toEqual(s);
+    expect((await store.records("session", 0, NOW + 1, 10))[0]!.data).toEqual({ ...s, id: noteKey(s.id) });
     expect(await store.records("digest", 0, NOW + 1, 10)).toHaveLength(1);
     expect((await store.daily(dayOf(NOW), dayOf(NOW)))[0]!.c.sessions).toBe(1);
     expect(problems).toEqual(["claude|email|gmail"]);
@@ -143,5 +143,85 @@ describe("usage answer and focus", () => {
       adoption: [], categories: [], themes: [], people: { topShare: null } } as unknown as UsageAnswer;
     expect(focusRules(empty)).toEqual([]);
     expect(themesOf([])).toEqual([]);
+  });
+});
+
+describe("session notes kept apart from people", () => {
+  const f = { id: "frust00001", at: NOW - 1000, engine: "claude" as const, category: "email" as const, tools: ["app" as const], apps: ["gmail"], signals: ["retried" as const], retries: 2, summary: "gmail would not connect." };
+  it("keeps notes only with a yes, under a hashed id with no account or workspace, while the account's day still counts them", async () => {
+    const store = memoryUsageStore(() => NOW);
+    const usage = createUsage({ store, now: () => NOW, optedOut: () => false, notesOn: id => id === "acct_yes", isTest: (_, ws) => ws.startsWith("qatest") });
+    await usage.ingest("acct_no", "ws_1", report({ frustrations: [f] }));
+    expect(await store.records("frustration", 0, NOW + 1, 10)).toEqual([]);
+    await usage.ingest("acct_yes", "ws_2", report({ turns: [turn()], frustrations: [f] }));
+    await usage.ingest("acct_yes", "qatest_ws", report({ frustrations: [{ ...f, id: "frust00002" }] }));
+    const notes = await store.records("frustration", 0, NOW + 1, 10);
+    expect(notes).toHaveLength(2);
+    for (const note of notes) {
+      expect(note).toMatchObject({ accountId: "", workspaceId: "" });
+      expect(note.id).toBe((note.data as { id: string }).id);
+      expect(JSON.stringify(note)).not.toMatch(/acct_yes|ws_2|frust0000/);
+    }
+    expect(notes.filter(note => note.test)).toHaveLength(1);
+    expect((await store.records("turn", 0, NOW + 1, 10))[0]).toMatchObject({ accountId: "acct_yes", workspaceId: "ws_2" });
+    expect((await store.people(dayOf(NOW), dayOf(NOW)))[0]).toMatchObject({ accountId: "acct_yes", frustrations: 2, turns: 1 });
+    await usage.ingest("acct_yes", "ws_2", report({ frustrations: [f] }));
+    expect(await store.records("frustration", 0, NOW + 1, 10)).toHaveLength(2);
+  });
+  it("deletes a workspace's notes by the ids it sent and, when asked, its records; another workspace's stay", async () => {
+    const store = memoryUsageStore(() => NOW), usage = createUsage({ store, now: () => NOW, optedOut: () => false, notesOn: () => true });
+    await usage.ingest("acct_a", "ws_1", report({ turns: [turn()], frustrations: [f] }));
+    await usage.ingest("acct_a", "ws_2", report({ turns: [turn()], frustrations: [{ ...f, id: "frust00002" }] }));
+    await usage.forgetShared("ws_1", { notes: ["frust00001"], records: true });
+    expect((await store.records("frustration", 0, NOW + 1, 10)).map(note => note.id)).toEqual([noteKey("frust00002")]);
+    expect((await store.records("turn", 0, NOW + 1, 10)).map(record => record.workspaceId)).toEqual(["ws_2"]);
+  });
+  it("strips a report down to its notes", () => {
+    expect(notesOnly(report({ turns: [turn()], frustrations: [f], snapshot: { bots: 1, rooms: 0, routines: 0, webhooks: 0, appEvents: 0, skills: 0 } }))).toEqual({ turns: [], runs: [], frustrations: [f] });
+  });
+});
+
+describe("moving stored notes away from their account", () => {
+  type Doc = Record<string, unknown> & { _id: string };
+  function collection(docs: Doc[]) {
+    const all = new Map(docs.map(doc => [doc._id, doc]));
+    const matches = (doc: Doc) => ["frustration", "session", "digest"].includes(doc.kind as string) && ("accountId" in doc || "workspaceId" in doc);
+    return {
+      all,
+      find: () => ({ limit: (n: number) => ({ toArray: async () => [...all.values()].filter(matches).slice(0, n) }) }),
+      insertMany: async (list: Doc[]) => {
+        const writeErrors: Array<{ index: number; code: number }> = [];
+        list.forEach((doc, index) => { if (all.has(doc._id)) writeErrors.push({ index, code: 11000 }); else all.set(doc._id, doc); });
+        if (writeErrors.length) throw Object.assign(new Error("dup"), { writeErrors });
+      },
+      deleteMany: async (filter: { _id: { $in: string[] } }) => { for (const id of filter._id.$in) all.delete(id); },
+    };
+  }
+  const note = (n: number): Doc => ({ _id: `ws_1:frust${String(n).padStart(5, "0")}`, kind: "frustration", at: new Date(NOW), accountId: "acct_a", workspaceId: "ws_1", ran: { place: "desktop" },
+    data: { id: `frust${String(n).padStart(5, "0")}`, at: NOW, summary: "x" } });
+  it("re-keys every note by its hashed id without account or workspace, in batches, and leaves turns alone", async () => {
+    const turnDoc: Doc = { _id: "ws_1:turn000001", kind: "turn", at: new Date(NOW), accountId: "acct_a", workspaceId: "ws_1", data: { id: "turn000001" } };
+    const docs = [...Array.from({ length: UNLINK_BATCH + 3 }, (_, i) => note(i)), turnDoc];
+    const events = collection(docs);
+    expect(await unlinkNotes(events as never)).toBe(UNLINK_BATCH + 3);
+    expect(events.all.get(turnDoc._id)).toEqual(turnDoc);
+    const moved = events.all.get(noteKey("frust00001"))!;
+    expect(moved).toEqual({ _id: noteKey("frust00001"), kind: "frustration", at: new Date(NOW), ran: { place: "desktop" }, data: { id: noteKey("frust00001"), at: NOW, summary: "x" } });
+    expect([...events.all.values()].filter(doc => doc.kind === "frustration").every(doc => !("accountId" in doc) && !("workspaceId" in doc))).toBe(true);
+    expect(await unlinkNotes(events as never)).toBe(0);
+  });
+  it("finishes a run that stopped after inserting but before deleting", async () => {
+    const old = note(7), events = collection([old, { ...unlinkedDoc(old as never) } as Doc]);
+    expect(await unlinkNotes(events as never)).toBe(1);
+    expect([...events.all.keys()]).toEqual([noteKey("frust00007")]);
+  });
+  it("changes the TTL of an index made with another one, and leaves a matching one alone", async () => {
+    const commands: unknown[] = [];
+    const run = async (command: Record<string, unknown>) => { commands.push(command); };
+    const events = (expire: number) => ({ indexes: async () => [{ key: { _id: 1 } }, { key: { at: 1 }, expireAfterSeconds: expire }], collectionName: "usage_events" });
+    await ttlIndex(events(90 * 86_400) as never, 30 * 86_400, run);
+    await ttlIndex(events(30 * 86_400) as never, 30 * 86_400, run);
+    await ttlIndex({ indexes: async () => { throw Object.assign(new Error("ns"), { codeName: "NamespaceNotFound" }); } } as never, 30 * 86_400, run);
+    expect(commands).toEqual([{ collMod: "usage_events", index: { keyPattern: { at: 1 }, expireAfterSeconds: 30 * 86_400 } }]);
   });
 });

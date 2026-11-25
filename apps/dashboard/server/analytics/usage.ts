@@ -1,11 +1,19 @@
 // What people use Dusk for: the usage section of workspace reports (shared/usage-signals.ts), kept raw for
 // USAGE_RETENTION_DAYS and rolled up per day into counts that are kept. Records hold words, counts and times, plus the
 // scrubbed summaries a workspace wrote; never message content.
-import type { Db } from "mongodb";
-import { USAGE_REASONS, type UsagePlace, type UsageDigest, type UsageFrustration, type UsageReport, type UsageRun, type UsageSession, type UsageSignal, type UsageSnapshot, type UsageTurn } from "../../../../shared/usage-signals.ts";
+// Security: a session note is stored under noteKey(its id) with no account and no workspace, so nobody here can tell
+// whose it is; only the workspace that wrote it knows the id, and that is how it asks for it to be deleted.
+import { createHash } from "node:crypto";
+import type { Collection, Db } from "mongodb";
+import { USAGE_RETENTION_DAYS, type UsageForget, USAGE_REASONS, type UsagePlace, type UsageDigest, type UsageFrustration, type UsageReport, type UsageRun, type UsageSession, type UsageSignal, type UsageSnapshot, type UsageTurn } from "../../../../shared/usage-signals.ts";
 import { DAY_MS, dayOf } from "./events.ts";
 
-export const USAGE_RETENTION_DAYS = 90;
+export { USAGE_RETENTION_DAYS };
+const NOTE_KINDS = ["frustration", "session", "digest"] as const;
+export type NoteKind = (typeof NOTE_KINDS)[number];
+export const isNoteKind = (kind: string): kind is NoteKind => (NOTE_KINDS as readonly string[]).includes(kind);
+/** the stored id of a note: a hash of the id only its workspace knows */
+export const noteKey = (id: string) => `note_${createHash("sha256").update(`dusk-note|${id}`).digest("base64url").slice(0, 32)}`;
 /** per person per day counts feed the power-user and active-day views; kept longer than raw records, not forever */
 export const PEOPLE_RETENTION_DAYS = 400;
 /** turn time buckets in seconds; a percentile reads as its bucket's upper edge */
@@ -16,7 +24,9 @@ export type UsageKind = "turn" | "run" | "frustration" | "session" | "digest" | 
 type Kind = UsageKind;
 /** where the workspace ran and which app version, taken from the workspace as its notes arrived; only notes carry it */
 export interface UsageRan { place: UsagePlace; os?: string; version?: string }
-export interface UsageRecord { id: string; kind: Kind; at: number; accountId: string; workspaceId: string; ran?: UsageRan; data: UsageTurn | UsageRun | UsageFrustration | UsageSession | UsageDigest | UsageSignal }
+/** a note's `accountId` and `workspaceId` are empty: notes are kept apart from who sent them. `test`: a note from a test
+ * account, a harness install or a dev build, kept out of the admin's views */
+export interface UsageRecord { id: string; kind: Kind; at: number; accountId: string; workspaceId: string; ran?: UsageRan; test?: true; data: UsageTurn | UsageRun | UsageFrustration | UsageSession | UsageDigest | UsageSignal }
 /** `appTurns`: turns that used a connected app, so the adoption view can count people who use one; `bots` and `chats`:
  * turns per salted bot and chat hash, for per-bot share and turns per chat */
 /** `fails`: turns per failed tool and error class (`toolFailKey`), for the people column of tool failures */
@@ -48,6 +58,8 @@ export interface UsageStore {
   once(key: string): Promise<boolean>;
   forget(accountId: string): Promise<void>;
   forgetWorkspace(workspaceId: string): Promise<void>;
+  /** deletes notes by their stored ids (`noteKey`) */
+  forgetNotes(keys: string[]): Promise<void>;
 }
 
 export function memoryUsageStore(now: () => number = Date.now): UsageStore {
@@ -91,27 +103,34 @@ export function memoryUsageStore(now: () => number = Date.now): UsageStore {
       for (const [key, record] of records) if (record.workspaceId === workspaceId) records.delete(key);
       snaps.delete(workspaceId);
     },
+    async forgetNotes(keys) { for (const key of keys) records.delete(`:${key}`); },
   };
 }
 
-type RecordDoc = { _id: string; kind: Kind; at: Date; accountId: string; workspaceId: string; ran?: UsageRan; data: UsageRecord["data"] };
+type RecordDoc = { _id: string; kind: Kind; at: Date; accountId?: string; workspaceId?: string; ran?: UsageRan; test?: true; data: UsageRecord["data"] };
+const docId = (record: Pick<UsageRecord, "workspaceId" | "id">) => record.workspaceId ? `${record.workspaceId}:${record.id}` : record.id;
 /** usage_events (TTL on `at`), usage_daily (kept), usage_people (TTL on `at`), usage_snapshots (one per workspace) */
 export async function mongoUsageStore(db: Db): Promise<UsageStore> {
   const events = db.collection<RecordDoc>("usage_events"), daily = db.collection<{ _id: string; day: string; c: Record<string, number> }>("usage_daily");
   const people = db.collection<{ _id: string; day: string; accountId: string; at: Date; turns: number; failed: number; runs: number; frustrations: number; appTurns: number }>("usage_people");
   const snaps = db.collection<{ _id: string; accountId: string; at: Date; snapshot: UsageSnapshot }>("usage_snapshots"), marks = db.collection<{ _id: string }>("usage_marks");
   const spans = db.collection<{ _id: string; workspaceId: string; accountId: string; routine: string; first: Date; last: Date; runs: number }>("usage_routines");
+  await ttlIndex(events, USAGE_RETENTION_DAYS * 86_400);
   await Promise.all([
     events.createIndexes([{ key: { at: 1 }, expireAfterSeconds: USAGE_RETENTION_DAYS * 86_400 }, { key: { kind: 1, at: -1 } }, { key: { accountId: 1 } }, { key: { workspaceId: 1 } }]),
     people.createIndexes([{ key: { at: 1 }, expireAfterSeconds: PEOPLE_RETENTION_DAYS * 86_400 }, { key: { day: 1 } }, { key: { accountId: 1 } }]),
     snaps.createIndexes([{ key: { accountId: 1 } }]),
     spans.createIndexes([{ key: { last: 1 }, expireAfterSeconds: PEOPLE_RETENTION_DAYS * 86_400 }, { key: { accountId: 1 } }]),
   ]);
-  const toRecord = (doc: RecordDoc): UsageRecord => ({ id: doc._id.slice(doc.workspaceId.length + 1), kind: doc.kind, at: doc.at.getTime(), accountId: doc.accountId, workspaceId: doc.workspaceId, ...(doc.ran ? { ran: doc.ran } : {}), data: doc.data });
+  // notes stored before they were kept apart get their account and workspace taken off, in the background
+  void unlinkNotes(events).catch(error => console.warn(`usage: unlinking stored notes stopped (${(error as Error).message}); it resumes at the next start`));
+  const toRecord = (doc: RecordDoc): UsageRecord => ({ id: doc.workspaceId ? doc._id.slice(doc.workspaceId.length + 1) : doc._id, kind: doc.kind, at: doc.at.getTime(), accountId: doc.accountId ?? "",
+    workspaceId: doc.workspaceId ?? "", ...(doc.ran ? { ran: doc.ran } : {}), ...(doc.test ? { test: true as const } : {}), data: doc.data });
   return {
     async insert(list) {
       if (!list.length) return [];
-      const docs = list.map(record => ({ _id: `${record.workspaceId}:${record.id}`, kind: record.kind, at: new Date(record.at), accountId: record.accountId, workspaceId: record.workspaceId, ...(record.ran ? { ran: record.ran } : {}), data: record.data }));
+      const docs = list.map(record => ({ _id: docId(record), kind: record.kind, at: new Date(record.at), ...(record.accountId ? { accountId: record.accountId } : {}),
+        ...(record.workspaceId ? { workspaceId: record.workspaceId } : {}), ...(record.ran ? { ran: record.ran } : {}), ...(record.test ? { test: true as const } : {}), data: record.data }));
       const failed = new Set<number>();
       try { await events.insertMany(docs, { ordered: false }); } catch (error) {
         const errors = (error as { writeErrors?: Array<{ index: number; code: number }> | { index: number; code: number } }).writeErrors;
@@ -142,8 +161,47 @@ export async function mongoUsageStore(db: Db): Promise<UsageStore> {
     async once(key) { try { await marks.insertOne({ _id: key }); return true; } catch (error) { if ((error as { code?: number }).code === 11000) return false; throw error; } },
     async forget(accountId) { await Promise.all([events.deleteMany({ accountId }), people.deleteMany({ accountId }), snaps.deleteMany({ accountId }), spans.deleteMany({ accountId })]); },
     async forgetWorkspace(workspaceId) { await Promise.all([events.deleteMany({ workspaceId }), snaps.deleteOne({ _id: workspaceId })]); },
+    async forgetNotes(keys) { if (keys.length) await events.deleteMany({ _id: { $in: keys }, kind: { $in: [...NOTE_KINDS] } }); },
   };
 }
+
+/** sets the TTL on `at` when an older start made it with another one; createIndexes refuses to change it */
+export async function ttlIndex(events: Pick<Collection<RecordDoc>, "indexes">, seconds: number, run: (command: Record<string, unknown>) => Promise<unknown> = command => (events as Collection<RecordDoc>).db.command(command)) {
+  let existing: Array<{ key?: Record<string, unknown>; expireAfterSeconds?: number }>;
+  try { existing = await events.indexes(); } catch (error) { if ((error as { codeName?: string }).codeName === "NamespaceNotFound") return; throw error; }
+  const ttl = existing.find(index => index.key && Object.keys(index.key).length === 1 && index.key.at === 1);
+  if (!ttl || ttl.expireAfterSeconds === seconds) return;
+  await run({ collMod: (events as Collection<RecordDoc>).collectionName, index: { keyPattern: { at: 1 }, expireAfterSeconds: seconds } });
+}
+
+export const UNLINK_BATCH = 500;
+/** moves notes stored with their account and workspace to `noteKey` with neither, in batches; a note already moved
+ * stays put, so it can stop anywhere and run again */
+export async function unlinkNotes(events: Pick<Collection<RecordDoc>, "find" | "insertMany" | "deleteMany">): Promise<number> {
+  let moved = 0;
+  for (;;) {
+    const batch = await events.find({ kind: { $in: [...NOTE_KINDS] }, $or: [{ accountId: { $exists: true } }, { workspaceId: { $exists: true } }] }).limit(UNLINK_BATCH).toArray();
+    if (!batch.length) return moved;
+    const docs = batch.map(unlinkedDoc);
+    try { await events.insertMany(docs, { ordered: false }); } catch (error) {
+      const errors = (error as { writeErrors?: Array<{ code: number }> | { code: number } }).writeErrors;
+      const list = Array.isArray(errors) ? errors : errors ? [errors] : null;
+      if (!list || list.some(item => item.code !== 11000)) throw error;
+    }
+    await events.deleteMany({ _id: { $in: batch.map(doc => doc._id) } });
+    moved += batch.length;
+  }
+}
+export function unlinkedDoc(doc: RecordDoc): RecordDoc {
+  const id = (doc.data as { id?: unknown }).id, raw = typeof id === "string" ? id : doc.workspaceId ? doc._id.slice(doc.workspaceId.length + 1) : doc._id;
+  const key = raw.startsWith("note_") ? raw : noteKey(raw);
+  return { _id: key, kind: doc.kind, at: doc.at, ...(doc.ran ? { ran: doc.ran } : {}), ...(doc.test ? { test: true as const } : {}), data: { ...doc.data, id: key } as RecordDoc["data"] };
+}
+
+/** a usage report with only its notes, for an account whose usage counts are not kept */
+export const notesOnly = (report: UsageReport): UsageReport => ({ turns: [], runs: [], ...(report.frustrations ? { frustrations: report.frustrations } : {}),
+  ...(report.sessions ? { sessions: report.sessions } : {}), ...(report.digests ? { digests: report.digests } : {}) });
+
 
 /** a frustration's problem group: engine, category and the first app or tool it touched */
 export const problemKey = (f: Pick<UsageFrustration, "engine" | "category" | "apps" | "tools">) => `${f.engine}|${f.category}|${f.apps[0] ?? f.tools.find(tool => tool !== "memory" && tool !== "other") ?? "none"}`;
@@ -211,43 +269,51 @@ export function createUsage(options: {
   store: UsageStore; now?: () => number;
   /** the account turned "help improve dusk bot" off */
   optedOut(accountId: string): boolean;
+  /** the account's session notes are on; without it notes are kept whenever usage is */
+  notesOn?(accountId: string): boolean;
+  /** a note from a test account, a harness install or a dev build */
+  isTest?(accountId: string, workspaceId: string, ran?: UsageRan): boolean;
   /** a frustration group seen for the first time ever */
   newProblem?(group: { key: string; example: string | null; count: number }): void;
 }) {
   const { store } = options, now = options.now ?? Date.now;
   const stats = { written: 0, failed: 0, dropped: 0 };
-  /** a workspace's report section; never throws and never delays the report */
-  /** the notes alone (a bad chat, a big session, the weekly one), from a workspace or app install no account owns, or
-   * an account's app sending them itself; stored under `workspaceId` with an empty account when there is none */
-  async function ingestNotes(accountId: string | null, workspaceId: string, notes: Pick<UsageReport, "frustrations" | "sessions" | "digests">, ran?: UsageRan) {
-    if (accountId && options.optedOut(accountId)) { stats.dropped++; return 0; }
-    const owner = accountId ?? "", with_ = ran ? { ran } : {};
-    const records: UsageRecord[] = [
-      ...(notes.frustrations ?? []).map(data => ({ id: data.id, kind: "frustration" as const, at: data.at, accountId: owner, workspaceId, ...with_, data })),
-      ...(notes.sessions ?? []).map(data => ({ id: data.id, kind: "session" as const, at: data.at, accountId: owner, workspaceId, ...with_, data })),
-      ...(notes.digests ?? []).map(data => ({ id: data.id, kind: "digest" as const, at: data.at, accountId: owner, workspaceId, ...with_, data })),
-    ];
-    if (!records.length) return 0;
-    const fresh = await store.insert(records);
-    await Promise.all([...rollup(fresh)].map(([day, inc]) => store.bump(day, inc)));
+  /** an account's notes as records kept apart from it: no account, no workspace, the id hashed; none without a yes */
+  function noteRecords(accountId: string | null, workspaceId: string, notes: Pick<UsageReport, "frustrations" | "sessions" | "digests">, ran?: UsageRan): UsageRecord[] {
+    if (!accountId || options.optedOut(accountId) || options.notesOn?.(accountId) === false) return [];
+    const extra = { ...(ran ? { ran } : {}), ...(options.isTest?.(accountId, workspaceId, ran) ? { test: true as const } : {}) };
+    const own = <T extends { id: string; at: number }>(kind: NoteKind, data: T): UsageRecord => {
+      const key = noteKey(data.id);
+      return { id: key, kind, at: data.at, accountId: "", workspaceId: "", ...extra, data: { ...data, id: key } as unknown as UsageRecord["data"] };
+    };
+    return [...(notes.frustrations ?? []).map(data => own("frustration", data)), ...(notes.sessions ?? []).map(data => own("session", data)), ...(notes.digests ?? []).map(data => own("digest", data))];
+  }
+  async function problems(fresh: UsageRecord[]) {
     for (const record of fresh) if (record.kind === "frustration" && options.newProblem) {
       const f = record.data as UsageFrustration, key = problemKey(f);
       if (await store.once(`problem|${key}`)) options.newProblem({ key, example: f.summary ?? null, count: 1 });
     }
+  }
+  /** the notes alone (a bad chat, a big session, the weekly one), from an account's app sending them itself; an app
+   * no account signed in to sends none that are kept */
+  async function ingestNotes(accountId: string | null, workspaceId: string, notes: Pick<UsageReport, "frustrations" | "sessions" | "digests">, ran?: UsageRan) {
+    const records = noteRecords(accountId, workspaceId, notes, ran);
+    if (!records.length) { if (notes.frustrations?.length || notes.sessions?.length || notes.digests?.length) stats.dropped++; return 0; }
+    const fresh = await store.insert(records);
+    await Promise.all([...rollup(fresh)].map(([day, inc]) => store.bump(day, inc)));
+    await problems(fresh);
     stats.written += fresh.length;
     return fresh.length;
   }
   async function ingest(accountId: string | null, workspaceId: string, report: UsageReport, from?: { kind?: string; version?: string }) {
-    if (!accountId) { try { await ingestNotes(null, workspaceId, report, ranOf(report, from)); } catch { stats.failed++; } return; }
+    if (!accountId) { stats.dropped++; return; }
     if (options.optedOut(accountId)) { stats.dropped++; return; }
     try {
       const ran = ranOf(report, from);
       const records: UsageRecord[] = [
         ...report.turns.map(data => ({ id: data.id, kind: "turn" as const, at: data.at, accountId, workspaceId, data })),
         ...report.runs.map(data => ({ id: data.id, kind: "run" as const, at: data.at, accountId, workspaceId, data })),
-        ...(report.frustrations ?? []).map(data => ({ id: data.id, kind: "frustration" as const, at: data.at, accountId, workspaceId, ...(ran ? { ran } : {}), data })),
-        ...(report.sessions ?? []).map(data => ({ id: data.id, kind: "session" as const, at: data.at, accountId, workspaceId, ...(ran ? { ran } : {}), data })),
-        ...(report.digests ?? []).map(data => ({ id: data.id, kind: "digest" as const, at: data.at, accountId, workspaceId, ...(ran ? { ran } : {}), data })),
+        ...noteRecords(accountId, workspaceId, report, ran),
         ...(report.signals ?? []).map(data => ({ id: data.id, kind: "signal" as const, at: data.at, accountId, workspaceId, data })),
       ];
       const fresh = await store.insert(records);
@@ -268,20 +334,24 @@ export function createUsage(options: {
           const r = record.data as UsageRun;
           if (r.routine) writes.push(store.routine({ workspaceId, accountId, routine: r.routine, first: r.at, last: r.at }));
         }
+        // a note's count stays with the account's day; the note itself does not
         if (record.kind === "frustration") row.frustrations++;
         perDay.set(day, row);
       }
       for (const [day, { bots, chats, fails, ...inc }] of perDay) writes.push(store.person(day, accountId, inc, { bots, chats, fails }).then(first => first ? store.bump(day, { people: 1 }) : undefined));
       if (report.snapshot) writes.push(store.snapshot({ workspaceId, accountId, at: now(), snapshot: report.snapshot }));
       await Promise.all(writes);
-      for (const record of fresh) if (record.kind === "frustration" && options.newProblem) {
-        const f = record.data as UsageFrustration, key = problemKey(f);
-        if (await store.once(`problem|${key}`)) options.newProblem({ key, example: f.summary ?? null, count: 1 });
-      }
+      await problems(fresh);
       stats.written += fresh.length;
     } catch { stats.failed++; }
   }
-  return { store, stats, ingest, ingestNotes, forget: (accountId: string) => store.forget(accountId).catch(() => { stats.failed++; }),
+  /** what a workspace (or an app, with `workspaceId` null) asked to have deleted: its notes by id, its records */
+  async function forgetShared(workspaceId: string | null, forget: UsageForget) {
+    try {
+      await Promise.all([store.forgetNotes(forget.notes.map(noteKey)), ...(forget.records && workspaceId ? [store.forgetWorkspace(workspaceId)] : [])]);
+    } catch { stats.failed++; }
+  }
+  return { store, stats, ingest, ingestNotes, forgetShared, forget: (accountId: string) => store.forget(accountId).catch(() => { stats.failed++; }),
     forgetWorkspace: (workspaceId: string) => store.forgetWorkspace(workspaceId).catch(() => { stats.failed++; }) };
 }
 export type Usage = ReturnType<typeof createUsage>;

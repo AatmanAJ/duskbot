@@ -498,6 +498,24 @@ export const USAGE_DIGEST_KEYS = ["id", "at", "turns", "days", "summary"] as con
 export const MAX_REPORT_RUNS = 200;
 export const USAGE_SESSION_KEYS = ["id", "at", "engine", "category", "tools", "apps", "turns", "minutes", "failed", "summary"] as const;
 export const MAX_REPORT_SESSIONS = 20, SESSION_NOTE_MAX = 400;
+/** the chat lines a note's writer reads on the workspace: a chat that went badly, a big session, and the weekly digest's
+ * last lines of each of its newest chats; the privacy policy quotes these numbers */
+export const NOTE_LINES_BAD = 12, NOTE_LINES_BIG = 14, DIGEST_LINES = 6, DIGEST_CHATS = 12;
+/** days the account service keeps notes and raw usage records, and the workspace its list of what it sent */
+export const USAGE_RETENTION_DAYS = 30;
+/** note ids one report or app request may ask the account service to delete */
+export const MAX_FORGET_NOTES = 200;
+export const NOTE_ID = /^[A-Za-z0-9_-]{8,40}$/;
+/** what a workspace asks the account service to delete: notes by the ids only it knows, and with `records` its usage
+ * records too. Notes are stored under a hash of their id and no account, so these ids are the only way back to them. */
+export interface UsageForget { notes: string[]; records: boolean }
+export function cleanUsageForget(input: unknown): UsageForget | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const raw = input as Record<string, unknown>;
+  if (!Array.isArray(raw.notes) || raw.notes.length > MAX_FORGET_NOTES || typeof raw.records !== "boolean") return null;
+  const notes = raw.notes.filter((id): id is string => typeof id === "string" && NOTE_ID.test(id));
+  return notes.length === raw.notes.length ? { notes, records: raw.records } : null;
+}
 
 const ID = /^[A-Za-z0-9_-]{8,40}$/;
 const oneOf = <T extends string>(list: readonly T[], value: unknown): value is T => typeof value === "string" && (list as readonly string[]).includes(value);

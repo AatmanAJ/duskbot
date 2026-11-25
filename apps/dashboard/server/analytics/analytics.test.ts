@@ -30,6 +30,41 @@ describe("analytics", () => {
   });
   afterEach(() => { analytics.close(); rmSync(dataDir, { recursive: true, force: true }); });
 
+  it("carries an earlier session notes setting over once, until the person answers or reports from where counts need a yes first", () => {
+    analytics.carryOver(null);
+    analytics.carryOver(["acct_kept", "acct_eu"]);
+    expect(analytics.notesOf("acct_kept")).toBe(true);
+    expect(analytics.notesOf("acct_other")).toBe(false);
+    expect(analytics.notesAnswered("acct_other")).toBe(false);
+    analytics.strictSeen("acct_eu");
+    expect(analytics.notesOf("acct_eu")).toBe(false);
+    analytics.carryOver(["acct_other"]);
+    expect(analytics.notesOf("acct_other")).toBe(false);
+    analytics.setNotes("acct_kept", false);
+    expect(analytics.notesOf("acct_kept")).toBe(false); expect(analytics.notesAnswered("acct_kept")).toBe(true);
+    analytics.setNotes("acct_new", true);
+    const again = createAnalytics({ sink, dataDir: dataDir, now: () => time, trustProxy: true });
+    expect(again.notesOf("acct_kept")).toBe(false); expect(again.notesOf("acct_new")).toBe(true);
+    again.carryOver(["acct_other"]);
+    expect(again.notesOf("acct_other")).toBe(false);
+    again.close();
+  });
+
+  it("asks first for usage counts where Cloudflare places someone in Europe or cannot place them, until they answer", async () => {
+    const via = (country?: string) => fakeReq({ "x-forwarded-for": "198.51.100.7, 172.70.1.1", ...(country ? { "cf-ipcountry": country } : {}) });
+    expect(analytics.strict(via("DE"))).toBe(true);
+    expect(analytics.strict(via("GB"))).toBe(true);
+    expect(analytics.strict(via())).toBe(true);
+    expect(analytics.strict(via("US"))).toBe(false);
+    expect(analytics.usageAllowed("acct_eu", true)).toBe(false);
+    expect(analytics.usageAllowed("acct_eu", false)).toBe(true);
+    await analytics.answerUsage("acct_eu", true);
+    expect(analytics.usageAllowed("acct_eu", true)).toBe(true);
+    await analytics.answerUsage("acct_eu", false);
+    expect(analytics.usageAllowed("acct_eu", false)).toBe(false);
+    expect(analytics.optedOut("acct_eu")).toBe(true);
+  });
+
   it("reads Cloudflare's visitor headers only when Cloudflare's edge is the proxy's peer", () => {
     const headers = { "user-agent": IPHONE, "cf-ipcountry": "IN", "cf-ipcity": "Pune", "cf-region": "Maharashtra", "cf-iplatitude": "18.52043", "cf-iplongitude": "73.85674" };
     expect(requestContext(fakeReq(headers), { publicOrigin: "https://dusk.bot", trustProxy: true })).toEqual({ device: "mobile", os: "ios", browser: "safari", source: "direct", channel: "direct" });

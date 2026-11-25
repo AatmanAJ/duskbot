@@ -39,7 +39,8 @@ import type { EdgeSocketFactory } from "./slack-edge/service.ts";
 import { createAnalytics, readLimited } from "./analytics/index.ts";
 import { APP_EVENTS_PATH, APP_NOTES_PATH, TRACK_PATH, handleAppNotes } from "./analytics/ingest.ts";
 import { memorySink, type AnalyticsSink } from "./analytics/sink.ts";
-import { createUsage, memoryUsageStore, type UsageStore } from "./analytics/usage.ts";
+import { isDevBuild, isTestInstall } from "./admin/test-accounts.ts";
+import { createUsage, memoryUsageStore, notesOnly, type UsageStore } from "./analytics/usage.ts";
 import { createInfraCollector, memoryInfraStore, type InfraStore } from "./admin/infra.ts";
 import { opsFixture } from "./admin/ops/fixture.ts";
 import type { WarmStore } from "./admin/web-warm.ts";
@@ -101,7 +102,8 @@ export interface DashboardAppOptions {
   /** the slack wake edge: DUSK_SLACK_EDGE and DUSK_CLOUD_SEAL_KEY from env; tests pass a fake socket */
   slackEdge?: { env?: NodeJS.ProcessEnv; socket?: EdgeSocketFactory };
   /** product analytics: MongoDB in production (main.ts), memory otherwise; the waitlist is dusk.waitlist when connected */
-  analytics?: { sink?: AnalyticsSink; waitlist?: WaitlistSource | null; trackOrigins?: string[]; usage?: UsageStore; infra?: InfraStore; ops?: OpsStore; db?: Db | null };
+  /** `notesCarryOver`: accounts whose session notes setting carries over as on, applied once */
+  analytics?: { sink?: AnalyticsSink; waitlist?: WaitlistSource | null; trackOrigins?: string[]; usage?: UsageStore; infra?: InfraStore; ops?: OpsStore; db?: Db | null; notesCarryOver?: string[] | null };
   /** the owner's panel at /admin: DUSK_ADMIN_EMAILS by default */
   admin?: { emails?: string[]; growthEmails?: string[]; backupDir?: string | null; environment?: string; env?: NodeJS.ProcessEnv; opsFixture?: boolean; live?: LiveData | null;
     /** how long the admin keeps an analytics answer (main.ts: 30 s); none by default, so a fixture shows each event at once */
@@ -280,13 +282,15 @@ export function createDashboardApp(options: DashboardAppOptions) {
   const ownIncidents = options.incidents ? null : createIncidents({ env: options.admin?.environment ?? "development", store: memoryIncidentStore(), to: () => [], mailers: [],
     email: emailCfg, panelUrl: `${publicUrl}${ADMIN_PATH}/health`, mail: false, timers: false, now });
   const incidents = options.incidents ?? ownIncidents!;
-  const usage = createUsage({ store: options.analytics?.usage ?? memoryUsageStore(now), now, optedOut: id => analytics.optedOut(id),
+  const usage = createUsage({ store: options.analytics?.usage ?? memoryUsageStore(now), now, optedOut: id => analytics.optedOut(id), notesOn: id => analytics.notesOf(id),
+    isTest: (accountId, workspaceId, ran) => isTestInstall(workspaceId) || isDevBuild(ran?.version) || (!!accountId && isTestAccount(auth.account(accountId)?.email ?? "")),
     newProblem: group => {
       const [engine, category, touch] = group.key.split("|");
       incidents.report({ source: "server", name: "NewProblemGroup", key: `problem-${group.key}`, route: "/admin",
         message: `a new kind of frustration: ${category?.replace(/_/g, " ")} with ${touch} on ${engine}${group.example ? `. example: ${group.example}` : ""}` });
     } });
   analytics.onForget(id => void usage.forget(id));
+  analytics.carryOver(options.analytics?.notesCarryOver ?? null);
   const send = (to: string | null | undefined, message: Rendered) => {
     if (to) void mailer.send({ to, ...message }).catch(() => console.warn("account: an email failed"));
   };
@@ -455,6 +459,8 @@ export function createDashboardApp(options: DashboardAppOptions) {
   const limits = new Map<string, { count: number; until: number }>();
   const watching = new Map<string, number>();
   const lastWatching = new Map<string, boolean>();
+  // whether a workspace's last report came from where usage counts need a yes first
+  const strictAt = new Map<string, boolean>();
   const replays = new Map<string, number>();
   // pending commands and recent results live in the store (mongodb in production), so a restart loses neither; they
   // go COMMAND_TTL_MS after they expire. a sent one with no result goes out again from a fresh process at once
@@ -571,7 +577,9 @@ export function createDashboardApp(options: DashboardAppOptions) {
     const delivery = queued.map(({ id, kind, target, issuedAt, expiresAt, callback }) => ({ id, kind, target, issuedAt, expiresAt, ...(callback ? { callback } : {}) }));
     for (const command of queued) { command.status = "sent"; deliveredAt.set(command.id, now()); }
     if (queued.length) store.changed();
-    return { v: 1, watching: watched, nextReportMs: watched ? FAST_REPORT_MS : SLOW_REPORT_MS, commands: delivery, ...(ws.ownerAccountId ? { usageOptOut: analytics.optedOut(ws.ownerAccountId) } : {}) };
+    const owner = ws.ownerAccountId, ask = !!owner && strictAt.get(ws.id) === true && !analytics.usageAllowed(owner, true) && !analytics.optedOut(owner);
+    return { v: 1, watching: watched, nextReportMs: watched ? FAST_REPORT_MS : SLOW_REPORT_MS, commands: delivery,
+      ...(owner ? { usageOptOut: analytics.optedOut(owner) || ask, usageNotes: analytics.notesOf(owner), usageNotesAnswered: analytics.notesAnswered(owner), usageAsk: ask } : {}) };
   }
   function watch(owner: Account) {
     const wasWatching = (watching.get(owner.id) ?? -Infinity) > now();
@@ -858,7 +866,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
       return json(res, 200, minted);
     }
     if (path === APP_NOTES_PATH) return handleAppNotes(req, res, { now, readBody: readLimited, rate, appAccount: request => auth.appSession(request)?.account.id ?? null,
-      save: (accountId, workspaceId, notes, ran) => usage.ingestNotes(accountId, workspaceId, notes, ran) });
+      save: (accountId, workspaceId, notes, ran) => usage.ingestNotes(accountId, workspaceId, notes, ran), forget: ids => usage.forgetShared(null, { notes: ids, records: false }) });
     if (await analytics.handle(req, res, url, { readBody, bodyObject, json, rate, appAccount: request => auth.appSession(request)?.account.id ?? null,
       isOwner: isAdminRequest, account: (request, strict) => {
       try { return auth.requireWeb(request, { mutation: strict }); } catch (error) { if (error instanceof AuthError && error.code === "signed_out") return null; throw error; }
@@ -1000,9 +1008,14 @@ export function createDashboardApp(options: DashboardAppOptions) {
           }
         }
         if (ws.ownerAccountId && workspaceTurns(ws) > 0) analytics.botReplied(ws.ownerAccountId);
-        // the app's switch is the account's switch: off here deletes what was stored, on again lets it flow
-        if (ws.ownerAccountId && report.usageOptOut !== undefined && report.usageOptOut !== analytics.optedOut(ws.ownerAccountId)) await analytics.setOptOut(ws.ownerAccountId, report.usageOptOut);
-        if (report.usage) void usage.ingest(ws.ownerAccountId, ws.id, report.usage, { kind: ws.kind, version: ws.version });
+        // the app's switches are the account's switches: off here deletes what was stored, on again lets it flow
+        const owner = ws.ownerAccountId, strict = analytics.strict(req);
+        strictAt.set(ws.id, strict);
+        if (owner && strict) analytics.strictSeen(owner);
+        if (owner && report.usageOptOut !== undefined) await analytics.answerUsage(owner, !report.usageOptOut);
+        if (owner && report.usageNotes !== undefined) analytics.setNotes(owner, report.usageNotes);
+        if (report.usageForget) void usage.forgetShared(ws.id, report.usageForget);
+        if (report.usage) void usage.ingest(owner, ws.id, owner && !analytics.usageAllowed(owner, strict) ? notesOnly(report.usage) : report.usage, { kind: ws.kind, version: ws.version });
         // a plain report changes only its own workspace row: with 2000 computers reporting, diffing every row per
         // report held the whole service (measured 2026-11-14 on the contabo box)
         if (commandsChanged) store.changed(); else store.changedRow("workspaces", ws);
