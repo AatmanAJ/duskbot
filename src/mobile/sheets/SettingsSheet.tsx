@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentType, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { motion, useReducedMotion } from "motion/react";
-import { Bell, CalendarClock, Check, FileText, Globe, KeyRound, LayoutDashboard, LifeBuoy, Lock, LogOut, Mail, Mic, MonitorX, MoreHorizontal, Palette, Pencil, Plug, Plus, RefreshCw, ShieldCheck, Trash2, UserPlus, UserRound, Hand, Server, X, ZoomIn } from "../../icons";
+import { Bell, CalendarClock, Check, FileText, Globe, KeyRound, LayoutDashboard, LifeBuoy, Lock, LogOut, Mail, Mic, MonitorX, MoreHorizontal, Palette, Pencil, Plug, Plus, RefreshCw, ShieldCheck, Trash2, UserPlus, UserRound, Hand, Server, Sparkles, X, ZoomIn } from "../../icons";
 import { accountDashboardUrl } from "@/lib/account-dashboard";
 import { cn } from "@/lib/cn";
 import { useMenuMotion } from "@/components/MenuMotion";
@@ -46,6 +46,7 @@ import { placeKind } from "../connection/connection-notice";
 import { removePlace } from "../account/sign-out";
 import { phoneIdentity, type PhoneIdentity } from "../account/identity";
 import { SettingsRow, SettingsSection, SettingsSwitch } from "./SettingsRow";
+import { UpdatesPage, WhatsNewPage } from "./UpdatesPage";
 import { PixelArt } from "../Illustration";
 import type { SheetPageProps } from "./registry";
 import type { MobileConnectionRecord } from "../../../shared/mobile-link";
@@ -117,7 +118,7 @@ export function PaymentLine({ payment, onUpdate }: { payment: { name: string; fi
 }
 
 type SettingsPage =
-  | "avatar" | "language" | "textSize" | "voice" | "notifications" | "routines" | "connectors" | "vault" | "delete" | "signOut" | "removeComputer"
+  | "avatar" | "language" | "textSize" | "voice" | "notifications" | "routines" | "connectors" | "vault" | "delete" | "signOut" | "removeComputer" | "updates" | "whatsNew"
   | { kind: "renamePlace"; place: Place }
   | { kind: "removePlace"; place: Place };
 
@@ -140,7 +141,7 @@ export function shownComputer(connections: readonly MobileConnectionRecord[], ac
   const shown = connections.find((connection) => connection.id === activeId);
   return shown && placeKind(shown) === "computer" ? shown : null;
 }
-const SETTINGS_PAGES: readonly string[] = ["avatar", "language", "textSize", "voice", "notifications", "routines", "connectors", "vault"];
+const SETTINGS_PAGES: readonly string[] = ["avatar", "language", "textSize", "voice", "notifications", "routines", "connectors", "vault", "updates", "whatsNew"];
 
 /** Settings is a stack inside one sheet, as iOS Settings: the grouped list, and each page pushed over it with the
  * system's slide and edge swipe back. Notifications, routines, apps and the vault are the same pages the rest of the
@@ -197,6 +198,8 @@ export const SettingsSheet: ComponentType<SheetPageProps<"settings">> = ({ sheet
         pop();
         return true;
       }} onCancel={pop} />
+    : shownPage === "updates" ? <UpdatesPage onClose={pop} />
+    : shownPage === "whatsNew" ? <WhatsNewPage onClose={pop} />
     : shownPage === "voice" ? <Sheet open onClose={pop} title={t("settings.voice.title")}><div data-settings-look="simple" className={`flex flex-col gap-6 px-4 pt-2 ${SIMPLE_BUTTONS}`}><VoiceInputSettings /></div></Sheet>
     : null;
   const pageKey = typeof page === "string" ? page : page ? `${page.kind}:${page.place.key}` : null;
@@ -473,6 +476,8 @@ function SettingsList({ onClose, push, placesState }: { onClose: () => void; pus
       )}
 
       <SettingsSection card title={t("mobile.settings.about")}>
+        <SettingsRow icon={<RefreshCw />} label={t("settings.updates.check")} onClick={() => push("updates")} />
+        <SettingsRow icon={<Sparkles />} label={t("whatsNew.title")} onClick={() => push("whatsNew")} />
         <SettingsRow icon={<LifeBuoy />} label={t("mobile.settings.help")} onClick={() => void platform.openExternal(LEGAL_LINKS.help)} />
         <SettingsRow icon={<Mail />} label={t("mobile.settings.contact")} onClick={() => void platform.openExternal(supportMail(t("mobile.settings.contactSubject")))} />
         <SettingsRow icon={<Lock />} label={t("mobile.settings.privacy")} onClick={() => void platform.openExternal(LEGAL_LINKS.privacy)} />
