@@ -32,7 +32,7 @@ describe("bot voice", () => {
     expect(WORK_CHARACTER_PROMPT).toContain("your first words are the answer, the result, the number or the fix; never a greeting");
     expect(WORK_CHARACTER_PROMPT).toContain("the talking style's playful parts are off for this bot");
     expect(WORK_CHARACTER_PROMPT).not.toMatch(/funny|comeback built/);
-    expect(CHARACTER_PROMPT).toContain("A work role (code, ops, money) keeps jokes rare.");
+    expect(CHARACTER_PROMPT).toContain("the first is the result or a reaction, never a plan;");
   });
 
   it("puts the bot's voice into its system prompt", () => {
