@@ -101,3 +101,40 @@ describe("the model chip beside the message box", () => {
     expect(chip().getAttribute("aria-label")).toBe("Model, Claude Opus 5.5");
   });
 });
+
+describe("a ChatGPT plan account that can't sign in here", () => {
+  const plan = (authenticated: boolean): InstanceInfo => ({
+    instanceId: "chatgpt", driverKind: "codex", displayName: "ChatGPT plan", access: "subscription",
+    snapshot: { state: "available", authenticated, chatgptPlan: true },
+    authentication: { method: "browser-pkce" },
+    models: { default: "gpt-6-sol", options: [{ id: "gpt-6-sol", label: "GPT-6 Sol" }] },
+  });
+  const menuText = async () => {
+    render(false);
+    flushSync(() => chip().click());
+    await settle();
+    return document.querySelector("[data-model-picker-content]")?.textContent ?? "";
+  };
+  afterEach(() => { delete (window as { duskDesktop?: unknown }).duskDesktop; });
+
+  it("is not offered from a desktop connected to a server, where its sign-in never completes", async () => {
+    (window as { duskDesktop?: unknown }).duskDesktop = { remoteClient: { active: true } };
+    fixture.instances = [claude, plan(false)];
+    render(true);
+    flushSync(() => chip().click());
+    await settle();
+    expect(document.querySelector("[data-model-picker-content]")?.textContent).not.toContain("ChatGPT");
+  });
+
+  it("stays where it can sign in, and anywhere once signed in", async () => {
+    fixture.instances = [claude, plan(false)];
+    expect(await menuText()).toContain("ChatGPTNeeds sign-in");
+    flushSync(() => root.render(null));
+    (window as { duskDesktop?: unknown }).duskDesktop = { remoteClient: { active: true } };
+    fixture.instances = [claude, plan(true)];
+    render(true);
+    flushSync(() => chip().click());
+    await settle();
+    expect(document.querySelector("[data-model-picker-content]")?.textContent).toContain("GPT-6 Sol");
+  });
+});
