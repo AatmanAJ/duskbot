@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 
 import { PINNED_RELEASE_KEYS, signRelease } from "../apps/cloud-service/src/release-signing.ts";
 import { releaseManifest, sha256sums } from "../scripts/release-manifest.ts";
-import { createUpdateChecker, DESKTOP_DOWNLOAD_URL, DESKTOP_MANIFEST_URL, DESKTOP_RELEASE_KEYS, installKind, LATEST_RELEASE_URL, newerVersion,
+import { createChangelogReader, createUpdateChecker, DESKTOP_DOWNLOAD_URL, DESKTOP_MANIFEST_URL, DESKTOP_RELEASE_KEYS, installKind, LATEST_RELEASE_URL, newerVersion,
   resetDesktopUpdateCacheForTests, verifiedDesktopVersion, type InstallKind } from "./update-check.ts";
 
 afterEach(() => { vi.unstubAllGlobals(); resetDesktopUpdateCacheForTests(); });
@@ -168,5 +168,34 @@ describe("desktop update check", () => {
     vi.unstubAllEnvs();
     expect(verifiedDesktopVersion(manifest, [testKey])).toBe("0.1.150");
     expect(() => releaseManifest(sums, "0.1.150", signingKey)).toThrow();
+  });
+});
+
+describe("changelog reader", () => {
+  const answer = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const list = { v: 1, releases: [{ version: "0.2.32", items: [{ text: "Check for updates on the phone", area: "phone" }] }] };
+
+  it("reads the changelog once an hour, and a missing one is no releases", async () => {
+    let at = 0;
+    const fetchImpl = vi.fn(async (_url: string) => answer(404, { error: "not found" }));
+    const read = createChangelogReader({ fetch: fetchImpl as unknown as typeof fetch, now: () => at });
+    expect(await read()).toEqual([]);
+    expect(await read()).toEqual([]);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls[0]![0]).toBe("https://dusk.bot/releases/changelog.json");
+    at = 61 * 60_000;
+    fetchImpl.mockImplementation(async (_url: string) => answer(200, list));
+    expect((await read()).map((release) => release.version)).toEqual(["0.2.32"]);
+  });
+
+  it("keeps the last good list when a read fails, and never throws", async () => {
+    let at = 0, fail = false;
+    const fetchImpl = async () => { if (fail) throw new Error("offline"); return answer(200, list); };
+    const read = createChangelogReader({ fetch: fetchImpl as unknown as typeof fetch, now: () => at });
+    expect(await read()).toHaveLength(1);
+    fail = true; at = 2 * 60 * 60_000;
+    expect(await read()).toHaveLength(1);
+    const fresh = createChangelogReader({ fetch: (async () => answer(500, {})) as unknown as typeof fetch });
+    expect(await fresh()).toEqual([]);
   });
 });

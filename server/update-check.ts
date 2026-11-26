@@ -2,6 +2,7 @@ import { createPublicKey, verify } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join, sep } from "node:path";
 
+import { CHANGELOG_URL, parseChangelog, type Release } from "../shared/release-notes.ts";
 import type { InstallKind, UpdateCheck } from "../shared/server-update.ts";
 export type { InstallKind, UpdateCheck } from "../shared/server-update.ts";
 
@@ -137,3 +138,23 @@ export function createUpdateChecker(options: {
 }
 
 export function resetDesktopUpdateCacheForTests() { desktopCache = null; }
+
+/** changelog.json read through this server (a page can't read dusk.bot itself), kept an hour; a missing or broken file is
+ * no releases, and a failed read keeps the last good list */
+export function createChangelogReader(options: { fetch?: typeof fetch; now?: () => number; url?: string } = {}) {
+  const now = options.now ?? Date.now;
+  let cached: { at: number; releases: Release[] } | null = null;
+  let reading: Promise<Release[]> | null = null;
+  return function releases(): Promise<Release[]> {
+    if (cached && now() - cached.at < RELEASE_CHECK_TTL_MS) return Promise.resolve(cached.releases);
+    reading ??= (options.fetch ?? fetch)(options.url ?? CHANGELOG_URL, { redirect: "error", signal: AbortSignal.timeout(10_000), headers: { accept: "application/json" } })
+      .then(async (response) => {
+        if (response.status === 404) return [];
+        if (!response.ok) throw new Error(`the changelog answered ${response.status}`);
+        return parseChangelog(await response.json().catch(() => null));
+      })
+      .then((list) => { cached = { at: now(), releases: list }; return list; }, () => cached?.releases ?? [])
+      .finally(() => { reading = null; });
+    return reading;
+  };
+}
