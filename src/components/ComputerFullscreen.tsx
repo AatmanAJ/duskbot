@@ -7,6 +7,7 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { reducedMotion } from "@/lib/onboarding";
 import { PlatformContext } from "@/mobile/platform";
+import { SCREEN_GROW_MS } from "./screen-grow";
 import { PhoneTakeoverShell } from "@/mobile/PhoneTakeoverViewer";
 import type { BotAvatarProps } from "./Avatar";
 import { useCaptionChrome, useDesktopCapabilities } from "./DesktopCapabilities";
@@ -216,7 +217,6 @@ const subscribeLandscape = (listener: () => void) => {
 };
 const isLandscape = () => landscapeQuery()?.matches ?? false;
 
-export const SCREEN_GROW_MS = 240;
 
 /** The full view opening out of (or closing back into) the screen's place in the window: its edges travel between that
  * box and the window's, as a clip, so nothing inside rescales or reflows. Reduced motion fades instead. */

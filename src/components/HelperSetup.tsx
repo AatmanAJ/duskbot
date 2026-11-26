@@ -7,7 +7,7 @@ import { t } from "@/lib/i18n";
 import { phonePairingSettingsAction } from "@/lib/phone-pairing";
 import type { LocaleKey } from "@/locales";
 import { useStore, type Action } from "@/state/store";
-import { ConnectAiDialog } from "./onboarding/ConnectAi";
+import { ConnectAiDialog } from "./onboarding/connect-ai-dialog";
 import { useWelcomeAi } from "./onboarding/welcome-ai";
 
 const CHIP = "inline-flex h-8 items-center gap-2 rounded-full border-[0.5px] border-transparent bg-card px-3 text-[14px] leading-5 text-ink transition-colors hover:bg-[color-mix(in_srgb,var(--color-ink)_4%,var(--color-card))]";

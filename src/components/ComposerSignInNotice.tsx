@@ -4,7 +4,7 @@ import { botEngine, signedOutWithoutBackup } from "@/lib/failed-turn";
 import { useStore, type Bot, type ConfigStatus, type InstanceInfo } from "@/state/store";
 import { freeFallback } from "../../shared/ai-ranking";
 import { engineReady } from "./EngineLibrary";
-import { ConnectAiDialog } from "./onboarding/ConnectAi";
+import { ConnectAiDialog } from "./onboarding/connect-ai-dialog";
 import { NOTICE_LINE } from "./ChatErrorBanner";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
 

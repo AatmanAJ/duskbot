@@ -14,7 +14,7 @@ import { SignInScreen, signInScreenPath } from "./SignInScreen";
 import { LoginForm } from "./LoginForm";
 import { friendlyError } from "@/lib/plain-error";
 import { reducedMotion } from "@/lib/onboarding";
-import { SCREEN_GROW_MS } from "./ComputerFullscreen";
+import { SCREEN_GROW_MS } from "./screen-grow";
 import { useSignInTakeover } from "./SignInTakeover";
 
 // Security: a saved login is encrypted on the server and filled by fill_login; neither the bot nor any screen ever gets

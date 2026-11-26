@@ -13,7 +13,8 @@ import { Icon, type IconName } from "../Icon";
 import { useMenuMotion } from "../MenuMotion";
 import { saveAccess } from "../bot-access/access";
 import { UndoToast, useTeamName } from "../bot-access/ShareBotButton";
-import { ShareBotDialog, type AccessChange } from "../bot-access/ShareBotDialog";
+import type { AccessChange } from "../bot-access/ShareBotDialog";
+import { ShareBotDialog } from "../bot-access/share-bot-dialog";
 import { roundButtonCls } from "./rows";
 
 const GAP = 4;

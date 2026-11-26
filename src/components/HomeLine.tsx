@@ -4,7 +4,7 @@ import { Cloud, Users, X } from "../icons";
 const LINE_CLOSED = "dusk.homeLineClosed";
 import { freeFallback } from "../../shared/ai-ranking";
 import { engineReady } from "@/components/EngineLibrary";
-import { ConnectAiDialog } from "@/components/onboarding/ConnectAi";
+import { ConnectAiDialog } from "@/components/onboarding/connect-ai-dialog";
 import { t } from "@/lib/i18n";
 import { setNotificationPlace } from "@/lib/notify";
 import { useStore } from "@/state/store";

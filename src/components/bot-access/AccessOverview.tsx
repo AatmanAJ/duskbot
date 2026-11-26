@@ -11,7 +11,7 @@ import { BotAvatar } from "../Avatar";
 import { PersonFace } from "../TeamOwner";
 import { accessOfBot, nameOf, personOf, saveAccess, withPerson } from "./access";
 import { UndoToast, useTeamName } from "./ShareBotButton";
-import { ShareBotDialog } from "./ShareBotDialog";
+import { ShareBotDialog } from "./share-bot-dialog";
 import { EntryFace } from "./ShareControls";
 import { Card as RowsCard, NoteRow, rowCls } from "../ListRows";
 import { textFieldCls } from "../ui/GrokDialog";

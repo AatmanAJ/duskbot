@@ -3,7 +3,7 @@ import { t } from "@/lib/i18n";
 import { friendlyError } from "@/lib/plain-error";
 import { api, useStore, type AppState } from "@/state/store";
 import { ErrorDetailsCopy } from "./ErrorDetailsCopy";
-import { ConnectAiDialog } from "./onboarding/ConnectAi";
+import { ConnectAiDialog } from "./onboarding/connect-ai-dialog";
 import { Icon } from "./Icon";
 import { NoticeGlyph } from "./ui/Notice";
 import type { PixelIconName } from "./ui/PixelIcon";

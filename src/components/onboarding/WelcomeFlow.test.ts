@@ -28,6 +28,7 @@ vi.mock("@/components/EngineSetup", async (original) => {
 });
 vi.mock("@/lib/default-bot", async (original) => ({ ...(await original<typeof import("@/lib/default-bot")>()), useViewerEmail: () => null }));
 const { WelcomeFlow } = await import("./WelcomeFlow");
+await (await import("./connect-ai-dialog")).ConnectAiDialog.preload();
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const claude = (ready: boolean, aiTest?: InstanceInfo["aiTest"]): InstanceInfo => ({

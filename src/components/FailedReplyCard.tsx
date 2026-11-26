@@ -13,7 +13,7 @@ import { failedTurnCause } from "../../shared/failed-turn";
 import { failurePlan, type FailureAction } from "../../shared/failure-plan";
 import { freeFallback } from "../../shared/ai-ranking";
 import { engineReady } from "./EngineLibrary";
-import { ConnectAiDialog } from "./onboarding/ConnectAi";
+import { ConnectAiDialog } from "./onboarding/connect-ai-dialog";
 import { aiTileOf, type AiTileId } from "./onboarding/funnel";
 import { CARD_ACTION, ChatErrorCard } from "./ChatErrorBanner";
 

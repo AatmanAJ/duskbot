@@ -7,7 +7,7 @@ import { friendlyError } from "@/lib/plain-error";
 import { t } from "@/lib/i18n";
 import { phoneApp } from "@/lib/store-app";
 import { api, useStore } from "@/state/store";
-import { SCREEN_GROW_MS } from "./ComputerFullscreen";
+import { SCREEN_GROW_MS } from "./screen-grow";
 import { useComputerTakeover } from "./computer-takeover";
 
 

@@ -22,7 +22,7 @@ import { cn } from "@/lib/cn";
 import { useMenuMotion } from "./MenuMotion";
 import { SimpleModelMenu, type PickerScope, type SimpleThinking } from "./SimpleModelMenu";
 import { aiTiles, type AiTileId } from "./onboarding/funnel";
-import { ConnectAiDialog } from "./onboarding/ConnectAi";
+import { ConnectAiDialog } from "./onboarding/connect-ai-dialog";
 import { Toast } from "./ui/Toast";
 import { starKey, useStarredModels } from "@/lib/starred-models";
 import { noteRecentModels, useRecentModels } from "@/lib/recent-models";

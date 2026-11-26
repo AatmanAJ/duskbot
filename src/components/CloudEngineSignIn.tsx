@@ -5,7 +5,7 @@ import { startCloudSetup } from "@/components/CloudIntent";
 import { engineReady } from "@/components/EngineLibrary";
 import { EngineCheckLine, useEngineLiveCheck } from "@/components/EngineLiveCheck";
 import { AiCards } from "@/components/onboarding/AiCards";
-import { ConnectAiDialog } from "@/components/onboarding/ConnectAi";
+import { ConnectAiDialog } from "@/components/onboarding/connect-ai-dialog";
 import { staggerIndex } from "@/components/onboarding/beats/shared";
 import { productName } from "@/lib/brand";
 import { reopenCloudIntent, setPendingIntent, useCloudIntent } from "@/lib/cloud-intent";

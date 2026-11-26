@@ -8,7 +8,7 @@ import { cn } from "@/lib/cn";
 import { activeLocale, t } from "@/lib/i18n";
 import { useStore, type InstanceInfo } from "@/state/store";
 import { AiCards } from "./AiCards";
-import { ConnectAiDialog } from "./ConnectAi";
+import { ConnectAiDialog } from "./connect-ai-dialog";
 import { aiName, aiTileOf, aiTiles, freeModel, type AiTileId } from "./funnel";
 import { PRIMARY, QUIET, SECONDARY, StepArt, StepFrame, TILE } from "./FunnelSteps";
 import type { WelcomeAiNow } from "./welcome-ai";

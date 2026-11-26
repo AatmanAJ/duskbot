@@ -5,7 +5,7 @@ import type { Message } from "@/state/store";
 import { bugReportFixedText } from "./BugReportNote";
 import { CancelledTurnRow } from "./CancelledTurnRow";
 import { FoldedNoticesContext } from "./FailedReplyCard";
-import { ConnectAiDialog } from "./onboarding/ConnectAi";
+import { ConnectAiDialog } from "./onboarding/connect-ai-dialog";
 import { NOTE_ACTION, TranscriptNote } from "./TranscriptNote";
 
 // a notice is said in the card above the composer while it is the newest thing; once something follows, an older one

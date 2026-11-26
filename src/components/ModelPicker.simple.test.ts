@@ -43,6 +43,7 @@ vi.mock("react", async (original) => ({
 vi.mock("./onboarding/ConnectAi", () => ({
   ConnectAiDialog: (props: { start?: string }) => createElement("div", { "data-connect-ai-dialog": props.start ?? "" }),
 }));
+vi.mock("./onboarding/connect-ai-dialog", async () => ({ ConnectAiDialog: (await import("./onboarding/ConnectAi")).ConnectAiDialog }));
 vi.mock("./ui/Toast", () => ({ Toast: (props: { text: string; tone?: string }) => createElement("div", { "data-toast": props.tone ?? "done" }, props.text) }));
 vi.mock("./MenuMotion", () => ({ useMenuMotion: (open: boolean) => ({ shown: open, closing: false, className: "", exitProps: {} }) }));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => fixture.ownerOrAdmin }));

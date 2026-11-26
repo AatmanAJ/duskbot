@@ -4,7 +4,7 @@ import { WindowDragStrip } from "@/components/DesktopCapabilities";
 import { t } from "@/lib/i18n";
 import { friendlyError } from "@/lib/plain-error";
 import { AiCards } from "./onboarding/AiCards";
-import { ConnectAiDialog } from "./onboarding/ConnectAi";
+import { ConnectAiDialog } from "./onboarding/connect-ai-dialog";
 import { StepArt, StepFrame } from "./onboarding/FunnelSteps";
 
 export function NoEngines() {

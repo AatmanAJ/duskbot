@@ -9,10 +9,12 @@ vi.mock("./DesktopCapabilities", () => ({
   useDesktopCapabilities: () => ({ capabilities: null, ready: false }),
 }));
 
-import { CallButton, CallOverlay, CallTargetButton } from "./CallView";
+import { CallButton, CallOverlay, CallSurface, CallTargetButton } from "./CallView";
 import { setCallMode } from "@/lib/call-mode";
 import { endCall, startCall } from "@/lib/call";
 import { configureLiveMedia, dismissStartPrompt, resetLiveMedia, startLiveCall } from "@/lib/live-call-media";
+
+await CallSurface.preload();
 
 const bot: Bot = {
   id: "atlas",

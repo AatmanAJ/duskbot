@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { setLocale } from "@/lib/i18n";
 import { HomeLine, homeLineText } from "./HomeLine";
+import { ConnectAiDialog } from "./onboarding/connect-ai-dialog";
 
 let host: HTMLDivElement;
 let root: Root;
@@ -14,6 +15,8 @@ vi.mock("@/lib/notify", () => ({ setNotificationPlace: (name: string | null) => 
 vi.mock("@/state/store", () => ({ useStore: () => ({ state: { instances: ais.instances } }) }));
 vi.mock("@/components/onboarding/ConnectAi", () => ({ ConnectAiDialog: () => createElement("div", { "data-connect-ai": "" }) }));
 vi.mock("@/components/EngineLibrary", () => ({ engineReady: (instance: { ready?: boolean }) => instance.ready === true }));
+
+await ConnectAiDialog.preload();
 const mount = async (line: ReturnType<typeof vi.fn>, remote = false, state: Record<string, unknown> = { local: false, name: "My Cloud" }) => {
   window.duskDesktop = { workspaces: { state: vi.fn().mockResolvedValue(state), menu: vi.fn(), line }, ...(remote ? { remoteClient: { active: true } } : {}) } as unknown as typeof window.duskDesktop;
   flushSync(() => root.render(createElement(HomeLine)));

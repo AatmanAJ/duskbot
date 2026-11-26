@@ -5,7 +5,8 @@ import { t } from "@/lib/i18n";
 import { useStore, type Bot } from "@/state/store";
 import { Toast } from "../ui/Toast";
 import { saveAccess } from "./access";
-import { ShareBotDialog, type AccessChange } from "./ShareBotDialog";
+import type { AccessChange } from "./ShareBotDialog";
+import { ShareBotDialog } from "./share-bot-dialog";
 
 /** The team's name, or null anywhere but a team. */
 export function useTeamName(): string | null {

@@ -20,6 +20,7 @@ vi.mock("./DesktopCapabilities", async (importOriginal) => ({
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 
 const { FailedReplyCard } = await import("./FailedReplyCard");
+await (await import("./onboarding/connect-ai-dialog")).ConnectAiDialog.preload();
 const { AiCards } = await import("./onboarding/AiCards");
 const { trailingRows } = await import("@/lib/failed-reply");
 
