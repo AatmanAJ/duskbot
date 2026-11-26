@@ -70,19 +70,21 @@ writeFileSync(
 
 writeFileSync(
   join(out, "README.md"),
-  `# dusk bot private server
+  `# dusk bot server and CLI
 
-Install the reviewed private archive supplied by your operator. Requires Node 24+.
+Every dusk bot release carries this package on GitHub as \`duskbot-<version>.tgz\`
+(and \`duskbot.tgz\`, always the newest). Requires Node 24+.
 
 \`\`\`sh
-npm install --global --prefix "$HOME/.local" ./duskbot-private.tgz
+npm install --global --prefix "$HOME/.local" https://github.com/DuskBotAI/duskbot-releases/releases/latest/download/duskbot.tgz
 "$HOME/.local/bin/duskbot" setup
 \`\`\`
 
 Use the installed \`duskbot\` command on later launches. Add
 \`$HOME/.local/bin\` to PATH if needed. \`duskbot start\` is an alias for
-the bare command. The desktop's Add your VPS flow installs this private build
-through its one-time link; app and server upgrades are operator-managed.
+the bare command. \`duskbot update\` says when a newer one is out, shows what
+changed and updates it. The desktop's Add your VPS flow installs the same
+server through its one-time link, and that server updates itself.
 
 First launch: use arrow keys and Enter (numbered choices in plain terminals) to choose
 ChatGPT/Codex, Claude Code, or an API service; sign in or paste a hidden API

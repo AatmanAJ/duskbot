@@ -461,11 +461,14 @@ jobs:
         run: |
           v=$(node -p "require('./package.json').version")
           cp "release/DuskBot-$v-setup.exe" release/DuskBot-setup.exe
+          cp "release/DuskBot-$v-win-x64.zip" release/DuskBot-windows.zip
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-release
           path: |
             release/*.exe
+            release/DuskBot-*-win-x64.zip
+            release/DuskBot-windows.zip
           if-no-files-found: error
           retention-days: 1
 
@@ -562,6 +565,13 @@ jobs:
           cp "release/DuskBot-$v-amd64.deb" release/DuskBot-amd64.deb
           cp "release/DuskBot-$v-x86_64.AppImage" release/DuskBot.AppImage
           (cd release && sha256sum DuskBot-$v-amd64.deb DuskBot-$v-x86_64.AppImage > SHA256SUMS-ubuntu-x64.txt)
+      # the server and CLI as one npm package (Node 24+, any OS), from the dist-server/ and dist/ package:linux built:
+      # duskbot-<version>.tgz and duskbot.tgz, so a self-hoster never has to build it from source
+      - name: Server and CLI package
+        run: |
+          v=$(node -p "require('./package.json').version")
+          node --input-type=module -e "import { packCli } from './scripts/release-assets.ts'; console.log(packCli('release', process.argv[1]))" "$v"
+          tar -xzOf "release/duskbot-$v.tgz" package/package.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s);if(p.version!==process.argv[1]||p.bin.duskbot!=="cli.js")process.exit(1)})' "$v"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: linux-release
@@ -569,6 +579,8 @@ jobs:
             release/*.deb
             release/*.AppImage
             release/SHA256SUMS-ubuntu-x64.txt
+            release/duskbot-*.tgz
+            release/duskbot.tgz
           if-no-files-found: error
           retention-days: 1
 
@@ -590,6 +602,14 @@ jobs:
         with:
           path: assets
           merge-multiple: true
+      # the phone app is built and signed on the Mac (apps/mobile/scripts/build-android-apk.sh); a release that built no
+      # new one carries the newest APK forward, so every release has it and latest.json names its version
+      - name: Carry the newest Android APK forward
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -s assets/DuskBot.apk || gh release download --repo DuskBotAI/duskbot-releases --pattern DuskBot.apk --dir assets
+          test -s assets/DuskBot.apk
       - name: Refuse an incomplete installer set
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
@@ -604,8 +624,10 @@ jobs:
             "DuskBot-$VERSION-browser-darwin-arm64.zip"
             "DuskBot-$VERSION-browser-darwin-x64.zip"
             "DuskBot-$VERSION-x86_64.AppImage"
-            DuskBot-amd64.deb DuskBot-intel.dmg DuskBot-setup.exe
-            DuskBot.AppImage DuskBot.dmg SHA256SUMS-ubuntu-x64.txt
+            "DuskBot-$VERSION-win-x64.zip"
+            "duskbot-$VERSION.tgz"
+            DuskBot-amd64.deb DuskBot-intel.dmg DuskBot-setup.exe DuskBot-windows.zip
+            DuskBot.AppImage DuskBot.dmg DuskBot.apk duskbot.tgz SHA256SUMS-ubuntu-x64.txt
           )
           for file in "${required[@]}"; do
             test -s "assets/$file" || { echo "::error::missing or empty release asset: $file"; exit 1; }
@@ -619,10 +641,16 @@ jobs:
           ref: ${{ needs.prepare.outputs.sha }}
           path: src
           persist-credentials: false
+          # the history since the last tag, for the release notes
+          fetch-depth: 0
           sparse-checkout: |
             package.json
             scripts/release-manifest.ts
+            scripts/release-assets.ts
+            scripts/release-notes.ts
             apps/cloud-service/src/release-signing.ts
+            apps/site/public/landing/releases/changelog.json
+            docs/releases/unreleased.json
           sparse-checkout-cone-mode: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -637,8 +665,10 @@ jobs:
             exit 0
           fi
           mkdir -p site
-          cp assets/DuskBot-"$VERSION"-* assets/DuskBot{.dmg,-intel.dmg,-setup.exe,-amd64.deb,.AppImage} site/
-          node src/scripts/release-manifest.ts site --version "$VERSION"
+          cp assets/DuskBot-"$VERSION"-* assets/DuskBot{.dmg,-intel.dmg,-setup.exe,-amd64.deb,.AppImage,-windows.zip,.apk} assets/duskbot{,-"$VERSION"}.tgz site/
+          # latest.json also names the APK (version from aapt2 on the runner's Android SDK), the CLI package and the image
+          node src/scripts/release-assets.ts "$VERSION" --dir site
+          find site -maxdepth 1 -name 'duskbot*.tgz' -delete
           find site -maxdepth 1 -name 'DuskBot*' -delete
           cat site/SHA256SUMS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -676,8 +706,12 @@ jobs:
               sleep "$delay"
             done
           }
+          # what's new by area, every download, how each install updates (scripts/release-notes.ts; human edits to the draft
+          # survive a rerun because the draft is only created once)
+          notes="$RUNNER_TEMP/notes"
+          if node src/scripts/release-notes.ts "$VERSION" --to "$SHA" --out "$notes" --offline 2>/dev/null; then set -- --notes-file "$notes/$VERSION.md"; else set -- --generate-notes; fi
           ensure_draft "$GITHUB_REPOSITORY" --target "$SHA" \
-            --draft --title "dusk bot $VERSION" --generate-notes
+            --draft --title "dusk bot $VERSION" "$@"
           target=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json targetCommitish --jq .targetCommitish)
           target_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$target" --jq .sha)
           test "$target_sha" = "$SHA" || {
