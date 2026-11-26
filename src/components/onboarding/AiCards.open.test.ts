@@ -49,3 +49,21 @@ it("moves focus into an opened card's field and, once it has grown in, scrolls i
   await act(async () => { vi.advanceTimersByTime(CONNECT_LEAVE_MS); });
   expect(f.reveal).toHaveBeenCalledExactlyOnceWith(document.body.querySelector("[data-funnel-ai-connect=openrouter]"));
 });
+
+it("on the first run, the AIs already connected when the grid opens lead it, tinted, and the order holds while it is open", async () => {
+  const sub = (instanceId: string, driverKind: string, ready: boolean) => ({ instanceId, driverKind, displayName: instanceId, access: "subscription",
+    snapshot: { state: "available", authenticated: ready }, authentication: { method: "browser-pkce" }, models: { default: "m", options: [] } }) as unknown as InstanceInfo;
+  f.instances = [sub("chatgpt", "codex", false), sub("claude", "claudeAgent", true), openrouter];
+  const order = () => [...document.body.querySelectorAll<HTMLElement>("[data-funnel-ai]")].map((tile) => tile.dataset.funnelAi);
+  await act(async () => { root.render(createElement(AiCards, { tested: null, foundFirst: true })); });
+  expect(order()).toEqual(["claude", "chatgpt", "openrouter"]);
+  expect(document.body.querySelector("[data-funnel-ai=claude]")?.className).toContain("bg-success");
+  f.instances = [sub("chatgpt", "codex", true), sub("claude", "claudeAgent", true), openrouter];
+  await act(async () => { root.render(createElement(AiCards, { tested: null, foundFirst: true })); });
+  expect(order(), "one connected while open stays where it was").toEqual(["claude", "chatgpt", "openrouter"]);
+  expect(document.body.querySelector("[data-funnel-ai=chatgpt]")?.className).not.toContain("bg-success");
+  await act(async () => root.unmount());
+  root = createRoot(host);
+  await act(async () => { root.render(createElement(AiCards, { tested: null })); });
+  expect(order(), "everywhere else the grid keeps its fixed order").toEqual(["chatgpt", "claude", "openrouter"]);
+});

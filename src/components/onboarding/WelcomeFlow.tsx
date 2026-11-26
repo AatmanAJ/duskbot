@@ -7,7 +7,7 @@ import { clearWelcomeDraft, readWelcomeDraft, saveWelcomeDraft } from "@/lib/wel
 import { looksLikeNotes } from "@/lib/assistant-notes";
 import { greetingName } from "../../../shared/greeting-name";
 import { usePlaceSetupOpen } from "@/lib/place-setup";
-import { api, useStore, type ModelSelection } from "@/state/store";
+import { api, useStore } from "@/state/store";
 import { engineReady } from "@/components/EngineLibrary";
 import { trapTab } from "./trap-tab";
 import { useNotesIntake } from "../NotesWaiting";
@@ -17,7 +17,7 @@ import { AiStep } from "./AiStep";
 import { BringStatus } from "./BringStep";
 import { CheckoutStep } from "./CheckoutStep";
 import { CloudBringStep, useCloudBringOffered } from "./CloudBringStep";
-import { accountDue, cloudOwned, foundPicks, freeModel, funnelSteps, nextStep, previousStep, type FunnelPath, type FunnelStep } from "./funnel";
+import { accountDue, cloudOwned, foundPicks, funnelSteps, nextStep, previousStep, type FunnelPath, type FunnelStep } from "./funnel";
 import { useFreeWarmup } from "./free-warmup";
 import { funnelAccount, type FunnelAccountState } from "./funnel-account";
 import { FunnelBar, WelcomeStep } from "./FunnelSteps";
@@ -48,7 +48,8 @@ export { cloudBought } from "./funnel";
 
 /** The first run, three calm screens: the hello (the free model gets ready meanwhile), signing in (gone for someone
  * already signed in; Continue without an account where the install works without one, and the chat asks again later),
- * then one choice, free models or a plan the person already has. It ends in Dusk's chat (Dusk made the Chief of Staff
+ * then connecting an AI: whatever this computer is already signed in to connects by itself, any other in one tap, and
+ * Continue goes on with it, or on the free model. It ends in Dusk's chat (Dusk made the Chief of Staff
  * where no other bot is one), where Dusk speaks first with three first jobs, and raises anything else (dusk cloud, the
  * phone, the Mac's permissions, apps) when a job needs it. A run already on its way to dusk cloud keeps the browser checkout, the AI while
  * the Cloud is made, then the Cloud, ending in that Cloud's chat. */
@@ -71,8 +72,6 @@ export function WelcomeFlow({
   const keepsDraft = !replay && !embedded;
   const root = useRef<HTMLDivElement>(null);
   const finishing = useRef(false);
-  // "Use free models" is the person's own pick: Dusk and new bots stay on it even once another AI is ready
-  const freePick = useRef<ModelSelection | null>(null);
   const record = useRef(state.config?.onboarding);
   record.current = state.config?.onboarding;
 
@@ -168,8 +167,7 @@ export function WelcomeFlow({
       onDone(botId);
       try {
         const run = replay ? completionPatch() : cloudOpenedHere(firstRunPatch(record.current, new Date(), { cloudHome }), path === "cloud", record.current?.hintsSeen ?? []);
-        const patch = freePick.current ? { ...run, defaultModelSelection: freePick.current } : run;
-        const config = await api("/api/config", { method: "PUT", body: JSON.stringify(patch), signal: AbortSignal.timeout(10_000) });
+        const config = await api("/api/config", { method: "PUT", body: JSON.stringify(run), signal: AbortSignal.timeout(10_000) });
         dispatch({ type: "configStatus", config });
       } catch {
       }
@@ -182,7 +180,6 @@ export function WelcomeFlow({
     if (finishing.current) return;
     const chief = Boolean(maus && chiefStepFits(state.bots, maus));
     if (chief && maus) dispatch({ type: "updateBot", botId: maus.id, patch: createChiefPatch(maus, chiefFor(state.bots, maus)) });
-    if (maus && freePick.current) dispatch({ type: "updateBot", botId: maus.id, patch: { modelSelection: freePick.current } });
     const botId = chief ? maus!.id : null;
     if (botId && !replay) stageIntro(botId);
     void finish(botId ? "completed" : "skipped", botId);
@@ -297,9 +294,9 @@ export function WelcomeFlow({
     case "ai":
       body = <AiStep tested={tested} cloud={cloud} computerAis={cloudHome ? computerAiIds(state.config?.onboarding) : []} onNext={(how) => {
         track("onboarding_ai", { action: how });
-        const free = how === "free" && !cloud ? freeModel(state.instances, engineReady) : undefined;
-        freePick.current = free ? { instanceId: free.instanceId, model: free.models.default } : null;
-        const picks = foundPicks(how, tested?.instance, state.instances, engineReady);
+        // the AIs found here were connected as the step opened; any whose mark didn't land yet is marked before the chat,
+        // so Dusk's first reply comes from it (the server moves Dusk off the free model once a connected AI is ready)
+        const picks = foundPicks(how, undefined, state.instances, engineReady);
         if (!picks.length) { next(); return; }
         void Promise.allSettled(picks.map((instance) => api(`/api/instances/${encodeURIComponent(instance.instanceId)}`, { method: "PATCH", body: JSON.stringify({ chosen: true }), signal: AbortSignal.timeout(10_000) })))
           .then(() => refreshInstances().catch(() => {}))

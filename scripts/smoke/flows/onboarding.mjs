@@ -1,15 +1,15 @@
 // Onboarding as a brand-new person: a fresh profile, signed out (or at the sign-in an install can require, --gate), then
 // the first run end to end: the hello, signing in (gone for someone already signed in; signed out, this run goes on
-// without an account), then one AI choice (the AI already signed in here, free models or a plan); Dusk then speaks first
+// without an account), then connect your AI (what this computer is signed in to connects by itself); Dusk then speaks first
 // in its chat with "What should we start with?" and the setup chips.
-//   mac:    the hello, the sign-in, the AI choice (free models), Dusk's first message and card, then the first bot's first reply
+//   mac:    the hello, the sign-in, connect your AI (Continue), Dusk's first message and card, then the first bot's first reply
 //   cloud:  the same run, then the chat's Try cloud chip and the sheet it opens (buying is buy-cloud.mjs)
 //   server: your own server is no longer part of the first run (add-server.mjs covers it)
 // Every screen is shot at the app's normal window (1040x760) and its minimum (768x520) into <out>/steps/.
 // With --root pointing at an older checkout the same script shoots that checkout's run ("before" shots); a screen the
 // older run doesn't have stops with a note.
 //
-// --tour (the walkthrough) also opens the plan grid, an AI's card and the full list of AIs, as a curious person would.
+// --tour (the walkthrough) also opens an AI's card and the full list of AIs, as a curious person would.
 //
 //   node scripts/smoke/flows/onboarding.mjs [--path mac|cloud|server] [--out DIR] [--profile DIR] [--email ADDRESS] [--gate] [--tour]
 import { mkdirSync } from "node:fs";
@@ -122,24 +122,20 @@ await runFlow(flow, async () => {
     return `${await funnelText()} | went on without an account`;
   }, { critical: true });
 
-  await flow.step("ai-choice", "one AI choice: the AI signed in here, free models, or a plan", async () => {
-    await flow.waitFor(`document.querySelector("[data-welcome]")?.dataset.welcome === "ai"`, "the AI choice", 30_000);
+  await flow.step("ai-connect", "connect your AI: what this computer is signed in to is connected already, the rest one tap away", async () => {
+    await flow.waitFor(`document.querySelector("[data-welcome]")?.dataset.welcome === "ai"`, "the AI step", 30_000);
     screens.push(await at());
-    // the AI signed in here is offered once its test message answered
-    await flow.waitFor(`!document.querySelector("[data-funnel-own][disabled]")`, "the AI here to be checked", 30_000).catch(() => {});
+    await sleep(1500);
     await shots("ai");
-    const own = await flow.evaluate(`document.querySelector("[data-funnel-own]")?.innerText.replace(/\\s+/g, " ") ?? null`);
-    flow.facts.ownOffered = own;
-    const tiles = await flow.evaluate(`["own", "free", "plan"].filter((k) => document.querySelector("[data-funnel-" + k + "]"))`);
-    if (!tiles.includes("free") || !tiles.includes("plan")) throw new Error(`the choice is missing a way on: ${JSON.stringify(tiles)}`);
-    return `${await funnelText()} | ${tiles.join(", ")}${own ? ` | ${own}` : ""}`;
+    const tiles = await flow.evaluate(`[...document.querySelectorAll("[data-funnel-ai]")].map((e) => e.dataset.funnelAi + (e.hasAttribute("data-connected") ? "*" : ""))`);
+    flow.facts.aiTiles = tiles;
+    if (!tiles.length) throw new Error("no AIs to connect");
+    if (await flow.evaluate(`Boolean(document.querySelector("[data-funnel-own], [data-funnel-plan]"))`)) throw new Error("the old choice cards are back");
+    return `${await funnelText()} | ${tiles.join(", ")} (* connected)`;
   }, { critical: true });
 
-  if (flag("--tour")) await flow.step("ai-plans", "opens Use my plan, an AI's card and the full list, then goes back to the choice", async () => {
-    await flow.clickSelector("[data-funnel-plan]");
-    await flow.waitText(/connect an AI/i, "the plan grid");
+  if (flag("--tour")) await flow.step("ai-cards", "opens an AI's card and the full list, as a curious person would", async () => {
     await walkthrough.capture("app");
-    await shots("ai-plan");
     const card = await flow.evaluate(`(() => { const b = [...document.querySelectorAll("button[data-funnel-ai]")].find((e) => e.getClientRects().length); if (!b) return null; b.click(); return b.getAttribute("data-funnel-ai"); })()`);
     if (card) {
       walkthrough.did(`clicks the ${card} card`);
@@ -156,18 +152,17 @@ await runFlow(flow, async () => {
       await flow.escape();
       await sleep(1000);
     }
-    await flow.clickSelector("[data-funnel-choices]");
-    await flow.waitFor(`Boolean(document.querySelector("[data-funnel-free]"))`, "back on the choice", 10_000);
-    return `opened the plan grid${card ? `, ${card}` : ""}${more ? " and the full list" : ""}`;
+    return `opened ${card ?? "no card"}${more ? " and the full list" : ""}`;
   });
 
-  await flow.step("ai-free", "free models go on to the chat at once", async () => {
-    await flow.clickSelector("[data-funnel-free]");
+  await flow.step("ai-continue", "Continue goes on to the chat at once, with what is connected or the free model", async () => {
+    await flow.waitFor(`!document.querySelector("[data-funnel-ai-continue]")?.disabled`, "Continue to be ready", 60_000);
+    await flow.clickSelector("[data-funnel-ai-continue]");
     await flow.waitFor(`Boolean(document.querySelector('textarea[aria-label^="Message"]')) || Boolean(document.querySelector("[data-welcome]:not([data-welcome=ai])"))`, "the chat", 60_000);
     const extra = await at();
     if (extra) {
       screens.push(extra);
-      flow.friction("extra-click", extra, `a ${extra} screen after the AI choice; the run should end in the chat`);
+      flow.friction("extra-click", extra, `a ${extra} screen after the AI step; the run should end in the chat`);
       throw new Error(`the run went on to ${extra} instead of the chat`);
     }
     flow.facts.screens = screens;

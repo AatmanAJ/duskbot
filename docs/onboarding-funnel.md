@@ -25,11 +25,18 @@ read as a missing step: "shouldnt it be sign in after the get started??", 2026-1
    install works without an account, a quiet **Continue without an account** sits in the top corner; whoever takes it
    gets the later in-chat ask (`SignInPill`, `CloudSignInLine`). `DUSK_REQUIRE_ACCOUNT=1` shows no way past it. A replay
    of the welcome from Settings never asks (`accountDue` in `funnel.ts`).
-3. **One AI choice** (`AiStep.tsx`): **Use the Claude you're already signed into** (the AI already signed in on this
-   computer that answered its test, one tap, no new sign-in), **Use free models**, or **Use my plan** (the grid of AIs;
-   Other choices goes back). Free models are pickable once they answer: while the download is under way the tile says
-   they are getting ready (the server's `freeBackupDownloading`), and when none is coming (no preinstall, or the download
-   gave up) neither the tile nor "Use free models instead" shows.
+3. **Connect your AI** (`AiStep.tsx`), a connections screen (2026-11-26, the owner: "why not just ask to connect
+   instead"): the same grid as the Connect an AI dialog (ChatGPT, Claude, Grok, Antigravity, Cursor, GitHub Copilot,
+   OpenRouter, Local model, More providers or use an API key). Every AI already signed in on this computer is connected
+   the moment the step opens, with no tap: it is marked as the person's own on this computer's server
+   (`PATCH /api/instances/:id { chosen: true }`, `autoConnects`), nothing is sent anywhere new, and one whose test
+   message went unanswered is left out and says why. Those cards lead the grid with a soft green fill (`foundFirst`).
+   Any other card connects in place with one tap. **Continue** is ready as soon as anything is connected; with nothing
+   connected it goes on with the free model and a quiet line says "Your bots use the free model until you connect
+   one." While the free model downloads Continue waits ("The free model is getting ready"); with no free model coming,
+   **Set up later** goes on. Nothing is pinned: the server's ranking makes the best connected AI the default, and moves
+   Dusk off the free model once a connected AI is ready (`leavesFreeBackup`), so the first chat runs on it. A second
+   layout (found AIs as a row on top, then Connect more) is kept on the branch `exp/ai-step-split`.
 
 Then the chat: Dusk says one message and shows one question card, "What should we start with?", with three first jobs
 fitted to what is connected (`introAsks`: Summarize my inbox, What's on my calendar today?, Help me plan my week, Watch
@@ -54,7 +61,7 @@ A first run saved on a screen that is gone (place, bring, phone, permissions) re
 (`knownBeat`, `resumeBeat`); `WELCOME_VERSION` is unchanged, so nobody who finished is asked again.
 
 Analytics: `onboarding_step` keeps its step ids (`welcome`, `ai`, and `account` / `checkout` / `making` where they
-show); `onboarding_ai` `{ action: own | free | connected | later }`; `onboarding_starter` `{ task: inboxSummary | today
+show); `onboarding_ai` `{ action: connected | free | later }`; `onboarding_starter` `{ task: inboxSummary | today
 | week | price | research | own }` for what the first message was.
 
 ## Before (as shipped up to 2be8b8cbc)
