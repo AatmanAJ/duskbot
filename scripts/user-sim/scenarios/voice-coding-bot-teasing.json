@@ -32,7 +32,7 @@
    "app": "github.repos.0.pulls",
    "where": {
     "number": "214",
-    "comments.0.body": "existing|unused|lint"
+    "comments.1.body": "existing|unused|lint"
    },
    "min": 1
   }

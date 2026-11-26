@@ -31,7 +31,7 @@
    "app": "github.repos.0.pulls",
    "where": {
     "number": "214",
-    "comments.0.body": "lint|unit"
+    "comments.1.body": "lint|unit"
    },
    "min": 1
   },
