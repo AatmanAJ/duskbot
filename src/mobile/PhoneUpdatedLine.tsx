@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Toast } from "@/components/ui/Toast";
 import { t } from "@/lib/i18n";
-import { PHONE_AREAS, loadReleases, notesForUpdate, updatedFrom } from "@/lib/release-notes";
+import { PHONE_AREAS, loadReleases, notesForUpdate, updatedThisLaunch } from "@/lib/release-notes";
 import { usePlatform } from "./platform";
 
 const RELEASE_KEY = "dusk-whats-new:phone-release";
@@ -12,7 +12,7 @@ export function PhoneUpdatedLine({ onOpen }: { onOpen: () => void }) {
   const platform = usePlatform();
   const [version, setVersion] = useState<string | null>(null);
   useEffect(() => {
-    if (!updatedFrom("phone", platform.appVersion)) return;
+    if (!updatedThisLaunch("phone", platform.appVersion)) return;
     let active = true;
     void loadReleases({ native: platform.native }).then((all) => {
       const newest = all[0]?.version;

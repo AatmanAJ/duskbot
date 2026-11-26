@@ -1,17 +1,16 @@
 // The one quiet line after this app updated itself: "Updated to 0.2.32" with What's new, once, and only when the changelog
 // has notes for it; with none it goes by unsaid, as before.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { appVersion } from "@/lib/app-links";
 import { t } from "@/lib/i18n";
-import { DESKTOP_AREAS, loadReleases, notesForUpdate, updatedFrom, type Release } from "@/lib/release-notes";
+import { DESKTOP_AREAS, loadReleases, notesForUpdate, updatedThisLaunch, type Release } from "@/lib/release-notes";
 import { Toast } from "./ui/Toast";
 import { WhatsNewDialog } from "./WhatsNewDialog";
 
 export function UpdatedLine({ updated, seen }: { updated: string | null; seen: () => void }) {
   // the version this app ran before, read once a launch (and this one remembered) before main says it updated
-  const before = useRef<string | null | undefined>(undefined);
-  if (before.current === undefined) before.current = updatedFrom("desktop", window.duskDesktop?.app?.version ?? appVersion());
+  const before = updatedThisLaunch("desktop", window.duskDesktop?.app?.version ?? appVersion());
   const [notes, setNotes] = useState<{ version: string; releases: Release[] } | null>(null);
   const [line, setLine] = useState(false);
   const [open, setOpen] = useState(false);
@@ -21,7 +20,7 @@ export function UpdatedLine({ updated, seen }: { updated: string | null; seen: (
     let active = true;
     void loadReleases().then((all) => {
       if (!active) return;
-      const from = before.current ?? null;
+      const from = before;
       const releases = from ? notesForUpdate(all, DESKTOP_AREAS, from, updated) : notesForUpdate(all, DESKTOP_AREAS, null, updated).filter((release) => release.version === updated);
       if (!releases.length) return;
       setNotes({ version: updated, releases });

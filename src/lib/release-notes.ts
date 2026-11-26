@@ -75,6 +75,16 @@ export function updatedFrom(surface: string, current: string, store: Storage | n
   return before && compareRelease(current, before) > 0 ? before : null;
 }
 
+const launches = new Map<string, string | null>();
+
+/** updatedFrom, asked once per page load: a second ask (React's strict mode runs effects twice) gets the same answer */
+export function updatedThisLaunch(surface: string, current: string): string | null {
+  if (!launches.has(surface)) launches.set(surface, updatedFrom(surface, current));
+  return launches.get(surface) ?? null;
+}
+
+export function resetLaunchesForTests() { launches.clear(); }
+
 /** the notes an update from `from` to `to` brought this surface; empty when the changelog has none */
 export function notesForUpdate(releases: readonly Release[], areas: readonly ReleaseArea[], from: string | null, to: string): Release[] {
   return releasesBetween(releasesFor(releases, areas), from, to);

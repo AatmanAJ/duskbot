@@ -33,3 +33,15 @@ describe("the line after an update", () => {
     expect(notesForUpdate(releases, ["phone"], "0.2.31", "0.2.32").map((release) => release.version)).toEqual(["0.2.32"]);
   });
 });
+
+describe("once a launch", () => {
+  it("answers a second ask the same, so a twice-run effect still says it", async () => {
+    const { updatedThisLaunch, resetLaunchesForTests } = await import("./release-notes");
+    const store = new Map<string, string>([["dusk-whats-new:twice", "1.2.9"]]);
+    Object.defineProperty(globalThis, "window", { value: { localStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) } }, configurable: true });
+    resetLaunchesForTests();
+    expect(updatedThisLaunch("twice", "1.2.12")).toBe("1.2.9");
+    expect(updatedThisLaunch("twice", "1.2.12")).toBe("1.2.9");
+    expect(store.get("dusk-whats-new:twice")).toBe("1.2.12");
+  });
+});
