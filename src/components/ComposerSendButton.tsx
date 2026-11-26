@@ -1,7 +1,9 @@
 import { useEffect, useRef, type CSSProperties } from "react";
 import { ArrowUp, ChevronUp, Clock, CornerDownRight, RotateCcw } from "../icons";
 
-import type { FollowUp } from "../../shared/follow-up";
+import type { FollowUp, FollowUpDefault } from "../../shared/follow-up";
+import type { SendKey } from "@/lib/send-key";
+import { followUpHintWords } from "./composer-simple";
 import { cn } from "@/lib/cn";
 import { Icon } from "./Icon";
 import { t } from "@/lib/i18n";
@@ -102,5 +104,16 @@ export function ComposerSendButton({ compact, waits, label, title, look, disable
       />
       {button}
     </div>
+  );
+}
+
+/** "↵ Queue · ⌘↵ Steer" beside Send while a one-to-one bot works; the field names it by `id` for screen readers. */
+export function FollowUpKeyHint({ id, enter, sendKey }: { id: string; enter: FollowUpDefault; sendKey: SendKey }) {
+  const hint = followUpHintWords(enter, sendKey);
+  return (
+    <span data-composer-follow-up-hint="" className="pointer-events-none me-0.5 shrink-0 whitespace-nowrap text-[12px] leading-4 text-ink/40 @max-[26rem]/composer:hidden">
+      <span aria-hidden="true">{hint.text}</span>
+      <span id={id} className="sr-only">{hint.aria}</span>
+    </span>
   );
 }

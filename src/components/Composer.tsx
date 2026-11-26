@@ -59,9 +59,7 @@ import {
   replyTargetTakesFocus,
   isLongPaste,
   optimisticImageAttachment,
-  byteLength,
-  PASTED_TEXT_FILE,
-  pasteAttachment,
+  attachedPaste, pasteAttachment,
   pastedTextFile,
   pendingFileAttachment,
   releaseAttachmentImagePreview,
@@ -73,7 +71,7 @@ import { imagesAsFilesNotice, imagesThatFit, intakeFiles, uploadFailure } from "
 import { retryPlacedUpload, sendPlacedUpload } from "@/lib/placed-upload";
 import { cancelUpload } from "@/lib/upload-progress";
 import { goalCoordinatorForComposer, openTaskWorking, roomRouteForComposer } from "@/lib/group-routing";
-import { composerPlaceholder, followUpHintWords, pendingQuestion, sendLabels, SIMPLE_COMPOSER, SIMPLE_CONTROL, slotColors } from "./composer-simple"; import { ComposerSendButton } from "./ComposerSendButton"; import { Icon } from "./Icon";
+import { composerPlaceholder, pendingQuestion, sendLabels, SIMPLE_COMPOSER, SIMPLE_CONTROL, slotColors } from "./composer-simple"; import { ComposerSendButton, FollowUpKeyHint } from "./ComposerSendButton"; import { Icon } from "./Icon";
 import { PendingApprovalActions, PendingApprovalPanel, pendingApprovals } from "./PendingApproval";
 import { CallButton } from "./CallView";
 import { ApprovalChip, ComposerPlusMenu, GoalToggle } from "./ComposerPlusMenu";
@@ -266,8 +264,7 @@ export const Composer = memo(function Composer({
   const [dismissedAt, setDismissedAt] = useState<number | null>(null);
   const [dismissedSlashAt, setDismissedSlashAt] = useState<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
-  const [attachmentFlash, setAttachmentFlash] = useState<{ id: string; at: number } | null>(null);
+  const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null); const [attachmentFlash, setAttachmentFlash] = useState<{ id: string; at: number } | null>(null);
   const takeNotes = useNotesIntake();
   const stacked = useStackedField(inputRef, !singleRow, text, simpleDock) || (simpleDock && (attachments.length > 0 || Boolean(attachmentNotice)));
   // grok's expanded composer: the text above the buttons, attachments or a reply strip; corners and height change together
@@ -610,10 +607,7 @@ export const Composer = memo(function Composer({
   // A one-to-one bot at work: Enter does the chosen follow-up and Ctrl/⌘ with it the other one. Rooms keep their own queue.
   const followUpFor = (alternate: boolean) => sentFollowUp({ running: busy && !group && Boolean(bot), alternate, preferred: followUpDefault }) ?? undefined;
   const steersNow = group ? canSteer : resolveFollowUp({ running: busy && !group && Boolean(bot), alternate: false, preferred: followUpDefault, canSteer }) === "steer";
-  const sendNames = sendLabels({ busy, canSteer: steersNow, name: busyName, sendLabel });
-  // the desktop says what Enter and Ctrl/⌘+Enter do to a typed message while a one-to-one bot works
-  const followUpHintId = useId();
-  const followUpHint = busy && !group && Boolean(bot) && canSteer && !singleRow && !phoneApp() ? followUpHintWords(steersNow ? "steer" : "queue", sendKey) : null;
+  const sendNames = sendLabels({ busy, canSteer: steersNow, name: busyName, sendLabel }); const followUpHintId = useId(), followUpHinted = busy && !group && Boolean(bot) && canSteer && !singleRow && !phoneApp() && filled && !locked && !recording && !held;
   // grok's round button keeps one glyph stack and crossfades it; ours swaps the button, so the glyph it showed fades
   // out over the new one's
   const slotGlyph: SlotGlyph | null = !simpleDock || calling || locked ? null
@@ -874,13 +868,7 @@ export const Composer = memo(function Composer({
       return;
     }
     if (!isLongPaste(pasted)) return;
-    e.preventDefault();
-    // the same text pasted again (it may have landed past the visible end of the row) shows the one already there
-    const same = attachments.find((a) => a.kind === "paste" ? a.text === pasted : a.kind === "file" && a.name === PASTED_TEXT_FILE && a.size === byteLength(pasted));
-    if (same) {
-      setAttachmentFlash({ id: same.id, at: Date.now() });
-      return;
-    }
+    e.preventDefault(); const same = attachedPaste(attachments, pasted); if (same) return setAttachmentFlash({ id: same.id, at: Date.now() });
     const start = e.currentTarget.selectionStart;
     const end = e.currentTarget.selectionEnd;
     if (start !== end) {
@@ -1136,11 +1124,9 @@ export const Composer = memo(function Composer({
             locked: setupLocked, approval: blocking, attaching: attachmentPending, attached: attachments.length > 0, listening: recording,
             replying: Boolean(replyTo), busy, group, members: members ?? [], goal: channelMode === "goal", botName: bot?.name ?? "",
             setupHint: group ? null : setupRequestPlaceholder(bot, threadId),
-            question: !group && pendingQuestion(bot?.messages), narrow: phoneApp(),
-            holdToSteer: phoneApp() && !steersNow && canSteer,
+            question: !group && pendingQuestion(bot?.messages), narrow: phoneApp(), holdToSteer: phoneApp() && !steersNow && canSteer,
           })}
-          aria-describedby={followUpHint ? followUpHintId : undefined}
-          aria-label={t("composer.placeholder.bot", { name: group ? group.name : (bot?.name ?? "") })}
+          aria-describedby={followUpHinted ? followUpHintId : undefined} aria-label={t("composer.placeholder.bot", { name: group ? group.name : (bot?.name ?? "") })}
             className={cn(
               // the hint stays on one line and trails off: a long name must not make the empty bar taller than the
               // typed one, or the bar grows each time the field empties
@@ -1161,13 +1147,7 @@ export const Composer = memo(function Composer({
               className={singleRow ? "flex-1 py-1.5" : "mb-px mt-[3px] flex-1"}
             />
           )}
-          <div ref={actionsRef} data-composer-actions className={cn("flex items-center", simpleDock ? "relative gap-2" : cn("gap-1", singleRow && "relative"), !singleRow && !simpleDock && "@max-[30rem]/composer:ml-auto", stacked && "ml-auto")}>
-        {followUpHint && filled && !locked && !recording && !held && (
-          <span data-composer-follow-up-hint="" className="pointer-events-none me-0.5 shrink-0 whitespace-nowrap text-[12px] leading-4 text-ink/40 @max-[26rem]/composer:hidden">
-            <span aria-hidden="true">{followUpHint.text}</span>
-            <span id={followUpHintId} className="sr-only">{followUpHint.aria}</span>
-          </span>
-        )}
+          <div ref={actionsRef} data-composer-actions className={cn("flex items-center", simpleDock ? "relative gap-2" : cn("gap-1", singleRow && "relative"), !singleRow && !simpleDock && "@max-[30rem]/composer:ml-auto", stacked && "ml-auto")}>{followUpHinted && <FollowUpKeyHint id={followUpHintId} enter={steersNow ? "steer" : "queue"} sendKey={sendKey} />}
         {!locked && recording && (
           <button
             type="button"

@@ -412,6 +412,11 @@ export function pastedTextFile(text: string): File | null {
   return inline ? null : new File([text], PASTED_TEXT_FILE, { type: "text/plain" });
 }
 
+/** The attachment already holding this pasted text, inline or uploaded as its text file. */
+export function attachedPaste(attachments: readonly Attachment[], pasted: string): Attachment | undefined {
+  return attachments.find((a) => a.kind === "paste" ? a.text === pasted : a.kind === "file" && a.name === PASTED_TEXT_FILE && a.size === byteLength(pasted));
+}
+
 export function appendPastedText(text: string, pasted: string): string {
   if (!text) return pasted;
   return `${text}${text.endsWith("\n") ? "" : "\n\n"}${pasted}`;
