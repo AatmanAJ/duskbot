@@ -28,6 +28,7 @@ export const USAGE = `duskbot: your team of AI bots, ready in a few steps
                     [--public-url https://host] [--tailscale | --tunnel | --domain HOST] [--no-pair]
   duskbot pair  [--label NAME] [--client] [--phone ios|android]
                     [--public-url https://host]
+  duskbot push [test]
   duskbot sessions [revoke ID]
   duskbot status
   duskbot update [--check] [--yes] [--json]
@@ -50,7 +51,15 @@ export const USAGE = `duskbot: your team of AI bots, ready in a few steps
 setup   choose AI access and optional phone access; keep existing bots and chats
 start   same as duskbot: use your saved settings and open the workspace
 serve   starts the server without prompts and prints a pairing link + QR code
-pair    mints a pairing code against a running server (--client: chat only)
+pair    mints a pairing code against a running server (--client: chat only).
+        Without --phone it signs in a web browser. --phone ios|android pairs
+        the dusk bot phone app instead, the only way a phone gets
+        notifications; it needs an HTTPS address the phone can reach (the
+        server's own, --public-url https://host, or the link service) and
+        says so plainly when there is none. --public-url names that address
+        for this one code; the server checks it really is this server.
+push    which paired phones can get notifications; "push test" sends each a
+        test notification and says what the push service answered
 sessions lists paired devices; "sessions revoke ID" signs one out
 status  what the server says about itself
 update  whether a newer dusk bot is out, what changed for the server, and

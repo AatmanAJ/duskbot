@@ -66,12 +66,14 @@ describe("duskbot command line", () => {
     expect(parseArgs(["pair", "--phone", "android"], {})).toMatchObject({ command: "pair", phone: "android" });
     expect(parseArgs(["pair", "--phone", "iOS"], {})).toMatchObject({ phone: "ios" });
     expect(parseArgs(["pair", "--phone", "blackberry"], {})).toEqual({ error: expect.stringContaining("ios or android") });
+    expect(parseArgs(["push", "test"], {})).toMatchObject({ command: "push", pushAction: "test" });
+    expect(parseArgs(["push"], {})).toMatchObject({ command: "push" });
   });
 
   it("prints a scannable block with the link, or says where to type the code", () => {
     const block = pairingBlock({ code: "ABCD-EFGH-JKLM", url: "https://mini.example/pair#code=ABCD-EFGH-JKLM", expiresAt: Date.now() + 60_000 });
     expect(block).toContain("pairing code:  ABCD-EFGH-JKLM");
-    expect(block).toContain("open or scan:  https://mini.example/pair#code=ABCD-EFGH-JKLM");
+    expect(block).toContain("web browser:   https://mini.example/pair#code=ABCD-EFGH-JKLM");
     expect(block).toMatch(/[▀▄█]/);
     const noUrl = pairingBlock({ code: "ABCD-EFGH-JKLM", url: null, expiresAt: Date.now(), hint: "set DUSK_PUBLIC_URL" });
     expect(noUrl).toContain("/pair on the address you use");
@@ -91,36 +93,13 @@ describe("duskbot command line", () => {
     expect(guided).toContain("duskbot pair");
   });
 
-  describe("the two links one pairing window has", () => {
-    const url = "https://mini.example/pair#code=ABCD-EFGH-JKLM";
-    const invite = `duskbot://pair?address=https%3A%2F%2Fmini.example&token=omb_pair_${"a".repeat(43)}&name=mini`;
-    const block = (over: Record<string, unknown> = {}) =>
-      pairingBlock({ code: "ABCD-EFGH-JKLM", url, inviteUrl: invite, expiresAt: Date.now() + 60_000, ...over });
-
-    it("gives an Android phone the app-scheme QR, because its scanner rejects https", () => {
-      const out = block({ phone: "android" });
-      expect(out).toContain(qrToString(invite));
-      expect(out).not.toContain(qrToString(url));
-      expect(out).toContain("Scan that in the dusk bot app");
-      expect(out).toContain(`web browser:   ${url}`);
-      expect(out).not.toContain("open or scan:");
-    });
-
-    it("gives everyone else the web QR, and still prints the app link rather than only naming it", () => {
-      const out = block({ phone: "ios" });
-      expect(out).toContain(qrToString(url));
-      expect(out).not.toContain(qrToString(invite));
-      expect(out).toContain(`phone app:     ${invite}`);
-      expect(out).toContain(`open or scan:  ${url}`);
-    });
-
-    it("says plainly when an Android phone asked for an app link this server cannot build", () => {
-      const out = block({ phone: "android", inviteUrl: null });
-      expect(out).toContain(qrToString(url));
-      expect(out).toContain("The Android app needs the phone-app link");
-      expect(out).toContain("DUSK_PUBLIC_URL");
-      expect(out).not.toContain("Scan that in the dusk bot app");
-    });
+  // #352: the old block printed a "phone app:" sign-in invite, which the phone app took as a pairing it was not
+  it("never offers its sign-in code as a phone-app link, and names the command that pairs a phone", () => {
+    const out = pairingBlock({ code: "ABCD-EFGH-JKLM", url: "https://mini.example/pair#code=ABCD-EFGH-JKLM", expiresAt: Date.now() + 60_000 });
+    expect(out).not.toContain("phone app:");
+    expect(out).not.toContain("duskbot://");
+    expect(out).toContain("signs in a web browser");
+    expect(out).toContain("duskbot pair --phone ios");
   });
 
   it("lists sessions as a table with relative last-seen times", () => {
@@ -156,10 +135,10 @@ describe("duskbot command line", () => {
     child.stderr.on("data", (c) => (out += String(c)));
     try {
       const deadline = Date.now() + 60_000;
-      while (!out.includes("open or scan:") && Date.now() < deadline && child.exitCode === null) await new Promise((r) => setTimeout(r, 200));
+      while (!out.includes("web browser:") && Date.now() < deadline && child.exitCode === null) await new Promise((r) => setTimeout(r, 200));
       expect(out).toContain(`dusk bot is running on http://127.0.0.1:${port}, reachable at https://mini.example`);
       expect(out).toMatch(/pairing code:  [A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}/);
-      expect(out).toContain("open or scan:  https://mini.example/pair#code=");
+      expect(out).toContain("web browser:   https://mini.example/pair#code=");
       expect(out).toMatch(/[▀▄█]/);
       const descriptor: any = await (await fetch(`http://127.0.0.1:${port}/.well-known/duskbot/environment`)).json();
       expect(descriptor.label).toBe("cli test");
@@ -464,9 +443,9 @@ describe.skipIf(process.platform === "win32")("serve --tunnel", () => {
     const gateway = `http://127.0.0.1:${originPort}`;
     try {
       const deadline = Date.now() + 60_000;
-      while (!out.includes("open or scan:") && Date.now() < deadline && child.exitCode === null) await new Promise((r) => setTimeout(r, 200));
+      while (!out.includes("web browser:") && Date.now() < deadline && child.exitCode === null) await new Promise((r) => setTimeout(r, 200));
       expect(out).toContain(`dusk bot is running on http://127.0.0.1:${port}, reachable at ${stub.endpointUrl}`);
-      expect(out).toContain(`open or scan:  ${stub.endpointUrl}/pair#code=`);
+      expect(out).toContain(`web browser:   ${stub.endpointUrl}/pair#code=`);
       expect(stub.calls).toContain("POST /v1/installations/self/endpoint");
 
       let descriptor: Response | null = null;
@@ -571,10 +550,10 @@ describe.skipIf(process.platform === "win32")("serve --domain", () => {
     child.stderr?.on("data", (chunk) => (out += String(chunk)));
     try {
       const deadline = Date.now() + 60_000;
-      while (!out.includes("open or scan:") && Date.now() < deadline && child.exitCode === null) await new Promise((r) => setTimeout(r, 200));
+      while (!out.includes("web browser:") && Date.now() < deadline && child.exitCode === null) await new Promise((r) => setTimeout(r, 200));
       expect(out).toContain(`dusk bot is running on http://127.0.0.1:${port}, reachable at https://dusk.example.test`);
       expect(out).toContain("https: Caddy serves https://dusk.example.test");
-      expect(out).toContain("open or scan:  https://dusk.example.test/pair#code=");
+      expect(out).toContain("web browser:   https://dusk.example.test/pair#code=");
       const args = readFileSync(join(home, "caddy-args.txt"), "utf8").trim();
       expect(args).toMatch(/^run --config .*Caddyfile --adapter caddyfile$/);
       const caddyfile = readFileSync(join(dataDir, "caddy", "Caddyfile"), "utf8");
