@@ -12134,7 +12134,7 @@ function startGroupTurn(
       }
       const spoken = new Set<string>();
       const skillAuthoringClaim = { claimed: false };
-      const chained = round.length > 1 && chainsMentions(text); if (chained) round = inMentionOrder(round, text);
+      const chained = round.length > 1 && chainsMentions(text, round.map((member) => member.name)); if (chained) round = inMentionOrder(round, text);
       if (round.length > 1 && !chained && operation.requestMessageId !== undefined && membersAnswerAtOnce(group, threadId)) {
         await Promise.all(round.map((responder) => runMemberAtOnce(groupId, threadId, responder, operation, spoken, skillAuthoringClaim, routedBy)));
         return;
