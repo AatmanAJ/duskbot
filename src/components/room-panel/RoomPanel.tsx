@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { emptyComposerField, underPanel } from "@/lib/composer-focus";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 import { t } from "@/lib/i18n";
@@ -157,7 +158,8 @@ export function RoomPanel({ group, overlay = false, initialTab = "details" }: { 
     dialog?.focus();
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
-      if (dialog && event.target instanceof Node && !dialog.contains(event.target)) return;
+      // outside the panel only the chat box gives Escape to it: an empty one, or one it covers in a narrow window
+      if (dialog && event.target instanceof Node && !dialog.contains(event.target) && !(event.target instanceof Element && (underPanel(event.target) || emptyComposerField(event.target)))) return;
       event.preventDefault();
       close();
     };
