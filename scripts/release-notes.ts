@@ -29,7 +29,7 @@ export const AREA_ORDER: readonly Area[] = ["all", "desktop", "phone", "server",
 export const AREA_LABEL: Record<Area, string> = { all: "Everywhere", desktop: "Desktop app", phone: "Phone app", server: "Server and bots", cli: "CLI" };
 
 // commits that change how dusk bot is built or tested, not what a person sees
-const INTERNAL_SCOPE = /^(release|ci|ci scope|test|tests|e2e|user-sim|locale lines|locales|lint|ratchet|agents catalog|wake hold test|brand screen studio|store launch|asc helper|docs|site|chore|build|deps|typecheck|bench|eval|stress)\b/i;
+const INTERNAL_SCOPE = /^(release|ci|ci scope|test|tests|e2e|user-sim|locale lines|locale(?:s)|lint|ratchet|agents catalog|wake hold test|brand screen studio|store launch|asc helper|docs|site|chore|build|deps|typecheck|bench|eval|stress)\b/i;
 const INTERNAL_PATH = /^(\.github\/|scripts\/|docs\/|apps\/site\/|tests?\/|e2e\/|benchmarks?\/)|\.test\.|\.node-test\.|\.e2e\./;
 
 /** the area a change is for, from the files it touched */

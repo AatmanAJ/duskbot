@@ -1,18 +1,15 @@
 # Terminal setup
 
-Install [Node.js](https://nodejs.org/) 24 or newer, then choose either way to run dusk bot:
+Install [Node.js](https://nodejs.org/) 24 or newer, then install dusk bot from the newest GitHub release
+(it is not on the npm registry, so installing it by name with npm or npx does not work):
 
 ```sh
-# Install once, then use the short command:
-npm install -g duskbot
+npm install --global --prefix "$HOME/.local" https://github.com/DuskBotAI/duskbot-releases/releases/latest/download/duskbot.tgz
+export PATH="$HOME/.local/bin:$PATH"   # once, or add it to your shell profile
 duskbot
 ```
 
-Or, without a global install:
-
-```sh
-npx duskbot
-```
+`duskbot update` installs newer releases later.
 
 Use the same command next time. The first launch guides you through setup; later launches reuse your saved AI connection and phone-access choice. `duskbot start` is the same as the bare command. If that workspace is already running, dusk bot opens it instead of starting a second server.
 

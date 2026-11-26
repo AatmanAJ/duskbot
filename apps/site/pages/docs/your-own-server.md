@@ -42,7 +42,7 @@ a phone that signed in with a plain code shows **notifications can't reach this 
 
 ## updating
 
-a server set up with the one line updates itself while no bot is working. on any server, `duskbot update --check` says whether a newer version is out and what changed for it, with a link for each change. for a server you installed with npm, `duskbot update` downloads the new version, checks it against the signed release and installs it; in docker it prints the `docker compose` step. the full table is in [self-hosting](https://github.com/DuskBotAI/duskbot/blob/main/docs/self-hosting.md#updating), every change is on the [changelog](/changelog).
+a server set up with the one line updates itself while no bot is working: it looks for a new version every 15 minutes, usually has it within half an hour of a release, and goes back to the version before if the new one fails its self-test. `sudo tail /var/log/duskbot-link/server-update.log` shows what it did, and `sudo systemctl disable --now duskbot-server-update.timer` stops it (`enable --now` turns it back on). on any server, `duskbot update --check` says whether a newer version is out and what changed for it, with a link for each change. for a server you installed from the release package (`npm install --global --prefix "$HOME/.local" https://github.com/DuskBotAI/duskbot-releases/releases/latest/download/duskbot.tgz`; it isn't on the npm registry), `duskbot update` downloads the new version, checks it against the signed release and installs it; in docker it prints the `docker compose` step. the full table is in [self-hosting](https://github.com/DuskBotAI/duskbot/blob/main/docs/self-hosting.md#updating), every change is on the [changelog](/changelog).
 
 ## read it before you run it
 

@@ -68,7 +68,7 @@ export async function phonePairing(post: LoopbackPost, input: { label?: string; 
     const via = (body.payload.via as { kind?: string; url?: string; base?: string }[]).map((route) => route.kind === "https" ? `https ${route.url}` : route.kind === "relay" ? `relay ${route.base}` : String(route.kind));
     return { ok: true, block: phoneAppBlock(body as MobilePairingResponse, input.phone), via };
   }
-  if (status === 404 || status === 405) return { ok: false, reason: "old_server", message: "This server is too old to pair the phone app. Update it (npx duskbot@latest, or pull the new Docker image), then run duskbot pair --phone again." };
+  if (status === 404 || status === 405) return { ok: false, reason: "old_server", message: "This server is too old to pair the phone app. Update it (duskbot update, or pull the new Docker image), then run duskbot pair --phone again." };
   if (body?.code === "origin_unverified") return { ok: false, reason: "origin_unverified", message: `${input.origin} does not answer as this server over HTTPS, so a phone could not use it. Check the proxy or tunnel points at this server, then try again.` };
   if (body?.code === "unreachable") return { ok: false, reason: "no_address", message: PHONE_NEEDS_ADDRESS };
   return { ok: false, reason: status === 403 ? "refused" : "failed", message: typeof body?.error === "string" ? body.error : `The server refused to pair a phone (${status}).` };

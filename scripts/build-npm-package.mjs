@@ -1,6 +1,6 @@
 // Assemble the `duskbot` npm package: the self-contained server bundle,
 // the built UI, the bundled skills and the CLI, with a package.json of its
-// own. `npx duskbot serve` then needs Node 24+ and nothing else.
+// own. Installed from the release's duskbot.tgz, `duskbot serve` then needs Node 24+ and nothing else.
 //
 //   pnpm build:server && pnpm exec vite build && node scripts/build-npm-package.mjs
 //   cd release/npm && npm pack        # or npm publish --access public
