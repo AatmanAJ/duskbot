@@ -113,8 +113,7 @@ import { compareVpsContainerStarts } from "./vps-container-start.ts";
 import { createSharedScreenBroker, independentScreenExecArgs, type IndependentScreenLease, type ScreenContainer } from "./shared-desktop-screens.ts";
 import { createVpsScreenRuntime } from "./vps-screen.ts";
 import { isEffortLevel, isMausColor, MAUS_COLOR_NAMES, type MausColor, type CardAnswerer, type ResolvedSender, type SignInRequestCardData, type WireBot, type WireGroup, type WireTask } from "../shared/wire.ts";
-import { talkingStyleOf } from "../shared/talking-style.ts";
-import { botVoice } from "./character.ts";
+import { talkingStyleOf } from "../shared/talking-style.ts"; import { botVoice } from "./character.ts";
 import { isPersistentQuestionCard, shouldSettleRequestCard } from "../shared/ask-question.ts";
 import { parseToolScope } from "../shared/tool-scope.ts";
 import type { TeamComputersPayload } from "../shared/team-computer.ts";
@@ -8550,8 +8549,7 @@ async function introduceBot(botId: string, opts: { template?: string; origin?: "
   const prompt = introPrompt({
     name: introName(current.name),
     moment: introMoment(at, personTimeZone(proactive.brief.timeZone())),
-    style: talkingStyleOf(cfg.talkingStyle),
-    voice: botVoice(current),
+    style: talkingStyleOf(cfg.talkingStyle), voice: botVoice(current),
     origin: opts.madeBy ? { kind: "bot", by: opts.madeBy } : { kind: opts.origin ?? (template ? "template" : "scratch") },
     ...introRecent(botId, Date.now()),
     ...(template ? { template: { category: template.category, title: template.title, tryAsking: template.tryAsking, apps: template.apps, routines: templateRoutineHints(template) } } : {}),
