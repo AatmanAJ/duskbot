@@ -114,6 +114,7 @@ import { createSharedScreenBroker, independentScreenExecArgs, type IndependentSc
 import { createVpsScreenRuntime } from "./vps-screen.ts";
 import { isEffortLevel, isMausColor, MAUS_COLOR_NAMES, type MausColor, type CardAnswerer, type ResolvedSender, type SignInRequestCardData, type WireBot, type WireGroup, type WireTask } from "../shared/wire.ts";
 import { talkingStyleOf } from "../shared/talking-style.ts";
+import { botVoice } from "./character.ts";
 import { isPersistentQuestionCard, shouldSettleRequestCard } from "../shared/ask-question.ts";
 import { parseToolScope } from "../shared/tool-scope.ts";
 import type { TeamComputersPayload } from "../shared/team-computer.ts";
@@ -3220,7 +3221,7 @@ function previewSystemPrompt(bot: BotRecord) {
     teamAvailabilityPart(agentsMounted && coordination ? peers : []),
     { id: "memory", label: "Memory", text: memorySystemPrompt(bot.id, { managedWrites: agentsMounted, fileTools: Boolean(privateWorkspace), enabled: bot.memoryEnabled !== false }) },
     { id: "skills", label: "Skills index", text: privateWorkspace || agentsMounted ? skillsHost.skillsIndex(bot, undefined, instance ?? undefined) : "" },
-  ], agentsMounted ? { env: agentsToolBridgeEnv(cfg, bot, instance && turnEngine(instance, instanceConfigs(cfg), registry.lastSnapshot(instance.instanceId), bot.cwd ?? undefined)) } : undefined, { replyStyle: bot.replyStyle, talkingStyle: cfg.talkingStyle, quickUpdates: quickUpdatesEnabled(cfg) && Boolean(instance && sideJobs.text("turn-beat", bot.id, { instance })) });
+  ], agentsMounted ? { env: agentsToolBridgeEnv(cfg, bot, instance && turnEngine(instance, instanceConfigs(cfg), registry.lastSnapshot(instance.instanceId), bot.cwd ?? undefined)) } : undefined, { replyStyle: bot.replyStyle, talkingStyle: cfg.talkingStyle, voice: botVoice(bot), quickUpdates: quickUpdatesEnabled(cfg) && Boolean(instance && sideJobs.text("turn-beat", bot.id, { instance })) });
   const totalBytes = built.sections.reduce((n, s) => n + s.bytes, 0);
   return {
     sections: built.sections,
@@ -7993,7 +7994,7 @@ bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) 
 const firstReplyRescue = createFirstReplyRescue({ store, botForThread, speaker: (threadId) => groupSpeakers.get(threadId), runningEngine: (threadId) => runningTurnEngines.get(threadId)?.instanceId,
   engineName: (instanceId) => engineName(instanceId), quiet: (threadId) => isInternalTurn(threadId) || activeRoutineRunForThread(threadId) !== null,
   live: (threadId, turnId) => liveTurns.running(threadId) === turnId, requests: directRequestOwners });
-bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) liveTurns.onEvent(event); }); bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) firstReplyRescue.onEvent(event); }); const turnBeatWriter = (botId: string, threadId: string) => { const id = runningTurnEngines.get(threadId)?.instanceId ?? botForThread(botId, threadId)?.modelSelection.instanceId; const instance = id ? registry.get(id) : undefined; return instance ? sideJobs.text("turn-beat", botId, { instance }) : null; }; const turnBeats = createTurnBeats({ enabled: () => quickUpdatesEnabled(cfg), showsThinking: (threadId) => { const id = runningTurnEngines.get(threadId)?.instanceId; return (id ? registry.get(id) : undefined)?.adapter.capabilities.thinkingSignal !== false; }, writer: (botId, threadId) => turnBeatWriter(botId, threadId)?.generateText ?? null, bot: (botId) => { const bot = store.bot(botId); return bot && { name: bot.name, soul: bot.soul, apps: Object.keys(bot.connectorTools ?? {}) }; }, live: (threadId, turnId) => liveTurns.running(threadId) === turnId, log: (line) => console.info(line), post: ({ threadId, turnId, text }) => { const owner = directRequestOwners.get(threadId); store.appendMessage(threadId, { role: "bot", kind: "text", text, turnId, ...(owner?.messageId && !owner.stopped && owner.turnId === turnId ? { requestMessageId: owner.messageId } : {}) }); } }); bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) turnBeats.onEvent(event); });
+bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) liveTurns.onEvent(event); }); bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) firstReplyRescue.onEvent(event); }); const turnBeatWriter = (botId: string, threadId: string) => { const id = runningTurnEngines.get(threadId)?.instanceId ?? botForThread(botId, threadId)?.modelSelection.instanceId; const instance = id ? registry.get(id) : undefined; return instance ? sideJobs.text("turn-beat", botId, { instance }) : null; }; const turnBeats = createTurnBeats({ enabled: () => quickUpdatesEnabled(cfg), showsThinking: (threadId) => { const id = runningTurnEngines.get(threadId)?.instanceId; return (id ? registry.get(id) : undefined)?.adapter.capabilities.thinkingSignal !== false; }, writer: (botId, threadId) => turnBeatWriter(botId, threadId)?.generateText ?? null, bot: (botId) => { const bot = store.bot(botId); return bot && { name: bot.name, soul: bot.soul, title: bot.title, description: bot.description, apps: Object.keys(bot.connectorTools ?? {}) }; }, live: (threadId, turnId) => liveTurns.running(threadId) === turnId, log: (line) => console.info(line), post: ({ threadId, turnId, text }) => { const owner = directRequestOwners.get(threadId); store.appendMessage(threadId, { role: "bot", kind: "text", text, turnId, ...(owner?.messageId && !owner.stopped && owner.turnId === turnId ? { requestMessageId: owner.messageId } : {}) }); } }); bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) turnBeats.onEvent(event); });
 interface SideSend extends SideRequest { at: number; replyToId?: string; dataContext?: DataContext; sender?: ResolvedSender; trigger: UsageTrigger; mentions?: string[] }
 const sideQueue = (send: SideSend, prompt: string) => {
   queueSteeredMessage(send.botId, send.threadId, send.text, { prompt, rowId: send.messageId, first: true, queuedAt: send.at, replyToId: send.replyToId, dataContext: send.dataContext, sender: send.sender, trigger: send.trigger, mentions: send.mentions });
@@ -8550,6 +8551,7 @@ async function introduceBot(botId: string, opts: { template?: string; origin?: "
     name: introName(current.name),
     moment: introMoment(at, personTimeZone(proactive.brief.timeZone())),
     style: talkingStyleOf(cfg.talkingStyle),
+    voice: botVoice(current),
     origin: opts.madeBy ? { kind: "bot", by: opts.madeBy } : { kind: opts.origin ?? (template ? "template" : "scratch") },
     ...introRecent(botId, Date.now()),
     ...(template ? { template: { category: template.category, title: template.title, tryAsking: template.tryAsking, apps: template.apps, routines: templateRoutineHints(template) } } : {}),
@@ -9489,7 +9491,7 @@ async function beginTurn(
         { id: "webhook", label: "Webhook provenance", text: opts?.automationSource === "webhook" ? WEBHOOK_PROMPT : opts?.automationSource === "api" ? BOT_API_PROMPT : "" }, { id: "channel", label: "Chat app", text: channelPrompt(messengerHost.platformOf(threadId)) }, { id: "execution", label: "Checking facts", text: supportsWorkspaceFiles(instance.driverKind) ? "" : EXECUTION_PROMPT },
         { id: "automation-reply", label: "Automation reply", text: opts?.automationSource && automationReports.reportsElsewhere(threadId) ? AUTOMATION_REPLY_PROMPT : "" },
         { id: "mentions", label: "Mentions", text: (tagged.length ? `The user named these existing teammates: ${tagged.map(b => `${peerName(b.name)} (${b.id})`).join(", ")}. Use coordinate_bots when their contribution is needed; do not substitute native helper agents for these bots.` : "") + placesElsewhere.mentioned(providerText, store.bots) },
-      ].filter((part) => (apiFenced ? BOT_API_PARTS.has(part.id) : !confined || READ_AND_DRAFT_PARTS.has(part.id))), integrations.agents, { replyStyle: liveBot?.replyStyle ?? bot.replyStyle, talkingStyle: cfg.talkingStyle, quickUpdates: quickUpdatesEnabled(cfg) && sideJobs.text("turn-beat", bot.id, { instance }) !== null });
+      ].filter((part) => (apiFenced ? BOT_API_PARTS.has(part.id) : !confined || READ_AND_DRAFT_PARTS.has(part.id))), integrations.agents, { replyStyle: liveBot?.replyStyle ?? bot.replyStyle, talkingStyle: cfg.talkingStyle, voice: botVoice(liveBot ?? bot), quickUpdates: quickUpdatesEnabled(cfg) && sideJobs.text("turn-beat", bot.id, { instance }) !== null });
       turnPromptBytes.set(threadId, { stable: Buffer.byteLength(prompt.stable), volatile: Buffer.byteLength(prompt.volatile) });
       // Recall rides in front of this turn's message, never the system prompt, whose volatile half is re-sent whole on any change.
       const recalled = await autoRecallPrompt(bot, threadId, resolvedImages.text, {
@@ -11331,7 +11333,7 @@ async function runClaimedGroupMemberTurn(
     { id: "skills", label: "Skills index", text: workspace ? skillsHost.skillsIndex(bot, threadId, instance) : "" },
     { id: "skill-instructions", label: "Skill instructions", text: renderSkillInstructions(selectedSkills, { includeRoot: Boolean(workspace) }) },
     { id: "playbooks", label: "Playbooks", text: installedPlaybookInstructions(text, bot.playbooks) },
-  ], integrations.agents, { talkingStyle: cfg.talkingStyle });
+  ], integrations.agents, { talkingStyle: cfg.talkingStyle, voice: botVoice(store.bot(bot.id) ?? bot) });
 
   // Claim /learn only after setup succeeded, so a failed first responder does not consume it.
   if (skillAuthoring) skillAuthoringClaim.claimed = true;

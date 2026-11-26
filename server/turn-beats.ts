@@ -8,6 +8,7 @@ import { classifyTurn } from "./turn-route.ts";
 import { derivedLabel } from "./harness/derived-status.ts";
 import type { RuntimeEvent } from "./contracts.ts";
 import { redactSecretsInText } from "./redact.ts";
+import { botVoice } from "./character.ts";
 
 export type BeatKind = "ack" | "plan" | "milestone";
 
@@ -46,7 +47,7 @@ export interface TurnBeatsDeps {
   /** The small one-off text call of the engine running this thread, or null when it has none. */
   writer(botId: string, threadId: string): BeatWriter | null;
   /** `apps`: the connected apps this bot may use, by name; absent when unknown. */
-  bot(botId: string): { name: string; soul?: string; apps?: readonly string[] } | null | undefined;
+  bot(botId: string): { name: string; soul?: string; title?: string; description?: string; apps?: readonly string[] } | null | undefined;
   /** False for an engine that may show no thinking before its first tool: its ack goes out at ACK_IDLE_MS anyway. */
   showsThinking?(threadId: string): boolean;
   /** Whether this turn is still the one the thread runs. */
@@ -125,9 +126,10 @@ export function looksLikeWork(text: string, attachments: number): boolean {
   return classifyTurn({ text, attachments, priorTurnUsedTools: false }) === "complex" || SETUP_ASK.test(text) || MAKE_ASK.test(text) || SETUP_ASK_PT_ES.test(text);
 }
 
-function personaLines(bot: { name: string; soul?: string }): string {
+function personaLines(bot: { name: string; soul?: string; title?: string; description?: string }): string {
   const soul = (bot.soul ?? "").replace(/\s+/g, " ").trim().slice(0, SOUL_CHARS);
-  return soul ? `About ${bot.name}, in its own setup: ${soul}` : `${bot.name} texts like a smart, funny friend: quick, plain words.`;
+  if (soul) return `About ${bot.name}, in its own setup: ${soul}`;
+  return botVoice(bot) === "work" ? `${bot.name} is a work bot and texts like a sharp colleague: quick, exact, plain words.` : `${bot.name} texts like a smart, funny friend: quick, plain words.`;
 }
 
 const SHARED_RULES = (name: string) => [
@@ -140,7 +142,7 @@ const SHARED_RULES = (name: string) => [
   "Reply with the message only.",
 ].join("\n");
 
-export function beatPrompt(kind: BeatKind, input: { name: string; soul?: string; apps?: readonly string[]; ask: string; steps: string[]; said: string[]; minutes?: number }): string {
+export function beatPrompt(kind: BeatKind, input: { name: string; soul?: string; title?: string; description?: string; apps?: readonly string[]; ask: string; steps: string[]; said: string[]; minutes?: number }): string {
   const ask = input.ask.slice(0, ASK_CHARS);
   const steps = input.steps.slice(-10).map((step) => `- ${step}`).join("\n") || "- (none yet)";
   const said = input.said.map((line) => `- ${line}`).join("\n");
@@ -234,7 +236,7 @@ export function createTurnBeats(deps: TurnBeatsDeps) {
     beat.phase = "writing";
     beat.abort = new AbortController();
     const steps = kind === "milestone" ? watch.steps.slice(watch.stepsAtLastWord) : watch.steps;
-    const prompt = beatPrompt(kind, { name: bot.name, soul: bot.soul, apps: bot.apps, ask: watch.ask, steps, said: watch.said.slice(-4), minutes: Math.round((now() - watch.startedAt) / 60_000) });
+    const prompt = beatPrompt(kind, { name: bot.name, soul: bot.soul, title: bot.title, description: bot.description, apps: bot.apps, ask: watch.ask, steps, said: watch.said.slice(-4), minutes: Math.round((now() - watch.startedAt) / 60_000) });
     const signal = beat.abort.signal;
     const once = () => writer(prompt, { signal, timeoutMs: WRITE_TIMEOUT_MS });
     // a busy model answers 429 or a 5xx "overloaded" at the busiest moment, the turn's start: one more try after a short pause
