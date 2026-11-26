@@ -34,6 +34,10 @@ on the server, run `duskbot pair --label desktop`. in the app on the other compu
 
 if it prints only a code and no link, the server has no address of its own (it's linked through the private relay). then make a line in the other computer's app and paste it on the server instead: the server moves its link to that computer, and the first one stops reaching it.
 
+## updating
+
+a server set up with the one line updates itself while no bot is working. on any server, `duskbot update --check` says whether a newer version is out and what changed for it, with a link for each change. for a server you installed with npm, `duskbot update` downloads the new version, checks it against the signed release and installs it; in docker it prints the `docker compose` step. the full table is in [self-hosting](https://github.com/DuskBotAI/duskbot/blob/main/docs/self-hosting.md#updating), every change is on the [changelog](/changelog).
+
 ## read it before you run it
 
 ```sh

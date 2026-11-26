@@ -1202,15 +1202,33 @@ settings do not change it.
 
 ## Updating
 
-For the npm service, [install the chosen new version](deploy-vps.md#update)
-as the service user while the server is stopped, then start it again.
-For a foreground invocation, `npx --yes duskbot@X.Y.Z serve --tailscale`
-selects a particular published release; replace `X.Y.Z` with that version.
+`duskbot update --check` tells you whether a newer dusk bot is out, lists
+what changed for the server and the CLI since your version (from
+https://dusk.bot/releases/changelog.json, with the issue or pull request for
+each line) and names the one step that updates this install. It never changes
+anything. Exit code 0 means up to date, 10 an update is available, 1 the check
+failed; `--json` prints one document. `duskbot version` prints the version
+and how this copy was installed; `duskbot --version` prints only the number.
 
-```sh
-(cd deploy && docker compose pull dusk && docker compose up -d)   # Docker, with the project overrides
-git pull && pnpm install && sudo systemctl restart duskbot          # from source
-```
+What `duskbot update` does, by how the server was installed:
+
+| Install | What `duskbot update` does |
+|---|---|
+| npm (`npm install --global --prefix …`) | Downloads the release's `duskbot-X.Y.Z.tgz`, checks its sha256 against the release's `SHA256SUMS`, whose own hash the signed `latest.json` vouches for, and installs it into the same prefix. Asks first; `--yes` skips the question, and without a terminal it only looks. Then restart the server (`sudo systemctl restart duskbot` for a `duskbot service install` unit). |
+| Linked from the app (the one line) | Nothing to do: the server installs new versions itself while no bot is working, looking every 15 minutes. `sudo duskbot update --yes` (or `sudo systemctl start duskbot-server-update.service`) looks now. |
+| Docker or Podman | Prints the host step: `docker compose pull dusk && docker compose up -d` in the deploy folder, or the tag to set when `DUSK_IMAGE` is pinned. |
+| Desktop app | The app runs and updates its server. |
+| git checkout | Prints `git pull && pnpm install && pnpm build:server`, then restart. |
+| dusk cloud | Kept up to date for you. |
+
+Every release also attaches the server package to its GitHub release:
+`duskbot-X.Y.Z.tgz` at
+`https://github.com/DuskBotAI/duskbot-releases/releases/download/vX.Y.Z/`, and
+the newest one at
+`https://github.com/DuskBotAI/duskbot-releases/releases/latest/download/duskbot.tgz`,
+with its hash in that release's `SHA256SUMS`. To install by hand, check the hash
+first, then `npm install --global --prefix "$HOME/.local" ./duskbot-X.Y.Z.tgz`.
+Releases before 0.2.32 did not attach it; build those from source.
 
 Routines and queued work survive restarts. A teammate turn in flight runs
 again once at the next start, told to check what it already did, and the bot

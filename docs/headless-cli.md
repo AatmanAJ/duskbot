@@ -83,6 +83,7 @@ one of its conversations.
 | `connect [URL]` | Gets a token for a workspace elsewhere. |
 | `new-bot`, `new-channel`, `set-model`, `edit` | Make a bot or a room, change a bot's model, rewrite an earlier message. |
 | `mcp` | The dusk bot MCP server on stdin and stdout ([docs/mcp-server.md](mcp-server.md)). |
+| `update [--check] [--yes]`, `version [--check]` | Whether a newer dusk bot is out, what changed for the server, and how to update this install ([Updating](self-hosting.md#updating)). `--check` exits 0 when up to date and 10 when an update is available. |
 
 The message for `send` and `run` can be the next word, `--text TEXT`,
 `--message-file FILE`, or `-` to read it from stdin.
