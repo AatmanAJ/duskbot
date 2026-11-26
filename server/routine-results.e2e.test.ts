@@ -101,7 +101,7 @@ it("runs every routine in the bot's main chat as an ordinary turn, with no run c
   }
 }, 90_000);
 
-it("runs a routine made in a chat in that chat, not the bot's first thread or a conversation of its own", async () => {
+it("runs a routine made in a chat in that chat, not the bot's first thread, the chat written in since or a conversation of its own", async () => {
   const fixture = await launchVerificationServer(process.env, undefined, undefined, undefined, { scripted: true });
   const evidence: unknown[] = [{ fixture: fixture.info }];
   const planPath = join(fixture.info.dataDir, "room-plan.json");
@@ -122,12 +122,13 @@ it("runs a routine made in a chat in that chat, not the bot's first thread or a 
     const first = bot.activeTaskId as string;
     const { task } = await api("POST", `/api/bots/${bot.id}/tasks`, { title: "Planning" }, 201);
     const chat = task.threadId as string;
-    writeFileSync(planPath, JSON.stringify({ [bot.id]: { turns: [
-      { steps: [{ tool: "create_trigger", arguments: { when: "schedule",
+    writeFileSync(planPath, JSON.stringify({ [bot.id]: { script: [
+      { key: "create", match: ["Report the fixture state monthly."], steps: [{ tool: "create_trigger", arguments: { when: "schedule",
         name: "Chat report", instructions: "Report the fixture state; no external services.",
         schedule: { type: "cron", expression: "0 9 1 * *", timeZone: "UTC" },
       } }], reply: "The routine is scheduled." },
-      { steps: [], reply: "Fresh chat report" },
+      { key: "elsewhere", match: ["Something else."], steps: [], reply: "Noted." },
+      { key: "run", match: ["Chat report"], steps: [], reply: "Fresh chat report" },
     ] } }));
     await cli("send", "--bot", bot.id, "--task", chat, "--text", "Report the fixture state monthly.");
     await cli("wait", "--bot", bot.id, "--task", chat, "--timeout", "20");
@@ -136,6 +137,11 @@ it("runs a routine made in a chat in that chat, not the bot's first thread or a 
     const routineId = card.routineRequest.resultId as string;
     const definition = (await api("GET", "/api/routines")).routines.find((routine: any) => routine.id === routineId);
     expect(definition.sourceThreadId).toBe(chat);
+    expect(definition.resultsThreadId).toBe(chat);
+    // the person writes in another chat after setting it: it still reports where it was set, as the bot said
+    await cli("send", "--bot", bot.id, "--task", first, "--text", "Something else.");
+    await cli("wait", "--bot", bot.id, "--task", first, "--timeout", "20");
+    expect((await api("GET", "/api/bots")).bots.find((candidate: any) => candidate.id === bot.id).mainThreadId).toBe(first);
 
     const { run } = await api("POST", `/api/routines/${routineId}/run`, undefined, 201);
     expect(run.resultsThreadId).toBe(chat);
@@ -147,7 +153,7 @@ it("runs a routine made in a chat in that chat, not the bot's first thread or a 
     await expect.poll(async () => (await messages(chat)).findLast((message) => message.role === "bot" && message.kind === "text")?.text, { timeout: 15_000 })
       .toBe("Fresh chat report");
     expect((await messages(chat)).filter((message) => message.card?.routineRequest?.resultId === routineId)).toHaveLength(1);
-    expect((await messages(first)).some((message) => message.kind === "routine.run" || message.automation)).toBe(false);
+    expect((await messages(first)).some((message) => message.kind === "routine.run" || message.automation || message.routineStart)).toBe(false);
     const saved = (await api("GET", "/api/bots")).bots.find((candidate: any) => candidate.id === bot.id);
     expect(saved.tasks.filter((candidate: any) => !candidate.routineRunId).map((candidate: any) => candidate.threadId).sort())
       .toEqual([first, chat].sort());

@@ -9869,8 +9869,8 @@ const limitFailovers = new LimitFailovers({ file: join(DATA_DIR, "limit-failover
     return Boolean(checked?.ok && store.switchTaskModel(botId, threadId, checked.selection, false, false, { rewound: true }));
   } });
 threadBackup = (task, model) => limitFailovers.backupOf(task.threadId, model);
-const automationDestinations = createAutomationDestinations({ store, mainThread: botMainThread, runs: () => routines?.listRuns() ?? [],
-  cloud: CLOUD_HOME ? { owner: CLOUD_OWNER_KEY!, opener: routineOpener, reportFromOthers: cloudReportFromOthers, opened: (threadId, person) => threadStarters.set(threadId, person), outside: (threadId) => outsideLineage.mark(threadId) } : null });
+const automationDestinations = createAutomationDestinations({ store, mainThread: botMainThread, runs: () => routines?.listRuns() ?? [], team: Boolean(CLOUD_TEAM),
+  cloud: CLOUD_HOME ? { owner: CLOUD_OWNER_KEY!, opener: routineOpener, reportFromOthers: cloudReportFromOthers, ownersChat: (threadId) => !cloudGuestOpened(threadId), opened: (threadId, person) => threadStarters.set(threadId, person), outside: (threadId) => outsideLineage.mark(threadId) } : null });
 const runHealth = startRunHealth({ dataDir: DATA_DIR, turns: () => liveTurnByThread.size, log: (line) => console.log(line) }); if (codexAutoUpdateEnabled(Boolean(CLOUD_HOME))) startCodexUpkeep(codexUpkeepFor(registry, () => liveTurnByThread.size, (line) => console.log(line))); const wakeGate = new WakeGate({ onRelease: () => routines?.lookAgain(), log: (line) => console.log(line) }); routines = new RoutineManager({ heldAfterWake: () => wakeGate.held(), chainHost: routineChainHost({ store, mainThread: botMainThread, cloudHome: Boolean(CLOUD_HOME) }),
   emit: (event) => { broadcast(event); if (event.kind === "routine.deleted" && typeof event.routineId === "string") routineGone(event.routineId); }, limitResetAt: (engine) => limitClock.resetAt(engine), checks: routineHost.checks(proactive.checks), earlyMs: routineHost.earlyMs, held: (run) => routineGuard.held(run), decorate: (routine) => routineGuard.pausedFor(routine),
   limitBackup: (botId, scope) => { const bot = store.bot(botId); return quotaSwitchEnabled() ? Boolean(bot && limitTakeover.backups(botId, bot.modelSelection, scope, approvalModeFor(bot)).length) : Boolean(bot && startupBackups(bot, cfg.automaticRecovery).length); },
@@ -9922,7 +9922,7 @@ const runHealth = startRunHealth({ dataDir: DATA_DIR, turns: () => liveTurnByThr
     const task = store.taskByThread(botId, threadId);
     return Boolean(bot && !bot.hidden && task && !task.routineRunId);
   },
-  resolveResultsThread: (routine, forceNew) => automationDestinations.routine(routine, forceNew),
+  resolveResultsThread: (routine, forceNew) => automationDestinations.routine(routine, forceNew), sourceResultsThread: (routine) => automationDestinations.sourceChat(routine),
   eventResultsThread: (event) => automationDestinations.event(event),
   frozenResultsThread: (botId, threadId) => wasOldestThread(store.tasks(botId), threadId) && !cloudGuestOpened(threadId),
   discardResultsThread: (botId, threadId) => {
