@@ -138,3 +138,21 @@ describe("an attachment whose upload failed", () => {
     expect(tiles().map((tile) => tile.dataset.attachmentId)).toEqual(["bad"]);
   });
 });
+
+describe("what an attach leaves out", () => {
+  it("shows as an error card with a title, the files and why, and a way to choose again", async () => {
+    flushSync(() => root.render(createElement(Composer, { bot })));
+    const drop = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, "dataTransfer", { value: { types: ["Files"], files: [new File(["MZ"], "setup.exe", { type: "application/x-msdownload" })] } });
+    window.dispatchEvent(drop);
+    await settle();
+    const card = container.querySelector("[data-attach-notice=warning]");
+    expect(card?.querySelector("[data-chat-error]")?.getAttribute("role")).toBe("status");
+    expect(card?.textContent).toContain("Couldn't attach everything");
+    expect(card?.textContent).toContain("Unable to attach setup.exe.");
+    expect([...card!.querySelectorAll("button")].map((button) => button.textContent || button.getAttribute("aria-label"))).toEqual(["Choose files", "Dismiss"]);
+    expect(container.querySelector("[data-composer-strip] p")).toBeNull();
+    flushSync(() => card!.querySelector<HTMLButtonElement>("button[aria-label=Dismiss]")!.click());
+    expect(container.querySelector("[data-attach-notice]")).toBeNull();
+  });
+});

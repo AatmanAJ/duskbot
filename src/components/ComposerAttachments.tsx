@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { ClipboardPaste, MessageSquareText, RotateCcw, X } from "../icons";
 import { Icon } from "./Icon";
 import { cn } from "@/lib/cn";
-import { intakeFiles } from "@/lib/intake-files";
+import { intakeFiles, type AttachNotice } from "@/lib/intake-files";
 import {
   attachmentImageUrl,
   formatSize,
@@ -41,7 +41,7 @@ export function ComposerAttachments({
   items: Attachment[];
   onAdd: (attachments: Attachment[]) => void;
   allowImages?: boolean;
-  onNotice: (notice: string | null) => void;
+  onNotice: (notice: AttachNotice | null) => void;
   /** A dropped file of notes another AI wrote: brought in, not attached. */
   onNotes?: (text: string) => void;
   onPendingChange?: (pending: boolean) => void;
@@ -213,20 +213,19 @@ const CARD = "group/tile relative flex h-14 w-[calc(50%-4px)] min-w-[220px] max-
  * grok's attachments inside the composer: 56px tiles 8px apart in one scrolling row above the field, files as
  * cards, and a one-line notice above them. The row rides the pill's top edge while the pill opens.
  */
-export function ComposerAttachmentStrip({ items, onRemove, onRetry, onDisplayInChatBox, notice, onNotice, flash }: {
+export function ComposerAttachmentStrip({ items, onRemove, onRetry, onDisplayInChatBox, onNotice, flash }: {
   items: Attachment[];
   /** An attachment to show again, as when the same text is pasted twice: it scrolls into view and lights up. */
   flash?: { id: string; at: number } | null;
   onRemove: (id: string) => void;
   onRetry: (id: string) => void;
   onDisplayInChatBox: (attachment: PasteAttachment) => void;
-  notice: string | null;
-  onNotice: (notice: string | null) => void;
+  /** Clears the composer's attach notice once the person acts on a tile. */
+  onNotice: (notice: AttachNotice | null) => void;
 }) {
   const [preview, setPreview] = useState<{ images: PreviewImage[]; index: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
-  const shown = items.length > 0 || Boolean(notice);
-  useEffect(() => { if (!items.length) onNotice(null); }, [items.length, onNotice]);
+  const shown = items.length > 0;
   useLayoutEffect(() => {
     const strip = ref.current;
     const content = strip?.parentElement;
@@ -254,8 +253,7 @@ export function ComposerAttachmentStrip({ items, onRemove, onRetry, onDisplayInC
   const retry = (id: string) => { onNotice(null); onRetry(id); };
   return (
     <div ref={ref} data-composer-strip className="mt-0.5 mb-0.5 flex min-w-0 flex-col gap-1">
-      {notice ? <p role="status" className="px-0.5 text-[11px] leading-[14px] text-ink/56">{notice}</p>
-        : overflows && <p data-composer-attachment-count className="px-0.5 text-[11px] leading-[14px] text-ink/56">{t("composer.attach.count", { count: items.length })}</p>}
+      {overflows && <p data-composer-attachment-count className="px-0.5 text-[11px] leading-[14px] text-ink/56">{t("composer.attach.count", { count: items.length })}</p>}
       <span role="status" className="sr-only">{added ? t("composer.attach.added", { name: attachmentLabel(added), count: items.length }) : ""}</span>
       {items.length > 0 && (
         <div ref={row} data-composer-attachments role="list" aria-label={t("attach.gallery")} className="pointer-events-none -mx-[9px] -mt-1.5 -mb-[18px] flex min-w-0 flex-nowrap gap-2 overflow-x-auto px-[9px] pt-1.5 pb-[18px] [scrollbar-width:none] *:pointer-events-auto">

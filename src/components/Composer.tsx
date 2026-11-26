@@ -38,7 +38,7 @@ import {
 import { DEVS_CHOICE, MentionMenu, teammateChoices, type MentionChoice } from "./MentionMenu"; import { useTeammates } from "@/state/team-people"; import { hiddenFromSidebar, useViewerEmail } from "@/lib/default-bot";
 import { SlashCommandMenu } from "./SlashCommandMenu";
 import { MentionTextarea } from "./MentionTextarea";
-import { ComposerAttachments, ComposerAttachmentStrip, pathForFile } from "./ComposerAttachments"; import { ComposerFailedSends } from "./ComposerFailedSends"; import { PickProblemCard, useComposerFilePickers } from "./ComposerFilePickers";
+import { ComposerAttachments, ComposerAttachmentStrip, pathForFile } from "./ComposerAttachments"; import { ComposerFailedSends } from "./ComposerFailedSends"; import { AttachNoticeCard, PickProblemCard, useComposerFilePickers } from "./ComposerFilePickers";
 import { PointedChips } from "./app/PointedChips"; import { SetupRequestChip, setupRequestPlaceholder } from "./SetupOffer";
 import { takePointedChips } from "@/lib/pointed-chips";
 import { withoutCitationMarkers } from "@/lib/citations";
@@ -66,7 +66,7 @@ import {
   type FileAttachment,
   type PasteAttachment,
 } from "@/lib/composer-attachments";
-import { imagesAsFilesNotice, imagesThatFit, intakeFiles, uploadFailure } from "@/lib/intake-files";
+import { attachNotice, imagesAsFilesNotice, imagesThatFit, intakeFiles, uploadFailure, type AttachNotice } from "@/lib/intake-files";
 import { retryPlacedUpload, sendPlacedUpload } from "@/lib/placed-upload";
 import { cancelUpload } from "@/lib/upload-progress";
 import { goalCoordinatorForComposer, openTaskWorking, roomRouteForComposer } from "@/lib/group-routing";
@@ -262,9 +262,9 @@ export const Composer = memo(function Composer({
   const [dismissedAt, setDismissedAt] = useState<number | null>(null);
   const [dismissedSlashAt, setDismissedSlashAt] = useState<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null); const [attachmentFlash, setAttachmentFlash] = useState<{ id: string; at: number } | null>(null);
+  const [attachmentNotice, setAttachmentNotice] = useState<AttachNotice | null>(null); const [attachmentFlash, setAttachmentFlash] = useState<{ id: string; at: number } | null>(null);
   const takeNotes = useNotesIntake();
-  const stacked = useStackedField(inputRef, !singleRow, text, simpleDock) || (simpleDock && (attachments.length > 0 || Boolean(attachmentNotice)));
+  const stacked = useStackedField(inputRef, !singleRow, text, simpleDock) || (simpleDock && attachments.length > 0);
   // grok's expanded composer: the text above the buttons, attachments or a reply strip; corners and height change together
   const quote = useSelectionQuote(draftId);
   const clearQuote = () => { markDraftEdited(draftId); setSelectionQuote(draftId, null); refocusInput(); };
@@ -548,7 +548,7 @@ export const Composer = memo(function Composer({
     if (!failed || failed.kind === "paste") return;
     changeDraftAttachmentPending(draftId, true);
     void retryPlacedUpload(draftId, failed)
-      .catch((error: unknown) => setAttachmentNotice(uploadFailure(failed.name, error)))
+      .catch((error: unknown) => setAttachmentNotice(attachNotice([uploadFailure(failed.name, error)])))
       .finally(() => changeDraftAttachmentPending(draftId, false));
   }, [attachments, draftId]);
   const pickFiles = async (picked: ArrayLike<File> | null) => {
@@ -822,8 +822,7 @@ export const Composer = memo(function Composer({
       const notices: string[] = [];
       const kept = imagesThatFit(imageFiles, imageSlotsLeft(attachments), (notice) => notices.push(notice), imageBytesLeft(attachments));
       const asFiles = kept.filter(imageSentAsFile);
-      if (asFiles.length) notices.push(imagesAsFilesNotice(asFiles.map((file) => file.name)));
-      if (notices.length) setAttachmentNotice(notices.join(" "));
+      setAttachmentNotice(attachNotice(notices, asFiles.length ? [imagesAsFilesNotice(asFiles.map((file) => file.name))] : []));
       changeDraftAttachmentPending(draftId, true);
       void (async () => {
         try {
@@ -880,7 +879,7 @@ export const Composer = memo(function Composer({
     }
     changeDraftAttachmentPending(draftId, true);
     void uploadFile(file)
-      .catch((error: unknown) => setAttachmentNotice(uploadFailure(t("composer.pastedText"), error)))
+      .catch((error: unknown) => setAttachmentNotice(attachNotice([uploadFailure(t("composer.pastedText"), error)])))
       .finally(() => changeDraftAttachmentPending(draftId, false));
   };
 
@@ -917,7 +916,7 @@ export const Composer = memo(function Composer({
           )}
         </div>
       )}
-      {pickers.problem && <PickProblemCard pickers={pickers} />}
+      {pickers.problem && <PickProblemCard pickers={pickers} />}{attachmentNotice && <AttachNoticeCard notice={attachmentNotice} onDismiss={() => setAttachmentNotice(null)} onPick={pickers.files} />}
       {dictation.tidying && !speechError && (
         <div role="status" data-voice-tidying="" className="pointer-events-auto mb-2 w-full px-0.5 text-[12px] leading-4 text-ink/56">
           {t("composer.voice.tidying")}
@@ -998,7 +997,7 @@ export const Composer = memo(function Composer({
           style={pillHeight === undefined ? undefined : { height: pillHeight }} className={cn("@container/composer relative z-[1]", singleRow ? "flex items-end gap-2" : simpleDock ? cn(SIMPLE_COMPOSER, multiline ? "rounded-[18px]" : "rounded-[22px]") : cn("rounded-2xl px-2 py-1.5", ELEVATED_FLOAT))}>
         <div ref={pillContentRef} className={singleRow ? cn("flex min-h-[48px] min-w-0 flex-1 flex-col justify-center rounded-[24px] p-2", ELEVATED_FLOAT) : simpleDock ? "flex shrink-0 flex-col" : "contents"}>
         {replyTo && <ComposerReplyStrip message={replyTo} fallbackName={bot?.name} onClear={onClearReply} />}
-        {quote && <ComposerSelectionQuote quote={quote} onClear={clearQuote} />}<SelectionAskPill enabled={!singleRow && !locked} onAsk={askAboutSelection} /><ComposerAttachmentStrip items={attachments} onRemove={removeAttachment} onRetry={retryUpload} onDisplayInChatBox={displayPasteInChatBox} notice={attachmentNotice} onNotice={setAttachmentNotice} flash={attachmentFlash} />
+        {quote && <ComposerSelectionQuote quote={quote} onClear={clearQuote} />}<SelectionAskPill enabled={!singleRow && !locked} onAsk={askAboutSelection} /><ComposerAttachmentStrip items={attachments} onRemove={removeAttachment} onRetry={retryUpload} onDisplayInChatBox={displayPasteInChatBox} onNotice={setAttachmentNotice} flash={attachmentFlash} />
         <div data-composer-row data-glyph-swap={glyphs.swapped ? "" : undefined} data-glyph-from-held={glyphs.swapped && glyphs.fromHeld ? "" : undefined} style={simpleDock ? slot.vars : undefined} className={cn("flex items-end", simpleDock ? cn("gap-2", stacked && "gap-y-2") : "gap-1", !singleRow && !simpleDock && "@max-[30rem]/composer:flex-wrap", stacked && "flex-wrap")}>
           {pickers.inputs}
           {/* the phone's + is the pill's first control, at its left edge, the size of the others */}
