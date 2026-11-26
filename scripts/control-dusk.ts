@@ -221,6 +221,11 @@ export function verificationServerEnvironment(parentEnv: NodeJS.ProcessEnv, data
   // Routine probe checks may read this one loopback page server (server/host/routine-quiet-host.ts), and nothing else local.
   const probeOrigin = parentEnv.DUSK_PROBE_LOOPBACK_ORIGIN?.trim() ?? "";
   if (/^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(probeOrigin)) childEnv.DUSK_PROBE_LOOPBACK_ORIGIN = probeOrigin;
+  // Loopback only: a push relay stub (scripts/push-pairing-e2e.ts), and the CA that trusts its local https front.
+  const pushRelay = parentEnv.DUSK_PUSH_RELAY?.trim() ?? "";
+  if (/^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(pushRelay)) childEnv.DUSK_PUSH_RELAY = pushRelay;
+  const extraCa = parentEnv.NODE_EXTRA_CA_CERTS?.trim() ?? "";
+  if (isAbsolute(extraCa)) childEnv.NODE_EXTRA_CA_CERTS = extraCa;
   const tregUrl = parentEnv.DUSK_TREG_URL?.trim() ?? "";
   if (/^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(tregUrl)) childEnv.DUSK_TREG_URL = tregUrl;
   // Loopback only, for harness mechanics: a fake ElevenLabs the measurement

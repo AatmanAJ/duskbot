@@ -33,7 +33,8 @@ export const PHONE_APP_HINT = "For the phone app, with notifications, run: duskb
  * server over the link relay, so it needs no public address. */
 export function phoneAppBlock(pairing: MobilePairingResponse, phone?: "ios" | "android"): string {
   const how = phone === "android" ? "Scan this in the dusk bot app (Add a computer or server), or with your camera:" : "Scan this with your phone's camera, or in the dusk bot app:";
-  const lines = [how, "", qrToString(universalPairLink(pairing.link, pairing.code)), ""];
+  const link = universalPairLink(pairing.link, pairing.code);
+  const lines = [how, "", qrToString(link), "", `or open this link on the phone:  ${link}`];
   if (pairing.code) lines.push(`or type this code in the app:  ${pairing.code}`);
   lines.push(`expires:       ${new Date(pairing.expiresAt).toLocaleTimeString()} (single use)`, "Keep this code private.");
   return lines.join("\n");
