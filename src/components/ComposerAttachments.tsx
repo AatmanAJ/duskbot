@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { ClipboardPaste, MessageSquareText, RotateCcw, X } from "../icons";
 import { Icon } from "./Icon";
@@ -190,20 +190,32 @@ function useLitAttachments(items: readonly Attachment[], flash: { id: string; at
   return lit;
 }
 
-/** The row holds more tiles than it shows. */
-function useOverflows(row: RefObject<HTMLDivElement | null>, count: number): boolean {
-  const [overflows, setOverflows] = useState(false);
+/** The row holds more tiles than it shows, and on which sides tiles are hidden. */
+function useOverflows(row: RefObject<HTMLDivElement | null>, count: number): { overflows: boolean; start: boolean; end: boolean } {
+  const [edges, setEdges] = useState({ overflows: false, start: false, end: false });
   useLayoutEffect(() => {
     const el = row.current;
-    if (!el) { setOverflows(false); return; }
-    const measure = () => setOverflows(el.scrollWidth > el.clientWidth + 1);
+    if (!el) { setEdges({ overflows: false, start: false, end: false }); return; }
+    const measure = () => {
+      // scrollLeft runs negative from the right edge in a right-to-left row
+      const left = Math.abs(el.scrollLeft), hidden = el.scrollWidth - el.clientWidth;
+      const next = { overflows: hidden > 1, start: left > 1, end: left < hidden - 1 };
+      setEdges((now) => now.overflows === next.overflows && now.start === next.start && now.end === next.end ? now : next);
+    };
     measure();
-    if (typeof ResizeObserver !== "function") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
+    el.addEventListener("scroll", measure, { passive: true });
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    observer?.observe(el);
+    return () => { el.removeEventListener("scroll", measure); observer?.disconnect(); };
   }, [row, count]);
-  return overflows;
+  return edges;
+}
+
+/** Fades the row out at a side that hides tiles, so a cut-off card reads as more to scroll to. */
+function edgeFade(edges: { start: boolean; end: boolean }): CSSProperties | undefined {
+  if (!edges.start && !edges.end) return undefined;
+  const mask = `linear-gradient(to right, ${edges.start ? "transparent, #000 32px" : "#000"}, ${edges.end ? "#000 calc(100% - 32px), transparent" : "#000"})`;
+  return { maskImage: mask, WebkitMaskImage: mask };
 }
 
 const TILE_REMOVE = "opacity-0 transition-[opacity,background-color] duration-[120ms] ease-[ease] group-hover/tile:opacity-100 focus-visible:opacity-100 touch:opacity-100";
@@ -240,7 +252,7 @@ export function ComposerAttachmentStrip({ items, onRemove, onRetry, onDisplayInC
   }, [shown]);
   const row = useRef<HTMLDivElement>(null);
   const lit = useLitAttachments(items, flash, row);
-  const overflows = useOverflows(row, items.length);
+  const edges = useOverflows(row, items.length);
   const added = lit.added ? items.find((a) => a.id === lit.added) : undefined;
   if (!shown) return null;
   const images = items.flatMap((a) => {
@@ -253,10 +265,10 @@ export function ComposerAttachmentStrip({ items, onRemove, onRetry, onDisplayInC
   const retry = (id: string) => { onNotice(null); onRetry(id); };
   return (
     <div ref={ref} data-composer-strip className="mt-0.5 mb-0.5 flex min-w-0 flex-col gap-1">
-      {overflows && <p data-composer-attachment-count className="px-0.5 text-[11px] leading-[14px] text-ink/56">{t("composer.attach.count", { count: items.length })}</p>}
+      {edges.overflows && <p data-composer-attachment-count className="px-0.5 text-[11px] leading-[14px] text-ink/56">{t("composer.attach.count", { count: items.length })}</p>}
       <span role="status" className="sr-only">{added ? t("composer.attach.added", { name: attachmentLabel(added), count: items.length }) : ""}</span>
       {items.length > 0 && (
-        <div ref={row} data-composer-attachments role="list" aria-label={t("attach.gallery")} className="pointer-events-none -mx-[9px] -mt-1.5 -mb-[18px] flex min-w-0 flex-nowrap gap-2 overflow-x-auto px-[9px] pt-1.5 pb-[18px] [scrollbar-width:none] *:pointer-events-auto">
+        <div ref={row} data-composer-attachments data-edge-start={edges.start ? "" : undefined} data-edge-end={edges.end ? "" : undefined} style={edgeFade(edges)} role="list" aria-label={t("attach.gallery")} className="pointer-events-none -mx-[9px] -mt-1.5 -mb-[18px] flex min-w-0 flex-nowrap gap-2 overflow-x-auto px-[9px] pt-1.5 pb-[18px] [scrollbar-width:none] *:pointer-events-auto">
           {items.map((a) => a.kind === "image" ? (
             <div key={a.id} role="listitem" aria-label={a.failed ? `${a.name}, ${t("attach.uploadFailed")}` : a.name} data-composer-attachment data-attachment-id={a.id} data-attachment-kind="image" data-attachment-failed={a.failed ? "" : undefined} aria-busy={a.uploading || undefined}
               className="group/tile relative size-14 shrink-0 overflow-hidden rounded-[10px] border-[0.5px] border-ink/12 bg-composer">

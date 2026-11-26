@@ -156,3 +156,24 @@ describe("what an attach leaves out", () => {
     expect(container.querySelector("[data-attach-notice]")).toBeNull();
   });
 });
+
+describe("an attachment row wider than the composer", () => {
+  it("fades out at each side that hides tiles and says how many it holds", async () => {
+    restoreComposerDraft(`bot:${bot.id}:${bot.threadId}`, { text: "", attachments: files });
+    flushSync(() => root.render(createElement(Composer, { bot })));
+    const row = container.querySelector<HTMLElement>("[data-composer-attachments]")!;
+    let left = 0;
+    Object.defineProperty(row, "scrollWidth", { configurable: true, get: () => 900 });
+    Object.defineProperty(row, "clientWidth", { configurable: true, get: () => 500 });
+    Object.defineProperty(row, "scrollLeft", { configurable: true, get: () => left });
+    const scrollTo = (to: number) => { left = to; flushSync(() => row.dispatchEvent(new Event("scroll"))); };
+    scrollTo(0);
+    expect([row.hasAttribute("data-edge-start"), row.hasAttribute("data-edge-end")]).toEqual([false, true]);
+    expect(row.style.maskImage).toContain("transparent");
+    expect(container.querySelector("[data-composer-attachment-count]")?.textContent).toBe("3 attachments");
+    scrollTo(200);
+    expect([row.hasAttribute("data-edge-start"), row.hasAttribute("data-edge-end")]).toEqual([true, true]);
+    scrollTo(400);
+    expect([row.hasAttribute("data-edge-start"), row.hasAttribute("data-edge-end")]).toEqual([true, false]);
+  });
+});
