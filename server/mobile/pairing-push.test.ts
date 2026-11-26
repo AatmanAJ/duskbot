@@ -59,7 +59,7 @@ async function call(mobile: ReturnType<typeof link>, auth: RequestAuth, method: 
 /** what the old `duskbot pair` invite gave a phone: a bearer session, not a paired phone */
 function signedIn(fields: Partial<SessionRecord> = {}, via: "bearer" | "cookie" = "bearer"): RequestAuth {
   const opened = sessions.openPairing({ scopes: ["admin", "client"], label: "iPhone" });
-  const exchanged = sessions.exchange({ code: opened.credential, label: "iPhone" });
+  const exchanged = sessions.exchange({ code: opened.credential, label: "iPhone", source: "203.0.113.9" });
   if (!exchanged.ok) throw new Error("exchange failed");
   const session = { ...exchanged.session, ...fields } as SessionRecord;
   return { kind: "session", session, via, scopes: session.scopes };
