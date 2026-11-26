@@ -59,7 +59,7 @@ export function composerPlaceholder({ locked, approval, attaching, attached = fa
   if (replying && !busy) return t("composer.placeholder.reply");
   if (question) return t(narrow ? "question.answerPlaceholder" : "composer.placeholder.question");
   if (attached && !narrow) return t("composer.placeholder.attached");
-  if (busy && holdToSteer && !group) return t("composer.followUp.holdToSteer", { name: botName });
+  if (busy && holdToSteer && !group) return t("composer.followUp.holdToSteer");
   if (!busy && goal) return group ? t("composer.placeholder.goal", { name: group.name }) : t("composer.placeholder.goalSolo", { name: botName });
   if (!busy && !group && setupHint) return setupHint;
   if (group && !group.dm && effectiveDefaultResponder(group, members).kind === "mentions") {

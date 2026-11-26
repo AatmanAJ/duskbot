@@ -266,7 +266,7 @@ describe("a message sent while a one-to-one bot works", () => {
     vi.useFakeTimers();
     try {
       render(createElement(Composer, { bot: working }));
-      expect(textarea().placeholder).toBe("Waits for Pepper. Hold send to steer");
+      expect(textarea().placeholder).toBe("Send queues, hold to steer");
       expect(host.querySelector("[data-composer-follow-up-hint]")).toBeNull();
       type(textarea(), "tapped");
       flushSync(() => sendButton().click());

@@ -2906,7 +2906,7 @@
   "composer.followUp.keyHintAria": "{sendKey}: {first}. {alternateKey}: {other}.",
   "composer.followUp.hint.queue": "Queue",
   "composer.followUp.hint.steer": "Steer",
-  "composer.followUp.holdToSteer": "Waits for {name}. Hold send to steer",
+  "composer.followUp.holdToSteer": "Send queues, hold to steer",
   "attach.unavailableOld": "This older file reference is no longer available to download",
   "attach.downloadFailed": "Couldn't download that file. Try again.",
   "attach.gone": "This file isn't there any more. Ask the bot to send it again.",
