@@ -398,7 +398,9 @@ to a server…**, or **Settings → Servers**. Enter the server's
 HTTPS address or full pairing link, with an optional name. Custom domains and
 Cloudflare tunnel addresses work; Tailscale is not required. Generate a fresh
 link for each device: `duskbot pair --label "My desktop"` (with `npx` in front on an npm install) creates an
-owner link without the phone wizard; add `--client` for chat-only access.
+owner link without the phone wizard; add `--client` for chat-only access. That code signs in a browser or the
+desktop app; for the phone app use `duskbot pair --phone ios|android` (below), the only way a phone gets
+notifications.
 A code already used by your phone cannot also pair your desktop.
 
 Confirm the server address in the app's connection dialog, then finish pairing
@@ -815,19 +817,45 @@ apps and cloud desktops — those stay with the owner. A server reinstalled at
 the same address has a new identity; the app then asks to pair again rather
 than present the old session to it.
 
-Both native apps pair this way. `duskbot pair --phone android` prints the
-app-scheme QR that Android's scanner needs, and the iOS app accepts either
-that QR or the web link. Pass `--phone` whenever nothing is watching the
-terminal, such as `docker compose exec dusk node dist-server/duskbot.js
-pair --phone android --public-url https://your-domain`, since a scripted run
-never reaches the question the interactive command asks. Nothing extra to install, and the phone becomes a
-session like any other.
+### Pairing the phone app (and getting notifications)
+
+A phone gets notifications only as a **paired phone**. A phone that signed in
+with a browser code (`duskbot pair` without `--phone`, or the `/pair` page) is a
+session like a laptop's: it can chat, but the server has no phone to push to.
+Pair the phone app with `--phone`:
+
+```sh
+duskbot pair --phone ios                                    # or android
+duskbot pair --phone ios --public-url https://your-domain   # an address the server does not know itself
+docker compose exec dusk node dist-server/duskbot.js pair --phone android --public-url https://your-domain
+```
+
+It prints a QR (scan it with the camera, or in the app under **Add a computer or
+server**) and a typed code when the server has the link service. The phone
+reaches the server at its HTTPS address (`DUSK_PUBLIC_URL`, `--domain`,
+`--tailscale`, `--tunnel`, or the `--public-url` you pass, which the server first
+checks answers as itself) or over the link service's relay. With none of those it
+makes no code and says so, with what to run. `--phone` also names the push
+service the line under the QR checks: `ios` is APNs, `android` is FCM. Pass it
+whenever nothing is watching the terminal, since a scripted run never reaches the
+question the interactive `duskbot pair` asks.
+
+The phone can fix an older sign-in itself: in the app, **Settings** shows
+**Notifications can't reach this phone** with **Pair this phone**, which makes
+that signed-in phone a paired phone (`POST /api/mobile/device`). To check
+notifications end to end:
+
+```sh
+duskbot push        # each paired phone and whether it registered for notifications
+duskbot push test   # sends each a test notification and prints what the push service answered
+```
+
+The phone has the same check under **Settings → Send a test notification**.
 
 Push to a closed app goes through the public relay at `link.dusk.bot` unless the
-server has APNs or FCM keys of its own. Today that relay sends to iPhones only:
-an Android phone paired with a self-hosted server gets notifications only while
-the app is open, and the server log says so once. Details and what fixes it:
-[`docs/phone-push.md`](phone-push.md#what-a-self-hosted-server-does-today).
+server has APNs or FCM keys of its own. The relay holds both the APNs key and
+the FCM service account, so iPhones and Android phones get pushes with nothing
+to set up. Details: [`docs/phone-push.md`](phone-push.md#what-a-self-hosted-server-does-today).
 
 Older way, still supported, and only useful on a LAN or a tailnet: run the
 companion sidecar next to the harness and pair by its own QR. It advertises
