@@ -89,6 +89,7 @@ const transcript = () => [...mocks.ui.log.mock.calls, ...vi.mocked(console.log).
 function expectPhonePairing(origin?: string): void {
   expect(posts()).toEqual([{ url: "/api/mobile/pairing", body: expect.objectContaining({ scopes: ["client"], ...(origin ? { origin } : {}) }) }]);
   if (!origin) expect(posts()[0]!.body).not.toHaveProperty("origin");
+  // the server checks the address itself; the CLI never sends anything to it
   expect(transcript()).toContain(typed);
   expect(transcript()).toMatch(/[▀▄█]/);
   expect(transcript()).toContain("notifications:  iPhone (APNs) through https://link.dusk.bot");
@@ -104,7 +105,7 @@ describe("guided phone pairing", () => {
   ])("pairs the phone app at the running server's own address instead of saved $access access", async (saved) => {
     mocks.readCliStartup.mockReturnValue(saved);
     expect(await runPair(options)).toBe(0);
-    expectPhonePairing();
+    expectPhonePairing(advertisedOrigin);
     expect(mocks.readCliStartup).not.toHaveBeenCalled();
   });
 

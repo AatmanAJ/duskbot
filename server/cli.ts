@@ -276,15 +276,13 @@ function startupPreferences(options: CliOptions): NonNullable<AppConfig["cliStar
 }
 
 /** A real phone pairing, printed with where its notifications will go; false (with why, said plainly) when a phone
- * cannot pair here. `origin` is an https address the server may not know itself; it checks it before using it. */
+ * cannot pair here. `origin` is the https address the phone should use; the server checks it serves this workspace. */
 async function showPhonePairing(options: CliOptions, origin: string | undefined, log: (line: string) => void, scope: { client?: boolean } = { client: true }): Promise<boolean> {
   const post = (path: string, init: { method: string; body?: string; timeoutMs: number }) => api(options.port, path, init);
-  const advertised = origin ? await api(options.port, "/api/auth/pairing").catch(() => null) : null;
-  if (refusedAsService(advertised?.status ?? 0, advertised?.body)) throw new Error(SERVICE_TRUST_HELP);
-  const known = typeof advertised?.body?.publicUrl === "string" ? advertised.body.publicUrl.replace(/\/+$/, "") : null;
+  // the server checks the address answers as itself before any pairing secret is made for it
   const result = await phonePairing(post, {
     label: options.label ?? (options.phone === "android" ? "Android" : options.phone === "ios" ? "iPhone" : undefined),
-    client: scope.client, origin: origin && origin !== known ? origin : undefined, phone: options.phone,
+    client: scope.client, origin, phone: options.phone,
   });
   if (!result.ok) {
     log(result.message);
