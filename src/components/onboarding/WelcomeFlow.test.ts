@@ -68,10 +68,9 @@ const show = async (extra: Record<string, unknown> = {}) => {
   await act(async () => { root.render(createElement(WelcomeFlow, { onDone: f.onDone, ...extra })); });
   await settle();
 };
-/** The AI already signed in here is connected on arrival: Continue goes on with it. */
-const usesFoundAi = async () => {
+/** Nothing of the person's own here: the AI step's Continue goes on with the free model. */
+const goesOn = async () => {
   expect(step()).toBe("ai");
-  expect(document.body.querySelector("[data-funnel-ai][data-connected]")).not.toBeNull();
   await press("Continue");
 };
 const saved = () => f.api.mock.calls.filter(([path, init]) => path === "/api/config" && init?.method === "PUT").map(([, init]) => JSON.parse(init.body));
@@ -105,7 +104,8 @@ beforeEach(() => {
     if (path === "/api/setup-import/grok") return { files: [], bots: [] };
     return path === "/api/instances" ? { instances: f.state.instances } : JSON.parse(init?.body ?? "{}");
   });
-  f.state = { hydrated: true, instances: [claude(true, "passed")], config: { onboarding: EMPTY_ONBOARDING, profile: { name: "" } }, bots: [maus], cloudAdd: null };
+  // a fresh computer: nothing of the person's own signed in, the free model ready
+  f.state = { hydrated: true, instances: [freeOpenCode, ...nothingSignedIn()], config: { onboarding: EMPTY_ONBOARDING, profile: { name: "" } }, bots: [maus], cloudAdd: null };
   stageIntro(null);
   host = document.createElement("div");
   document.body.append(host);
@@ -131,25 +131,26 @@ describe("the welcome", () => {
     expect(document.body.querySelector("textarea"), "nothing asks for a job").toBeNull();
   });
 
-  it("with Claude already signed in here, connects it as the step opens, and Continue goes on to Dusk's chat", async () => {
-    f.state = { ...f.state, instances: [freeOpenCode, { ...claude(true, "passed"), found: true }] };
+  it("with Claude already signed in here, goes from Get started straight to Dusk's chat on Claude, connected in the background", async () => {
+    f.state = { ...f.state, instances: [freeOpenCode, { ...claude(true, "passed"), found: true }], bots: [{ ...maus, modelSelection: { instanceId: "opencodeGo", model: "opencode/big-pickle" } }] };
+    await show();
+    await press("Get started");
+    expect(step(), "no AI step: the chat opens from here").not.toBe("ai");
+    const chose = f.api.mock.calls.filter(([path, init]) => path === "/api/instances/claude" && init?.method === "PATCH");
+    expect(chose.map(([, init]) => JSON.parse(init.body)), "marked as theirs with no tap").toEqual([{ chosen: true }]);
+    expect(f.onDone).toHaveBeenCalledExactlyOnceWith("maus");
+    expect(introStaged("maus")).toBe(true);
+    expect(f.dispatch, "Dusk's first chat runs on Claude, not the free model").toHaveBeenCalledWith({ type: "updateBot", botId: "maus", patch: { modelSelection: { instanceId: "claude", model: "m" } } });
+    await act(async () => {});
+    expect(saved()).toEqual([{ onboarding: expect.objectContaining({ version: WELCOME_VERSION, hintsSeen: [MET_CHIEF_HINT] }) }]);
+  });
+
+  it("a found AI whose test went unanswered isn't skipped to: the AI step shows why", async () => {
+    f.state = { ...f.state, instances: [freeOpenCode, { ...claude(true, "failed"), found: true }] };
     await show();
     await press("Get started");
     expect(step()).toBe("ai");
-    expect(title()).toBe("Connect your AI");
-    expect(text()).toContain("Found on this computer and connected: Claude.");
-    const chose = f.api.mock.calls.filter(([path, init]) => path === "/api/instances/claude" && init?.method === "PATCH");
-    expect(chose.map(([, init]) => JSON.parse(init.body)), "marked as theirs with no tap, so the first chat runs on it").toEqual([{ chosen: true }]);
-    expect(document.body.querySelector("[data-funnel-ai=claude][data-connected]")).not.toBeNull();
-    for (const gone of ["own", "plan", "free"]) expect(document.body.querySelector(`[data-funnel-${gone}]`), gone).toBeNull();
-    expect(document.body.querySelector("[data-funnel-free-line]"), "no free-model line once something is connected").toBeNull();
-    await press("Continue");
-    expect(f.onDone).toHaveBeenCalledExactlyOnceWith("maus");
-    expect(introStaged("maus")).toBe(true);
-    expect(f.dispatch).toHaveBeenCalledWith({ type: "updateBot", botId: "maus", patch: { welcomed: true } });
-    expect(f.dispatch, "nothing pinned: the server moves Dusk to the connected AI").not.toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ modelSelection: expect.anything() }) }));
-    await act(async () => {});
-    expect(saved()).toEqual([{ onboarding: expect.objectContaining({ version: WELCOME_VERSION, hintsSeen: [MET_CHIEF_HINT] }) }]);
+    expect(document.body.querySelector("[role=alert]")?.textContent).toContain("Claude");
   });
 });
 
@@ -160,7 +161,8 @@ describe("connecting an AI", () => {
     await press("Get started");
     expect(step()).toBe("ai");
     expect(title()).toBe("Connect your AI");
-    expect([...document.body.querySelectorAll<HTMLElement>("[data-funnel-ai]")].map((tile) => tile.dataset.funnelAi)).toEqual(["chatgpt", "claude", "cursor", "copilot"]);
+    expect([...document.body.querySelectorAll<HTMLElement>("[data-funnel-ai]")].map((tile) => tile.dataset.funnelAi), "all eight, whatever the server lists")
+      .toEqual(["chatgpt", "claude", "grok", "antigravity", "cursor", "copilot", "openrouter", "local"]);
     expect(f.api.mock.calls.some(([, init]) => init?.method === "PATCH"), "nothing found here: nothing marked").toBe(false);
     f.api.mockImplementation(async (path: string) => {
       if (path === "/api/instances?fresh=1") return { instances: f.state.instances };
@@ -179,13 +181,26 @@ describe("connecting an AI", () => {
     expect(document.body.querySelector("[data-connect-ai] h2")?.textContent, "it opens on every other provider").toBe("More providers or use an API key");
   });
 
+  it("a card the server doesn't list still works: one switched off comes back, anything else opens every other provider", async () => {
+    const base = f.api.getMockImplementation()!;
+    f.api.mockImplementation(async (path: string, init?: { body?: string; method?: string }) =>
+      path === "/api/instances/hidden" ? { instances: [{ instanceId: "grok", driverKind: "grokAgent", displayName: "Grok" }] } : base(path, init));
+    await show({ initialBeat: "ai" });
+    expect(document.body.querySelector("[data-funnel-ai=grok][data-missing]")).not.toBeNull();
+    await press("Grok");
+    expect(f.api).toHaveBeenCalledWith("/api/instances/grok", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ hidden: false }) }));
+    await press("Antigravity");
+    expect(document.body.querySelector("[data-connect-ai]"), "not here at all: every other provider").not.toBeNull();
+  });
+
   it("shows connected AIs first, as connected and not to be pressed again, with Continue ready and more still to add", async () => {
     const focus = vi.fn(async () => true);
     vi.stubGlobal("duskDesktop", { focusWindow: focus });
     f.state = { ...f.state, instances: [cursor(true), { ...claude(true), instanceId: "chatgpt", driverKind: "codex", displayName: "ChatGPT plan" } as InstanceInfo, signedOut("claude", "claudeAgent", "Claude")] };
     await show({ initialBeat: "ai" });
     expect(title()).toBe("Connect your AI");
-    expect([...document.body.querySelectorAll<HTMLElement>("[data-funnel-ai]")].map((tile) => tile.dataset.funnelAi), "the connected ones lead").toEqual(["chatgpt", "cursor", "claude"]);
+    expect([...document.body.querySelectorAll<HTMLElement>("[data-funnel-ai]")].map((tile) => tile.dataset.funnelAi), "the connected ones lead")
+      .toEqual(["chatgpt", "cursor", "claude", "grok", "antigravity", "copilot", "openrouter", "local"]);
     const connected = [...document.body.querySelectorAll<HTMLElement>("[data-funnel-ai][data-connected]")].map((tile) => tile.dataset.funnelAi);
     expect(connected).toEqual(["chatgpt", "cursor"]);
     expect(document.body.querySelector("[data-funnel-ai=cursor]")?.tagName, "a connected AI is not a button").toBe("DIV");
@@ -254,7 +269,7 @@ describe("on the desktop app", () => {
     expect(document.body.querySelector("[data-funnel-progress]"), "one screen has no progress to show").toBeNull();
   });
 
-  it("is two screens: the hello, then the AI choice, then the chat; never where bots live, bringing in, the phone or permissions", async () => {
+  it("with nothing of the person's own here, is two screens: the hello, then connecting an AI, then the chat; never where bots live, bringing in, the phone or permissions", async () => {
     vi.stubEnv("VITE_DUSK_PHONE_APP", "1");
     const macPermissions = { status: async () => ({ accessibility: "denied", screen: "denied", notifications: "denied" }) };
     desktop({ platform: "darwin", macPermissions });
@@ -267,7 +282,7 @@ describe("on the desktop app", () => {
     await press("Back");
     expect(step()).toBe("welcome");
     await press("Get started");
-    await usesFoundAi();
+    await goesOn();
     expect(f.onDone).toHaveBeenCalledExactlyOnceWith("maus");
     expect(introStaged("maus"), "Dusk speaks first in its chat").toBe(true);
   });
@@ -505,6 +520,18 @@ describe("on the desktop app", () => {
     expect(step(), "back goes to the sign-in").toBe("account");
   });
 
+  it("with Claude signed in here: hello, sign in, then straight to Dusk's chat", async () => {
+    f.state = { ...f.state, instances: [freeOpenCode, { ...claude(true, "passed"), found: true }] };
+    desktop({ accountGate: optionalGate() });
+    await show();
+    await press("Get started");
+    expect(step()).toBe("account");
+    expect(document.body.querySelector("[data-funnel-progress]")?.getAttribute("data-funnel-progress"), "two screens").toBe("2/2");
+    await press("Continue without an account");
+    expect(step()).not.toBe("ai");
+    expect(f.onDone).toHaveBeenCalledExactlyOnceWith("maus");
+  });
+
   it("signing in with an emailed code goes on to the AI choice by itself", async () => {
     const gate = optionalGate();
     desktop({ accountGate: gate });
@@ -575,7 +602,7 @@ describe("Dusk as the Chief", () => {
     f.state = { ...f.state, bots: [{ ...maus, chiefOfStaff: false }] };
     await show();
     await press("Get started");
-    await usesFoundAi();
+    await goesOn();
     expect(f.dispatch).toHaveBeenCalledWith({ type: "updateBot", botId: "maus", patch: { welcomed: true, chiefOfStaff: true } });
   });
 
@@ -583,7 +610,7 @@ describe("Dusk as the Chief", () => {
     f.state = { ...f.state, bots: [{ ...maus, chiefOfStaff: false }, { ...maus, id: "research", threadId: "r", name: "Research", defaultBot: undefined, chiefOfStaff: true }] };
     await show();
     await press("Get started");
-    await usesFoundAi();
+    await goesOn();
     expect(f.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "updateBot" }));
     expect(f.onDone).toHaveBeenCalledExactlyOnceWith(null);
   });
@@ -594,7 +621,7 @@ describe("other first runs", () => {
     f.state = { ...f.state, config: { onboarding: { ...EMPTY_ONBOARDING, completedAt: "2026-09-01T00:00:00.000Z", version: WELCOME_VERSION } } };
     await show({ replay: true });
     await press("Get started");
-    await usesFoundAi();
+    await goesOn();
     await act(async () => {});
     expect(f.onDone).toHaveBeenCalledOnce();
     expect(saved()[0].onboarding).not.toHaveProperty("hintsSeen");

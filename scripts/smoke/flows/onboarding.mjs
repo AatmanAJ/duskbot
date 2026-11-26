@@ -2,7 +2,7 @@
 // the first run end to end: the hello, signing in (gone for someone already signed in; signed out, this run goes on
 // without an account), then connect your AI (what this computer is signed in to connects by itself); Dusk then speaks first
 // in its chat with "What should we start with?" and the setup chips.
-//   mac:    the hello, the sign-in, connect your AI (Continue), Dusk's first message and card, then the first bot's first reply
+//   mac:    the hello, the sign-in, connect your AI (Continue; gone when an AI of their own is signed in here), Dusk's first message and card, then the first bot's first reply
 //   cloud:  the same run, then the chat's Try cloud chip and the sheet it opens (buying is buy-cloud.mjs)
 //   server: your own server is no longer part of the first run (add-server.mjs covers it)
 // Every screen is shot at the app's normal window (1040x760) and its minimum (768x520) into <out>/steps/.
@@ -122,14 +122,16 @@ await runFlow(flow, async () => {
     return `${await funnelText()} | went on without an account`;
   }, { critical: true });
 
-  await flow.step("ai-connect", "connect your AI: what this computer is signed in to is connected already, the rest one tap away", async () => {
-    await flow.waitFor(`document.querySelector("[data-welcome]")?.dataset.welcome === "ai"`, "the AI step", 30_000);
+  let aiSkipped = false;
+  await flow.step("ai-connect", "connect your AI: all eight AIs, the rest one tap away; skipped when an AI of the person's own is signed in here", async () => {
+    await flow.waitFor(`document.querySelector("[data-welcome]")?.dataset.welcome === "ai" || (!document.querySelector("[data-welcome]") && Boolean(document.querySelector('textarea[aria-label^="Message"]')))`, "the AI step or the chat", 30_000);
+    if (!(await at())) { aiSkipped = true; return "an AI of their own is signed in here: straight to the chat"; }
     screens.push(await at());
     await sleep(1500);
     await shots("ai");
     const tiles = await flow.evaluate(`[...document.querySelectorAll("[data-funnel-ai]")].map((e) => e.dataset.funnelAi + (e.hasAttribute("data-connected") ? "*" : ""))`);
     flow.facts.aiTiles = tiles;
-    if (!tiles.length) throw new Error("no AIs to connect");
+    if (tiles.length !== 8) throw new Error(`the grid shows ${tiles.length} AIs, not all eight`);
     if (await flow.evaluate(`Boolean(document.querySelector("[data-funnel-own], [data-funnel-plan]"))`)) throw new Error("the old choice cards are back");
     return `${await funnelText()} | ${tiles.join(", ")} (* connected)`;
   }, { critical: true });
@@ -156,6 +158,7 @@ await runFlow(flow, async () => {
   });
 
   await flow.step("ai-continue", "Continue goes on to the chat at once, with what is connected or the free model", async () => {
+    if (aiSkipped) throw flow.skip("no AI step on this run");
     await flow.waitFor(`!document.querySelector("[data-funnel-ai-continue]")?.disabled`, "Continue to be ready", 60_000);
     await flow.clickSelector("[data-funnel-ai-continue]");
     await flow.waitFor(`Boolean(document.querySelector('textarea[aria-label^="Message"]')) || Boolean(document.querySelector("[data-welcome]:not([data-welcome=ai])"))`, "the chat", 60_000);

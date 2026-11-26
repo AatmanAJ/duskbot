@@ -25,18 +25,25 @@ read as a missing step: "shouldnt it be sign in after the get started??", 2026-1
    install works without an account, a quiet **Continue without an account** sits in the top corner; whoever takes it
    gets the later in-chat ask (`SignInPill`, `CloudSignInLine`). `DUSK_REQUIRE_ACCOUNT=1` shows no way past it. A replay
    of the welcome from Settings never asks (`accountDue` in `funnel.ts`).
-3. **Connect your AI** (`AiStep.tsx`), a connections screen (2026-11-26, the owner: "why not just ask to connect
-   instead"): the same grid as the Connect an AI dialog (ChatGPT, Claude, Grok, Antigravity, Cursor, GitHub Copilot,
-   OpenRouter, Local model, More providers or use an API key). Every AI already signed in on this computer is connected
-   the moment the step opens, with no tap: it is marked as the person's own on this computer's server
-   (`PATCH /api/instances/:id { chosen: true }`, `autoConnects`), nothing is sent anywhere new, and one whose test
-   message went unanswered is left out and says why. Those cards lead the grid with a soft green fill (`foundFirst`).
-   Any other card connects in place with one tap. **Continue** is ready as soon as anything is connected; with nothing
-   connected it goes on with the free model and a quiet line says "Your bots use the free model until you connect
-   one." While the free model downloads Continue waits ("The free model is getting ready"); with no free model coming,
-   **Set up later** goes on. Nothing is pinned: the server's ranking makes the best connected AI the default, and moves
-   Dusk off the free model once a connected AI is ready (`leavesFreeBackup`), so the first chat runs on it. A second
-   layout (found AIs as a row on top, then Connect more) is kept on the branch `exp/ai-step-split`.
+3. **Connect your AI** (`AiStep.tsx`), shown only when nothing of the person's own is signed in on this computer. When an
+   AI of their own is (Claude, ChatGPT or any other, the best one by the shared ranking, unless its test message went
+   unanswered), the run goes from the sign-in straight to Dusk's chat: the AIs found here are marked as the person's own
+   on this computer's server in the background (`PATCH /api/instances/:id { chosen: true }`, `autoConnects`), and Dusk's
+   first chat runs on the best one where it would otherwise start on the free model (owner, 2026-11-26: "if
+   claude/chatgpt connected we just move forward normally after login"). Read while the hello and the sign-in show; a
+   run on its way to dusk cloud keeps the step, where the cloud is made meanwhile.
+
+   The step itself (the owner: "why not just ask to connect instead") always shows the grid's eight AIs, in the Connect
+   an AI dialog's order (ChatGPT, Claude, Grok, Antigravity, Cursor, GitHub Copilot, OpenRouter, Local model), then More
+   providers or use an API key. A fresh install lists all eight (the server's `DEFAULT_FLEET`), and each connects in
+   place with one tap, installing first where it needs to. A card the server doesn't list (switched off in Settings, or
+   an older saved setup without it) still shows: its tap brings a switched-off one back (`hidden: false`) and opens its
+   connect, and opens every other provider otherwise. (The 5-card shots of the first version came from the fake-engine
+   verification server, which only lists the engines it fakes; a real install showed all eight.) Every AI already signed
+   in here is connected the moment the step opens and leads the grid with a soft green fill (`foundFirst`). **Continue**
+   is ready as soon as anything is connected; with nothing connected it goes on with the free model and a quiet line
+   says "Your bots use the free model until you connect one." While the free model downloads Continue waits; with no
+   free model coming, **Set up later** goes on.
 
 Then the chat: Dusk says one message and shows one question card, "What should we start with?", with three first jobs
 fitted to what is connected (`introAsks`: Summarize my inbox, What's on my calendar today?, Help me plan my week, Watch

@@ -67,3 +67,18 @@ it("on the first run, the AIs already connected when the grid opens lead it, tin
   await act(async () => { root.render(createElement(AiCards, { tested: null })); });
   expect(order(), "everywhere else the grid keeps its fixed order").toEqual(["chatgpt", "claude", "openrouter"]);
 });
+
+it("on the first run, all eight cards show; one the server doesn't list is brought back by its tap", async () => {
+  f.instances = [openrouter];
+  const onMissing = vi.fn(async () => {});
+  await act(async () => { root.render(createElement(AiCards, { tested: null, onMissing })); });
+  const cards = [...document.body.querySelectorAll<HTMLElement>("[data-funnel-ai]")];
+  expect(cards.map((tile) => tile.dataset.funnelAi)).toEqual(["chatgpt", "claude", "grok", "antigravity", "cursor", "copilot", "openrouter", "local"]);
+  expect(cards.filter((tile) => tile.hasAttribute("data-missing")).length).toBe(7);
+  await act(async () => { document.body.querySelector<HTMLButtonElement>("[data-funnel-ai=claude]")!.click(); });
+  expect(onMissing).toHaveBeenCalledExactlyOnceWith("claude");
+  await act(async () => root.unmount());
+  root = createRoot(host);
+  await act(async () => { root.render(createElement(AiCards, { tested: null })); });
+  expect(document.body.querySelectorAll("[data-funnel-ai]").length, "elsewhere the grid shows what the server lists").toBe(1);
+});

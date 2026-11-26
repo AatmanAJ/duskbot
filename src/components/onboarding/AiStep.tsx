@@ -9,18 +9,11 @@ import { activeLocale, t } from "@/lib/i18n";
 import { api, useStore, type InstanceInfo } from "@/state/store";
 import { AiCards } from "./AiCards";
 import { ConnectAiDialog } from "./ConnectAi";
-import { aiTileOf, aiTiles, freeModel, type AiTileId } from "./funnel";
+import { aiTileOf, aiTiles, autoConnects, freeModel, tileMatches, type AiTileId } from "./funnel";
 import { PRIMARY, QUIET, StepArt, StepFrame } from "./FunnelSteps";
 import type { WelcomeAiNow } from "./welcome-ai";
 
 export type AiChoice = "connected" | "free" | "later";
-
-/** The AIs found on this computer that the step connects by itself: signed in and ready, never one whose test message
- * went unanswered (that one shows why, with Check again). */
-export function autoConnects<Instance extends { instanceId: string; found?: true }>(instances: readonly Instance[], ready: (instance: Instance) => boolean,
-  failed: readonly string[] = []): Instance[] {
-  return instances.filter((instance) => instance.found === true && ready(instance) && !failed.includes(instance.instanceId));
-}
 
 /** Marks each AI found here as the person's own, once per step, then reads the list again: from then on it counts as
  * connected everywhere (the new-bot default, Dusk's first chat), exactly as if its card had been tapped. */
@@ -38,12 +31,23 @@ function useAutoConnect(instances: readonly InstanceInfo[], failed: readonly str
   }, [key, refreshInstances]);
 }
 
+/** One of the eight cards whose AI this server doesn't list: one switched off in Settings comes back (and its card then
+ * connects as usual, installing first where it needs to); anything else opens every other provider, where it can be added. */
+async function bringBack(id: AiTileId, refresh: (() => Promise<unknown>) | undefined, openMore: () => void): Promise<void> {
+  const hidden = await api<{ instances?: Array<{ instanceId: string; driverKind: string }> }>("/api/instances/hidden", { signal: AbortSignal.timeout(10_000) })
+    .catch(() => ({ instances: [] as Array<{ instanceId: string; driverKind: string }> }));
+  const entry = hidden.instances?.find((one) => tileMatches(id, one));
+  if (!entry) { openMore(); throw new Error("not listed here"); }
+  await api(`/api/instances/${encodeURIComponent(entry.instanceId)}`, { method: "PATCH", body: JSON.stringify({ hidden: false }), signal: AbortSignal.timeout(10_000) });
+  await Promise.resolve(refresh?.()).catch(() => {});
+}
+
 /** `onNext` says how the person went on, for the funnel's numbers. `cloud`: the person's dusk cloud is being made
  * meanwhile, which the line says, with the AIs whose sign-in goes along. */
 export function AiStep({ tested, cloud = false, computerAis = [], onNext }: { tested: WelcomeAiNow | null; cloud?: boolean;
   /** on a cloud the desktop app set up: the AIs signed in on that computer, by instance id */
   computerAis?: readonly string[]; onNext: (how: AiChoice) => void }) {
-  const { state } = useStore();
+  const { state, refreshInstances } = useStore();
   const [more, setMore] = useState(false);
   const failed = tested?.state === "failed" ? [tested.instance.instanceId] : [];
   useAutoConnect(state.instances, failed);
@@ -73,7 +77,8 @@ export function AiStep({ tested, cloud = false, computerAis = [], onNext }: { te
         )}
         {!goes && !free && <button type="button" data-funnel-later="" onClick={() => onNext("later")} className={QUIET}>{t("funnel.ai.later")}</button>}
       </>}>
-      <AiCards tested={tested} onMore={() => setMore(true)} suggested={used} staysHere={staysHere} foundFirst />
+      <AiCards tested={tested} onMore={() => setMore(true)} suggested={used} staysHere={staysHere} foundFirst
+        onMissing={(id) => bringBack(id, refreshInstances, () => setMore(true))} />
 
       {tested?.state === "failed" && (
         <div role="alert" data-ai-silent="" className="mt-5 flex flex-col items-center gap-2 text-[13px] leading-5 text-ink">

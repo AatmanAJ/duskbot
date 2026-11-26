@@ -23,6 +23,9 @@ export interface FunnelFacts {
   cloudBring?: boolean;
   /** a cloud the desktop app set up: that computer's first run already had the one AI step, and its sign-ins came along */
   aiAsked?: boolean;
+  /** an AI of the person's own is signed in on this computer: it is connected in the background and the run goes from the
+   * sign-in straight to the chat (dusk cloud's run keeps its AI step, where the cloud is made meanwhile) */
+  aiFound?: boolean;
 }
 
 /** Whether the first run asks to sign in, right after Get started: where this window can sign in and the person isn't
@@ -43,7 +46,7 @@ export function funnelSteps(facts: FunnelFacts): FunnelStep[] {
     if (step === "checkout") return cloud && !facts.paid;
     if (step === "making") return cloud;
     if (step === "bring") return Boolean(facts.cloudBring);
-    if (step === "ai") return !facts.aiAsked;
+    if (step === "ai") return !facts.aiAsked && !(facts.aiFound && !cloud);
     return true;
   });
 }
@@ -102,6 +105,15 @@ const TILES: ReadonlyArray<{ id: AiTileId; label: string; ids: readonly string[]
   { id: "local", label: "Local model", ids: ["openaiCompat"], drivers: [] },
 ];
 
+/** The grid's eight AIs, in order, by name: the first run always shows all eight, whatever the server lists. */
+export const AI_TILES: ReadonlyArray<{ id: AiTileId; label: string }> = TILES.map(({ id, label }) => ({ id, label }));
+
+/** Whether an instance is this card's AI (by its id, else its driver). */
+export function tileMatches(id: AiTileId, instance: { instanceId: string; driverKind: string }): boolean {
+  const tile = TILES.find((one) => one.id === id);
+  return Boolean(tile && (tile.ids.includes(instance.instanceId) || tile.drivers.includes(instance.driverKind)));
+}
+
 export interface AiTile<Instance> {
   id: AiTileId;
   label: string;
@@ -138,13 +150,11 @@ export function aiName(instance: { instanceId: string; driverKind: string; displ
   return tile && tile.id !== "local" ? tile.label : instance.displayName;
 }
 
-/** The AIs the person just picked on the AI step that the server only found on this computer: Use (own) picks the one it
- * named, Continue (connected) every ready card it showed. Each is recorded as chosen, or the first send finds no AI. */
-export function foundPicks<Instance extends AiTileInstance>(how: string, named: Instance | undefined, instances: readonly Instance[],
-  ready: (instance: Instance) => boolean): Instance[] {
-  if (how === "own") return named?.found ? [named] : [];
-  if (how !== "connected") return [];
-  return aiTiles(instances, ready).map((tile) => tile.instance).filter((instance) => instance.found === true && ready(instance));
+/** The AIs found on this computer that the first run connects by itself (marked as the person's own on this computer's
+ * server): signed in and ready, never one whose test message went unanswered (the AI step shows that one, with why). */
+export function autoConnects<Instance extends { instanceId: string; found?: true }>(instances: readonly Instance[], ready: (instance: Instance) => boolean,
+  failed: readonly string[] = []): Instance[] {
+  return instances.filter((instance) => instance.found === true && ready(instance) && !failed.includes(instance.instanceId));
 }
 
 /** The ready free model, if there is one: a way to start now and connect a better AI later. */
