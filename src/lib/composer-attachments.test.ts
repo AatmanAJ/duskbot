@@ -565,7 +565,11 @@ describe("private document intake", () => {
   it("recognises supported documents by declared mime or filename", () => {
     expect(documentMime({ name: "notes.bin", type: "text/markdown; charset=utf-8" })).toBe("text/markdown");
     expect(documentMime({ name: "REPORT.PDF", type: "" })).toBe("application/pdf");
-    expect(documentMime({ name: "archive.zip", type: "application/zip" })).toBeNull();
+    expect(documentMime({ name: "archive.zip", type: "application/zip" })).toBe("application/zip");
+    expect(documentMime({ name: "archive.zip", type: "application/x-zip-compressed" })).toBe("application/zip");
+    expect(documentMime({ name: "voice.ZIP", type: "" })).toBe("application/zip");
+    expect(documentMime({ name: "archive.rar", type: "application/vnd.rar" })).toBeNull();
+    expect(pendingFileAttachment({ name: "voice.zip", type: "application/x-zip-compressed", size: 2048 })).toMatchObject({ kind: "file", name: "voice.zip", uploading: true });
   });
 
   it("uses the server path and safe name returned by the private store", async () => {

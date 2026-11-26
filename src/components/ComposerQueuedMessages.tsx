@@ -1,4 +1,4 @@
-import { CornerDownRight, Pencil, Trash2 } from "../icons";
+import { Clock, CornerDownRight, Pencil, Trash2 } from "../icons";
 
 import type { SteerQueueReason } from "../../shared/wire";
 import { t } from "@/lib/i18n";
@@ -108,7 +108,7 @@ export function QueuedComposerMessages({
         {items.map((item, index) => {
           const label = queuedMessageLabel(item.text);
           return <li key={item.queueId} className="flex min-h-10 min-w-0 items-center gap-2 px-2.5 py-1.5">
-            <CornerDownRight
+            <Clock
               size={14}
               strokeWidth={1.8}
               className="shrink-0 text-ink-secondary"

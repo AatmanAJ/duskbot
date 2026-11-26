@@ -35,7 +35,8 @@ const { Composer } = await import("./Composer");
 const { ChatView } = await import("./ChatView");
 const { CloudIntent } = await import("./CloudIntent");
 const { setSendKey } = await import("@/lib/send-key");
-const { setFollowUpDefault } = await import("@/lib/follow-up");
+const { FOLLOW_UP_KEY, setFollowUpDefault } = await import("@/lib/follow-up");
+const { HOLD_ALTERNATE_MS } = await import("./ComposerSendButton");
 const { setPendingIntent } = await import("@/lib/cloud-intent");
 const { api } = await import("@/state/store");
 
@@ -229,6 +230,57 @@ describe("a message sent while a one-to-one bot works", () => {
     type(textarea(), "ctrl-clicked");
     flushSync(() => sendButton().dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true })));
     expect(sends().slice(-2).map((action) => [action.text, action.followUp])).toEqual([["clicked", "steer"], ["ctrl-clicked", "queue"]]);
+  });
+
+  it("queues on Enter and steers with Ctrl/⌘ until the person picks otherwise, and says so beside Send", () => {
+    fixture.instances = [steers];
+    render(createElement(Composer, { bot: working }));
+    globalThis.localStorage?.removeItem(FOLLOW_UP_KEY);
+    flushSync(() => window.dispatchEvent(new StorageEvent("storage", { key: FOLLOW_UP_KEY })));
+    const hint = () => host.querySelector("[data-composer-follow-up-hint]");
+    expect(hint()).toBeNull();
+    type(textarea(), "later");
+    expect(hint()?.querySelector("[aria-hidden]")?.textContent).toMatch(/^↵ Queue · (⌘|Ctrl )↵ Steer$/);
+    expect(textarea().getAttribute("aria-describedby")).toBe(hint()?.querySelector(".sr-only")?.id);
+    expect(sendButton().dataset.composerSend).toBe("waits");
+    press(textarea());
+    type(textarea(), "now");
+    press(textarea(), { ctrlKey: true });
+    expect(followUps()).toEqual(["queue", "steer"]);
+  });
+
+  it("shows no Enter hint for an idle bot or a room", () => {
+    fixture.instances = [steers];
+    render(createElement(Composer, { bot }));
+    type(textarea(), "idle");
+    expect(host.querySelector("[data-composer-follow-up-hint]")).toBeNull();
+    render(createElement(Composer, { group: { ...room, busyBotId: "bot" }, members: [bot] }));
+    type(textarea(), "room");
+    expect(host.querySelector("[data-composer-follow-up-hint]")).toBeNull();
+  });
+
+  it("on a phone a held Send steers and a tap queues, and the empty field says so", () => {
+    fixture.instances = [steers];
+    setFollowUpDefault("queue");
+    document.documentElement.dataset.mobileApp = "ios";
+    vi.useFakeTimers();
+    try {
+      render(createElement(Composer, { bot: working }));
+      expect(textarea().placeholder).toBe("Waits for Pepper. Hold send to steer");
+      expect(host.querySelector("[data-composer-follow-up-hint]")).toBeNull();
+      type(textarea(), "tapped");
+      flushSync(() => sendButton().click());
+      type(textarea(), "held");
+      const button = sendButton();
+      flushSync(() => button.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "touch" })));
+      flushSync(() => vi.advanceTimersByTime(HOLD_ALTERNATE_MS));
+      flushSync(() => button.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "touch" })));
+      flushSync(() => button.click());
+      expect(sends().map((action) => [action.text, action.followUp])).toEqual([["tapped", "queue"], ["held", "steer"]]);
+    } finally {
+      vi.useRealTimers();
+      delete document.documentElement.dataset.mobileApp;
+    }
   });
 
   it("follows the setting: Enter queues and Ctrl/⌘ steers once the person picks queue", () => {

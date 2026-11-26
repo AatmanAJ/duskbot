@@ -172,9 +172,12 @@ const DOCUMENT_MIMES: Readonly<Record<string, string>> = {
   odt: "application/vnd.oasis.opendocument.text",
   ods: "application/vnd.oasis.opendocument.spreadsheet",
   odp: "application/vnd.oasis.opendocument.presentation",
+  zip: "application/zip",
 };
 
 const ACCEPTED_DOCUMENT_MIMES = new Set(Object.values(DOCUMENT_MIMES));
+/** Windows names a zip this; the server stores it as application/zip. */
+const ZIP_ALIASES = new Set(["application/x-zip-compressed", "application/x-zip"]);
 
 const AUDIO_MIMES_BY_EXTENSION: Readonly<Record<string, string>> = {
   opus: "audio/opus",
@@ -194,6 +197,7 @@ const ACCEPTED_AUDIO_MIMES = new Set([
 export function documentMime(file: Pick<File, "name" | "type">): string | null {
   const declared = file.type.split(";", 1)[0]!.trim().toLowerCase();
   if (ACCEPTED_DOCUMENT_MIMES.has(declared)) return declared;
+  if (ZIP_ALIASES.has(declared)) return "application/zip";
   const extension = file.name.split(".").at(-1)?.toLowerCase() ?? "";
   return DOCUMENT_MIMES[extension] ?? null;
 }
@@ -400,10 +404,12 @@ export function pasteAttachment(text: string): PasteAttachment {
 /** Under the server's 1,000,000-byte JSON body limit for a sent message, counted as the paste is encoded in it. */
 export const PASTE_INLINE_MAX_BYTES = 900_000;
 
+export const PASTED_TEXT_FILE = "pasted-text.txt";
+
 /** The text file a paste too large to send inline is uploaded as; null for a paste that stays inline. */
 export function pastedTextFile(text: string): File | null {
   const inline = byteLength(text) <= PASTE_INLINE_MAX_BYTES && byteLength(JSON.stringify(text)) <= PASTE_INLINE_MAX_BYTES;
-  return inline ? null : new File([text], "pasted-text.txt", { type: "text/plain" });
+  return inline ? null : new File([text], PASTED_TEXT_FILE, { type: "text/plain" });
 }
 
 export function appendPastedText(text: string, pasted: string): string {
