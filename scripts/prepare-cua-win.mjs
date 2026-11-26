@@ -79,13 +79,12 @@ async function officialBinary() {
   if (cross) {
     await run("unzip", ["-q", "-o", archive, "-d", cache], { timeout: 60_000 });
   } else {
-    await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-      "Expand-Archive -LiteralPath $env:DUSK_CUA_ARCHIVE -DestinationPath $env:DUSK_CUA_EXTRACT"], {
-      env: { ...process.env, DUSK_CUA_ARCHIVE: archive, DUSK_CUA_EXTRACT: cache },
-      timeout: 60_000,
-      windowsHide: true,
-    });
+    // Windows' own bsdtar reads zips. Expand-Archive under powershell.exe started from a pwsh step inherits pwsh's
+    // PSModulePath, cannot load its module, and still exits 0 with nothing extracted.
+    const tar = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
+    await run(tar, ["-xf", archive, "-C", cache], { timeout: 60_000, windowsHide: true });
   }
+  if (!existsSync(cachedBinary)) throw new Error(`${release.file} unpacked without cua-driver.exe in ${cache}`);
   if ((await binaryVersion(cachedBinary)) !== expectedVersion) {
     throw new Error(`downloaded CUA Driver does not report version ${expectedVersion}`);
   }
