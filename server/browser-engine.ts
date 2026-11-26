@@ -15,6 +15,10 @@ import { browserRuntimeEnv, ownsBrowserViewport } from "./browser-runtime.ts";
 import { spawnBotWork } from "./oom-score.ts";
 import { SIGN_IN_PROMPT } from "./system-prompt.ts";
 import { gateChromeSettings } from "./browser/egress/gate.ts";
+import { missingLibraries } from "./browser/chrome/host-setup.ts";
+import { installChromeForTesting } from "./browser/chrome/install.ts";
+import { commandOnPath, hostLibraryInstall, installChromeLibraries, type LibraryInstallDeps } from "./browser/chrome/linux-libraries.ts";
+import { chromeHost, legacyBrowserFound, resolveChromePlan } from "./browser/chrome/resolve.ts";
 import {
   AGENT_BROWSER_VERSION,
   agentBrowserReleaseUrl,
@@ -481,14 +485,21 @@ export async function installAgentBrowserBinary(options: {
   return destination;
 }
 
+type EnsureChromeOptions = {
+  withDeps?: boolean; dataDir?: string; env?: NodeJS.ProcessEnv; platform?: NodeJS.Platform; arch?: string; log?: (line: string) => void;
+  /** Tests: the library install, the Chrome download and the missing-library check. */
+  libraries?: LibraryInstallDeps; download?: typeof installChromeForTesting; missing?: typeof missingLibraries;
+};
+
 /** `agent-browser install` fetches Chrome for Testing when no Chrome, Chromium or Brave is found; `--with-deps` adds Linux
  * libraries and needs a package manager and privileges. */
-export function ensureChrome(binaryPath: string, options: { withDeps?: boolean; env?: NodeJS.ProcessEnv; platform?: NodeJS.Platform; arch?: string; log?: (line: string) => void } = {}): Promise<void> {
+export function ensureChrome(binaryPath: string, options: EnsureChromeOptions = {}): Promise<void> {
   const bundle = packagedBrowser(options);
   if (!options.withDeps && bundle && resolve(binaryPath) === bundle.engine && completePackage(bundle, existsSync)) {
     options.log?.("agent-browser: the bundled browser is ready; no download needed");
     return Promise.resolve();
   }
+  if ((options.platform ?? process.platform) === "linux" && (options.arch ?? process.arch) === "arm64") return ensureLinuxArmChrome(binaryPath, options);
   const args = ["install", ...(options.withDeps ? ["--with-deps"] : [])];
   return new Promise((done, fail) => {
     const child = spawnBotWork(() => spawn(binaryPath, args, { env: options.env ?? process.env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true }));
@@ -522,6 +533,39 @@ export function ensureChrome(binaryPath: string, options: { withDeps?: boolean; 
       }
     });
   });
+}
+
+/** agent-browser 0.37's `install` exits at once on Linux ARM64 ("Chrome for Testing does not provide Linux ARM64 builds",
+ * no longer true), so dusk bot installs the libraries and its pinned Chrome for Testing itself, where the launcher looks. */
+async function ensureLinuxArmChrome(binaryPath: string, options: EnsureChromeOptions): Promise<void> {
+  const log = options.log ?? (() => {});
+  const dataDir = options.dataDir ?? DATA_DIR;
+  const env = options.env ?? process.env;
+  if (options.withDeps) await installChromeLibraries(options.libraries ?? hostLibraryInstall(log, env));
+  const host = chromeHost({ dataDir, env, platform: "linux", arch: "arm64" });
+  const plan = resolveChromePlan(host, { managed: resolve(binaryPath) === pinnedBinaryPath(dataDir, "linux", "arm64") });
+  if (plan.kind === "legacy") {
+    if (!legacyBrowserFound(host)) throw new Error(`there is no Chrome or Chromium here for agent-browser to start (${plan.reason})`);
+    log("agent-browser: it starts the Chrome or Chromium already on this computer");
+    return;
+  }
+  let executable: string;
+  if (plan.kind === "download") {
+    // before 187 MB arrive, not after
+    if (!(options.libraries?.has ?? ((command: string) => commandOnPath(command, env)))("unzip")) throw new Error("unzip is not installed on this computer, and the Chrome download needs it to unpack");
+    log(`downloading Chrome for Testing ${plan.pin.version} for Linux ARM64 (${Math.round(plan.pin.bytes / 1_048_576)} MB, digest pinned)`);
+    let shown = 0;
+    executable = await (options.download ?? installChromeForTesting)({ dataDir, pin: plan.pin, onProgress: ({ received, total }) => {
+      if (received - shown < total / 4 && received !== total) return;
+      shown = received;
+      log(`  ${Math.round(received / 1_048_576)} of ${Math.round(total / 1_048_576)} MB`);
+    } });
+  } else {
+    executable = plan.chrome.path;
+  }
+  const missing = await (options.missing ?? missingLibraries)(executable, env);
+  if (missing.length) throw new Error(`Chrome is here but this computer is missing libraries it needs (${missing.slice(0, 4).join(", ")}${missing.length > 4 ? ", …" : ""})`);
+  log(`Chrome is ready: ${executable}`);
 }
 
 /** agent-browser's key for saved session state at rest; made once, mode 0600. */

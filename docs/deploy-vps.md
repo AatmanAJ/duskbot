@@ -154,7 +154,15 @@ duskbot browser install
 ```
 
 The administrator's browser download is in a different home; it does not install
-the service account's browser. Both commands must finish successfully.
+the service account's browser. Both commands must finish successfully. If
+`duskbot` is installed in the service account's home (`~/.local/bin`), `sudo`
+cannot find it: run the exact command `duskbot browser install` prints, which
+names node and the CLI by path.
+
+On Linux ARM64, agent-browser's own installer fetches no Chrome, so dusk bot
+downloads its pinned Chrome for Testing for ARM64 into the data directory
+(`~/.duskbot/tools/chrome`) and `--with-deps` installs the libraries and `unzip`
+itself.
 
 On Ubuntu 24.04, AppArmor may also require [administrator sandbox setup](#ubuntu-2404-browser-sandbox).
 The one-click installer downloads the browser; it does not grant these OS permissions.
@@ -364,6 +372,11 @@ copy. Find the service user's downloaded executable:
 ```sh
 find /home/maus/.agent-browser/browsers -type f -name chrome -executable
 ```
+
+On Linux ARM64 it is `/home/maus/.duskbot/tools/chrome/VERSION/linux-arm64/chrome-linux-arm64/chrome`
+instead: copy its `chrome-linux-arm64` directory to `/opt/duskbot-browser/chrome-VERSION`
+(`sudo cp -R /home/maus/.duskbot/tools/chrome/VERSION/linux-arm64/chrome-linux-arm64 /opt/duskbot-browser/chrome-VERSION`)
+and follow the rest unchanged.
 
 Use its actual `chrome-VERSION` directory in every path below; `VERSION` is a
 placeholder, not a fixed Chrome release. Copy the whole directory, including its

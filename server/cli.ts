@@ -538,13 +538,13 @@ export async function runLogout(options: CliOptions, io: CliIo = defaultIo()): P
 }
 
 export async function runBrowser(options: CliOptions, io: CliIo = defaultIo()): Promise<number> {
-  if (options.browserAction === "setup") return (await import("./browser/chrome/host-setup.ts")).setUpThisHost(() => runBrowser({ ...options, browserAction: "install", withDeps: true }, io), io);
   const { browserEngineStatus, describeBrowserEngine, ensureChrome, installAgentBrowserBinary, resolveAgentBrowserBinary } = await import("./browser-engine.ts");
-  const status = browserEngineStatus({ dataDir: options.dataDir });
+  const { setUpThisHost, sudoCommand } = await import("./browser/chrome/host-setup.ts"), status = browserEngineStatus({ dataDir: options.dataDir });
+  if (options.browserAction === "setup") return setUpThisHost(() => runBrowser({ ...options, browserAction: "install", withDeps: true }, io), { ...io, setupCommand: sudoCommand("browser setup") });
   if (options.browserAction === "status") {
-    io.log(describeBrowserEngine(status, status.kind === "ready" ? new (await import("./browser/chrome/launcher.ts")).ChromeLauncher({ dataDir: options.dataDir }).describe() : undefined));
-    if (status.kind !== "ready" && status.installable) io.log("install it with:  duskbot browser install");
-    return status.kind === "ready" ? 0 : 1;
+    const launcher = status.kind === "ready" ? new (await import("./browser/chrome/launcher.ts")).ChromeLauncher({ dataDir: options.dataDir }) : null, noBrowser = launcher?.hostBrowserMissing() === true;
+    io.log(describeBrowserEngine(status, launcher?.describe()) + ((status.kind !== "ready" && status.installable) || noBrowser ? `\n${noBrowser ? "there is no Chrome or Chromium on this computer for the engine to start; " : ""}install it with:  duskbot browser install` : ""));
+    return status.kind === "ready" && !noBrowser ? 0 : 1;
   }
   let binary = resolveAgentBrowserBinary({ dataDir: options.dataDir });
   if (binary) {
@@ -563,10 +563,10 @@ export async function runBrowser(options: CliOptions, io: CliIo = defaultIo()): 
     io.log(`installed ${binary}`);
   }
   try {
-    await ensureChrome(binary, { withDeps: options.withDeps === true, log: io.log });
+    await ensureChrome(binary, { withDeps: options.withDeps === true, dataDir: options.dataDir, log: io.log });
   } catch (error) {
     io.error(`Chrome is not ready: ${message(error)}`);
-    if (process.platform === "linux" && !options.withDeps) io.error("on Linux, install Chrome's system libraries with `sudo duskbot browser install --with-deps`, then retry `duskbot browser install` as the user running serve");
+    if (process.platform === "linux" && !options.withDeps) io.error(`on Linux, install Chrome's system libraries with \`${sudoCommand("browser install --with-deps")}\`, then retry \`duskbot browser install\` as the user running serve`);
     return 1;
   }
   io.log("browser installed for this user and data directory; run serve as the same user, then enable it under Settings → Computers and per bot");

@@ -85,7 +85,8 @@ service keep the server running across reboots: writes a systemd unit
         prints the commands that install it. Install the private
         package permanently first (see the end of this help).
 browser install: the bots' browser engine (agent-browser, pinned) into the
-        data dir, and Chrome for Testing into the user's browser cache.
+        data dir, and Chrome for Testing into the user's browser cache
+        (Linux ARM64: dusk bot's pinned download, into the data dir).
         --with-deps also installs
         the Linux libraries Chrome needs (run as root once). Then run
         browser install as the user running serve, from that user's home.

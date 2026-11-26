@@ -2478,11 +2478,11 @@ function autoInstallBrowserEngine(): void {
   console.log("browser engine: not installed here; installing it for the bots' built-in browser");
   startBrowserEngineInstall(browserInstallDeps);
 }
-export function browserEngineSummary(): { kind: "engine" | "unavailable"; reason?: string; installable?: boolean; version?: string; chrome?: string; installing?: boolean; installError?: string; myChrome: boolean; serverSites?: boolean; engine: "agent-browser" | "chrome" } {
+export function browserEngineSummary(): { kind: "engine" | "unavailable"; reason?: string; installable?: boolean; version?: string; chrome?: string; noBrowser?: boolean; installing?: boolean; installError?: string; myChrome: boolean; serverSites?: boolean; engine: "agent-browser" | "chrome" } {
   const status = browserEngineStatus();
   const progress = { myChrome: myChromeAvailable(), ...(browserEngineInstall || browserPart.downloading() ? { installing: true } : {}), ...(browserEngineInstallError ? { installError: browserEngineInstallError } : {}) };
   return engineSummary(status.kind === "ready"
-    ? { kind: "engine" as const, version: status.version, chrome: chromeLauncher.describe(), ...progress }
+    ? { kind: "engine" as const, version: status.version, chrome: chromeLauncher.describe(), ...(chromeLauncher.hostBrowserMissing() ? { noBrowser: true } : {}), ...progress }
     : { kind: "unavailable" as const, reason: status.reason, installable: status.installable, ...progress });
 }
 
