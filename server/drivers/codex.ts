@@ -43,7 +43,7 @@ import type {
   TextGenerationOptions,
 } from "../contracts.ts";
 import { newEventId, newId } from "../contracts.ts";
-import { decodeCodexSelection, OFFICIAL_CODEX_PROVIDER, readCodexModelCatalog, STATIC_CODEX_MODELS } from "./codex-catalog.ts";
+import { codexUsableModel, decodeCodexSelection, OFFICIAL_CODEX_PROVIDER, readCodexModelCatalog, STATIC_CODEX_MODELS } from "./codex-catalog.ts";
 import { codexLocalProviderArgs } from "./local-inject.ts";
 import { codexBackgroundRoute, runCodexBackgroundRoute, runCodexOneShot } from "./codex-background-text.ts";
 import { augmentedPath } from "../env-path.ts";
@@ -528,8 +528,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       let stopRequested = false;
       let promptSubmitted = false;
       let recoveredMissingSession = false;
-      let loginRaceRetried = false;
-      let refusedModelRetried = false;
+      let loginRaceRetried = false, refusedModelRetried = false;
       let warmRetried = false;
       const stopSignal = new AbortController();
       const { threadId } = turn;
@@ -546,11 +545,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       const chatgptTurn = ownLogin &&
         decodeCodexSelection(turn.model || models.default).modelProvider === OFFICIAL_CODEX_PROVIDER;
       const route: CodexRoute = plan ? "plan" : chatgptTurn ? "own" : "other";
-      if (route === "own" && turn.model && currentOwnRefused().has(turn.model)) {
-        const official = (id: string) => decodeCodexSelection(id).modelProvider === OFFICIAL_CODEX_PROVIDER;
-        const usable = official(models.default) ? models.default : models.options.find(option => official(option.id))?.id;
-        if (usable) turn = { ...turn, model: usable };
-      }
+      if (route === "own" && turn.model && currentOwnRefused().has(turn.model)) turn = { ...turn, model: codexUsableModel(models, ownRefused) ?? turn.model };
       const hideRefusedModel = (raw: string) => hideAccountRefusedModel(turn.model, raw, route);
       const signedOut = chatgptTurn && await loginCheck.check(childEnv()) === "missing";
       assertPlanCurrent();
@@ -719,9 +714,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       const state = {
         settled: false,
         lastError: "",
-        lastErrorSetup: false,
-        // OpenAI refused Codex's own ChatGPT sign-in: the turn ends as a sign-out, which no other model of it fixes
-        signInRefused: false,
+        lastErrorSetup: false, signInRefused: false,
         retryError: "",
         authRecovery: false,
         lastText: "",
@@ -1076,29 +1069,18 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         void relaunch("auth", raw, "auth_required").catch(() => {});
         return true;
       };
-      // ChatGPT refused the picked model for this account (a CLI older than the model, or a plan without it): before
-      // anything showed, the turn runs once more on Codex's default model, with no line, and the model leaves the list.
-      const retryRefusedModel = (raw: string): boolean => {
-        if (route !== "own" || refusedModelRetried || state.streamed || attempt >= RETRY_MAX_ATTEMPTS - 1 || !codexAccountRefusedModel(raw, route)) return false;
-        const was = turn.model;
-        hideRefusedModel(raw);
-        const official = (id: string) => decodeCodexSelection(id).modelProvider === OFFICIAL_CODEX_PROVIDER;
-        const usable = [models.default, ...models.options.map(option => option.id)].find(id => id && official(id) && id !== was && !ownRefused.has(id));
-        if (!usable) return false;
-        refusedModelRetried = true;
-        turn = { ...turn, model: usable };
-        void relaunch("model", codexUserError(raw, route), "rpc_error", undefined, true).catch(() => {});
-        return true;
-      };
       const turnError = (error: { message?: unknown; codexErrorInfo?: unknown }) => {
         const raw = String(error.message);
-        // what the attempt being relaunched still says is not this turn's outcome
-        if (abandoned && refusedModelRetried) return;
         const refused = chatgptTurn && loginMark() !== null && (codexSignInRefused(error) ||
           (state.authRecovery && !/\b403\b|forbidden/i.test(raw) && /\b401\b|unauthorized/i.test(raw)));
-        if (retryLoginRace(raw, refused)) return;
-        if (!refused && retryRefusedModel(raw)) return;
+        if ((abandoned && refusedModelRetried) || retryLoginRace(raw, refused)) return; // a relaunched attempt's last words
+        // a refused sign-in is a sign-out; a model ChatGPT refused this account (a CLI older than it) runs once more, unseen, on the default
         if (refused) state.signInRefused = true;
+        else if (route === "own" && !refusedModelRetried && !state.streamed && attempt < RETRY_MAX_ATTEMPTS - 1 && codexAccountRefusedModel(raw, route)) {
+          hideRefusedModel(raw);
+          const usable = codexUsableModel(models, ownRefused);
+          if (usable) { refusedModelRetried = true; turn = { ...turn, model: usable }; return void relaunch("model", codexUserError(raw, route), "rpc_error", undefined, true).catch(() => {}); }
+        }
         if (refused) loginRefused(); else if (chatgptTurn && CODEX_MISSING_CREDENTIALS.test(raw)) loginCheck.forget();
         const message = refused ? codexSignInExpired(raw) : codexUserError(raw, route, error.codexErrorInfo);
         const setup = refused || classifyError({ text: raw }).reason === "auth";
@@ -1737,7 +1719,6 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     get models() {
       return models;
     },
-    // ChatGPT gates Codex's models by the CLI's version: one its own list leaves out is refused (gpt-6.2-sol on 0.160)
     ...(plan || config.managed ? {} : { modelCatalogKey: DRIVER_KIND, refusedModels: () => [...ownRefused], curatedAdditions: false }),
     quickModelsUsable: smallModelsUsable,
     refreshModels,

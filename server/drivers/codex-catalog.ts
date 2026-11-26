@@ -52,6 +52,12 @@ export function decodeCodexSelection(id: string | null | undefined): {
   return { model: id, modelProvider: MODEL_ID.test(id) ? OFFICIAL_CODEX_PROVIDER : null };
 }
 
+/** The official model a turn on a refused one carries on with: the list's default, else its first official row. */
+export function codexUsableModel(catalog: ModelCatalog, refused: ReadonlySet<string>): string | undefined {
+  return [catalog.default, ...catalog.options.map((option) => option.id)]
+    .find((id) => id && !refused.has(id) && decodeCodexSelection(id).modelProvider === OFFICIAL_CODEX_PROVIDER);
+}
+
 interface CodexAppServerModel {
   id?: unknown;
   displayName?: unknown;

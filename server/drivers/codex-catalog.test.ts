@@ -6,12 +6,22 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { CodexDriver } from "./codex.ts";
 import {
+  codexUsableModel,
   decodeCodexSelection,
   encodeCodexSelection,
   OFFICIAL_CODEX_PROVIDER,
   readCodexModelCatalog,
   STATIC_CODEX_MODELS,
 } from "./codex-catalog.ts";
+
+describe("codexUsableModel", () => {
+  it("carries a refused model's turn on the list's default, else its first official row, never a local provider's", () => {
+    const list = { default: "gpt-6.1-terra", options: [{ id: "omlx::qwen", label: "qwen" }, { id: "gpt-6.1-terra", label: "T" }, { id: "gpt-6-astra", label: "A" }] };
+    expect(codexUsableModel(list, new Set(["gpt-6.2-sol"]))).toBe("gpt-6.1-terra");
+    expect(codexUsableModel(list, new Set(["gpt-6.1-terra"]))).toBe("gpt-6-astra");
+    expect(codexUsableModel(list, new Set(["gpt-6.1-terra", "gpt-6-astra"]))).toBeUndefined();
+  });
+});
 
 const scratchDirs: string[] = [];
 const FAKE_CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "testing", "fake-codex-app-server.ts");
