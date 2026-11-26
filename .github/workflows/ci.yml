@@ -678,7 +678,7 @@ jobs:
         # even when the host leg failed: they test different Chromes.
         if: ${{ !cancelled() && runner.os == 'Linux' }}
         run: |
-          docker build --target runtime -t dusk-runtime:s4 .
+          docker build -f deploy/docker/Dockerfile --target runtime -t dusk-runtime:s4 .
           mkdir -p node_modules/.vite && chmod a+w . node_modules/.vite
           docker run --rm --init --shm-size=512m --user maus -e CI=true \
             -e DUSK_CDP_CHROME=/opt/duskbot-browser/chrome -e DUSK_CDP_HOST=container -e DUSK_BROWSER_SANDBOX=0 \
