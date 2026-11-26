@@ -13,7 +13,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -115,6 +115,8 @@ export function releaseExtras(dir: string, version: string, apk?: { version: str
 
 /** packs the `duskbot` package (scripts/build-npm-package.mjs) into <dir>/duskbot-<version>.tgz and its stable copy */
 export function packCli(dir: string, version: string, run = (cmd: string, args: string[], cwd: string) => execFileSync(cmd, args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] })): string {
+  // npm pack runs in release/npm, so a relative --pack-destination would land under it (release.yml passes "release")
+  dir = resolve(dir);
   run(process.execPath, [join(ROOT, "scripts", "build-npm-package.mjs")], ROOT);
   const npmDir = join(ROOT, "release", "npm");
   const pkg = JSON.parse(readFileSync(join(npmDir, "package.json"), "utf8")) as { version: string };
