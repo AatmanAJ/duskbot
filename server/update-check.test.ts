@@ -43,7 +43,7 @@ describe("server update check", () => {
       tag_name: "v999.0.0", html_url: "https://github.com/DuskBotAI/duskbot/releases/tag/v999.0.0",
     })));
     vi.stubGlobal("fetch", fetchRelease);
-    const installs: InstallKind[] = ["managed", "docker", "podman", "npm", "git", "unknown"];
+    const installs: InstallKind[] = ["managed", "docker", "podman", "git", "unknown"];
     for (const install of installs) {
       const check = createUpdateChecker({ current: "0.1.141", install });
       expect(await check()).toEqual({ current: "0.1.141", install, available: false });
@@ -127,6 +127,23 @@ describe("desktop update check", () => {
     expect(await createUpdateChecker({ current: "0.1.141", install: "desktop", fetch: async () => new Response("", { status: 404 }) })()).toMatchObject({ available: false });
     resetDesktopUpdateCacheForTests();
     await expect(createUpdateChecker({ current: "0.1.141", install: "desktop", fetch: async () => new Response("", { status: 502 }) })()).rejects.toThrow("502");
+  });
+
+  it("tells an npm install the signed release and that duskbot update installs it", async () => {
+    const fetchManifest = vi.fn(async () => new Response(JSON.stringify(sign("0.2.33"))));
+    expect(await createUpdateChecker({ current: "0.2.31", install: "npm", fetch: fetchManifest, keys: [testKey] })()).toEqual({
+      current: "0.2.31", install: "npm", latest: "0.2.33", available: true,
+      releaseUrl: "https://github.com/DuskBotAI/duskbot/releases/tag/v0.2.33", command: "duskbot update", restart: true,
+    });
+    expect(fetchManifest).toHaveBeenCalledWith(DESKTOP_MANIFEST_URL, expect.objectContaining({ redirect: "error" }));
+    // a linked server installs it itself, with its own restart
+    expect(await createUpdateChecker({ current: "0.2.31", install: "npm", fetch: fetchManifest, keys: [testKey], linked: true })())
+      .toMatchObject({ available: true, command: "duskbot update", restart: false });
+    expect(await createUpdateChecker({ current: "0.2.33", install: "npm", fetch: fetchManifest, keys: [testKey] })())
+      .toEqual({ current: "0.2.33", install: "npm", latest: "0.2.33", available: false });
+    resetDesktopUpdateCacheForTests();
+    const forged = async () => new Response(JSON.stringify({ v: 1, version: "9.9.9", signature: sign("9.9.9").signature.replace("r1.rel-test.", "r1.rel-other.") }));
+    expect(await createUpdateChecker({ current: "0.2.31", install: "npm", fetch: forged, keys: [testKey] })()).toEqual({ current: "0.2.31", install: "npm", available: false });
   });
 
   it("compares plain versions only", () => {

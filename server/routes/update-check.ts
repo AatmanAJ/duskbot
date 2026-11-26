@@ -1,6 +1,7 @@
+import { existsSync } from "node:fs";
 import { serverVersion } from "../environment.ts";
 import { SERVER_ROOT } from "../proxy-paths.ts";
-import { createUpdateChecker, installKind, tracksOfficialLatest, type UpdateCheck } from "../update-check.ts";
+import { createUpdateChecker, installKind, LINKED_MARKER, tracksOfficialLatest, type UpdateCheck } from "../update-check.ts";
 import { createComposeUpdates, type ComposeUpdates } from "../compose-updates.ts";
 import { isProxied, type RequestAuth } from "../request-auth.ts";
 import { json, readBody } from "../harness/http.ts";
@@ -49,7 +50,8 @@ export function serverUpdatesFor(where: { desktopManaged: boolean; managed: bool
   eligible: () => boolean, busy: () => string[], maintenance: WorkspaceBackupMaintenance) {
   const image = process.env.DUSK_COMPOSE_IMAGE;
   const install = installKind({ ...where, serverRoot: SERVER_ROOT });
-  const check = createUpdateChecker({ current: serverVersion(), composeImage: image, releaseImage: process.env.DUSK_RELEASE_IMAGE, install });
+  const check = createUpdateChecker({ current: serverVersion(), composeImage: image, releaseImage: process.env.DUSK_RELEASE_IMAGE, install,
+    linked: existsSync(LINKED_MARKER) });
   const idle = () => busy().length === 0;
   const compose = install === "docker" && tracksOfficialLatest(image)
     ? createComposeUpdates({ check, eligible, idle, reserve: () => maintenance.reserveUpdate(idle) }) : undefined;

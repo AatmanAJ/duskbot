@@ -30,6 +30,8 @@ export const USAGE = `duskbot: your team of AI bots, ready in a few steps
                     [--public-url https://host]
   duskbot sessions [revoke ID]
   duskbot status
+  duskbot update [--check] [--yes] [--json]
+  duskbot version [--check] [--json]   (duskbot --version: the number only)
   duskbot vps status|doctor [--port N] [--data-dir DIR] [--json]
   duskbot vps logs [--service server|link|fence] [--lines 100] [--json]
   duskbot login [--email you@example.com]
@@ -51,6 +53,14 @@ serve   starts the server without prompts and prints a pairing link + QR code
 pair    mints a pairing code against a running server (--client: chat only)
 sessions lists paired devices; "sessions revoke ID" signs one out
 status  what the server says about itself
+update  whether a newer dusk bot is out, what changed for the server, and
+        the right way to update this install: an npm install downloads it,
+        checks it against the signed release and installs it (asks first;
+        --yes skips the question); Docker, the desktop app, a linked server
+        and a git checkout get the exact step instead. --check only looks.
+        Exit code: 0 up to date or updated, 10 an update is available and
+        was not installed, 1 the check failed
+version the version and how this copy was installed (--check: as update --check)
 vps     read-only Linux VPS status, host resources, managed computers and
         bounded redacted logs, including when the server is stopped.
         Run on the VPS; no sudo, service changes or credential reads.
