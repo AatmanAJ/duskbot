@@ -1,6 +1,6 @@
 // builds the dusk.bot pages: wraps each page body in the shared layout, turns the legal pages (Markdown in the Dusk Bot
 // repo's docs/legal) into terms/, privacy/, cookies/, refunds/, acceptable-use/, subprocessors/, license/ and security/, the docs (pages/docs/*.md, see build-docs.mjs) into
-// docs/, pages/changelog.md into changelog/, and writes the sitemap, robots.txt, the manifest and the redirects. zero deps.
+// docs/, releases/changelog.json into changelog/, and writes the sitemap, robots.txt, the manifest and the redirects. zero deps.
 //   node apps/site/build-pages.mjs [path to the dusk bot checkout, default: this repo]
 import fs from 'node:fs';
 import path from 'node:path';
@@ -42,7 +42,7 @@ function inline(text) {
 
 export const slug = (text) => text.toLowerCase().replace(/<[^>]+>|&\w+;|`/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-// markdown for the legal drafts, the docs and the changelog. besides the usual: a fenced block becomes a copyable command,
+// markdown for the legal drafts and the docs. besides the usual: a fenced block becomes a copyable command,
 // a line that starts with < or {{ passes through as html (so a page can drop in a piece of the app or a macro), and
 // "> note:" / "> careful:" quotes become callouts
 export function markdown(md) {
@@ -208,7 +208,7 @@ const withLinks = (html) => html.replace(/\{\{app( \/[\w/?=&-]*)?\}\}/g, (_, res
 // what can be downloaded today. releases.json names the files; a release is out once publish-downloads.sh has put
 // releases/latest.json on the site (or releases.json says "released": true). DUSK_RELEASED=1 or 0 forces either state,
 // to look at the page both ways. {{#released}}…{{/released}} and {{^released}}…{{/released}} keep one of two pieces,
-// {{dl key}} is a file's address (a full https address in files is used as is, for a build that is a release ahead), {{size key}} is its size from releases.json's sizes, {{version}} and {{released-on}} describe the release
+// {{dl key}} is a file's address (a full https address in files is used as is, for a build that is a release ahead), {{size key}} is its size from releases.json's sizes, {{version}} and {{released-on}} describe the release, {{android-version}} is " · x.y.z" of the apk when latest.json names it
 const rel = JSON.parse(fs.readFileSync(path.join(here, 'releases.json'), 'utf8'));
 const latestFile = path.join(site, 'releases', 'latest.json');
 let latest = {};
@@ -220,13 +220,15 @@ export const release = {
   version: latest.version || rel.version || '',
   date: rel.date || '',
 };
+// the android app has its own version, which latest.json names once a release carries the apk
+release.androidVersion = /^\d+(\.\d+){1,3}$/.test(latest.android?.version || '') ? latest.android.version : '';
 release.sums = release.version && fs.existsSync(path.join(site, 'releases', release.version, 'SHA256SUMS')) ? `/releases/${release.version}/SHA256SUMS` : `${rel.base}${rel.checksums}`;
 const withRelease = (html) => {
   // pieces can sit inside each other, so this runs until nothing is left to decide
   for (let before; before !== html;) { before = html; html = html.replace(/\{\{([#^])([\w]+)\}\}((?:(?!\{\{[#^])[\s\S])*?)\{\{\/\2\}\}/g, (_, mark, key, inner) => (Boolean(release[key]) === (mark === '#') ? inner : '')); }
   return html.replace(/\{\{dl ([\w-]+)\}\}/g, (_, key) => { if (!rel.files[key]) throw new Error(`releases.json has no file ${key}`); return rel.files[key].startsWith('https://') ? rel.files[key] : rel.base + rel.files[key]; })
     .replace(/\{\{file ([\w-]+)\}\}/g, (_, key) => rel.files[key].split('/').pop()).replace(/\{\{(ios|android)-link\}\}/g, (_, key) => rel[key])
-    .replace(/\{\{size ([\w-]+)\}\}/g, (_, key) => (rel.sizes?.[key] ? `${Math.round(rel.sizes[key] / 1e6)} mb` : '')).replace(/\{\{version\}\}/g, release.version).replace(/\{\{released-on\}\}/g, release.date).replace(/\{\{sums\}\}/g, release.sums);
+    .replace(/\{\{size ([\w-]+)\}\}/g, (_, key) => (rel.sizes?.[key] ? `${Math.round(rel.sizes[key] / 1e6)} mb` : '')).replace(/\{\{android-version\}\}/g, release.androidVersion ? ` · ${release.androidVersion}` : '').replace(/\{\{version\}\}/g, release.version).replace(/\{\{released-on\}\}/g, release.date).replace(/\{\{sums\}\}/g, release.sums);
 };
 // {{crew}} on the brand page is the twenty pixel bots, kit first, each in its own colour with its name and a link to its svg
 const CREW = [...CROWD.filter(([name]) => name === 'kit'), ...CROWD.filter(([name]) => name !== 'kit')].map(([name, colour]) => [name, colour]);
@@ -368,13 +370,25 @@ for (const page of pages) {
   write(at, page.name === 'waitlist' ? soloWaitlist(html) : html, { index: !noindex });
 }
 
-// the changelog is one markdown file: a "## version · date" heading per release, newest first, then a list
+// the changelog is releases/changelog.json (written at release time, newest first): per release its version, date, an
+// optional title, and its items grouped by where they apply. a missing or empty file shows the empty state
 {
-  const md = fs.readFileSync(path.join(here, 'pages', 'changelog.md'), 'utf8').replace(/<!--[\s\S]*?-->/g, '');
-  const entries = md.split(/^## /m).slice(1).map((chunk) => {
-    const [head, ...rest] = chunk.split('\n');
-    const [version, date = ''] = head.split('·').map((s) => s.trim());
-    return `<article class="rel" id="v${slug(version)}"><header><h2>${esc(version)}</h2>${date ? `<time datetime="${esc(date)}">${esc(new Date(`${date}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).toLowerCase())}</time>` : ''}</header><div class="prose">${markdown(rest.join('\n').replace(/^### /gm, '#### '))}</div></article>`;
+  let log = {};
+  try { log = JSON.parse(fs.readFileSync(path.join(site, 'releases', 'changelog.json'), 'utf8')); } catch {}
+  const AREAS = [['all', 'everywhere'], ['desktop', 'desktop app'], ['phone', 'phone app'], ['server', 'your own server'], ['cli', 'command line']];
+  const GH = 'https://github.com/DuskBotAI/duskbot';
+  const num = (n) => Number.isInteger(n) && n > 0;
+  const day = (date) => { const d = new Date(`${date}T12:00:00Z`); return /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(d.getTime()) ? d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).toLowerCase() : ''; };
+  const releases = (Array.isArray(log.releases) ? log.releases : []).filter((r) => typeof r?.version === 'string' && /^[\w.-]+$/.test(r.version));
+  const entries = releases.map((r, i) => {
+    const items = (Array.isArray(r.items) ? r.items : []).filter((it) => typeof it?.text === 'string' && it.text.trim());
+    const groups = AREAS.map(([area, label]) => [label, items.filter((it) => (AREAS.some(([a]) => a === it.area) ? it.area : 'all') === area)]).filter(([, list]) => list.length);
+    const refs = (it) => [num(it.issue) && `<a href="${GH}/issues/${it.issue}">#${it.issue}</a>`, num(it.pr) && `<a href="${GH}/pull/${it.pr}">#${it.pr}</a>`].filter(Boolean).join(' ');
+    const lists = groups.map(([label, list]) => `<h4>${label}</h4><ul>${list.map((it) => `<li>${esc(it.text.trim())}${refs(it) ? ` ${refs(it)}` : ''}</li>`).join('')}</ul>`).join('');
+    const date = typeof r.date === 'string' ? day(r.date) : '';
+    // only the newest is what the download page hands out
+    const get = `<p class="rel-get">get it: ${i === 0 ? '<a href="/download">download page</a> · ' : ''}<a href="${GH}/releases/tag/v${esc(r.version)}">github release</a></p>`;
+    return `<article class="rel" id="v${slug(r.version)}"><header><h2>${esc(r.version)}</h2>${date ? `<time datetime="${esc(r.date)}">${date}</time>` : ''}</header><div class="prose">${typeof r.title === 'string' && r.title.trim() ? `<p class="rel-title">${esc(r.title.trim())}</p>` : ''}${lists}${get}</div></article>`;
   });
   const shell = withStrips(fs.readFileSync(path.join(here, 'pages', 'partials', 'changelog-shell.html'), 'utf8'));
   const body = shell.replace('{{entries}}', entries.join('\n')).replace(/\{\{([#^])entries\}\}([\s\S]*?)\{\{\/entries\}\}/g, (_, mark, inner) => ((entries.length > 0) === (mark === '#') ? inner : ''));
