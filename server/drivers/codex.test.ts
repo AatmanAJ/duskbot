@@ -3404,7 +3404,8 @@ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`)
       expect(message.startsWith(CODEX_SIGN_IN_EXPIRED)).toBe(true);
       expect(message).toContain("workspace routing discovery unauthorized (401)");
       expect(message).not.toContain("Reconnecting");
-      expect(done).toMatchObject({ ok: false, stopReason: message });
+      // a sign-out, so the host never sends the turn to another model of the same signed-out Codex as "did not answer"
+      expect(done).toMatchObject({ ok: false, stopReason: "auth_required" });
       expect(recorder.events.some((e) => e.type === "turn.retrying")).toBe(false);
       const refused = await instance.snapshot();
       expect(refused).toMatchObject({ state: "available", authenticated: false, reason: CODEX_SIGN_IN_EXPIRED });
@@ -3591,12 +3592,17 @@ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`)
       expect((custom.errors[0] as { message: string }).message).toMatch(/^You've hit your usage limit\. Upgrade to Pro/);
     });
 
-    it("hides a model OpenAI refuses for Codex's ChatGPT sign-in, and runs that bot's next turn on Codex's default model", async () => {
+    it("hides a model OpenAI refuses for Codex's ChatGPT sign-in, answers that turn on Codex's default model with no line, and the next one too", async () => {
       await create({ environment: { ...signedIn(), FAKE_CODEX_LUNA: "1", FAKE_CODEX_REFUSE_MODELS: "gpt-6-luna" } });
       expect(instance.models.options.map((model) => model.id)).toContain("gpt-6-luna");
+      const turns = join(scratch, "own-refused-turns.txt");
+      process.env.FAKE_CODEX_TURN_MODELS = turns;
       const refused = await runTurn("t-own-refused", "gpt-6-luna");
-      expect(refused.done).toMatchObject({ ok: false });
-      expect(refused.errors).toHaveLength(1);
+      delete process.env.FAKE_CODEX_TURN_MODELS;
+      // D-MK7E: gpt-6.2-sol on codex-cli 0.160 failed the turn with "Try again"; the person never needs to see it
+      expect(refused).toMatchObject({ done: { ok: true }, errors: [] });
+      expect(readFileSync(turns, "utf8").trim().split("\n")).toEqual(["gpt-6-luna", "gpt-fake-default"]);
+      expect(recorder.events.filter((e) => e.type === "turn.retrying" && e.turnId === refused.done.turnId)).toEqual([]);
       expect(instance.models.options.map((model) => model.id)).not.toContain("gpt-6-luna");
       expect(instance.models.default).toBe("gpt-fake-default");
       expect(instance.refusedModels?.()).toEqual(["gpt-6-luna"]);
@@ -3609,18 +3615,32 @@ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`)
       expect(seen.calls.find((call: { method: string }) => call.method === "thread/start").params.model).toBe("gpt-fake-default");
     });
 
+    it("says a refused model once when Codex's default model is refused too, after one unseen try on it", async () => {
+      await create({ environment: { ...signedIn(), FAKE_CODEX_LUNA: "1", FAKE_CODEX_REFUSE_MODELS: "gpt-6-luna,gpt-fake-default" } });
+      const turns = join(scratch, "own-refused-both.txt");
+      process.env.FAKE_CODEX_TURN_MODELS = turns;
+      const refused = await runTurn("t-own-refused-both", "gpt-6-luna");
+      delete process.env.FAKE_CODEX_TURN_MODELS;
+      expect(readFileSync(turns, "utf8").trim().split("\n")).toEqual(["gpt-6-luna", "gpt-fake-default"]);
+      expect(refused.done).toMatchObject({ ok: false });
+      expect(refused.errors).toHaveLength(1);
+      expect((refused.errors[0] as { message: string }).message).toMatch(/^This ChatGPT account can't use this model in Codex/);
+      expect(refused.errors[0]).not.toHaveProperty("setup");
+    });
+
+    // the model the turn was first sent on; a refused one then carries on, unseen, on Codex's default model
     const threadStartModel = async (threadId: string) => {
-      const dump = join(scratch, `${threadId}.json`);
-      process.env.FAKE_CODEX_DUMP = dump;
+      const turns = join(scratch, `${threadId}.turns.txt`);
+      process.env.FAKE_CODEX_TURN_MODELS = turns;
       const turn = await runTurn(threadId, "gpt-6-luna");
-      const seen = JSON.parse(readFileSync(dump, "utf8"));
-      return { turn, model: seen.calls.find((call: { method: string }) => call.method === "thread/start").params.model };
+      delete process.env.FAKE_CODEX_TURN_MODELS;
+      return { turn, model: readFileSync(turns, "utf8").split("\n")[0] };
     };
 
     it("lists a refused model again after Codex's own sign-out, and stops sending its turns to the default model", async () => {
       await create({ environment: { ...signedIn(), FAKE_CODEX_LUNA: "1", FAKE_CODEX_REFUSE_MODELS: "gpt-6-luna" } });
       const refused = await runTurn("t-own-refused-out", "gpt-6-luna");
-      expect((refused.errors[0] as { message: string }).message).toMatch(/^This ChatGPT account can't use this model in Codex/);
+      expect(refused).toMatchObject({ done: { ok: true }, errors: [] });
       expect(instance.models.options.map((model) => model.id)).not.toContain("gpt-6-luna");
 
       await instance.signOut!();
