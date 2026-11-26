@@ -125,8 +125,8 @@
     ]
   },
   "skills": {
-    "bytes": 78892,
-    "sha256": "9b2cca31c8172cb883a95ef045d92f42640d7e5168757f30deb5c95fd3be89c1",
+    "bytes": 79032,
+    "sha256": "7a6ab33f8715cbaa59f52ca7f831f87713a2b5127a1b6163b32f71db0c0422c7",
     "tools": [
       "set_status",
       "send_message",
@@ -189,8 +189,8 @@
     ]
   },
   "skills+voice": {
-    "bytes": 79670,
-    "sha256": "4f4529f746f41724e0b3ca37870ff4ed7f5870326e18da345bdf398f7ee350ae",
+    "bytes": 79810,
+    "sha256": "9628c8562da6e893ccfd79823f14ceae4ed682a81f28322b834ce5eae8a1cf90",
     "tools": [
       "set_status",
       "send_message",
@@ -369,8 +369,8 @@
     ]
   },
   "skills+non-chief": {
-    "bytes": 70874,
-    "sha256": "317b0650ab57a8f912b54c31be0717074946a708483d2379d69352ed48030658",
+    "bytes": 71014,
+    "sha256": "e63baf979dc4a496c4c78f5f448663c78cfe320b8196a2679b8be40cdfd86d21",
     "tools": [
       "set_status",
       "send_message",
@@ -428,8 +428,8 @@
     ]
   },
   "skills+voice+non-chief": {
-    "bytes": 71652,
-    "sha256": "920e788287ff8d2c3ac975ba19dd44f3248d373a29cc6fe08d8e738bf2acad5b",
+    "bytes": 71792,
+    "sha256": "728e721214d5f94b48486971fbce586cd31913a4d611868f5a5944f8aadddc2d",
     "tools": [
       "set_status",
       "send_message",
@@ -488,8 +488,8 @@
     ]
   },
   "skills+voice+cloud-home": {
-    "bytes": 78691,
-    "sha256": "a42e33b8e51520cfc1a99de729ce3650ff7d6bc2bce5e1498aef427c59b1771a",
+    "bytes": 78831,
+    "sha256": "0d50d2918f9d6877582a2d0960ed700c67ca5499585815d018bf0f7970ed6d9c",
     "tools": [
       "set_status",
       "send_message",
@@ -552,8 +552,8 @@
     ]
   },
   "skills+voice+non-chief+cloud-home": {
-    "bytes": 70673,
-    "sha256": "84066dd0f23d2b99b0d4752adf558777a3e815c737d03935e21ec1a177da49fc",
+    "bytes": 70813,
+    "sha256": "bb64a31004ae3611e2e4f406b08b0e7951b1b6d7659a38743c920f08f0b2eb80",
     "tools": [
       "set_status",
       "send_message",
@@ -611,8 +611,8 @@
     ]
   },
   "skills+voice+x": {
-    "bytes": 85104,
-    "sha256": "271e6af9ad4b4925ad44a961d3c7c8a1d79dc3b960901c66a87082cbafe99ae7",
+    "bytes": 85244,
+    "sha256": "ebe9234c692e9fa30e6fc266f9fe1d39ec2c506fe116c15ef12566377096d96d",
     "tools": [
       "set_status",
       "send_message",
@@ -681,8 +681,8 @@
     ]
   },
   "skills+voice+x+team": {
-    "bytes": 85520,
-    "sha256": "8b884755ae6a3401a61f05f32d970f66f9b5aa588ce3a8254bec340d02fc3d89",
+    "bytes": 85660,
+    "sha256": "f070127c144681ca52b42f26d846baa91dd95ddd2df9dd66e7b915b193987c2b",
     "tools": [
       "set_status",
       "send_message",
@@ -752,8 +752,8 @@
     ]
   },
   "skills+skill-reader": {
-    "bytes": 79308,
-    "sha256": "58ea5b371317c8f266a2ad513bc1be599cf27c2c5b1cf1164d017e6b20dc6694",
+    "bytes": 79448,
+    "sha256": "00538f5f69f49da76ce9015b1061ac936146fb0e08f38025daaae77ad2b51dae",
     "tools": [
       "set_status",
       "send_message",
@@ -943,8 +943,8 @@
     ]
   },
   "skills+voice+dusk": {
-    "bytes": 80321,
-    "sha256": "11d80b486cdeff990b5c36db54a116bfe58dfda7eb12c9e7d49549d37ef1c20d",
+    "bytes": 80461,
+    "sha256": "12e354b7844b749be336c5a1e45564dddaa8a41e7b0069bcad8b1bf2f6b4f0b0",
     "tools": [
       "set_status",
       "send_message",
