@@ -307,6 +307,16 @@ describe("aggregate attachment storage", () => {
     expect(() => saveImage(Buffer.from("b"), "image/png")).not.toThrow();
   });
 
+  it("keeps a zip as a file, whichever name Windows or macOS gives its type, and refuses bytes that are not a zip", async () => {
+    const zip = Buffer.concat([Buffer.from("PK\x03\x04", "latin1"), Buffer.alloc(40)]);
+    for (const mime of ["application/zip", "application/x-zip-compressed"]) {
+      const saved = await saveFile((async function* () { yield zip; })(), "voice.zip", mime);
+      expect(saved).toMatchObject({ name: "voice.zip", bytes: zip.byteLength });
+      expect(saved.path.endsWith(".zip")).toBe(true);
+    }
+    await expect(saveFile((async function* () { yield Buffer.from("MZ not a zip at all"); })(), "setup.zip", "application/zip")).rejects.toMatchObject({ status: 400 });
+  });
+
   it("keeps an image too large for a picture as a file, and refuses bytes that are not the image they claim", async () => {
     const png = Buffer.concat([Buffer.from("\x89PNG\r\n\x1a\n", "latin1"), Buffer.alloc(64)]);
     const saved = await saveFile((async function* () {
@@ -568,11 +578,13 @@ describe("shared files", () => {
     resetDir();
   });
 
-  it("allows useful document mimes but not executables, archives, or active markup", () => {
+  it("allows useful document mimes and zips but not executables, other archives, or active markup", () => {
     expect(extensionForFileMime("text/plain; charset=utf-8")).toBe(".txt");
     expect(extensionForFileMime("application/pdf")).toBe(".pdf");
     expect(extensionForFileMime("application/vnd.openxmlformats-officedocument.wordprocessingml.document")).toBe(".docx");
-    expect(extensionForFileMime("application/zip")).toBeNull();
+    expect(extensionForFileMime("application/zip")).toBe(".zip");
+    expect(extensionForFileMime("application/x-7z-compressed")).toBeNull();
+    expect(extensionForFileMime("application/vnd.rar")).toBeNull();
     expect(extensionForFileMime("application/x-msdownload")).toBeNull();
     expect(extensionForFileMime("application/octet-stream")).toBeNull();
     expect(extensionForFileMime("text/html")).toBeNull();
@@ -588,7 +600,8 @@ describe("shared files", () => {
     expect(() => sanitizeSharedFileName("../../secret.txt", "text/plain")).toThrow(/filename, not a path/);
     expect(() => sanitizeSharedFileName("..\\..\\secret.txt", "text/plain")).toThrow(/filename, not a path/);
     expect(() => sanitizeSharedFileName("..%2F..%2Fsecret.txt", "text/plain")).toThrow(/filename, not a path/);
-    expect(() => sanitizeSharedFileName("notes.txt", "application/zip")).toThrow(/supported document/);
+    expect(sanitizeSharedFileName("voice", "application/zip")).toBe("voice.zip");
+    expect(() => sanitizeSharedFileName("notes.txt", "application/x-7z-compressed")).toThrow(/supported document/);
   });
 
   it("streams a file under a generated name with private permissions", async () => {

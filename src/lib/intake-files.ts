@@ -15,7 +15,7 @@ import {
 } from "./composer-attachments";
 
 const MB = 1024 * 1024;
-const ARCHIVE_NAME = /\.(?:zip|rar|7z|tar|gz|tgz|bz2|xz)$/i;
+const ARCHIVE_NAME = /\.(?:rar|7z|tar|gz|tgz|bz2|xz)$/i;
 
 export function imageLimitNotice(leftOut: readonly string[]): string {
   return t(leftOut.length === 1 ? "composer.attach.imageLimit.one" : "composer.attach.imageLimit.many", {

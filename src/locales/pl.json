@@ -5469,7 +5469,6 @@
   "composer.attach.imageAsFile.many": "{names} mają ponad {mb} MB, więc dołączono je jako pliki.",
   "composer.attach.tooLarge": "{name} ma ponad {mb} MB.",
   "composer.attach.unsupported": "Nie można dołączyć {names}. Wybierz obsługiwany obraz, dokument lub plik audio.",
-  "composer.attach.archives": "Nie można dołączać archiwów: rozpakuj {names} i dołącz pliki ze środka.",
   "mermaid.expandAria": "Otwórz diagram na pełnym ekranie",
   "mermaid.viewer": "Podgląd diagramu",
   "mermaid.zoomIn": "Powiększ",

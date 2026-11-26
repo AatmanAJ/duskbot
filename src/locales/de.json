@@ -2763,7 +2763,6 @@
   "composer.attach.imageAsFile.many": "{names} sind größer als {mb} MB und wurden daher als Dateien angehängt.",
   "composer.attach.tooLarge": "{name} ist größer als {mb} MB.",
   "composer.attach.unsupported": "{names} kann nicht angehängt werden. Wähle ein unterstütztes Bild, Dokument oder eine Audiodatei.",
-  "composer.attach.archives": "Archive können nicht angehängt werden: Entpacke {names} und hänge die Dateien darin an.",
   "composer.teachTask": "Aufgabe beibringen",
   "composer.goal.aria": "Gemeinsam fertigstellen",
   "composer.goal.title": "Gemeinsam fertigstellen — das Team arbeitet, bis das Ziel erreicht ist",

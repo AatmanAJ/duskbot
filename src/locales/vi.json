@@ -4452,7 +4452,6 @@
   "composer.attach.imageAsFile.many": "{names} lớn hơn {mb} MB nên đã được đính kèm dưới dạng tệp.",
   "composer.attach.tooLarge": "{name} lớn hơn {mb} MB.",
   "composer.attach.unsupported": "Không thể đính kèm {names}. Hãy chọn ảnh, tài liệu hoặc tệp âm thanh được hỗ trợ.",
-  "composer.attach.archives": "Không thể đính kèm tệp nén: hãy giải nén {names} rồi đính kèm các tệp bên trong.",
   "mermaid.expandAria": "Mở sơ đồ ở chế độ toàn màn hình",
   "mermaid.viewer": "Trình xem sơ đồ",
   "mermaid.zoomIn": "Phóng to",

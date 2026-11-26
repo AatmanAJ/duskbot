@@ -120,9 +120,16 @@ const FILE_MIMES: Readonly<Record<string, string>> = {
   "application/vnd.oasis.opendocument.text": ".odt",
   "application/vnd.oasis.opendocument.spreadsheet": ".ods",
   "application/vnd.oasis.opendocument.presentation": ".odp",
+  "application/zip": ".zip",
+  "application/x-zip-compressed": ".zip",
 };
 
 const IMAGE_HEAD_BYTES = 12;
+
+/** A zip's first bytes: a local file header, or the end record of an empty archive. */
+export function isZipHead(bytes: Buffer): boolean {
+  return bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && ((bytes[2] === 3 && bytes[3] === 4) || (bytes[2] === 5 && bytes[3] === 6));
+}
 
 /** The image type the bytes themselves say they are, by their magic bytes; null: not an image we take. */
 export function imageMimeOf(bytes: Buffer): string | null {
@@ -512,9 +519,10 @@ export async function saveFile(
     let file: Awaited<ReturnType<typeof open>> | undefined;
     let bytes = 0;
     let head = Buffer.alloc(0);
-    let headChecked = !IMAGE_MIMES[normalized];
+    const zip = extension === ".zip";
+    let headChecked = !IMAGE_MIMES[normalized] && !zip;
     const requireClaimedImage = () => {
-      if (imageMimeOf(head) !== normalized) throw statusError(400, `file bytes are not ${normalized}`);
+      if (zip ? !isZipHead(head) : imageMimeOf(head) !== normalized) throw statusError(400, `file bytes are not ${normalized}`);
       headChecked = true;
     };
     let closed = false;

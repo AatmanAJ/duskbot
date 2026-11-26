@@ -5344,7 +5344,6 @@
   "composer.attach.imageAsFile.many": "{names} têm mais de {mb} MB, então foram anexados como arquivos.",
   "composer.attach.tooLarge": "{name} tem mais de {mb} MB.",
   "composer.attach.unsupported": "Não foi possível anexar {names}. Escolha uma imagem, um documento ou um arquivo de áudio compatível.",
-  "composer.attach.archives": "Arquivos compactados não podem ser anexados: descompacte {names} e anexe os arquivos de dentro.",
   "mermaid.expandAria": "Abrir o diagrama em tela cheia",
   "mermaid.viewer": "Visualizador de diagrama",
   "mermaid.zoomIn": "Aumentar zoom",
