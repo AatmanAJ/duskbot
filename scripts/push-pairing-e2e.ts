@@ -1,4 +1,4 @@
-// #352 end to end on an isolated fixture: a self-hosted server with no link service and no DUSK_PUBLIC_URL, reached by
+// Phone pairing and push end to end on an isolated fixture: a self-hosted server with no link service and no DUSK_PUBLIC_URL, reached by
 // the phone through an https address in front of it (a Cloudflare tunnel or proxy, here a local TLS proxy). Runs
 // `duskbot pair --phone ios --public-url <that address>` for real, redeems the code as the phone app does, registers for
 // push, and checks `duskbot push test` reaches the push relay (a local stub standing in for link.dusk.bot).

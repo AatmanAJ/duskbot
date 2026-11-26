@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// #352: a phone signed in with a plain link was asked for notifications it could never get, and nobody said why
+// a phone signed in with a plain link must not be asked for notifications it can never get, and is told why
 import { createElement } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";

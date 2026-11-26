@@ -100,7 +100,7 @@ describe("duskbot command line", () => {
     expect(guided).toContain("duskbot pair");
   });
 
-  // #352: the old block printed a "phone app:" sign-in invite, which the phone app took as a pairing it was not
+  // a "phone app:" sign-in invite is taken by the phone app as a pairing it is not
   it("never offers its sign-in code as a phone-app link, and names the command that pairs a phone", () => {
     const out = pairingBlock({ code: "ABCD-EFGH-JKLM", url: "https://mini.example/pair#code=ABCD-EFGH-JKLM", expiresAt: Date.now() + 60_000 });
     expect(out).not.toContain("phone app:");

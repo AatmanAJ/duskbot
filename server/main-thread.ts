@@ -25,7 +25,7 @@ export function wasOldestThread(tasks: readonly MainThreadCandidate[], threadId:
 /** The thread a bot opens to when threads are hidden: the one the person chose (while it is open), else the open thread
  * they last wrote in, else the selected one, else the oldest. A chat app's thread (Telegram, Discord) and a job a bot
  * opened are the last one written in, or the selected one, only when the bot has no open thread of the person's own:
- * writing in a job to steer it never hides the chat the person started from (#336). */
+ * writing in a job to steer it never hides the chat the person started from. */
 export function mainThread(tasks: readonly MainThreadCandidate[], selectedId?: string, chosenId?: string): string | undefined {
   const open = tasks.filter((task) => !task.routineRunId && task.archivedAt === undefined);
   if (chosenId && open.some((task) => task.threadId === chosenId)) return chosenId;

@@ -238,7 +238,7 @@ describe("CLI startup lifecycle", () => {
     expect(output.includes("pairing code:")).toBe(!guided);
   });
 
-  // #352: the phone step pairs the phone app (POST /api/mobile/pairing), never a browser sign-in, and the server checks the
+  // the phone step pairs the phone app (POST /api/mobile/pairing), never a browser sign-in, and the server checks the
   // address before it makes a pairing secret for it
   it.each(["mismatched", "unreachable"])("never mints a phone code for a %s public endpoint", async () => {
     let healthRequests = 0;

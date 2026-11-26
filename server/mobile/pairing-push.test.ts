@@ -1,5 +1,5 @@
-// #352: a phone signed in with a plain code was never a paired phone, so it could not register for push and nobody said
-// so. These cover the three ways out: a pairing at an address the server checks, a signed-in phone making itself a
+// A phone signed in with a plain code is not a paired phone, so it cannot register for push, and that must be said.
+// These cover the three ways out: a pairing at an address the server checks, a signed-in phone making itself a
 // paired phone, and a test push that says what the push service did.
 import { mkdtempSync, rmSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";

@@ -148,8 +148,8 @@ describe("guided phone pairing", () => {
   });
 });
 
-// #352: `duskbot pair --label iPhone --phone ios --public-url https://dusk.example` on a server with no link service made a
-// browser sign-in that the phone app took as a pairing, and push never worked
+// `duskbot pair --label iPhone --phone ios --public-url https://dusk.example` on a server with no link service must pair
+// the phone app, never make a browser sign-in the phone takes as a pairing that push cannot use
 describe("duskbot pair --phone", () => {
   beforeEach(() => {
     for (const stream of [process.stdin, process.stdout]) Object.defineProperty(stream, "isTTY", { value: false, configurable: true });
