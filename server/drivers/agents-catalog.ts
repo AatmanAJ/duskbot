@@ -808,7 +808,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "skill_manage",
     description:
-      "Submit a new or updated reusable SKILL.md for one kind of work. Update a learned skill when the person corrected how that work is done, asked you to revise it, or it misled you; never update one the person wrote or imported unless they asked for that named skill. If the result is pending, a create stays inactive and an update leaves the current version unchanged." + APPLIES_OUTCOME,
+      "Submit a new or updated reusable SKILL.md for one kind of work. Update a learned skill when the person corrected how that work is done, asked you to revise it, or it misled you; never update one the person wrote or imported unless they asked for that named skill. Build a new skill on known good practice (the official docs or a well-regarded public skill, searched when you can); their preferences win. If the result is pending, a create stays inactive and an update leaves the current version unchanged." + APPLIES_OUTCOME,
     inputSchema: {
       type: "object",
       additionalProperties: false,

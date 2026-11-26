@@ -25,6 +25,7 @@ vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("@/lib/use-slash-skills", () => ({ useSlashSkills: () => [] }));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => false }));
 vi.mock("./CallView", () => ({ CallButton: () => null }));
+vi.mock("./ComposerModelChip", () => ({ ComposerModelChip: () => null }));
 vi.mock("./DesktopCapabilities", async () => {
   const { initialDesktopCapabilities } = await import("@/lib/desktop");
   const capabilities = { ...initialDesktopCapabilities(), dictation: { available: true, engine: "apple-speech", onDevice: true } };
@@ -81,14 +82,14 @@ describe("dictation while the bot works", () => {
     vi.restoreAllMocks();
   });
 
-  it("shows no Stop while the bot works, and a dictated line goes out as the follow-up", () => {
+  it("shows no Stop while the bot works, and a dictated line goes out as the follow-up Enter gives it (queued by default)", () => {
     mount("");
     expect(button(t("chat.stopTurn"))).toBeNull();
     click(t("composer.dictation.start"));
     hear("also check the footer");
     flushSync(() => input().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(speechStop).toHaveBeenCalled();
-    expect(fixture.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "send", text: "also check the footer", followUp: "steer" }));
+    expect(fixture.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "send", text: "also check the footer", followUp: "queue" }));
   });
 
   it("offers discard only while recording, and it brings back the draft from before", () => {

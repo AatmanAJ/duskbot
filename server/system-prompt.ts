@@ -6,7 +6,7 @@ import type { ConnectorToolGrant } from "../shared/wire.ts";
 import { loginLabel, type LoginPlace } from "../shared/logins.ts";
 import { isConversational, type ReplyStyle } from "../shared/reply-style.ts";
 import { TALK_HABITS_PROMPT, workHabitsPrompt } from "./reply-habits.ts";
-import { CHARACTER_PROMPT, DEFAULT_SOUL_PROMPT } from "./character.ts";
+import { characterPrompt, type BotVoice } from "./character.ts";
 import { talkingStylePrompt } from "./talking-style.ts";
 import { generalForPrompt } from "./general-memory.ts";
 import { backgroundJobsPrompt } from "./jobs/prompt.ts";
@@ -72,12 +72,12 @@ export function buildSystemPrompt(
   soul: string,
   parts: PromptPart[],
   agents?: { env?: Record<string, string | undefined> },
-  opts?: { replyStyle?: ReplyStyle; talkingStyle?: TalkingStyle; quickUpdates?: boolean },
+  opts?: { replyStyle?: ReplyStyle; talkingStyle?: TalkingStyle; quickUpdates?: boolean; voice?: BotVoice },
 ): { text: string; sections: PromptSection[]; stable: string; volatile: string } {
   const ordered: PromptPart[] = [
     { id: "persona", label: "Identity", text: persona },
     { id: "soul", label: "Standing instructions (SOUL.md)", text: soulSystemPrompt(soul) },
-    { id: "character", label: "Character", text: (soul.trim() ? "" : DEFAULT_SOUL_PROMPT) + CHARACTER_PROMPT },
+    { id: "character", label: "Character", text: characterPrompt(opts?.voice ?? "open", soul) },
     // ahead of every section that names a tool
     { id: "tool-bridge", label: "Tool search", text: agentsToolBridged(agents) ? AGENTS_TOOL_BRIDGE_PROMPT : "" },
     { id: "talking-style", label: "Talking style", text: talkingStylePrompt(opts?.talkingStyle) },
@@ -231,6 +231,10 @@ function appToolsPrompt(apps: readonly string[]): string {
 }
 
 export const BROWSER_FALLBACK_PROMPT = " When a connected app has no tool for what is needed, or its tool cannot do it, do that step in your browser on the app's own website with the same account instead of refusing; if the site asks to sign in, ask the person to sign in there once.";
+
+export function composioConnectSystemPrompt(browser = false): string {
+  return browser ? `${COMPOSIO_PROMPT.trimEnd().replace(/\.?$/, ".")}${BROWSER_FALLBACK_PROMPT}` : COMPOSIO_PROMPT;
+}
 
 export function composioSystemPrompt(grants: Record<string, ConnectorToolGrant> | undefined, browser = false): string {
   const withFallback = (text: string) => (browser ? `${text.trimEnd().replace(/\.?$/, ".")}${BROWSER_FALLBACK_PROMPT}` : text);

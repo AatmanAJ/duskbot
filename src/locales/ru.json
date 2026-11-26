@@ -5477,7 +5477,6 @@
   "composer.attach.imageAsFile.many": "{names} больше {mb} МБ, поэтому прикреплены как файлы.",
   "composer.attach.tooLarge": "{name} больше {mb} МБ.",
   "composer.attach.unsupported": "Не удалось прикрепить {names}. Выберите поддерживаемое изображение, документ или аудиофайл.",
-  "composer.attach.archives": "Архивы прикреплять нельзя: распакуйте {names} и прикрепите файлы из него.",
   "mermaid.expandAria": "Открыть диаграмму во весь экран",
   "mermaid.viewer": "Просмотр диаграммы",
   "mermaid.zoomIn": "Увеличить",

@@ -4,7 +4,7 @@ import { cueMascot } from "./mascot-events";
 import { NoRecognizerNote, useComposerDictation } from "@/lib/use-composer-dictation";
 import { CARD_ACTION, ChatErrorCard } from "./ChatErrorBanner";
 import { OpenVoiceSettings } from "./OpenVoiceSettings";
-import { isValidElement, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type SetStateAction } from "react";
+import { isValidElement, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { Mic } from "../icons";
 import { useStore, visibleMessages, currentTaskBot, type Bot, type Group, type InstanceInfo, type Message } from "@/state/store";
 import { cn } from "@/lib/cn";
@@ -38,7 +38,7 @@ import {
 import { DEVS_CHOICE, MentionMenu, teammateChoices, type MentionChoice } from "./MentionMenu"; import { useTeammates } from "@/state/team-people"; import { hiddenFromSidebar, useViewerEmail } from "@/lib/default-bot";
 import { SlashCommandMenu } from "./SlashCommandMenu";
 import { MentionTextarea } from "./MentionTextarea";
-import { ComposerAttachments, ComposerAttachmentStrip, pathForFile } from "./ComposerAttachments"; import { ComposerFailedSends } from "./ComposerFailedSends"; import { PickProblemCard, useComposerFilePickers } from "./ComposerFilePickers";
+import { ComposerAttachments, ComposerAttachmentStrip, pathForFile } from "./ComposerAttachments"; import { ComposerFailedSends } from "./ComposerFailedSends"; import { AttachNoticeCard, PickProblemCard, useComposerFilePickers } from "./ComposerFilePickers";
 import { PointedChips } from "./app/PointedChips"; import { SetupRequestChip, setupRequestPlaceholder } from "./SetupOffer";
 import { takePointedChips } from "@/lib/pointed-chips";
 import { withoutCitationMarkers } from "@/lib/citations";
@@ -47,7 +47,6 @@ import { useOnCall } from "@/lib/call";
 import { isLiveCallRunning, useLiveMedia } from "@/lib/live-call-media";
 import {
   appendPastedText,
-  AttachmentTooLargeError,
   attachmentUnsent,
   clipboardHasImages,
   clipboardImageFiles,
@@ -57,9 +56,9 @@ import {
   composerTakesFocusOnOpen,
   imageBytesLeft, imageSentAsFile, imageSlotsLeft,
   replyTargetTakesFocus,
-  isLongPaste,
+  isImageFile, isLongPaste,
   optimisticImageAttachment,
-  pasteAttachment,
+  attachedPaste, pasteAttachment,
   pastedTextFile,
   pendingFileAttachment,
   releaseAttachmentImagePreview,
@@ -67,14 +66,14 @@ import {
   type FileAttachment,
   type PasteAttachment,
 } from "@/lib/composer-attachments";
-import { imagesAsFilesNotice, imagesThatFit, intakeFiles, uploadFailure } from "@/lib/intake-files";
+import { attachNotice, imagesAsFilesNotice, imagesThatFit, intakeFiles, uploadFailure, type AttachNotice } from "@/lib/intake-files";
 import { retryPlacedUpload, sendPlacedUpload } from "@/lib/placed-upload";
 import { cancelUpload } from "@/lib/upload-progress";
 import { goalCoordinatorForComposer, openTaskWorking, roomRouteForComposer } from "@/lib/group-routing";
-import { composerPlaceholder, pendingQuestion, sendLabels, SIMPLE_COMPOSER, SIMPLE_CONTROL, slotColors } from "./composer-simple"; import { ComposerSendButton } from "./ComposerSendButton"; import { Icon } from "./Icon";
+import { composerPlaceholder, pendingQuestion, sendLabels, SIMPLE_COMPOSER, SIMPLE_CONTROL, slotColors } from "./composer-simple"; import { ComposerSendButton, FollowUpKeyHint } from "./ComposerSendButton"; import { Icon } from "./Icon";
 import { PendingApprovalActions, PendingApprovalPanel, pendingApprovals } from "./PendingApproval";
 import { CallButton } from "./CallView";
-import { ApprovalChip, ComposerPlusMenu, GoalToggle } from "./ComposerPlusMenu";
+import { ApprovalChip, ComposerPlusMenu, GoalToggle } from "./ComposerPlusMenu"; import { ComposerModelChip } from "./ComposerModelChip";
 import { PhoneMicGhost, PhonePlus } from "./PhonePlus";
 import { useThreadApproval } from "./thread-approval";
 import { usePillHeight, useSlideOnChange, useStackedField } from "./composer-wrap";
@@ -113,7 +112,6 @@ import {
 import { useSlashSkills } from "@/lib/use-slash-skills";
 import { randomUuid } from "@/lib/random-uuid";
 import { noteSendLaunch } from "./bubble-entrance";
-import { friendlyError } from "@/lib/plain-error";
 
 const supportsAgents = (instances: InstanceInfo[], candidate?: Bot) =>
   Boolean(candidate && instances.find((instance) => instance.instanceId === candidate.modelSelection.instanceId)?.capabilities?.agentsMcp);
@@ -197,7 +195,7 @@ export const Composer = memo(function Composer({
     !group && bot ? `bot:${bot.id}` : undefined,
   );
   const attachmentPending = useDraftAttachmentPending(draftId);
-  const unsentUpload = attachments.some(attachmentUnsent);
+  const unsentUpload = attachments.some((attachment) => attachment.kind !== "paste" && attachment.uploading);
   const failedSends = useFailedComposerSends(draftId); const picks = mentionPicksFor(draftId);
   const [channelMode, setChannelMode] = useComposerChannelMode(draftId);
   const editText = useCallback(
@@ -264,9 +262,9 @@ export const Composer = memo(function Composer({
   const [dismissedAt, setDismissedAt] = useState<number | null>(null);
   const [dismissedSlashAt, setDismissedSlashAt] = useState<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
+  const [attachmentNotice, setAttachmentNotice] = useState<AttachNotice | null>(null); const [attachmentFlash, setAttachmentFlash] = useState<{ id: string; at: number } | null>(null);
   const takeNotes = useNotesIntake();
-  const stacked = useStackedField(inputRef, !singleRow, text, simpleDock) || (simpleDock && (attachments.length > 0 || Boolean(attachmentNotice)));
+  const stacked = useStackedField(inputRef, !singleRow, text, simpleDock) || (simpleDock && attachments.length > 0);
   // grok's expanded composer: the text above the buttons, attachments or a reply strip; corners and height change together
   const quote = useSelectionQuote(draftId);
   const clearQuote = () => { markDraftEdited(draftId); setSelectionQuote(draftId, null); refocusInput(); };
@@ -550,7 +548,7 @@ export const Composer = memo(function Composer({
     if (!failed || failed.kind === "paste") return;
     changeDraftAttachmentPending(draftId, true);
     void retryPlacedUpload(draftId, failed)
-      .catch((error: unknown) => setAttachmentNotice(`${failed.name}: ${friendlyError(error, "upload failed")}`))
+      .catch((error: unknown) => setAttachmentNotice(attachNotice([uploadFailure(failed.name, error)])))
       .finally(() => changeDraftAttachmentPending(draftId, false));
   }, [attachments, draftId]);
   const pickFiles = async (picked: ArrayLike<File> | null) => {
@@ -607,7 +605,7 @@ export const Composer = memo(function Composer({
   // A one-to-one bot at work: Enter does the chosen follow-up and Ctrl/⌘ with it the other one. Rooms keep their own queue.
   const followUpFor = (alternate: boolean) => sentFollowUp({ running: busy && !group && Boolean(bot), alternate, preferred: followUpDefault }) ?? undefined;
   const steersNow = group ? canSteer : resolveFollowUp({ running: busy && !group && Boolean(bot), alternate: false, preferred: followUpDefault, canSteer }) === "steer";
-  const sendNames = sendLabels({ busy, canSteer: steersNow, name: busyName, sendLabel });
+  const sendNames = sendLabels({ busy, canSteer: steersNow, name: busyName, sendLabel }); const followUpHintId = useId(), followUpHinted = busy && !group && Boolean(bot) && canSteer && !singleRow && !phoneApp() && filled && !locked && !recording && !held;
   // grok's round button keeps one glyph stack and crossfades it; ours swaps the button, so the glyph it showed fades
   // out over the new one's
   const slotGlyph: SlotGlyph | null = !simpleDock || calling || locked ? null
@@ -739,7 +737,7 @@ export const Composer = memo(function Composer({
       directMessageSent(state.instances, bot.modelSelection?.instanceId, busy && (followUp !== "steer" || !canSteer));
     }
     setText("");
-    setAttachments([]); picks.clear();
+    setAttachments(attachments.filter(attachmentUnsent)); picks.clear();
     onConsumeReply?.(); setSelectionQuote(draftId, null);
     setChannelMode("chat");
     // a click on the round button takes focus, and the button unmounts once the field is empty; grok hands it back
@@ -801,7 +799,7 @@ export const Composer = memo(function Composer({
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const copiedFiles = Array.from(e.clipboardData.files ?? []);
-    if (copiedFiles.some((file) => /\.(?:json|md|txt)$/i.test(file.name))) {
+    if (copiedFiles.some((file) => !isImageFile(file))) {
       // a file copied in Finder, such as the dusk-bot-notes.md another AI made
       e.preventDefault();
       void pickFiles(copiedFiles);
@@ -824,8 +822,7 @@ export const Composer = memo(function Composer({
       const notices: string[] = [];
       const kept = imagesThatFit(imageFiles, imageSlotsLeft(attachments), (notice) => notices.push(notice), imageBytesLeft(attachments));
       const asFiles = kept.filter(imageSentAsFile);
-      if (asFiles.length) notices.push(imagesAsFilesNotice(asFiles.map((file) => file.name)));
-      if (notices.length) setAttachmentNotice(notices.join(" "));
+      setAttachmentNotice(attachNotice(notices, asFiles.length ? [imagesAsFilesNotice(asFiles.map((file) => file.name))] : []));
       changeDraftAttachmentPending(draftId, true);
       void (async () => {
         try {
@@ -834,7 +831,7 @@ export const Composer = memo(function Composer({
             if (result.status === "rejected") {
               dispatch({
                 type: "error",
-                message: result.reason instanceof AttachmentTooLargeError ? uploadFailure(kept[index]!.name, result.reason) : friendlyError(result.reason, "image upload failed"),
+                message: uploadFailure(kept[index]!.name, result.reason),
               });
             }
           }
@@ -868,7 +865,7 @@ export const Composer = memo(function Composer({
       return;
     }
     if (!isLongPaste(pasted)) return;
-    e.preventDefault();
+    e.preventDefault(); const same = attachedPaste(attachments, pasted); if (same) return setAttachmentFlash({ id: same.id, at: Date.now() });
     const start = e.currentTarget.selectionStart;
     const end = e.currentTarget.selectionEnd;
     if (start !== end) {
@@ -882,7 +879,7 @@ export const Composer = memo(function Composer({
     }
     changeDraftAttachmentPending(draftId, true);
     void uploadFile(file)
-      .catch((error: unknown) => setAttachmentNotice(friendlyError(error, "upload failed")))
+      .catch((error: unknown) => setAttachmentNotice(attachNotice([uploadFailure(t("composer.pastedText"), error)])))
       .finally(() => changeDraftAttachmentPending(draftId, false));
   };
 
@@ -919,7 +916,7 @@ export const Composer = memo(function Composer({
           )}
         </div>
       )}
-      {pickers.problem && <PickProblemCard pickers={pickers} />}
+      {pickers.problem && <PickProblemCard pickers={pickers} />}{attachmentNotice && <AttachNoticeCard notice={attachmentNotice} onDismiss={() => setAttachmentNotice(null)} onPick={pickers.files} />}
       {dictation.tidying && !speechError && (
         <div role="status" data-voice-tidying="" className="pointer-events-auto mb-2 w-full px-0.5 text-[12px] leading-4 text-ink/56">
           {t("composer.voice.tidying")}
@@ -1000,14 +997,14 @@ export const Composer = memo(function Composer({
           style={pillHeight === undefined ? undefined : { height: pillHeight }} className={cn("@container/composer relative z-[1]", singleRow ? "flex items-end gap-2" : simpleDock ? cn(SIMPLE_COMPOSER, multiline ? "rounded-[18px]" : "rounded-[22px]") : cn("rounded-2xl px-2 py-1.5", ELEVATED_FLOAT))}>
         <div ref={pillContentRef} className={singleRow ? cn("flex min-h-[48px] min-w-0 flex-1 flex-col justify-center rounded-[24px] p-2", ELEVATED_FLOAT) : simpleDock ? "flex shrink-0 flex-col" : "contents"}>
         {replyTo && <ComposerReplyStrip message={replyTo} fallbackName={bot?.name} onClear={onClearReply} />}
-        {quote && <ComposerSelectionQuote quote={quote} onClear={clearQuote} />}<SelectionAskPill enabled={!singleRow && !locked} onAsk={askAboutSelection} /><ComposerAttachmentStrip items={attachments} onRemove={removeAttachment} onRetry={retryUpload} onDisplayInChatBox={displayPasteInChatBox} notice={attachmentNotice} onNotice={setAttachmentNotice} />
+        {quote && <ComposerSelectionQuote quote={quote} onClear={clearQuote} />}<SelectionAskPill enabled={!singleRow && !locked} onAsk={askAboutSelection} /><ComposerAttachmentStrip items={attachments} onRemove={removeAttachment} onRetry={retryUpload} onDisplayInChatBox={displayPasteInChatBox} onNotice={setAttachmentNotice} flash={attachmentFlash} />
         <div data-composer-row data-glyph-swap={glyphs.swapped ? "" : undefined} data-glyph-from-held={glyphs.swapped && glyphs.fromHeld ? "" : undefined} style={simpleDock ? slot.vars : undefined} className={cn("flex items-end", simpleDock ? cn("gap-2", stacked && "gap-y-2") : "gap-1", !singleRow && !simpleDock && "@max-[30rem]/composer:flex-wrap", stacked && "flex-wrap")}>
           {pickers.inputs}
           {/* the phone's + is the pill's first control, at its left edge, the size of the others */}
-          {singleRow && !locked && <PhonePlus onAttach={pickers.files} attachChoices={pickers.choices} />}
+          {singleRow && !locked && <><PhonePlus onAttach={pickers.files} attachChoices={pickers.choices} /><ComposerModelChip bot={group ? undefined : bot} phone typing={hasContent} /></>}
           {!locked && !singleRow && (
             <div className={cn("flex items-center gap-1", simpleDock ? "shrink-0" : "flex-wrap")}>
-              {simpleDock && <ComposerPlusMenu onAttach={pickers.files} attachChoices={pickers.choices} />}
+              {simpleDock && <><ComposerPlusMenu onAttach={pickers.files} attachChoices={pickers.choices} /><ComposerModelChip bot={group ? undefined : bot} phone={false} typing={hasContent} /></>}
               {/* a mode's chip shows only while it is on, so a choice made in the + menu or the bot panel stays in view */}
               {goal?.on && <GoalToggle {...goal} compact={simpleDock} />}
               {simpleDock && approvalChoice && profile && bot && approvalModeFor(bot) !== approvalModeFor(profile) && <ApprovalChip choice={approvalChoice} />}
@@ -1124,9 +1121,9 @@ export const Composer = memo(function Composer({
             locked: setupLocked, approval: blocking, attaching: attachmentPending, attached: attachments.length > 0, listening: recording,
             replying: Boolean(replyTo), busy, group, members: members ?? [], goal: channelMode === "goal", botName: bot?.name ?? "",
             setupHint: group ? null : setupRequestPlaceholder(bot, threadId),
-            question: !group && pendingQuestion(bot?.messages), narrow: phoneApp(),
+            question: !group && pendingQuestion(bot?.messages), narrow: phoneApp(), holdToSteer: phoneApp() && !steersNow && canSteer,
           })}
-          aria-label={t("composer.placeholder.bot", { name: group ? group.name : (bot?.name ?? "") })}
+          aria-describedby={followUpHinted ? followUpHintId : undefined} aria-label={t("composer.placeholder.bot", { name: group ? group.name : (bot?.name ?? "") })}
             className={cn(
               // the hint stays on one line and trails off: a long name must not make the empty bar taller than the
               // typed one, or the bar grows each time the field empties
@@ -1147,7 +1144,7 @@ export const Composer = memo(function Composer({
               className={singleRow ? "flex-1 py-1.5" : "mb-px mt-[3px] flex-1"}
             />
           )}
-          <div ref={actionsRef} data-composer-actions className={cn("flex items-center", simpleDock ? "relative gap-2" : cn("gap-1", singleRow && "relative"), !singleRow && !simpleDock && "@max-[30rem]/composer:ml-auto", stacked && "ml-auto")}>
+          <div ref={actionsRef} data-composer-actions className={cn("flex items-center", simpleDock ? "relative gap-2" : cn("gap-1", singleRow && "relative"), !singleRow && !simpleDock && "@max-[30rem]/composer:ml-auto", stacked && "ml-auto")}>{followUpHinted && <FollowUpKeyHint id={followUpHintId} enter={steersNow ? "steer" : "queue"} sendKey={sendKey} />}
         {!locked && recording && (
           <button
             type="button"
@@ -1201,7 +1198,7 @@ export const Composer = memo(function Composer({
         {live && callShown && bot && !group && <CallButton bot={bot} placement="composer" fill={singleRow ? undefined : slot.fill} ink={slot.ink} inverse={singleRow} live={liveCallEnabled()} />}
         {filled && !locked && !phoneVoice && (
           <ComposerSendButton compact={simpleDock} waits={!held && busy && !steersNow && !phoneApp()} label={sendNames.label} title={sendNames.title} look={slot.button}
-            disabled={(held && !singleRow) || attachmentPending || unsentUpload} onSend={(alternate) => { if (!held) send(followUpFor(alternate)); }} onChoose={send}
+            disabled={(held && !singleRow) || attachmentPending || unsentUpload} onSend={(alternate) => { if (!held) send(followUpFor(alternate)); }} onChoose={send} holdAlternate={busy && !group && Boolean(bot) && canSteer && (singleRow || phoneApp())}
             menu={undefined} />
           )}
           {ghostGlyph && <SlotGlyphGhost key={glyphs.swaps} glyph={ghostGlyph} ink={slot.ink} />}

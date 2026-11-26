@@ -1049,3 +1049,49 @@ describe("what a bot gets", () => {
     mkdirSync(join(dataDir, "unused"));
   });
 });
+
+describe("the bots' browser on Linux ARM64, where `agent-browser install` always exits 1", () => {
+  const arm = { platform: "linux" as const, arch: "arm64" };
+  function armHost() {
+    const dataDir = mkdtempSync(join(tmpdir(), "dusk-arm-"));
+    scratch.push(dataDir);
+    const engine = pinnedBinaryPath(dataDir, "linux", "arm64");
+    const bin = join(dataDir, "bin");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "unzip"), "", { mode: 0o755 });
+    return { dataDir, engine, env: { HOME: join(dataDir, "home"), PATH: bin } };
+  }
+
+  it("downloads its pinned Chrome for Testing instead of running agent-browser's install", async () => {
+    const { dataDir, engine, env } = armHost();
+    const download = vi.fn(async (options: { dataDir: string; pin: { platform: string } }) => join(options.dataDir, "tools/chrome", options.pin.platform, "chrome"));
+    const missing = vi.fn(async () => []);
+    const lines: string[] = [];
+    await ensureChrome(engine, { ...arm, dataDir, env, download: download as never, missing, log: (line) => lines.push(line) });
+    expect(spawn).not.toHaveBeenCalled();
+    expect(download).toHaveBeenCalledWith(expect.objectContaining({ dataDir, pin: expect.objectContaining({ platform: "linux-arm64" }) }));
+    expect(missing).toHaveBeenCalledWith(join(dataDir, "tools/chrome/linux-arm64/chrome"), env);
+    expect(lines.at(-1)).toBe(`Chrome is ready: ${join(dataDir, "tools/chrome/linux-arm64/chrome")}`);
+  });
+
+  it("installs the libraries itself with --with-deps, and fails, naming them, when they are still missing", async () => {
+    const { dataDir, engine, env } = armHost();
+    const download = vi.fn(async () => "/x/chrome");
+    const installed: string[] = [];
+    const libraries = { isRoot: true, has: (command: string) => command === "apt-get" || command === "unzip", log: () => {},
+      run: async (command: string, args: readonly string[]) => { installed.push([command, ...args].join(" ")); return { code: command === "apt-cache" ? 100 : 0, output: "" }; } };
+    await ensureChrome(engine, { ...arm, withDeps: true, dataDir, env, libraries, download: download as never, missing: async () => [] });
+    expect(installed.some((call) => call.startsWith("apt-get install -y ") && call.endsWith(" unzip"))).toBe(true);
+    await expect(ensureChrome(engine, { ...arm, dataDir, env, download: download as never, missing: async () => ["libnss3.so", "libgbm.so.1"] }))
+      .rejects.toThrow("Chrome is here but this computer is missing libraries it needs (libnss3.so, libgbm.so.1)");
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("asks for unzip before downloading anything", async () => {
+    const { dataDir, engine } = armHost();
+    const download = vi.fn(async () => "/x/chrome");
+    await expect(ensureChrome(engine, { ...arm, dataDir, env: { HOME: join(dataDir, "home"), PATH: "" }, download: download as never, missing: async () => [] }))
+      .rejects.toThrow("unzip is not installed on this computer");
+    expect(download).not.toHaveBeenCalled();
+  });
+});

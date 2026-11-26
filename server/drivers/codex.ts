@@ -43,7 +43,7 @@ import type {
   TextGenerationOptions,
 } from "../contracts.ts";
 import { newEventId, newId } from "../contracts.ts";
-import { decodeCodexSelection, OFFICIAL_CODEX_PROVIDER, readCodexModelCatalog, STATIC_CODEX_MODELS } from "./codex-catalog.ts";
+import { codexUsableModel, decodeCodexSelection, OFFICIAL_CODEX_PROVIDER, readCodexModelCatalog, STATIC_CODEX_MODELS } from "./codex-catalog.ts";
 import { codexLocalProviderArgs } from "./local-inject.ts";
 import { codexBackgroundRoute, runCodexBackgroundRoute, runCodexOneShot } from "./codex-background-text.ts";
 import { augmentedPath } from "../env-path.ts";
@@ -357,7 +357,6 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       if (plan) env.CODEX_HOME = join(planDirectory, "codex");
       return env;
     };
-    const catalogEnv = childEnv();
     const planAuth = plan ? new ChatGptPlanAuthController({ directory: planDirectory }) : null;
     let planGeneration = 0;
     let planSigningOut = false;
@@ -394,7 +393,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         }
       } else {
         try {
-          const resolved = await readCodexModelCatalog(catalogEnv, fetch, config.cli);
+          const resolved = await readCodexModelCatalog(childEnv(), fetch, config.cli);
           if (resolved.options.length) models = withoutOwnRefused(resolved); else unconfirmedModelCatalog(models);
         } catch { unconfirmedModelCatalog(models); }
       }
@@ -528,7 +527,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       let stopRequested = false;
       let promptSubmitted = false;
       let recoveredMissingSession = false;
-      let loginRaceRetried = false;
+      let loginRaceRetried = false, refusedModelRetried = false;
       let warmRetried = false;
       const stopSignal = new AbortController();
       const { threadId } = turn;
@@ -545,11 +544,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       const chatgptTurn = ownLogin &&
         decodeCodexSelection(turn.model || models.default).modelProvider === OFFICIAL_CODEX_PROVIDER;
       const route: CodexRoute = plan ? "plan" : chatgptTurn ? "own" : "other";
-      if (route === "own" && turn.model && currentOwnRefused().has(turn.model)) {
-        const official = (id: string) => decodeCodexSelection(id).modelProvider === OFFICIAL_CODEX_PROVIDER;
-        const usable = official(models.default) ? models.default : models.options.find(option => official(option.id))?.id;
-        if (usable) turn = { ...turn, model: usable };
-      }
+      if (route === "own" && turn.model && currentOwnRefused().has(turn.model)) turn = { ...turn, model: codexUsableModel(models, ownRefused) ?? turn.model };
       const hideRefusedModel = (raw: string) => hideAccountRefusedModel(turn.model, raw, route);
       const signedOut = chatgptTurn && await loginCheck.check(childEnv()) === "missing";
       assertPlanCurrent();
@@ -718,7 +713,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       const state = {
         settled: false,
         lastError: "",
-        lastErrorSetup: false,
+        lastErrorSetup: false, signInRefused: false,
         retryError: "",
         authRecovery: false,
         lastText: "",
@@ -867,10 +862,10 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         && codexTurnId === null && earlyNotifications.length === 0 && !state.sawStreamDelta;
 
       // Retires this process before anything async, so a late rpc timer rejection cannot relaunch again.
-      const relaunch = async (reason: string, failure: string, failedStop: string, errorCode?: string) => {
+      const relaunch = async (reason: string, failure: string, failedStop: string, errorCode?: string, quiet = false) => {
         const delayMs = computeBackoff(attempt);
         attempt++;
-        emit({ ...base(threadId, turnId), type: "turn.retrying", attempt, delayMs, reason });
+        if (!quiet) emit({ ...base(threadId, turnId), type: "turn.retrying", attempt, delayMs, reason });
         abandoned = true;
         releaseSlot();
         const exited = child.exitCode !== null || child.signalCode !== null;
@@ -1077,7 +1072,14 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         const raw = String(error.message);
         const refused = chatgptTurn && loginMark() !== null && (codexSignInRefused(error) ||
           (state.authRecovery && !/\b403\b|forbidden/i.test(raw) && /\b401\b|unauthorized/i.test(raw)));
-        if (retryLoginRace(raw, refused)) return;
+        if ((abandoned && refusedModelRetried) || retryLoginRace(raw, refused)) return; // a relaunched attempt's last words
+        // a refused sign-in is a sign-out; a model ChatGPT refused this account (a CLI older than it) runs once more, unseen, on the default
+        if (refused) state.signInRefused = true;
+        else if (route === "own" && !refusedModelRetried && !state.streamed && attempt < RETRY_MAX_ATTEMPTS - 1 && codexAccountRefusedModel(raw, route)) {
+          hideRefusedModel(raw);
+          const usable = codexUsableModel(models, ownRefused);
+          if (usable) { refusedModelRetried = true; turn = { ...turn, model: usable }; return void relaunch("model", codexUserError(raw, route), "rpc_error", undefined, true).catch(() => {}); }
+        }
         if (refused) loginRefused(); else if (chatgptTurn && CODEX_MISSING_CREDENTIALS.test(raw)) loginCheck.forget();
         const message = refused ? codexSignInExpired(raw) : codexUserError(raw, route, error.codexErrorInfo);
         const setup = refused || classifyError({ text: raw }).reason === "auth";
@@ -1277,7 +1279,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             }
             if (abandoned) break;
             reportUnsupportedCalls(rolloutAt, (message) => emit({ ...base(threadId, turnId), type: "runtime.notice", message }));
-            void settle(t.status === "completed", t.status === "completed" ? null :
+            void settle(t.status === "completed", t.status === "completed" ? null : state.signInRefused ? "auth_required" :
               (classifyError({ text: state.lastError }).reason === "provider_safety" ? "provider_safety" : (state.lastError || t.status || "failed")), true);
             break;
           }
@@ -1651,7 +1653,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     if (config.managed) return { state: "available", version, authenticated: Boolean(input.environment.DUSK_COMPANY_API_KEY && input.environment.CODEX_HOME), billing: "metered" };
     const previousCliVersion = modelsCliVersion;
     modelsCliVersion = version;
-    if (previousCliVersion !== null && previousCliVersion !== version) await refreshModels();
+    if (previousCliVersion !== null && previousCliVersion !== version) { await appServers.closeIdle(); await refreshModels(); }
     const authenticated = await codexLoginStatus(config.cli, env) === "signed-in";
     currentOwnRefused();
     if (authenticated && loginRejected()) {
@@ -1716,7 +1718,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     get models() {
       return models;
     },
-    ...(plan || config.managed ? {} : { modelCatalogKey: DRIVER_KIND, refusedModels: () => [...ownRefused] }),
+    ...(plan || config.managed ? {} : { modelCatalogKey: DRIVER_KIND, refusedModels: () => [...ownRefused], curatedAdditions: false }),
     quickModelsUsable: smallModelsUsable,
     refreshModels,
     ...(startupModelRefresh ? { startupModelRefresh } : {}),

@@ -210,6 +210,7 @@ const support: AcpSupport = {
   // Google's server reads its new-session default from this variable when present; a later switch re-fetches models.
   sessionModelEnv: "AGY_ACP_DEFAULT_MODEL",
   sessionScopedApproval: true,
+  backgroundWakes: true,
   resumeMethod: "resume",
   clientFileSystem: true,
   sanitizeToolPayload: true,

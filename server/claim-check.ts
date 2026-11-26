@@ -2,6 +2,7 @@
 // of claim needs a successful call that could have done that kind of thing. The chat loop sends an unbacked claim back
 // inside the turn; the finish guard does the same for engines that own their loop.
 import { isOutboundTool } from "../shared/outbound.ts";
+import { BRIDGE_TOOL } from "./drivers/openai-chat-habits.ts";
 
 export type Deed = "send" | "schedule" | "save" | "remove" | "setup";
 type Evidence = Deed | "browser" | "shell" | "other";
@@ -63,12 +64,12 @@ function argsOf(rawArgs: string | undefined): Record<string, unknown> {
   } catch { return {}; }
 }
 
-/** What one successful call that could change something may have done, by its tool name (a bridged `use_tool` call by
- * the tool it ran) and, for memory, its action. */
+/** What one successful call that could change something may have done, by its tool name (a bridged `use_tool` or `call_tool`
+ * call by the tool it ran) and, for memory, its action. */
 export function callEvidence(name: string, rawArgs?: string): Evidence[] {
   let args = argsOf(rawArgs);
   let tool = name;
-  if (/(?:^|_)use_tool$/.test(name) && typeof args.name === "string") {
+  if (BRIDGE_TOOL.test(name) && typeof args.name === "string") {
     tool = args.name;
     args = args.arguments && typeof args.arguments === "object" ? args.arguments as Record<string, unknown> : {};
   }

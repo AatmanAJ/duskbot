@@ -208,6 +208,8 @@ export interface RoutineManagerOptions {
   createGoalTask?: (groupId: string, title: string) => { threadId: string } | null;
   isResultsThread?: (botId: string, threadId: string) => boolean;
   resolveResultsThread?: (routine: Routine, forceNew: boolean) => { threadId: string; main?: true } | undefined;
+  /** The open chat a routine made from a chat reports to, so it reads that way from the moment it is made. */
+  sourceResultsThread?: (routine: Routine) => string | undefined;
   eventResultsThread?: (event: { webhookId: string; webhookName: string; botId: string }) => string | undefined;
   frozenResultsThread?: (botId: string, threadId: string) => boolean;
   discardResultsThread?: (botId: string, threadId: string) => void;
@@ -524,6 +526,10 @@ export class RoutineManager {
       updatedAt: at,
     };
     const discardResults = this.applyResultsInput(routine, input.resultsThreadId);
+    if (routine.target === "bot" && input.resultsThreadId === undefined && routine.sourceThreadId) {
+      const here = this.options.sourceResultsThread?.(routine);
+      if (here) routine.resultsThreadId = here;
+    }
     this.commitMutation(() => {
       this.routines.unshift(routine);
       if (request) this.rememberRoutineRequest(request, routine.id, at);
@@ -1198,7 +1204,7 @@ export class RoutineManager {
           run = queued ?? this.newRun(current, this.now(), false, allocations);
           if (queued) Object.assign(run, routineRunDefinition(current), {
             timeoutMinutes: current.timeoutMinutes,
-            resultsThreadId: resolveRoutineResultsThread(current, this.options.resolveResultsThread, allocations, this.now(), run.sourceThreadId),
+            resultsThreadId: resolveRoutineResultsThread(current, this.options.resolveResultsThread, allocations, this.now()),
           });
           if (run.timeoutMinutes === undefined) delete run.timeoutMinutes;
           Object.assign(run, { prompt: result.run.prompt, checkKey: result.run.key }, result.run.post === undefined ? {} : { post: result.run.post, scriptOnly: true as const },
@@ -1407,7 +1413,7 @@ export class RoutineManager {
     allocations: ResultsThreadAllocation[],
     sourceThreadId = routine.sourceThreadId,
   ): RoutineRun {
-    const resultsThreadId = resolveRoutineResultsThread(routine, this.options.resolveResultsThread, allocations, this.now(), sourceThreadId);
+    const resultsThreadId = resolveRoutineResultsThread(routine, this.options.resolveResultsThread, allocations, this.now());
     const run: RoutineRun = {
       id: randomUUID(),
       routineId: routine.id,

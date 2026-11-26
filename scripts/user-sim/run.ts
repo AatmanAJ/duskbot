@@ -179,7 +179,8 @@ async function runScenario(s: Scenario, run: number): Promise<Record<string, unk
     bots.set(world.botName, await api.createBot(world.botName, values.model!));
     for (const extra of s.bots ?? []) {
       const bot = await api.createBot(extra.name, values.model!);
-      if (extra.soul) await api.call("PATCH", `/api/bots/${bot.id}`, { soul: extra.soul });
+      const profile = { ...(extra.soul ? { soul: extra.soul } : {}), ...(extra.title ? { title: extra.title } : {}), ...(extra.description ? { description: extra.description } : {}) };
+      if (Object.keys(profile).length) await api.call("PATCH", `/api/bots/${bot.id}`, profile);
       bots.set(extra.name, bot);
     }
     await sleep(3_000);

@@ -203,6 +203,14 @@ describe("connecting an AI on the first screen", () => {
     expect(document.body.querySelector("button[data-funnel-ai=claude]")).not.toBeNull();
   });
 
+  it("never says the free model is a backup when an AI of the person's own is connected (a sign-in again opened over it)", async () => {
+    const backup: InstanceInfo = { ...engine("opencodeGo", "opencodeGo", "OpenCode", true), snapshot: { state: "available", authenticated: true, freeFallback: true } };
+    f.instances = [backup, engine("codex", "codex", "Codex", true), engine("claude", "claudeAgent", "Claude", false)];
+    await act(async () => { root.render(createElement(ConnectAi, { tested: null })); });
+    expect(document.body.querySelector("[data-ai-backup]")).toBeNull();
+    expect(text()).not.toMatch(/free model is ready as a backup/);
+  });
+
   it("offers the organization sign-in under the cards on this computer's own window only", async () => {
     await show();
     await otherWays();

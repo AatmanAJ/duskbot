@@ -120,6 +120,13 @@ describe("checking the installed command starts", () => {
 describe.skipIf(process.platform === "win32")("installing with npm", () => {
   const { ctx, calls } = useFakeNpm();
 
+  it("installs an exact release when asked, and refuses anything that is not one", async () => {
+    await installNpmEngine("fake-engine", { baseDir: ctx.base, version: "1.2.3" });
+    expect(calls()[0]!.args.at(-1)).toBe("fake-engine@1.2.3");
+    await expect(installNpmEngine("fake-engine", { baseDir: ctx.base, version: "latest --foo" })).rejects.toThrow("Not a release version");
+    expect(calls()).toHaveLength(1);
+  });
+
   it("installs into the app's prefix with a fixed argument list and no workspace credentials", async () => {
     expect(serverInstallFor({ command: { linux: "npm install -g fake-engine" } })).toEqual({ package: "fake-engine" });
     registerPathDir(enginesBinDir(ctx.base));

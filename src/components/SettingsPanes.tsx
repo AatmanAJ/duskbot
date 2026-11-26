@@ -8,7 +8,8 @@ import { ChevronRight } from "../icons";
 import { useStore, type AppSettingsSection } from "@/state/store";
 import { ADVANCED_PAGES, type AdvancedPage } from "@/lib/open-settings";
 import { t, tPreferred, tOptional } from "@/lib/i18n";
-import { HELP_CENTER_URL, appVersion, openExternalLink } from "@/lib/app-links";
+import { HELP_CENTER_URL, RELEASES_URL, appVersion, openExternalLink } from "@/lib/app-links";
+import { DESKTOP_AREAS, useReleases } from "@/lib/release-notes";
 import { openFeedback } from "@/lib/feedback-sheet";
 import { skillsLibraryEnabled } from "@/lib/feature-flags";
 import { setColorUserBubbles, useColorUserBubbles } from "@/lib/user-bubble-preference";
@@ -19,6 +20,7 @@ import { productName } from "../lib/brand";
 import { AccountsSheet, useAccounts } from "./AccountMenu";
 import { AboutDialog } from "./AboutDialog";
 import { AppVersionRow } from "./AppVersionRow";
+import { WhatsNewDialog } from "./WhatsNewDialog";
 import { AdminOnly } from "./AdminOnly";
 import { AmbientRows } from "./AmbientSettingsRows";
 import { BotDefaultsRows } from "./SettingsBots";
@@ -364,6 +366,24 @@ function ServerUpdatesRow() {
   </>;
 }
 
+/** in a window showing another computer's server: this app's own version above that server's */
+function RemoteAppVersionRow() {
+  const version = window.duskDesktop?.remoteClient?.active === true ? window.duskDesktop.app?.version : undefined;
+  return version ? <ItemRow data-settings-row="app-version" title={t("settings.updates.appVersion", { app: productName(), version })} /> : null;
+}
+
+/** What's new: this app's release notes (changelog.json); with none to show, the changelog page on dusk.bot */
+function WhatsNewRow() {
+  const releases = useReleases(DESKTOP_AREAS);
+  const [open, setOpen] = useState(false);
+  const notes = releases ?? [];
+  return <>
+    <NavRow data-settings-open="whats-new" title={t("whatsNew.title")} external={releases !== null && notes.length === 0}
+      onClick={() => (notes.length ? setOpen(true) : void openExternalLink(RELEASES_URL))} />
+    <WhatsNewDialog open={open} releases={notes.slice(0, 12)} current={window.duskDesktop?.app?.version ?? appVersion()} onClose={() => setOpen(false)} />
+  </>;
+}
+
 export function UpdatesPane() {
   const { at } = useSubPage();
   if (at === "diagnostics") return <SettingsRows><DiagnosticsRow simple /><UsageLogRow /></SettingsRows>;
@@ -371,7 +391,9 @@ export function UpdatesPane() {
     <>
       <SettingsGroup label={t("settings.grok.group.version")} block="updates">
         <SettingsRows>
+          <RemoteAppVersionRow />
           <AppVersionRow fallback={<ServerUpdatesRow />} />
+          <WhatsNewRow />
         </SettingsRows>
       </SettingsGroup>
       <HelpGroup />

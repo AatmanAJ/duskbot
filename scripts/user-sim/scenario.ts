@@ -54,8 +54,8 @@ export interface Scenario {
   title: string;
   world: string;
   tags: string[];
-  /** more bots besides the main one, by name, with optional standing instructions */
-  bots?: Array<{ name: string; soul?: string }>;
+  /** more bots besides the main one, by name, with optional standing instructions, role title and description */
+  bots?: Array<{ name: string; soul?: string; title?: string; description?: string }>;
   /** merged into the world: arrays append, objects merge */
   seed?: Record<string, unknown>;
   /** overrides the world's start, e.g. "tue 08:40" */

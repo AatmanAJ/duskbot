@@ -5496,7 +5496,6 @@
   "composer.attach.imageAsFile.many": "{names}は{mb} MBを超えているため、ファイルとして添付しました。",
   "composer.attach.tooLarge": "{name}は{mb} MBを超えています。",
   "composer.attach.unsupported": "{names}を添付できません。対応している画像、書類、音声ファイルを選んでください。",
-  "composer.attach.archives": "アーカイブは添付できません。{names}を展開して、中のファイルを添付してください。",
   "mermaid.expandAria": "図を全画面で開く",
   "mermaid.viewer": "図のビューア",
   "mermaid.zoomIn": "拡大",

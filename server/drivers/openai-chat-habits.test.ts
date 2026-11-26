@@ -70,6 +70,9 @@ describe("effectfulCall", () => {
     expect(effectfulCall("agents_list_bots", "{}")).toBe(false);
     expect(effectfulCall("data_data_sql", "{}")).toBe(false);
     expect(effectfulCall("agents_use_tool", "not json")).toBe(true);
+    expect(effectfulCall("mcp_call_tool", JSON.stringify({ name: "gmail_gmail_read", arguments: {} }))).toBe(false);
+    expect(effectfulCall("mcp_call_tool", JSON.stringify({ name: "slack_slack_post", arguments: {} }))).toBe(true);
+    expect(effectfulCall("mcp_describe_tool", JSON.stringify({ name: "slack_slack_post" }))).toBe(false);
   });
 });
 

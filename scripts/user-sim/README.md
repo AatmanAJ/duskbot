@@ -116,6 +116,11 @@ used well, never mean or creepy), judged against a real Poke chat as the bar wit
 emoji). A pair is judged twice with the order swapped, and a side wins a dimension only when both orders pick it; the
 judge never sees which build is which. Compare builds by running the same scenarios with `--repo` on each checkout.
 
+Four `voice-*` scenarios (`--tag voice`) check that a bot's seriousness follows its role: an ops/CI bot, a coding bot
+teased by its developer and a finance bot whose person shifts register should answer output first with almost no
+banter, while a companion bot keeps its humor. The Poke bar does not fit a work bot, so pair them with
+`vibe.ts pair <A> <B> --rubric fit` (clear output, voice fits the role, done, tactful).
+
 `--engine codex` runs the bot on dusk's Codex driver with its own `CODEX_HOME` in the sandbox and the gateway as its
 Company endpoint, so a voice change is checked where the prompt is appended to Codex's own instructions. Two
 `everyday-*` scenarios are plain casual chats (a hello that drifts into one small ask), for personality from the first

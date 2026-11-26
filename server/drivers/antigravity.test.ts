@@ -1752,3 +1752,76 @@ describe("Antigravity driver over shared ACP", () => {
     expect(oneShotPrompt).not.toContain("For /learn");
   });
 });
+
+// Recorded from Antigravity CLI 1.5.13 (`agy acp`): the prompt answers end_turn while a timer or a background command it
+// waits on still runs; when that work ends, the agent wakes itself and its reply arrives with no prompt open.
+describe("Antigravity background waits", () => {
+  const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "testing", "fixtures");
+  let instance: ProviderInstance | null = null;
+  let recorder: EventRecorder | null = null;
+
+  afterEach(async () => {
+    recorder?.stop();
+    await instance?.dispose();
+    instance = null;
+  });
+
+  const replay = async (fixture: string, instanceId: string) => {
+    ensureDirs();
+    const fake = fakeRuntime();
+    const dump = join(fake.directory, "dump.json");
+    const tokenDirectory = join(antigravityProfileDirectory(instanceId), "antigravity-acp");
+    mkdirSync(tokenDirectory, { recursive: true });
+    writeFileSync(join(tokenDirectory, "antigravity-oauth-token"), JSON.stringify({ token: { access_token: "ok" } }), { mode: 0o600 });
+    instance = await AntigravityDriver.create({
+      instanceId,
+      displayName: "Antigravity",
+      environment: {
+        FAKE_ACP_AUTH_METHOD: "oauth-personal",
+        FAKE_ACP_MODES: "default,accept-edits,auto,plan",
+        FAKE_ACP_REPLAY: join(FIXTURES, fixture),
+        FAKE_ACP_REPLAY_SPEED: "10",
+        FAKE_ACP_RPC_DUMP: `${dump}.rpc.json`,
+      },
+      enabled: true,
+      config: { cli: fake.executable, fullAuto: false },
+    });
+    recorder = recordEvents(instance.adapter);
+    const threadId = `thread-${instanceId}`;
+    const { turnId } = await instance.adapter.sendTurn({ threadId, text: "wait for it", approvalMode: "ask", cwd: fake.directory });
+    const said = () => recorder!.events
+      .filter((event) => event.turnId === turnId && event.type === "item.completed" && event.itemType === "assistant_text")
+      .map((event) => (event as { text: string }).text.trim());
+    return { turnId, threadId, said, rpc: () => JSON.parse(readFileSync(`${dump}.rpc.json`, "utf8")) as string[] };
+  };
+
+  it.each([
+    ["antigravity-1.5.13-schedule-wake.ndjson", "I have scheduled a one-shot timer for 30 seconds. Waiting for the notification.", "TIMER FIRED."],
+    ["antigravity-1.5.13-command-wake.ndjson", "I have started the background command and will wait for it to finish.", "DONE ready"],
+  ])("keeps the turn working through %s until the wake reply lands", async (fixture, before, after) => {
+    const { turnId, said } = await replay(fixture, fixture.replace(/\W+/gu, "-"));
+    // the first reply lands while the turn goes on waiting
+    await recorder!.until((event) => event.turnId === turnId && event.type === "item.completed" && event.itemType === "assistant_text");
+    expect(said()).toEqual([before]);
+    expect(recorder!.events.some((event) => event.turnId === turnId && event.type === "turn.completed")).toBe(false);
+    // the status line goes back to the work being waited on
+    const replied = recorder!.events.findIndex((event) => event.turnId === turnId && event.type === "item.completed" && event.itemType === "assistant_text");
+    expect(recorder!.events.slice(replied).some((event) => event.type === "turn.progress")).toBe(true);
+    const completed = await recorder!.until((event) => event.turnId === turnId && event.type === "turn.completed", 15_000);
+    expect(completed).toMatchObject({ ok: true, stopReason: null });
+    expect(said()).toEqual([before, after]);
+  });
+
+  it("ends the wait at once when the person stops it, and cancels Antigravity's timer", async () => {
+    const { turnId, threadId, said, rpc } = await replay("antigravity-1.5.13-schedule-cancel.ndjson", "antigravity-wait-stop");
+    await recorder!.until((event) => event.turnId === turnId && event.type === "item.completed" && event.itemType === "assistant_text");
+    expect(recorder!.events.some((event) => event.turnId === turnId && event.type === "turn.completed")).toBe(false);
+    const stoppedAt = Date.now();
+    await instance!.adapter.interruptTurn(threadId);
+    const completed = await recorder!.until((event) => event.turnId === turnId && event.type === "turn.completed", 3_000);
+    expect(Date.now() - stoppedAt).toBeLessThan(2_000);
+    expect(completed).toMatchObject({ ok: true, stopReason: "cancelled" });
+    expect(rpc()).toContain("session/cancel");
+    expect(said()).toEqual(["I have scheduled a one-shot timer to fire in 45 seconds. Standing by until it wakes me."]);
+  });
+});

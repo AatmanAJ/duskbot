@@ -6082,7 +6082,6 @@
   "composer.attach.imageAsFile.many": "{names} 超过 {mb} MB，已作为文件添加。",
   "composer.attach.tooLarge": "{name} 超过 {mb} MB。",
   "composer.attach.unsupported": "无法添加 {names}。请选择支持的图片、文档或音频文件。",
-  "composer.attach.archives": "无法添加压缩包：请解压 {names}，再添加其中的文件。",
   "mermaid.expandAria": "全屏打开图表",
   "mermaid.viewer": "图表查看器",
   "mermaid.zoomIn": "放大",

@@ -2548,7 +2548,6 @@
   "composer.attach.imageAsFile.many": "{names} dépassent {mb} Mo, ils ont donc été joints comme fichiers.",
   "composer.attach.tooLarge": "{name} dépasse {mb} Mo.",
   "composer.attach.unsupported": "Impossible de joindre {names}. Choisissez une image, un document ou un fichier audio pris en charge.",
-  "composer.attach.archives": "Les archives ne peuvent pas être jointes : décompressez {names} et joignez les fichiers qu'elles contiennent.",
   "mermaid.expandAria": "Ouvrir le diagramme en plein écran",
   "mermaid.viewer": "Visionneuse de diagramme",
   "mermaid.zoomIn": "Zoom avant",

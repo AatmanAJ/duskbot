@@ -22,7 +22,7 @@ import type { PairedDevice } from "./ServerPairingCard";
 import { friendlyError } from "@/lib/plain-error";
 import { ANDROID_APP_URL, storeUrl } from "../mobile/connection/phone-update";
 
-const PHONE_ACCESS_COMMAND = "npx duskbot setup";
+const PHONE_ACCESS_COMMAND = "duskbot setup";
 
 export function platformLabelKey(platform: string) {
   return platform === "ios" ? "settings.mobile.ios" : platform === "android" ? "settings.mobile.android" : "settings.mobile.phone";

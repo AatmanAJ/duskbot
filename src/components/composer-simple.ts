@@ -2,6 +2,9 @@ import type { Bot, Group, Message } from "@/state/store";
 import { isQuestionCard } from "@/lib/question-card";
 import { effectiveDefaultResponder } from "@/lib/group-routing";
 import { t } from "@/lib/i18n";
+import { followUpKeyGlyphs } from "@/lib/follow-up";
+import type { SendKey } from "@/lib/send-key";
+import type { FollowUpDefault } from "../../shared/follow-up";
 import type { CSSProperties } from "react";
 import { BOT_BUTTON, botButtonStyle, botButtonTone, type BotButton } from "@/lib/bot-button";
 import { cn } from "@/lib/cn";
@@ -29,7 +32,9 @@ export function slotColors(color: Bot["color"] | undefined, room: boolean): { fi
   return { fill: grok ? `var(--grok-cta, ${tone.fill})` : tone.fill, ink: tone.ink, button: { className: cn(BOT_BUTTON, grok && "grok-cta"), style: { ...botButtonStyle(own), ...vars } }, vars };
 }
 
-export function composerPlaceholder({ locked, approval, attaching, attached = false, listening, replying, busy, group, members, goal, botName, setupHint, question = false, narrow = false }: {
+export function composerPlaceholder({ locked, approval, attaching, attached = false, listening, replying, busy, group, members, goal, botName, setupHint, question = false, narrow = false, holdToSteer = false }: {
+  /** A phone's message to a working bot waits for its turn, and a held Send steers it in instead. */
+  holdToSteer?: boolean;
   /** A question card waits for the person's answer: grok says the field answers it, or talks past it. */
   question?: boolean;
   /** A phone's field: too narrow for the longer hints, so it keeps to the short ones. */
@@ -54,6 +59,7 @@ export function composerPlaceholder({ locked, approval, attaching, attached = fa
   if (replying && !busy) return t("composer.placeholder.reply");
   if (question) return t(narrow ? "question.answerPlaceholder" : "composer.placeholder.question");
   if (attached && !narrow) return t("composer.placeholder.attached");
+  if (busy && holdToSteer && !group) return t("composer.followUp.holdToSteer");
   if (!busy && goal) return group ? t("composer.placeholder.goal", { name: group.name }) : t("composer.placeholder.goalSolo", { name: botName });
   if (!busy && !group && setupHint) return setupHint;
   if (group && !group.dm && effectiveDefaultResponder(group, members).kind === "mentions") {
@@ -73,6 +79,16 @@ export function sendLabels({ busy, canSteer, name, sendLabel }: { busy: boolean;
     return { label: queue, title: queue };
   }
   return { label: t("composer.send.message"), title: `${t("chat.send")} (${sendLabel})` };
+}
+
+/** "↵ Queue · ⌘↵ Steer": what Enter does to a message typed while the bot works, then what Ctrl/⌘ with it does. */
+export function followUpHintWords(enter: FollowUpDefault, sendKey: SendKey): { text: string; aria: string } {
+  const keys = followUpKeyGlyphs(sendKey);
+  const words = {
+    sendKey: keys.send, alternateKey: keys.alternate,
+    first: t(`composer.followUp.hint.${enter}`), other: t(`composer.followUp.hint.${enter === "queue" ? "steer" : "queue"}`),
+  };
+  return { text: t("composer.followUp.keyHint", words), aria: t("composer.followUp.keyHintAria", words) };
 }
 
 /** The newest question card still waiting on the person, in the bot's own conversation. */

@@ -19,7 +19,7 @@ import { z } from "zod";
 import { selectReplay, replayToolCalls, DEFAULT_REBUILD_BYTES, MAX_SUMMARY_BYTES } from "./context-rebuild.ts";
 import { draftSummary, foldPoint } from "./compaction-summary.ts"; import { archiveFoldedTools } from "./compaction-archive.ts";
 import { compactBudget, compactionReading, contextWindowFor, shouldCompact } from "./context-budget.ts";
-import { autoCompactWindow } from "./drivers/claude.ts";
+import { autoCompactWindow } from "./drivers/claude.ts"; import { moveCodexModels } from "./codex-model-moves.ts";
 import { RoomContextTracker, roomResetNote } from "./room-context.ts";
 import { createRoomTranscript, GROUP_CONTEXT_MESSAGES } from "./host/room-transcript.ts";
 import { createRoomSessions } from "./host/room-sessions.ts";
@@ -113,7 +113,7 @@ import { compareVpsContainerStarts } from "./vps-container-start.ts";
 import { createSharedScreenBroker, independentScreenExecArgs, type IndependentScreenLease, type ScreenContainer } from "./shared-desktop-screens.ts";
 import { createVpsScreenRuntime } from "./vps-screen.ts";
 import { isEffortLevel, isMausColor, MAUS_COLOR_NAMES, type MausColor, type CardAnswerer, type ResolvedSender, type SignInRequestCardData, type WireBot, type WireGroup, type WireTask } from "../shared/wire.ts";
-import { talkingStyleOf } from "../shared/talking-style.ts";
+import { talkingStyleOf } from "../shared/talking-style.ts"; import { botVoice } from "./character.ts";
 import { isPersistentQuestionCard, shouldSettleRequestCard } from "../shared/ask-question.ts";
 import { parseToolScope } from "../shared/tool-scope.ts";
 import type { TeamComputersPayload } from "../shared/team-computer.ts";
@@ -416,7 +416,7 @@ import {
   userProfileSystemPrompt,
   cloudHomePrompt, syncedFolders,
   computerPrompt,
-  composioSystemPrompt,
+  composioSystemPrompt, composioConnectSystemPrompt,
   CREDENTIAL_PROMPT,
   longCommandsPrompt, hostShellPrompt, SANDBOX_ESCALATION_PROMPT,
   THREADS_PROMPT, WIDGET_PROMPT, JUST_DO_IT_PROMPT, EXECUTION_PROMPT,
@@ -472,7 +472,7 @@ import { boxBrowserRoute, browserCallComputerResource, ownBoxBrowser } from "./b
 import { BotLogins, cardLoginPlace, cardSignInElsewhere, observeSignInPage, type ObservedPage } from "./bot-logins.ts";
 import { relayFrame } from "./browser-relay.ts";
 import { recentTabs } from "./browser-recent-tabs.ts";
-import { browserEvidence, stepContext } from "./browser-steps.ts"; import { WakeGate } from "./wake-gate.ts"; import { startRunHealth } from "./run-health.ts";
+import { browserEvidence, stepContext } from "./browser-steps.ts"; import { WakeGate } from "./wake-gate.ts"; import { startRunHealth } from "./run-health.ts"; import { codexAutoUpdateEnabled, codexUpkeepFor, startCodexUpkeep } from "./codex-upkeep.ts";
 import { parseLoginFields, parseTotpField, createLoginRoutes } from "./routes/logins.ts";
 import { loginSite } from "../shared/logins.ts";
 import { BROWSER_SETTING_UP_PROMPT, browserEngineStatus } from "./browser-engine.ts";
@@ -602,7 +602,7 @@ import { gzipTunnelReplies, json, onJsonBody, onParsedBody, parsedBodyOf, readBo
 import { holdBodyDeadline } from "./body-deadline.ts";
 import { createNoAiNotice } from "./host/no-ai-notice.ts"; import { PASS, ROUTES, dispatchRoutes } from "./routes/table.ts"; import { createSecretCards } from "./host/secret-cards.ts"; import { createInternalCredentialRequestRoutes, createSavedSecretRoutes, createSecretCardRoutes } from "./routes/secret-cards.ts"; import { SavedSecretStore, desktopSavedSecretsKey, fileSavedSecretsKey } from "./saved-secrets.ts"; import { applyIncludedPagesMessage } from "./pages/access.ts"; import { createPublishedPages } from "./pages/service.ts"; import { createInternalToolRoutes } from "./routes/internal-tools.ts"; import { createPurchaseRoutes } from "./routes/purchases.ts"; import { createHelperSuggestionRoutes } from "./routes/helper-suggestion.ts"; import { createWatchSuggestionRoutes } from "./routes/watch-suggestion.ts"; import { createXConnectorRoutes } from "./routes/x-connector.ts"; import { createMoveFreeze, switchAutomationsOff } from "./move-freeze.ts"; import { createMoveFreezeRoutes } from "./routes/move-freeze.ts"; import { applyPendingStartFresh, createStartFreshRoutes } from "./start-fresh.ts"; import { createMoveWaits } from "./move-waits.ts"; import { assertBotHere, createBotMoves } from "./bot-moves.ts"; import { createBotMoveRoutes } from "./routes/bot-moves.ts"; import { createTeamMoveIn, moveInRefusal } from "./team-move-in.ts";
 import { createCardSealer, loadSealIdentity } from "./card-seal.ts"; import { createSealKeyRoutes } from "./routes/seal-key.ts";
-import { createConnectorDirectoryRoutes } from "./routes/connector-directory.ts"; import { createComposioConnectRoutes } from "./composio-connect.ts"; import { withMcpSignIn as signedInMcp } from "./mcp-oauth.ts"; import { harnessPort } from "./harness-port.ts"; import { composioProvider } from "./connectors/composio-provider.ts"; import { remoteMcpProvider } from "./connectors/remote-mcp.ts"; import { mcpServersPrompt } from "./mcp-apps-prompt.ts";
+import { createConnectorDirectoryRoutes } from "./routes/connector-directory.ts"; import { composioConnectActive, composioConnectServer, createComposioConnectRoutes, hasComposioConnectMounted } from "./composio-connect.ts"; import { withMcpSignIn as signedInMcp } from "./mcp-oauth.ts"; import { harnessPort } from "./harness-port.ts"; import { composioProvider } from "./connectors/composio-provider.ts"; import { remoteMcpProvider } from "./connectors/remote-mcp.ts"; import { mcpServersPrompt } from "./mcp-apps-prompt.ts";
 import { createBotPresetRoutes } from "./routes/bot-presets.ts"; import { createWorkspaceBannerRoutes, workspaceBannerStore, workspaceBannerSummary } from "./routes/workspace-banner.ts";
 import { createBotMemoryRoutes } from "./routes/bot-memory.ts";
 import { createBotCreateRoutes } from "./routes/bots-create.ts";
@@ -1393,7 +1393,7 @@ let dashboardReporterRef: { syncChoice(): void; status(): { url: string | null }
 const mcpOAuth = new McpOAuthManager({
   file: join(DATA_DIR, "mcp-oauth.json"),
   isOwnerLive: (owner) => owner === "loopback" || sessions.isLive(owner) || isCardOwnerLive(store, owner),
-  onSettled: (name, phase, owner) => { mcpSignInCards.settled(name, phase, owner); if (phase === "succeeded") reconnectResume.reconnected(name); },
+  onSettled: (name, phase, owner) => { mcpSignInCards.settled(name, phase, owner); if (phase === "succeeded") { reconnectResume.reconnected(name); if (composioConnectServer(cfg.mcpServers)?.name === name) broadcast({ kind: "config", ...configStatus() }); } },
   // Read the registered app when needed; never copy its secret into the token store.
   clients: (name, url) => {
     const raw = cfg.mcpServers?.[name];
@@ -2478,11 +2478,11 @@ function autoInstallBrowserEngine(): void {
   console.log("browser engine: not installed here; installing it for the bots' built-in browser");
   startBrowserEngineInstall(browserInstallDeps);
 }
-export function browserEngineSummary(): { kind: "engine" | "unavailable"; reason?: string; installable?: boolean; version?: string; chrome?: string; installing?: boolean; installError?: string; myChrome: boolean; serverSites?: boolean; engine: "agent-browser" | "chrome" } {
+export function browserEngineSummary(): { kind: "engine" | "unavailable"; reason?: string; installable?: boolean; version?: string; chrome?: string; noBrowser?: boolean; installing?: boolean; installError?: string; myChrome: boolean; serverSites?: boolean; engine: "agent-browser" | "chrome" } {
   const status = browserEngineStatus();
   const progress = { myChrome: myChromeAvailable(), ...(browserEngineInstall || browserPart.downloading() ? { installing: true } : {}), ...(browserEngineInstallError ? { installError: browserEngineInstallError } : {}) };
   return engineSummary(status.kind === "ready"
-    ? { kind: "engine" as const, version: status.version, chrome: chromeLauncher.describe(), ...progress }
+    ? { kind: "engine" as const, version: status.version, chrome: chromeLauncher.describe(), ...(chromeLauncher.hostBrowserMissing() ? { noBrowser: true } : {}), ...progress }
     : { kind: "unavailable" as const, reason: status.reason, installable: status.installable, ...progress });
 }
 
@@ -2512,7 +2512,7 @@ function setupConnectedApps(bot: Pick<BotRecord, "composio" | "connectorTools">,
   return connectedAppsForSetup({
     mounted,
     engine,
-    configured: composio.configured(cfg),
+    configured: composio.configured(cfg) || composioConnectActive(cfg.mcpServers, (name, server) => mcpOAuth.authState(name, server.url) === "signed-in"),
     enabled: bot.composio !== false,
     grants: bot.connectorTools,
     host: CLOUD_HOME ? "cloud" : DESKTOP_MANAGED ? "desktop" : "server",
@@ -2624,7 +2624,7 @@ const selectionContext = {
 async function refreshUnsetModelSelections(instances?: readonly SelectableInstance[], read = testedAi.read()): Promise<void> {
   if (registry.provisional(instances)) return;
   const selectable = selectableInstances(instances ?? await registry.describe());
-  lastSelectable = selectable;
+  lastSelectable = selectable; moveCodexModels(store, selectable);
   const own = selectable.filter(instance => !selectionContext.company(instance.instanceId) && readyToRun(instance, selectionContext));
   routineHolds?.engines({ ready: own.length > 0, signedIn: own.some(instance => instance.snapshot.authenticated === true) });
   bootSelection = testedAi.settle(await defaultSelection(undefined, selectable.filter(instance => readyToRun(instance, selectionContext))), selectable, read);
@@ -3187,7 +3187,7 @@ function previewSystemPrompt(bot: BotRecord) {
   });
   const privateWorkspace = instance && supportsWorkspaceFiles(instance.driverKind);
   const built = buildSystemPrompt(persona, bot.soul ?? "", [
-    aboutYou(bot, { computer: computerPromptKind, browser: Boolean(previewPlan.browser), routines: agentsMounted, apps: Boolean(caps?.composioMcp && bot.composio !== false && composio.configured(cfg)), managedWrites: agentsMounted }),
+    aboutYou(bot, { computer: computerPromptKind, browser: Boolean(previewPlan.browser), routines: agentsMounted, apps: Boolean((caps?.composioMcp && bot.composio !== false && composio.configured(cfg)) || (caps?.customMcp && hasComposioConnectMounted(engineMcpServers(bot), cfg.mcpServers))), managedWrites: agentsMounted }),
     { id: "user-profile", label: "About the user", text: userProfileSystemPrompt(teamHost.profileFor(CLOUD_TEAM ? botMainThread(bot.id) ?? "" : bot.threadId, cfg.profile)) },
     {
       id: "setup",
@@ -3195,8 +3195,8 @@ function previewSystemPrompt(bot: BotRecord) {
       text: setupSystemPrompt(agentsMounted && setupModeActive({ soul: bot.soul, description: bot.description, text: "" }), {
         skills: skillAuthoringEnabled(cfg),
         cwd: bot.cwd,
-        connectedApps: setupConnectedApps(bot, caps?.composioMcp === true,
-          caps?.composioMcp === true && bot.composio !== false && composio.configured(cfg)),
+        connectedApps: setupConnectedApps(bot, caps?.composioMcp === true || caps?.customMcp === true,
+          Boolean((caps?.composioMcp === true && bot.composio !== false && composio.configured(cfg)) || (caps?.customMcp === true && hasComposioConnectMounted(engineMcpServers(bot), cfg.mcpServers)))),
       }),
     },
     { id: "shell", label: "Long-running commands", text: privateWorkspace ? longCommandsPrompt(computerPromptKind) : "" },
@@ -3208,7 +3208,7 @@ function previewSystemPrompt(bot: BotRecord) {
       browser: previewPlan.computer === undefined ? false : previewPlan.browser,
     }, { note: previewPlan.note, cloudHome: Boolean(CLOUD_HOME), browserInComputerTab }) },
     { id: "cloud-home", label: "My Cloud", text: CLOUD_HOME ? cloudHomePrompt(syncedFolders(DATA_DIR)) : "" },
-    { id: "composio", label: "Connected apps", text: caps?.composioMcp && bot.composio !== false && composio.configured(cfg) ? composioSystemPrompt(bot.connectorTools, previewPlan.computer !== undefined && Boolean(previewPlan.browser)) + describeConnectorScopes(bot.connectorScopes) : "" },
+    { id: "composio", label: "Connected apps", text: caps?.composioMcp && bot.composio !== false && composio.configured(cfg) ? composioSystemPrompt(bot.connectorTools, previewPlan.computer !== undefined && Boolean(previewPlan.browser)) + describeConnectorScopes(bot.connectorScopes) : caps?.customMcp && hasComposioConnectMounted(engineMcpServers(bot), cfg.mcpServers) ? composioConnectSystemPrompt(previewPlan.computer !== undefined && Boolean(previewPlan.browser)) : "" },
     { id: "email", label: "Email", text: caps?.emailMcp === true ? emailHost.prompt(bot) : "" },
     ...phones.previewParts(bot, caps?.deviceMcp === true),
     { id: "mcp", label: "MCP servers", text: caps?.customMcp ? mcpPrompt(bot, engineMcpServers(bot)) : "" }, { id: "to-connect", label: "Connections to make", text: cloudConnections.prompt(bot) },
@@ -3220,7 +3220,7 @@ function previewSystemPrompt(bot: BotRecord) {
     teamAvailabilityPart(agentsMounted && coordination ? peers : []),
     { id: "memory", label: "Memory", text: memorySystemPrompt(bot.id, { managedWrites: agentsMounted, fileTools: Boolean(privateWorkspace), enabled: bot.memoryEnabled !== false }) },
     { id: "skills", label: "Skills index", text: privateWorkspace || agentsMounted ? skillsHost.skillsIndex(bot, undefined, instance ?? undefined) : "" },
-  ], agentsMounted ? { env: agentsToolBridgeEnv(cfg, bot, instance && turnEngine(instance, instanceConfigs(cfg), registry.lastSnapshot(instance.instanceId), bot.cwd ?? undefined)) } : undefined, { replyStyle: bot.replyStyle, talkingStyle: cfg.talkingStyle, quickUpdates: quickUpdatesEnabled(cfg) && Boolean(instance && sideJobs.text("turn-beat", bot.id, { instance })) });
+  ], agentsMounted ? { env: agentsToolBridgeEnv(cfg, bot, instance && turnEngine(instance, instanceConfigs(cfg), registry.lastSnapshot(instance.instanceId), bot.cwd ?? undefined)) } : undefined, { replyStyle: bot.replyStyle, talkingStyle: cfg.talkingStyle, voice: botVoice(bot), quickUpdates: quickUpdatesEnabled(cfg) && Boolean(instance && sideJobs.text("turn-beat", bot.id, { instance })) });
   const totalBytes = built.sections.reduce((n, s) => n + s.bytes, 0);
   return {
     sections: built.sections,
@@ -7993,7 +7993,7 @@ bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) 
 const firstReplyRescue = createFirstReplyRescue({ store, botForThread, speaker: (threadId) => groupSpeakers.get(threadId), runningEngine: (threadId) => runningTurnEngines.get(threadId)?.instanceId,
   engineName: (instanceId) => engineName(instanceId), quiet: (threadId) => isInternalTurn(threadId) || activeRoutineRunForThread(threadId) !== null,
   live: (threadId, turnId) => liveTurns.running(threadId) === turnId, requests: directRequestOwners });
-bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) liveTurns.onEvent(event); }); bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) firstReplyRescue.onEvent(event); }); const turnBeatWriter = (botId: string, threadId: string) => { const id = runningTurnEngines.get(threadId)?.instanceId ?? botForThread(botId, threadId)?.modelSelection.instanceId; const instance = id ? registry.get(id) : undefined; return instance ? sideJobs.text("turn-beat", botId, { instance }) : null; }; const turnBeats = createTurnBeats({ enabled: () => quickUpdatesEnabled(cfg), showsThinking: (threadId) => { const id = runningTurnEngines.get(threadId)?.instanceId; return (id ? registry.get(id) : undefined)?.adapter.capabilities.thinkingSignal !== false; }, writer: (botId, threadId) => turnBeatWriter(botId, threadId)?.generateText ?? null, bot: (botId) => { const bot = store.bot(botId); return bot && { name: bot.name, soul: bot.soul, apps: Object.keys(bot.connectorTools ?? {}) }; }, live: (threadId, turnId) => liveTurns.running(threadId) === turnId, log: (line) => console.info(line), post: ({ threadId, turnId, text }) => { const owner = directRequestOwners.get(threadId); store.appendMessage(threadId, { role: "bot", kind: "text", text, turnId, ...(owner?.messageId && !owner.stopped && owner.turnId === turnId ? { requestMessageId: owner.messageId } : {}) }); } }); bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) turnBeats.onEvent(event); });
+bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) liveTurns.onEvent(event); }); bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) firstReplyRescue.onEvent(event); }); const turnBeatWriter = (botId: string, threadId: string) => { const id = runningTurnEngines.get(threadId)?.instanceId ?? botForThread(botId, threadId)?.modelSelection.instanceId; const instance = id ? registry.get(id) : undefined; return instance ? sideJobs.text("turn-beat", botId, { instance }) : null; }; const turnBeats = createTurnBeats({ enabled: () => quickUpdatesEnabled(cfg), showsThinking: (threadId) => { const id = runningTurnEngines.get(threadId)?.instanceId; return (id ? registry.get(id) : undefined)?.adapter.capabilities.thinkingSignal !== false; }, writer: (botId, threadId) => turnBeatWriter(botId, threadId)?.generateText ?? null, bot: (botId) => { const bot = store.bot(botId); return bot && { name: bot.name, soul: bot.soul, title: bot.title, description: bot.description, apps: Object.keys(bot.connectorTools ?? {}) }; }, live: (threadId, turnId) => liveTurns.running(threadId) === turnId, log: (line) => console.info(line), post: ({ threadId, turnId, text }) => { const owner = directRequestOwners.get(threadId); store.appendMessage(threadId, { role: "bot", kind: "text", text, turnId, ...(owner?.messageId && !owner.stopped && owner.turnId === turnId ? { requestMessageId: owner.messageId } : {}) }); } }); bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) turnBeats.onEvent(event); });
 interface SideSend extends SideRequest { at: number; replyToId?: string; dataContext?: DataContext; sender?: ResolvedSender; trigger: UsageTrigger; mentions?: string[] }
 const sideQueue = (send: SideSend, prompt: string) => {
   queueSteeredMessage(send.botId, send.threadId, send.text, { prompt, rowId: send.messageId, first: true, queuedAt: send.at, replyToId: send.replyToId, dataContext: send.dataContext, sender: send.sender, trigger: send.trigger, mentions: send.mentions });
@@ -8549,7 +8549,7 @@ async function introduceBot(botId: string, opts: { template?: string; origin?: "
   const prompt = introPrompt({
     name: introName(current.name),
     moment: introMoment(at, personTimeZone(proactive.brief.timeZone())),
-    style: talkingStyleOf(cfg.talkingStyle),
+    style: talkingStyleOf(cfg.talkingStyle), voice: botVoice(current),
     origin: opts.madeBy ? { kind: "bot", by: opts.madeBy } : { kind: opts.origin ?? (template ? "template" : "scratch") },
     ...introRecent(botId, Date.now()),
     ...(template ? { template: { category: template.category, title: template.title, tryAsking: template.tryAsking, apps: template.apps, routines: templateRoutineHints(template) } } : {}),
@@ -9443,9 +9443,9 @@ async function beginTurn(
         { id: "setup", label: "Setup", text: setupSystemPrompt(setupMode, {
           skills: skillAuthoring, chief: Boolean((liveBot ?? bot).chiefOfStaff),
           cwd: liveBot?.cwd ?? bot.cwd,
-          connectedApps: setupConnectedApps(bot, instance.adapter.capabilities.composioMcp === true, Boolean(integrations.composio)),
+          connectedApps: setupConnectedApps(bot, instance.adapter.capabilities.composioMcp === true || instance.adapter.capabilities.customMcp === true, Boolean(integrations.composio || hasComposioConnectMounted(integrations.custom, cfg.mcpServers))),
         }) },
-        aboutYou(liveBot ?? bot, { computer: computerPromptKind, browser: Boolean(integrations.browser), routines: Boolean(integrations.agents), apps: Boolean(integrations.composio), managedWrites: Boolean(integrations.agents) }),
+        aboutYou(liveBot ?? bot, { computer: computerPromptKind, browser: Boolean(integrations.browser), routines: Boolean(integrations.agents), apps: Boolean(integrations.composio || hasComposioConnectMounted(integrations.custom, cfg.mcpServers)), managedWrites: Boolean(integrations.agents) }),
         { id: "user-profile", label: "About the user", text: heldTurnMemory.about }, { id: "people", label: "People", text: teamMessages.prompt(bot.id, threadId, Boolean(integrations.agents)) }, { id: "long-waits", label: "Waiting on the person", text: teammatePrompts.personBehind(bot.id, threadId) ? teamMessages.longWaits(threadId) : "" },
         { id: "files", label: "File locations", text: worksInWorkspace ? workspaceLocationsPrompt(bot.id, cwd, liveBot?.cwd ?? bot.cwd, { attachFile: Boolean(integrations.agents) && !CLOUD_HOME, lostFolder: settledFolder?.lost }) : "" },
         { id: "shell", label: "Long-running commands", text: worksInWorkspace ? longCommandsPrompt(computerPromptKind) + (instance.driverKind === "codex" && liveApprovalMode(bot, threadId, commsDepth > 0) !== "full" ? SANDBOX_ESCALATION_PROMPT : "") : integrations.shell ? hostShellPrompt(Boolean(CLOUD_HOME)) : "" },
@@ -9454,7 +9454,7 @@ async function beginTurn(
         { id: "route-traffic", label: "Network", text: computerEgress.prompt() },
         { id: "plan", label: "Surface", text: surfacePrompt({ computer: mountedComputer, browser: Boolean(integrations.browser) }, { pinned: hostScreenMissing ? null : plan.pinned, note: plan.note + vpsUnavailableNote + vmUpdateNote + (hostScreenMissing ? screenAccessMissingNote(Boolean(integrations.browser), missingScreenPermissions(), Boolean(integrations.agents), worksInWorkspace || Boolean(integrations.shell)) : "") + (computerSkipped && plan.computer !== "off" ? computerSkippedNote(redactSecretsInText(computerSkipped), answer.incident, computerGone) : ""), canSelect: computerSelectionTurns.has(threadId), cloudHome: Boolean(CLOUD_HOME), botOpened: plan.botOpened, browserInComputerTab }) },
         { id: "cloud-home", label: "My Cloud", text: CLOUD_HOME ? cloudHomePrompt(syncedFolders(DATA_DIR)) : "" },
-        { id: "composio", label: "Connected apps", text: integrations.composio ? composioSystemPrompt(liveBot?.connectorTools ?? bot.connectorTools, Boolean(integrations.browser)) + describeConnectorScopes((liveBot ?? bot).connectorScopes) : "" },
+        { id: "composio", label: "Connected apps", text: integrations.composio ? composioSystemPrompt(liveBot?.connectorTools ?? bot.connectorTools, Boolean(integrations.browser)) + describeConnectorScopes((liveBot ?? bot).connectorScopes) : hasComposioConnectMounted(integrations.custom, cfg.mcpServers) ? composioConnectSystemPrompt(Boolean(integrations.browser)) : "" },
         { id: "mcp", label: "MCP servers", text: mcpPrompt(bot, integrations.custom ?? {}) }, { id: "to-connect", label: "Connections to make", text: cloudConnections.prompt(liveBot ?? bot) + teamConnections.prompt(threadId, dispatchClaimId, integrations) },
         { id: "browser", label: "Browser", text: integrations.browser ? browserPromptFor(bot, Boolean(integrations.agents)) : browserSettingUp ? BROWSER_SETTING_UP_PROMPT : "" },
         { id: "data", label: "Data", text: integrations.data ? BUILT_IN_DATA_SYSTEM_PROMPT : "" },
@@ -9489,7 +9489,7 @@ async function beginTurn(
         { id: "webhook", label: "Webhook provenance", text: opts?.automationSource === "webhook" ? WEBHOOK_PROMPT : opts?.automationSource === "api" ? BOT_API_PROMPT : "" }, { id: "channel", label: "Chat app", text: channelPrompt(messengerHost.platformOf(threadId)) }, { id: "execution", label: "Checking facts", text: supportsWorkspaceFiles(instance.driverKind) ? "" : EXECUTION_PROMPT },
         { id: "automation-reply", label: "Automation reply", text: opts?.automationSource && automationReports.reportsElsewhere(threadId) ? AUTOMATION_REPLY_PROMPT : "" },
         { id: "mentions", label: "Mentions", text: (tagged.length ? `The user named these existing teammates: ${tagged.map(b => `${peerName(b.name)} (${b.id})`).join(", ")}. Use coordinate_bots when their contribution is needed; do not substitute native helper agents for these bots.` : "") + placesElsewhere.mentioned(providerText, store.bots) },
-      ].filter((part) => (apiFenced ? BOT_API_PARTS.has(part.id) : !confined || READ_AND_DRAFT_PARTS.has(part.id))), integrations.agents, { replyStyle: liveBot?.replyStyle ?? bot.replyStyle, talkingStyle: cfg.talkingStyle, quickUpdates: quickUpdatesEnabled(cfg) && sideJobs.text("turn-beat", bot.id, { instance }) !== null });
+      ].filter((part) => (apiFenced ? BOT_API_PARTS.has(part.id) : !confined || READ_AND_DRAFT_PARTS.has(part.id))), integrations.agents, { replyStyle: liveBot?.replyStyle ?? bot.replyStyle, talkingStyle: cfg.talkingStyle, voice: botVoice(liveBot ?? bot), quickUpdates: quickUpdatesEnabled(cfg) && sideJobs.text("turn-beat", bot.id, { instance }) !== null });
       turnPromptBytes.set(threadId, { stable: Buffer.byteLength(prompt.stable), volatile: Buffer.byteLength(prompt.volatile) });
       // Recall rides in front of this turn's message, never the system prompt, whose volatile half is re-sent whole on any change.
       const recalled = await autoRecallPrompt(bot, threadId, resolvedImages.text, {
@@ -9869,9 +9869,9 @@ const limitFailovers = new LimitFailovers({ file: join(DATA_DIR, "limit-failover
     return Boolean(checked?.ok && store.switchTaskModel(botId, threadId, checked.selection, false, false, { rewound: true }));
   } });
 threadBackup = (task, model) => limitFailovers.backupOf(task.threadId, model);
-const automationDestinations = createAutomationDestinations({ store, mainThread: botMainThread, runs: () => routines?.listRuns() ?? [],
-  cloud: CLOUD_HOME ? { owner: CLOUD_OWNER_KEY!, opener: routineOpener, reportFromOthers: cloudReportFromOthers, opened: (threadId, person) => threadStarters.set(threadId, person), outside: (threadId) => outsideLineage.mark(threadId) } : null });
-const runHealth = startRunHealth({ dataDir: DATA_DIR, turns: () => liveTurnByThread.size, log: (line) => console.log(line) }); const wakeGate = new WakeGate({ onRelease: () => routines?.lookAgain(), log: (line) => console.log(line) }); routines = new RoutineManager({ heldAfterWake: () => wakeGate.held(), chainHost: routineChainHost({ store, mainThread: botMainThread, cloudHome: Boolean(CLOUD_HOME) }),
+const automationDestinations = createAutomationDestinations({ store, mainThread: botMainThread, runs: () => routines?.listRuns() ?? [], team: Boolean(CLOUD_TEAM),
+  cloud: CLOUD_HOME ? { owner: CLOUD_OWNER_KEY!, opener: routineOpener, reportFromOthers: cloudReportFromOthers, ownersChat: (threadId) => !cloudGuestOpened(threadId), opened: (threadId, person) => threadStarters.set(threadId, person), outside: (threadId) => outsideLineage.mark(threadId) } : null });
+const runHealth = startRunHealth({ dataDir: DATA_DIR, turns: () => liveTurnByThread.size, log: (line) => console.log(line) }); if (codexAutoUpdateEnabled(Boolean(CLOUD_HOME))) startCodexUpkeep(codexUpkeepFor(registry, () => liveTurnByThread.size, (line) => console.log(line))); const wakeGate = new WakeGate({ onRelease: () => routines?.lookAgain(), log: (line) => console.log(line) }); routines = new RoutineManager({ heldAfterWake: () => wakeGate.held(), chainHost: routineChainHost({ store, mainThread: botMainThread, cloudHome: Boolean(CLOUD_HOME) }),
   emit: (event) => { broadcast(event); if (event.kind === "routine.deleted" && typeof event.routineId === "string") routineGone(event.routineId); }, limitResetAt: (engine) => limitClock.resetAt(engine), checks: routineHost.checks(proactive.checks), earlyMs: routineHost.earlyMs, held: (run) => routineGuard.held(run), decorate: (routine) => routineGuard.pausedFor(routine),
   limitBackup: (botId, scope) => { const bot = store.bot(botId); return quotaSwitchEnabled() ? Boolean(bot && limitTakeover.backups(botId, bot.modelSelection, scope, approvalModeFor(bot)).length) : Boolean(bot && startupBackups(bot, cfg.automaticRecovery).length); },
   launchId: DESKTOP_MANAGED && /^[\w-]{1,100}$/.test(process.env.DUSK_DESKTOP_LAUNCH_ID ?? "")
@@ -9922,7 +9922,7 @@ const runHealth = startRunHealth({ dataDir: DATA_DIR, turns: () => liveTurnByThr
     const task = store.taskByThread(botId, threadId);
     return Boolean(bot && !bot.hidden && task && !task.routineRunId);
   },
-  resolveResultsThread: (routine, forceNew) => automationDestinations.routine(routine, forceNew),
+  resolveResultsThread: (routine, forceNew) => automationDestinations.routine(routine, forceNew), sourceResultsThread: (routine) => automationDestinations.sourceChat(routine),
   eventResultsThread: (event) => automationDestinations.event(event),
   frozenResultsThread: (botId, threadId) => wasOldestThread(store.tasks(botId), threadId) && !cloudGuestOpened(threadId),
   discardResultsThread: (botId, threadId) => {
@@ -11257,6 +11257,7 @@ async function runClaimedGroupMemberTurn(
   const liveRosterBlock = !orchestration?.liveRoster || orchestration.resumed ? "" : `\n\n${orchestration.liveRoster}`;
   const heldReplay = heldReplayFor(group.id, conversationOfRun(threadId), bot.id, userName, roomContext);
   const alsoAnswering = parseMemberRun(threadId) && operation ? [...operation.botIds].filter((id) => id !== bot.id).map((id) => store.bot(id)?.name ?? "") : [];
+  mentionChainFor(spoken).begin(bot.id);
   const cue = orchestration ? undefined : mentionChainFor(spoken).takeCue(bot.id);
   const teamNotes = [
     cue ? mentionCueNote(cue, personNameIn(threadId)) : !orchestration && !cardContinuation && !alsoAnswering.length ? answeredAboveNote(answeredSince(threadId, latestUser, bot.id)) : "",
@@ -11306,7 +11307,7 @@ async function runClaimedGroupMemberTurn(
   const engineRead = registry.engineRead(instance.instanceId); if (engineRead) await engineRead;
   applyAgentsBridge(threadId, integrations, cfg, bot, turnEngine(instance, instanceConfigs(cfg), registry.lastSnapshot(instance.instanceId), cwd));
   const roomSystem = buildSystemPrompt(system, store.bot(bot.id)?.soul ?? bot.soul ?? "", [
-    aboutYou(readyBot, { computer: roomComputerPromptKind, browser: Boolean(integrations.browser), routines: false, apps: Boolean(integrations.composio), managedWrites: Boolean(integrations.agents) }),
+    aboutYou(readyBot, { computer: roomComputerPromptKind, browser: Boolean(integrations.browser), routines: false, apps: Boolean(integrations.composio || hasComposioConnectMounted(integrations.custom, cfg.mcpServers)), managedWrites: Boolean(integrations.agents) }),
     { id: "user-profile", label: "About the user", text: heldRoomMemory.about }, { id: "people", label: "People", text: teamMessages.prompt(bot.id, threadId, Boolean(integrations.agents)) },
     { id: "files", label: "File locations", text: workspace ? workspaceLocationsPrompt(bot.id, cwd, readyBot.cwd, { attachFile: Boolean(integrations.agents) && !CLOUD_HOME, lostFolder: lostRoomFolder }) : "" },
     { id: "shell", label: "Long-running commands", text: workspace ? longCommandsPrompt(roomComputerPromptKind) : "" },
@@ -11330,7 +11331,7 @@ async function runClaimedGroupMemberTurn(
     { id: "skills", label: "Skills index", text: workspace ? skillsHost.skillsIndex(bot, threadId, instance) : "" },
     { id: "skill-instructions", label: "Skill instructions", text: renderSkillInstructions(selectedSkills, { includeRoot: Boolean(workspace) }) },
     { id: "playbooks", label: "Playbooks", text: installedPlaybookInstructions(text, bot.playbooks) },
-  ], integrations.agents, { talkingStyle: cfg.talkingStyle });
+  ], integrations.agents, { talkingStyle: cfg.talkingStyle, voice: botVoice(store.bot(bot.id) ?? bot) });
 
   // Claim /learn only after setup succeeded, so a failed first responder does not consume it.
   if (skillAuthoring) skillAuthoringClaim.claimed = true;
@@ -12134,7 +12135,7 @@ function startGroupTurn(
       }
       const spoken = new Set<string>();
       const skillAuthoringClaim = { claimed: false };
-      const chained = round.length > 1 && chainsMentions(text); if (chained) round = inMentionOrder(round, text);
+      const chained = round.length > 1 && chainsMentions(text, round.map((member) => member.name)); if (chained) round = inMentionOrder(round, text);
       if (round.length > 1 && !chained && operation.requestMessageId !== undefined && membersAnswerAtOnce(group, threadId)) {
         await Promise.all(round.map((responder) => runMemberAtOnce(groupId, threadId, responder, operation, spoken, skillAuthoringClaim, routedBy)));
         return;
@@ -12913,7 +12914,7 @@ function configStatus() {
     openaiCompat: { ...keyStatus(cfg.openaiCompat?.key), url: cfg.openaiCompat?.url ?? "" },
     composio: {
       ...(composio.connectionMode(cfg) === "self-hosted" ? keyHint(cfg.composio?.apiKey) : {}),
-      configured: composio.configured(cfg), mode: composio.connectionMode(cfg),
+      configured: composio.configured(cfg), mode: composio.connectionMode(cfg), ...(composioConnectActive(cfg.mcpServers, (name, server) => mcpOAuth.authState(name, server.url) === "signed-in") ? { viaConnect: true } : {}),
     },
     vps: { ...vpsDefaults(), configured: Boolean(vpsSshAlias(cfg)), sshAlias: vpsSshAlias(cfg) ?? "" },
     opencodeGo: { ...keyStatus(cfg.opencodeGo?.apiKey), providerKeys: Object.keys(openCodeProviderKeys(cfg)) },
@@ -13027,8 +13028,8 @@ function teamAdminHost() {
 }
 
 function persistMcpServers(next: Record<string, unknown>, newServers: "join-every-bot" | "for-their-own-bots" = "join-every-bot"): void {
-  const joins = newServers === "join-every-bot" ? sharedServerJoins(cfg.mcpServers, next, store.bots) : []; saveConfig({ mcpServers: next });
-  cfg.mcpServers = next; for (const join of joins) store.patchBot(join.botId, { mcpServers: join.mcpServers });
+  const hadConnect = Boolean(composioConnectServer(cfg.mcpServers)), joins = newServers === "join-every-bot" ? sharedServerJoins(cfg.mcpServers, next, store.bots) : []; saveConfig({ mcpServers: next });
+  cfg.mcpServers = next; for (const join of joins) store.patchBot(join.botId, { mcpServers: join.mcpServers }); if (hadConnect || composioConnectServer(next)) broadcast({ kind: "config", ...configStatus() });
 }
 
 async function describeInstances() {
@@ -14336,7 +14337,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         const result = botMemoryUpdate(layer, body, { source: memorySource(), aboutMe: ownersAsk ? aboutMeFacts : null,
           prefer: body?.action === "prefer" || body?.action === "notify" || body?.action === "commit" ? personPreference.target(internalCapability, internalSender) : null, notify: CLOUD_TEAM ? null : (rule, text) => proactive.prefs.rule(rule, text), commit: CLOUD_TEAM ? null : (item) => proactive.commitments.commit(item),
           trust: memoryWriteTrust(internalSender.id, internalCapability.threadId),
-          about: { owner: aboutOwnerFor(internalSender.id, internalCapability.threadId), text: teamHost.profileFor(internalCapability.threadId, cfg.profile)?.aboutMe ?? "" } });
+          about: { owner: aboutOwnerFor(internalSender.id, internalCapability.threadId), text: teamHost.profileFor(internalCapability.threadId, cfg.profile)?.aboutMe ?? "" }, elsewhere: body?.action === "forget" && ownersAsk ? teamHost.sameOwnerLayers(internalSender.id, internalCapability.threadId, store.bots.map((bot) => bot.id)).map((id) => ({ layer: id, name: store.bot(teamHost.baseBotId(id))?.name ?? "another bot" })) : [] });
         return json(res, result.ok ? 200 : result.code === "conflict" || result.code === "ambiguous" ? 409 : 400, result);
       }
       if (method === "POST" && path === "/api/internal/memory/log") {
