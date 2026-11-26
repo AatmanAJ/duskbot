@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "note": "changes on dev since the last release, in the changelog.json item shape; scripts/release-notes.ts --apply moves them into apps/site/public/landing/releases/changelog.json at release time",
+  "items": [
+    { "text": "Routine script output keeps characters split across reads (like the euro sign, Hindi or emoji) in its report and error message.", "area": "server", "issue": 334, "pr": 335 },
+    { "text": "When ChatGPT refuses a model for Codex, the turn quietly runs again on Codex's default model instead of showing Try again.", "area": "server" },
+    { "text": "Codex's failed replies about a refused model now say to change the model, not to try again.", "area": "desktop" },
+    { "text": "A dusk cloud keeps its Codex CLI up to date by itself, taking a new Codex release once it has been out for 48 hours.", "area": "server" },
+    { "text": "The working line says what the bot is doing first, and shows a step like searching right away instead of Thinking.", "area": "desktop" },
+    { "text": "A message sent, posted or saved through an app found by tool search now counts as done, so the reply can say so.", "area": "server" },
+    { "text": "Every release now ships the server and CLI package (duskbot-<version>.tgz) and the newest Android APK on GitHub, and lists everything it changed on dusk.bot/changelog.", "area": "all", "issue": 353 },
+    { "text": "duskbot update tells you when a newer server is out, shows what changed and updates it the right way for how you installed it.", "area": "cli" }
+  ]
+}
