@@ -181,7 +181,7 @@ describe("Simple mode's rotating words", () => {
       said.add(line());
     }
     expect(Date.now() - 10_000).toBeLessThan(6_000);
-    expect([...said]).toEqual(["Thinking"]);
+    expect([...said], "the step it opened on, never Thinking first").toEqual(["Running a command"]);
   });
 
   it("never changes its words for a step in the same coarse group", () => {
@@ -207,12 +207,12 @@ describe("Simple mode's rotating words", () => {
     expect(line()).not.toBe(first);
   });
 
-  it("opens with Thinking, then a step's own words, and the bot's own words beat the generic pool at once", () => {
+  it("opens with a step's own words, and the bot's own words beat the generic pool at once", () => {
     vi.setSystemTime(10_000);
     render({ simple: true, since: 10_000 - STATUS_QUIET_MS.max, phrases: ["Running a command"], phase: "friendly:commands" });
-    expect(line(), "every turn opens with Thinking").toBe("Thinking");
+    expect(line(), "what it is doing leads, not Thinking").toBe("Running a command");
     act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
-    expect(line(), "the step's word beats the generic one").toBe("Running a command");
+    expect(line()).toBe("Running a command");
     render({ simple: true, since: 0, phrases: pool, phase: "friendly:generic" });
     act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
     expect(pool).toContain(line());
@@ -221,6 +221,25 @@ describe("Simple mode's rotating words", () => {
     expect(line()).toBe("Comparing standing desks");
     act(() => void vi.advanceTimersByTime(30_000));
     expect(line(), "one specific phrase stays put").toBe("Comparing standing desks");
+  });
+
+  it("lets a step's own words take over from Thinking once its swap is done, not after the full dwell", () => {
+    vi.setSystemTime(10_000);
+    render({ simple: true, since: 10_000, phrases: ["Thinking"], phase: "friendly:thinking", wordsAtOnce: true });
+    expect(line()).toBe("Thinking");
+    act(() => void vi.advanceTimersByTime(300));
+    render({ simple: true, since: 10_000, phrases: ["Searching"], phase: "friendly:web", wordsAtOnce: true });
+    expect(line(), "Thinking stays up for its swap").toBe("Thinking");
+    act(() => void vi.advanceTimersByTime(WORD_SWAP.duration - 300));
+    expect(line(), "then the step it is on").toBe("Searching");
+    act(() => void vi.advanceTimersByTime(1_000));
+    render({ simple: true, since: 10_000, phrases: ["Thinking"], phase: "friendly:thinking", wordsAtOnce: true });
+    expect(line(), "a step's words keep their full dwell before plain ones come back").toBe("Searching");
+    act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
+    expect(line()).toBe("Thinking");
+    act(() => void vi.advanceTimersByTime(WORD_SWAP.duration));
+    render({ simple: true, since: 10_000, phrases: ["Remembering"], phase: "friendly:memory", wordsAtOnce: true });
+    expect(line(), "a step in thinking's own group still says what it is").toBe("Remembering");
   });
 
   it("says Writing at once while the reply is written, then Wrapping up", () => {
