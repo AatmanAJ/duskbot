@@ -234,6 +234,20 @@ test("historical model attribution", async (t) => {
     assert.ok(eventsCsv(month.events).includes(",Mixed,2,1200,0.02\r\n"));
   });
 
+  await t.test("each bot keeps the model its own turns recorded, whatever it uses now", () => {
+    const input = source();
+    input.bots = [{ id: "bot", name: "Fixture bot", model: "Switched model" }, { id: "other", name: "Other bot", model: "Switched model" }, { id: "both", name: "Both bot", model: null }];
+    input.activity!.byBot = [
+      { botId: "bot", botName: "Fixture bot", model: "Recorded model", ...totals },
+      { botId: "other", botName: "Other bot", model: "Earlier model", ...totals },
+      { botId: "both", botName: "Both bot", model: null, ...totals },
+    ];
+    input.activity!.byModel = ["Recorded model", "Earlier model"].map((model) => ({ model, ...totals }));
+    input.activity!.days[0] = { date: "2026-11-24", turns: 3, tokens: 3600, costUsd: 0.06 };
+    const models = Object.fromEntries(usageMonth([input], now).events.map((event) => [event.bot, event.model]));
+    assert.deepEqual(models, { "Fixture bot": "Recorded model", "Other bot": "Earlier model", "Both bot": "Mixed" });
+  });
+
   await t.test("missing recorded model attribution does not fall back to current settings", () => {
     const input = source();
     input.activity!.byModel = [];
