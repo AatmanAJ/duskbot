@@ -53,7 +53,9 @@ export function ConnectAi({ tested, onMore, onConnected }: { tested: WelcomeAiNo
   }, [refresh]);
 
   const connected = tested && aiWorks(tested) ? tested.instance : undefined;
-  const backup = state.instances.find((instance) => engineReady(instance) && freeFallback(instance));
+  // the free model is only news to someone with no AI of their own; a sign-in again opens this over a connected one
+  const ownAi = state.instances.some((instance) => engineReady(instance) && !freeFallback(instance));
+  const backup = ownAi ? undefined : state.instances.find((instance) => engineReady(instance) && freeFallback(instance));
 
   return (
     <div className="flex w-full flex-col">
