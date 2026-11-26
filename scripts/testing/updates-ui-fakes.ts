@@ -1,5 +1,5 @@
 // The answers the updates previews give in place of a server and dusk.bot: ?server=behind|current|managed,
-// ?changelog=0 (no changelog.json), ?feed=behind|current|missing (latest.json's android part). Served only by
+// ?changelog=0 (no changelog.json), ?feed=behind|current|missing (latest.json's android part), ?old=1 (the server needs a newer phone app). Served only by
 // scripts/verify-updates-ui.ts.
 export const SAMPLE_CHANGELOG = {
   v: 1,
@@ -40,6 +40,7 @@ export function installUpdateFakes(params: URLSearchParams, own = "0.2.31") {
     const path = url.startsWith("http") ? new URL(url).pathname : url.split("?")[0];
     if (url.startsWith("https://dusk.bot/releases/changelog.json")) return changelog ? json(changelog) : json({ error: "not found" }, 404);
     if (url.startsWith("https://dusk.bot/releases/latest.json")) return json(latest);
+    if (path === "/.well-known/duskbot/environment" && params.get("old") === "1") return json({ version: own, capabilities: { api: 1, minMobile: 99 } });
     if (path === "/api/updates/check") return new Promise((done) => setTimeout(() => done(json(check)), 400));
     if (path === "/api/updates/changelog") return changelog ? json(changelog) : json({ v: 1, releases: [] });
     return real(input, init);

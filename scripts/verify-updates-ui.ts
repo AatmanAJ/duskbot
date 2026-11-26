@@ -35,6 +35,7 @@ const SHOTS: Shot[] = [
   { name: "13-phone-home-apk-behind", phone: true, query: "os=android&v=1.2.9&feed=behind&server=current", wait: 7000 },
   { name: "14-phone-home-apk-current", phone: true, query: "os=android&v=1.2.12&feed=current&server=current", wait: 3000 },
   { name: "15-phone-home-feed-missing", phone: true, query: "os=android&v=1.2.9&feed=missing&server=current", wait: 3000 },
+  { name: "17-phone-home-app-too-old", phone: true, query: "os=android&v=1.2.12&feed=current&server=current&old=1", wait: 7000 },
   { name: "16-phone-after-update-line", phone: true, query: "os=android&v=1.2.12&last=1.2.9&feed=current&server=current", wait: 3000 },
 ];
 
@@ -77,7 +78,7 @@ try {
   try {
     for (const shot of SHOTS) for (const dark of [false, true]) {
       if (only && !only.test(shot.name)) continue;
-      if (dark && !/0[13578]|11|13/.test(shot.name.slice(0, 2))) continue;
+      if (dark && !/0[13578]|11|13|17/.test(shot.name.slice(0, 2))) continue;
       const file = join(shots, `${shot.name}${dark ? "-dark" : ""}${suffix}.png`);
       const base = shot.phone ? phone.previewUrl : desk.previewUrl;
       const skin = shot.phone ? (dark ? "&scheme=dark" : "&scheme=light") : (dark ? "&skin=grok-dark" : "&skin=grok");
