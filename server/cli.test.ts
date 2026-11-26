@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { applyStartupPreferences, formatSessions, parseArgs, runAccess, runLogin, runOnboardingCommand, serverEntry, type CliOptions } from "./cli.ts";
 import { browserSignInLines, pairingBlock, qrToString } from "./cli-pairing.ts";
+import { commandHelp, USAGE } from "./cli-usage.ts";
 import { readAdminActivityRange } from "./admin-activity.ts";
 import { SetupCancelled } from "./cli-prompts.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
@@ -67,6 +68,12 @@ describe("duskbot command line", () => {
     expect(parseArgs(["pair", "--phone", "iOS"], {})).toMatchObject({ phone: "ios" });
     expect(parseArgs(["pair", "--phone", "blackberry"], {})).toEqual({ error: expect.stringContaining("ios or android") });
     expect(parseArgs(["push", "test"], {})).toMatchObject({ command: "push", pushAction: "test" });
+    // QA: `duskbot pair --help` printed "unknown argument" and the whole help
+    expect(commandHelp("pair")).toContain("duskbot pair  [--label NAME]");
+    expect(commandHelp("pair")).toContain("--phone ios|android pairs");
+    expect(commandHelp("pair")).not.toContain("duskbot serve");
+    expect(commandHelp("push")).toContain("push test");
+    expect(commandHelp("nonsense")).toBe(USAGE);
     expect(parseArgs(["push"], {})).toMatchObject({ command: "push" });
   });
 

@@ -136,6 +136,16 @@ describe("push test", () => {
     expect((await call(mobile, one, "GET", "/api/mobile/device")).body.device.push).toBeNull();
   });
 
+  // QA A5: the server said delivering:false and nothing read it
+  it("tells a registered phone whether its pushes can leave this server at all", async () => {
+    const mobile = link({ push: { configured: [], delivers: () => false, send: async () => "skipped" } });
+    const phone = signedIn();
+    await call(mobile, phone, "POST", "/api/mobile/device", { platform: "ios" });
+    expect(await call(mobile, phone, "PUT", "/api/mobile/push", { service: "apns", token: "a".repeat(64) })).toMatchObject({ status: 200, body: { delivering: false } });
+    expect(await call(mobile, phone, "GET", "/api/mobile/device")).toMatchObject({ status: 200, body: { delivering: false } });
+    expect((await call(mobile, phone, "POST", "/api/mobile/push/test")).body.results[0].outcome).toBe("skipped");
+  });
+
   it("is refused to a session that is not a phone and not an admin", async () => {
     const client = signedIn({ scopes: ["client"] });
     expect(await call(link(), { ...client, scopes: ["client"] } as RequestAuth, "POST", "/api/mobile/push/test")).toMatchObject({ status: 404, body: { code: "not_paired" } });

@@ -21,6 +21,18 @@ function setPairing(next: PushPairing, recordId: string | null) {
   for (const listener of listeners) listener();
 }
 
+/** false: the phone registered, but its place has no way to send it a push (no keys of its own, no push relay). */
+let delivering: boolean | null = null;
+const deliveringListeners = new Set<() => void>();
+function setDelivering(next: boolean | null) {
+  if (delivering === next) return;
+  delivering = next;
+  for (const listener of deliveringListeners) listener();
+}
+export function usePushDelivering(): boolean | null {
+  return useSyncExternalStore((listener) => { deliveringListeners.add(listener); return () => deliveringListeners.delete(listener); }, () => delivering);
+}
+
 export function usePushPairing(platform: MobilePlatform): PushPairing {
   const value = useSyncExternalStore((listener) => { listeners.add(listener); return () => listeners.delete(listener); }, () => pairing);
   useEffect(() => { if (platform.native && pairing === null) void ensurePairedPhone(platform); }, [platform]);
@@ -67,7 +79,8 @@ async function stillRegistered(service: MobilePushRegistration["service"]): Prom
   try {
     const response = await fetch("/api/mobile/device", { signal: AbortSignal.timeout(15_000) });
     if (!response.ok) { await response.body?.cancel(); return true; }
-    const answer = await response.json() as { device?: { push?: unknown } };
+    const answer = await response.json() as { device?: { push?: unknown }; delivering?: unknown };
+    if (typeof answer.delivering === "boolean") setDelivering(answer.delivering);
     return answer.device?.push === service;
   } catch {
     return true;
@@ -77,7 +90,7 @@ async function stillRegistered(service: MobilePushRegistration["service"]): Prom
 /** `prompt`: the system may ask the person now (they just did something a notification follows up on); without it a
  * phone that was never asked registers nothing, so the app never asks at launch. The system is never asked on a place
  * that cannot send this phone a push. */
-export function registerPushForConnection(platform: MobilePlatform, { prompt = false }: { prompt?: boolean } = {}): Promise<void> {
+export function registerPushForConnection(platform: MobilePlatform, { prompt = false, again = false }: { prompt?: boolean; again?: boolean } = {}): Promise<void> {
   const existing = pending.get(platform);
   if (existing) return existing.prompt || !prompt ? existing.work : existing.work.then(() => registerPushForConnection(platform, { prompt }));
   const work = (async () => {
@@ -93,11 +106,14 @@ export function registerPushForConnection(platform: MobilePlatform, { prompt = f
     };
     const value = JSON.stringify(body);
     const key = `dusk.mobile.push.${active.record.id}`;
-    if (await platform.prefs.get(key) === value && await stillRegistered(body.service)) return;
+    if (!again && await platform.prefs.get(key) === value && await stillRegistered(body.service)) return;
     if ((await createConnectionStore(platform).active())?.record.id !== active.record.id) return;
     const response = await fetch("/api/mobile/push", { method: "PUT", headers: { "Content-Type": "application/json" }, body: value, signal: AbortSignal.timeout(15_000) });
-    await response.body?.cancel();
-    if (response.ok) await platform.prefs.set(key, value);
+    const answer = await response.json().catch(() => null) as { delivering?: unknown } | null;
+    if (response.ok) {
+      setDelivering(typeof answer?.delivering === "boolean" ? answer.delivering : null);
+      await platform.prefs.set(key, value);
+    }
   })().catch(() => {}).finally(() => pending.delete(platform));
   pending.set(platform, { work, prompt });
   return work;
@@ -115,6 +131,8 @@ export async function sendTestPush(platform: MobilePlatform): Promise<PushTestRe
     if (response.status === 404) { const answer = await bodyOf(response); return answer?.code === NOT_PAIRED ? "not-paired" : "failed"; }
     if (!response.ok) { await response.body?.cancel(); return "failed"; }
     const outcome = (await response.json() as PushTestResponse).results[0]?.outcome;
+    if (outcome === "skipped") setDelivering(false);
+    else if (outcome === "sent") setDelivering(true);
     return outcome === "sent" ? "sent" : outcome === "unregistered" || outcome === "gone" ? "not-registered" : outcome === "skipped" ? "undeliverable" : "failed";
   } catch {
     return "failed";

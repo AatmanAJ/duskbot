@@ -18,7 +18,7 @@ import { runServiceCommand } from "./service-cli.ts";
 import { runSentinelCli } from "./sentinel/cli.ts";
 import { explainTailscaleFailure, tailscaleServe, tailscaleServeOff, tailscaleStatus, type TailscaleStatus } from "./tailscale.ts";
 import { defaultSetupIo, SetupCancelled, type SetupIo } from "./cli-prompts.ts";
-import { HEADLESS_VERB_NAMES, USAGE } from "./cli-usage.ts";
+import { commandHelp, HEADLESS_VERB_NAMES, USAGE } from "./cli-usage.ts";
 import { normalizePhoneOrigin, runPhoneSetup } from "./cli-phone-setup.ts";
 import { browserSignInLines, pairingBlock, phonePairing, pushReadiness } from "./cli-pairing.ts";
 import type { AppConfig } from "./config.ts";
@@ -959,6 +959,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   if (argv[0] === "sentinel") return runSentinelCli(argv.slice(1));
   if (argv[0] === "free-backup") return runFreeBackup(argv.slice(1));
   if (HEADLESS_VERB_NAMES.has(argv[0] ?? "") || (argv[0] === "help" && HEADLESS_VERB_NAMES.has(argv[1] ?? ""))) return (await import("./headless/main.ts")).runHeadless(argv);
+  if (argv.length > 1 && !argv[0]!.startsWith("-") && argv.slice(1).some((arg) => arg === "--help" || arg === "-h")) { console.log(commandHelp(argv[0]!)); return 0; }
   const options = parseArgs(argv);
   if ("error" in options) {
     console.error(`${options.error}\n\n${USAGE}`);

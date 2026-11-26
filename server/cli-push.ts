@@ -9,7 +9,7 @@ const OUTCOME: Record<PushTestResponse["results"][number]["outcome"], string> = 
   sent: "sent: it should show on the phone in a few seconds",
   unregistered: "not registered: open the dusk bot app on this phone and allow notifications (Settings, Notifications)",
   gone: "the phone's push token is no longer valid: open the dusk bot app on it once to register again",
-  skipped: "not sent: nothing can deliver to this phone yet (no push keys here and the push relay has none for it)",
+  skipped: "not sent: this server has no way to send to this phone (no push keys here, and DUSK_PUSH_RELAY is off or the relay has none for it); see docs/phone-push.md",
   failed: "failed: the push service did not take it; check this server can reach the push relay, then try again",
 };
 
@@ -26,13 +26,19 @@ export async function runPush(action: "status" | "test", call: Loopback, io: Io)
   }
   if (action === "status") {
     const where = await call("/api/mobile/push", { timeoutMs: 8_000 }).catch(() => null);
-    for (const phone of phones) io.log(`${phone.name} (${phone.platform}): ${phone.push ? `registered for ${phone.push === "apns" ? "APNs" : "FCM"}` : "not registered for notifications"}`);
-    if (where?.status === 200) {
-      const { own, relay, relayServices } = where.body as { own: string[]; relay: string | null; relayServices: string[] | null };
-      io.log(own.length ? `push keys on this server: ${own.join(", ")}` : relay ? `push relay: ${relay}${relayServices ? ` (delivers ${relayServices.join(", ") || "nothing"})` : " (did not answer just now)"}` : "push: off (DUSK_PUSH_RELAY=off and no keys on this server)");
+    const route = where?.status === 200 ? where.body as { own: string[]; relay: string | null; relayServices: string[] | null } : null;
+    // whether a push for this service can leave the server: its own keys, or a relay that has them (or did not answer)
+    const leaves = (service: string) => !route || route.own.includes(service) || (route.relay !== null && (route.relayServices === null || route.relayServices.includes(service)));
+    let stuck = false;
+    for (const phone of phones) {
+      const name = phone.push === "apns" ? "APNs" : "FCM";
+      if (phone.push && !leaves(phone.push)) stuck = true;
+      io.log(`${phone.name} (${phone.platform}): ${!phone.push ? "not registered for notifications" : leaves(phone.push) ? `registered for ${name}` : `registered for ${name}, but this server cannot send ${name} pushes`}`);
     }
+    if (route) io.log(route.own.length ? `push keys on this server: ${route.own.join(", ")}` : route.relay ? `push relay: ${route.relay}${route.relayServices ? ` (delivers ${route.relayServices.join(", ") || "nothing"})` : " (did not answer just now)"}` : "push: off (DUSK_PUSH_RELAY=off and no keys on this server)");
+    if (stuck) io.log("Fix: unset DUSK_PUSH_RELAY (or point it at a relay that has the keys), or give this server its own keys (docs/phone-push.md).");
     io.log("Send each phone a test notification with: duskbot push test");
-    return 0;
+    return stuck ? 1 : 0;
   }
   const answer = await call("/api/mobile/push/test", { method: "POST", body: "{}", timeoutMs: 30_000 }).catch(() => null);
   if (!answer || answer.status === 404) { io.error("This server is too old to send a test notification. Update it, then try again."); return 1; }

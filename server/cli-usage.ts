@@ -119,3 +119,21 @@ Install once from the private archive your operator supplies, then type
   npm install --global --prefix "$HOME/.local" ./duskbot-private.tgz
 The desktop's Add your VPS flow installs it on a server for you.
 `;
+
+/** `duskbot COMMAND --help`: that command's usage lines and what it does, from USAGE; the whole of it for one not there */
+export function commandHelp(command: string, usage = USAGE): string {
+  const lines = usage.split("\n");
+  const picked: string[] = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i]!;
+    const usageLine = line.startsWith(`  duskbot ${command} `) || line === `  duskbot ${command}`;
+    const about = line.startsWith(`${command} `) && /^\S+\s{2,}|^\S+ \S/.test(line) && !line.startsWith("  ");
+    if (!usageLine && !about) continue;
+    if (about && picked.length && picked.at(-1) !== "") picked.push("");
+    picked.push(line);
+    // a usage line's continuations are indented further; a description's run until the next flush-left line
+    while (i + 1 < lines.length && (usageLine ? /^ {6,}\S/.test(lines[i + 1]!) && !lines[i + 1]!.startsWith("  duskbot ") : /^ {2,}\S/.test(lines[i + 1]!))) picked.push(lines[++i]!);
+    if (about) picked.push("");
+  }
+  return picked.length ? `${picked.join("\n").trimEnd()}\n\nAll commands: duskbot --help` : usage;
+}

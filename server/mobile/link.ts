@@ -618,7 +618,8 @@ export function createMobileLink(deps: MobileLinkDeps) {
       }
       if (path === "/api/mobile/device" && method === "GET") {
         const device = deviceOf(auth);
-        json(res, device ? 200 : 404, device ? { device: publicDevice(device) } : { error: "this session is not a paired phone", code: NOT_PAIRED });
+        // `delivering`: whether a push for its registration can leave this server at all (its own keys, or a push relay)
+        json(res, device ? 200 : 404, device ? { device: publicDevice(device), delivering: device.push ? push.delivers?.(device.push.service) ?? push.configured.includes(device.push.service) : null } : { error: "this session is not a paired phone", code: NOT_PAIRED });
         return true;
       }
       if (path === "/api/mobile/device" && method === "POST") { const answer = adoptSelf(auth, await body()); json(res, answer.status, answer.body); return true; }
@@ -649,7 +650,9 @@ export function createMobileLink(deps: MobileLinkDeps) {
         device.push = { service, token, ...(environment ? { environment } : {}), updatedAt: now() };
         for (const replaced of devices.filter((one) => one !== device && one.push?.service === service && one.push.token === token)) revoke(replaced.id);
         persist();
-        json(res, 200, { ok: true, delivering: push.delivers?.(service) ?? push.configured.includes(service) });
+        const delivering = push.delivers?.(service) ?? push.configured.includes(service);
+        if (!delivering) log(`mobile push: a phone registered for ${service}, but this server has no way to send ${service} pushes (no keys of its own and no push relay); run duskbot push to see why (docs/phone-push.md)`);
+        json(res, 200, { ok: true, delivering });
         return true;
       }
       if ((path === "/api/mobile/activity" || path === "/api/mobile/activity-start") && (method === "PUT" || method === "DELETE")) {

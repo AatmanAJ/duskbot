@@ -28,7 +28,7 @@ function phone(record: Partial<MobileConnectionRecord> = {}) {
 }
 
 /** a place answering the phone routes: `adopts` false is a server too old to have them */
-function place({ adopts = true, paired = false }: { adopts?: boolean; paired?: boolean } = {}) {
+function place({ adopts = true, paired = false, delivering = true }: { adopts?: boolean; paired?: boolean; delivering?: boolean } = {}) {
   const calls: string[] = [];
   let device = paired;
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit = {}) => {
@@ -36,7 +36,7 @@ function place({ adopts = true, paired = false }: { adopts?: boolean; paired?: b
     calls.push(`${method} ${url}`);
     if (url === "/api/mobile/device" && method === "GET") return device ? Response.json({ device: { id: "dev-1", push: null } }) : adopts ? Response.json({ error: "this session is not a paired phone", code: "not_paired" }, { status: 404 }) : Response.json({ error: "this session is not a paired phone" }, { status: 404 });
     if (url === "/api/mobile/device" && method === "POST") { if (!adopts) return new Response("not found", { status: 404 }); device = true; return Response.json({ device: { id: "dev-1", push: null } }); }
-    if (url === "/api/mobile/push" && method === "PUT") return device ? Response.json({ ok: true, delivering: true }) : Response.json({ code: "not_paired" }, { status: 403 });
+    if (url === "/api/mobile/push" && method === "PUT") return device ? Response.json({ ok: true, delivering }) : Response.json({ code: "not_paired" }, { status: 403 });
     if (url === "/api/mobile/push/test") return Response.json({ relay: "https://link.dusk.bot", results: [{ id: "dev-1", name: "Ram's iPhone", platform: "ios", service: "apns", outcome: "sent" }] });
     return new Response("{}", { status: 404 });
   }));
@@ -83,6 +83,25 @@ describe("push on a phone that only signed in", () => {
     await vi.waitFor(() => expect(registerPush).toHaveBeenCalled());
     await vi.waitFor(() => expect(host.querySelector("[data-push-not-paired]")).toBeNull());
     expect(host.textContent).toContain("Send a test notification");
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  // QA A5: a paired phone on a server that cannot send pushes said nothing
+  it("says when the server cannot send notifications, instead of a test row that cannot work", async () => {
+    const { platform } = phone({ deviceId: "dev-1" });
+    place({ paired: true, delivering: false });
+    await registerPushForConnection(platform, { prompt: true });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => { root.render(createElement(PlatformContext.Provider, { value: platform }, createElement(NotificationSettings))); });
+    await vi.waitFor(() => expect(host.querySelector("[data-push-undeliverable]")?.textContent).toContain("The server can't send notifications"));
+    expect(host.textContent).not.toContain("Send a test notification");
+    // the owner fixed the server: Try again registers again and the card goes
+    place({ paired: true, delivering: true });
+    await act(async () => { host.querySelector<HTMLButtonElement>("[data-push-undeliverable] button")!.click(); });
+    await vi.waitFor(() => expect(host.querySelector("[data-push-undeliverable]")).toBeNull());
     act(() => root.unmount());
     host.remove();
   });
