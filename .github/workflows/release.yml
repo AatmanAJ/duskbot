@@ -626,6 +626,11 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
+          # Maven Central answers hosted runners with 429 now and then; cached dependencies skip most requests
+          cache: gradle
+          cache-dependency-path: |
+            apps/mobile/android/**/*.gradle*
+            apps/mobile/android/gradle/wrapper/gradle-wrapper.properties
       - run: pnpm install --frozen-lockfile
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
@@ -643,7 +648,10 @@ jobs:
            "oauth_client":[],"api_key":[{"current_key":"release-check"}],"services":{"appinvite_service":{"other_platform_oauth_client":[]}}}],
            "configuration_version":"1"}
           JSON
-          DUSK_ANDROID_APK_OUT="$RUNNER_TEMP/apk" apps/mobile/scripts/build-android-apk.sh
+          # one retry after a minute, for a 429 from Maven Central
+          DUSK_ANDROID_APK_OUT="$RUNNER_TEMP/apk" apps/mobile/scripts/build-android-apk.sh || {
+            echo "::warning::the APK build failed once; retrying in 60 s"; sleep 60
+            DUSK_ANDROID_APK_OUT="$RUNNER_TEMP/apk" apps/mobile/scripts/build-android-apk.sh; }
           apk=$(ls "$RUNNER_TEMP"/apk/*.apk)
           tools=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
           "${tools}aapt2" dump badging "$apk" | grep -q "package: name='bot.dusk.mobile'" || {
