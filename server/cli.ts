@@ -295,7 +295,6 @@ async function showPhonePairing(options: CliOptions, origin: string | undefined,
   const push = await pushReadiness(post, options.phone);
   if (push) log(push);
   if (scope.client) log("This phone gets chat and approvals, not settings or pairing.");
-  log("Keep this code private. Check the phone gets notifications with: duskbot push test");
   return true;
 }
 
