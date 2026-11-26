@@ -389,7 +389,8 @@ describe("no way for a phone to reach this workspace", () => {
     await refuseUnreachable();
     await mount({ remote: true });
     await flush();
-    expect(host.querySelector("[data-pairing-unreachable]")?.textContent).toContain("npx duskbot setup");
+    expect(host.querySelector("[data-pairing-unreachable]")?.textContent).toContain("duskbot setup");
+    expect(host.querySelector("[data-pairing-unreachable]")?.textContent).not.toContain("npx");
     expect(host.querySelector("[data-phone-access-copy]")).not.toBeNull();
   });
 });
