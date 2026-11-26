@@ -9,7 +9,7 @@ export type FunnelStep = BeatId;
 export type FunnelPath = "mac" | "cloud";
 
 export interface FunnelFacts {
-  /** an account this install requires, not signed in yet; an optional account is asked for later, in the chat */
+  /** signing in comes right after the hello: this window can sign in and isn't signed in yet (accountDue) */
   account: boolean;
   /** this is the desktop app's own window */
   desktop: boolean;
@@ -25,8 +25,16 @@ export interface FunnelFacts {
   aiAsked?: boolean;
 }
 
-/** The screens this person gets, in order: the hello, then the one AI choice (free models or a plan they have). Where
- * the bots live, what other apps hold, the phone and the Mac's permissions are raised in the chat when they are needed. */
+/** Whether the first run asks to sign in, right after Get started: where this window can sign in and the person isn't
+ * known to be signed in yet (an account handed over from the website, or one from before, goes straight on). Unread
+ * counts as signed out, so Get started never skips past it; a replay of the welcome from Settings never asks. */
+export function accountDue({ canSignIn, signedIn, replay = false }: { canSignIn: boolean; signedIn: boolean | undefined; replay?: boolean }): boolean {
+  return canSignIn && !replay && signedIn !== true;
+}
+
+/** The screens this person gets, in order: the hello, signing in (when due), then the one AI choice (free models or a
+ * plan they have). Where the bots live, what other apps hold, the phone and the Mac's permissions are raised in the chat
+ * when they are needed. */
 export function funnelSteps(facts: FunnelFacts): FunnelStep[] {
   const cloud = facts.desktop && facts.path === "cloud";
   return FUNNEL_STEPS.filter((step) => {

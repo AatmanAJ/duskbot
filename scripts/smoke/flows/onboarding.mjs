@@ -1,7 +1,8 @@
 // Onboarding as a brand-new person: a fresh profile, signed out (or at the sign-in an install can require, --gate), then
-// the first run end to end. It is two screens: the hello, then one AI choice (the AI already signed in here, free models
-// or a plan); Dusk then speaks first in its chat with "What should we start with?" and the setup chips.
-//   mac:    the hello, the AI choice (free models), Dusk's first message and card, then the first bot's first reply
+// the first run end to end: the hello, signing in (gone for someone already signed in; signed out, this run goes on
+// without an account), then one AI choice (the AI already signed in here, free models or a plan); Dusk then speaks first
+// in its chat with "What should we start with?" and the setup chips.
+//   mac:    the hello, the sign-in, the AI choice (free models), Dusk's first message and card, then the first bot's first reply
 //   cloud:  the same run, then the chat's Try cloud chip and the sheet it opens (buying is buy-cloud.mjs)
 //   server: your own server is no longer part of the first run (add-server.mjs covers it)
 // Every screen is shot at the app's normal window (1040x760) and its minimum (768x520) into <out>/steps/.
@@ -106,6 +107,21 @@ await runFlow(flow, async () => {
     return await funnelText();
   }, { critical: true });
 
+  await flow.step("sign-in", gate ? "already signed in: no second sign-in" : "signing in comes next, with the terms line and a quiet way on without an account", async () => {
+    await flow.waitFor(`["account", "ai"].includes(document.querySelector("[data-welcome]")?.dataset.welcome)`, "the step after the hello", 30_000);
+    const step = await at();
+    if (gate) {
+      if (step === "account") throw new Error("a signed-in person was asked to sign in again");
+      return "straight to the AI choice";
+    }
+    if (step !== "account") throw new Error(`the hello went on to ${step}, not the sign-in`);
+    screens.push(step);
+    await shots("sign-in");
+    if (!(await flow.evaluate(`Boolean(document.querySelector("[data-sign-in-legal]"))`))) throw new Error("the sign-in has no terms line");
+    await flow.clickSelector("[data-funnel-account-skip]");
+    return `${await funnelText()} | went on without an account`;
+  }, { critical: true });
+
   await flow.step("ai-choice", "one AI choice: the AI signed in here, free models, or a plan", async () => {
     await flow.waitFor(`document.querySelector("[data-welcome]")?.dataset.welcome === "ai"`, "the AI choice", 30_000);
     screens.push(await at());
@@ -190,11 +206,11 @@ await runFlow(flow, async () => {
 
   await flow.step("first-reply", "the first bot answers on this Mac", () => firstReply("this Mac"));
 
-  await flow.step("account-menu", gate ? "the account menu knows who is signed in" : "nothing asked for an account on this Mac", async () => {
+  await flow.step("account-menu", gate ? "the account menu knows who is signed in" : "going on without an account left this Mac signed out", async () => {
     const state = await flow.accountState();
     flow.facts.account = { status: state?.status, email: state?.account?.email, plan: state?.entitlement?.plan };
     if (gate && state?.status !== "connected") throw new Error(`the app's account is ${state?.status}`);
-    if (!gate && state?.status === "connected") throw new Error("the app signed in although nothing needed an account");
+    if (!gate && state?.status === "connected") throw new Error("the app signed in although the person went on without an account");
     return gate ? `${state.account.email}, ${state.entitlement?.plan ?? "no"} plan` : `account: ${state?.status ?? "none"}; the bots worked without one`;
   });
 });

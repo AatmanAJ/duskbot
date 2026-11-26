@@ -10,15 +10,22 @@ The first run has one job: get the person to the first useful bot reply (the "wo
 For people who want their bots running 24/7, it also has to make buying dusk cloud quick and calm. It is a Persuade
 surface that has to feel like Operate: short, quiet, nothing to read twice.
 
-## Now: two screens, then Dusk speaks first
+## Now: the hello, signing in, one AI choice, then Dusk speaks first
 
 About 40% of sign-ups never sent a message, 128 people went on with no Mac permission granted, and almost half of Claude
-sign-ins were cancelled. The desktop first run is now two screens before the chat (it was up to seven: welcome,
-account, place, AI, bring, phone, permissions):
+sign-ins were cancelled. The desktop first run is now three screens before the chat (it was up to seven: welcome,
+account, place, AI, bring, phone, permissions; for a while it was two, with the account asked later in the chat, which
+read as a missing step: "shouldnt it be sign in after the get started??", 2026-11-26):
 
 1. **Hello** ("Meet dusk bot", Get started). The free model downloads at the server's start (`DUSK_PREINSTALL_FREE_BACKUP`)
    and, once ready, gets one test message while the hello shows (`free-warmup.ts`), so its first answer is warm.
-2. **One AI choice** (`AiStep.tsx`): **Use the Claude you're already signed into** (the AI already signed in on this
+2. **Sign in** (`AccountStep.tsx`, "Sign in to dusk bot"): Google or Apple in the browser, or an emailed code, with the
+   terms line under it (signing in is the consent; usage events wait for it, see below). Gone for someone already signed
+   in (an account handed over from the website, or one from before), read again while the hello shows. Where the
+   install works without an account, a quiet **Continue without an account** sits in the top corner; whoever takes it
+   gets the later in-chat ask (`SignInPill`, `CloudSignInLine`). `DUSK_REQUIRE_ACCOUNT=1` shows no way past it. A replay
+   of the welcome from Settings never asks (`accountDue` in `funnel.ts`).
+3. **One AI choice** (`AiStep.tsx`): **Use the Claude you're already signed into** (the AI already signed in on this
    computer that answered its test, one tap, no new sign-in), **Use free models**, or **Use my plan** (the grid of AIs;
    Other choices goes back). Free models are pickable once they answer: while the download is under way the tile says
    they are getting ready (the server's `freeBackupDownloading`), and when none is coming (no preinstall, or the download
@@ -29,12 +36,19 @@ fitted to what is connected (`introAsks`: Summarize my inbox, What's on my calen
 a price for me, Research something for me) and a "Something else" field. Whatever is picked is sent as the person's
 first message; the card and the setup chips go as soon as they write anything.
 
-Everything else is raised when it is needed, never as a step: the account (signing in to sync or to buy), dusk cloud
+Everything else is raised when it is needed, never as a step: dusk cloud
 (the Try cloud chip, the sidebar, and `LateCloudPlan` for a plan bought later), what other AI apps hold (the chip, then
 Settings > Import), the phone (the chip), apps (the chip and connector cards), and the Mac's permissions
-(`ScreenAccessNotice` when a computer job first needs one). Only an install that requires an account
-(`DUSK_REQUIRE_ACCOUNT=1`) keeps the account step, and a run already on its way to dusk cloud (a saved checkout, or an
-account that owns a cloud) keeps the checkout and the cloud being made.
+(`ScreenAccessNotice` when a computer job first needs one). A run already on its way to dusk cloud (a saved checkout,
+or an account that owns a cloud) keeps the checkout and the cloud being made after the sign-in: hello, sign in,
+checkout, AI, making.
+
+The phone app's first screen already offers signing in as one of its three ways in (scan, sign in, a code), and the web
+app is opened from an account or a server that is already signed in, so neither had the ordering problem.
+
+Usage events: the desktop's main process (`electron/product-events.mjs`) keeps and sends nothing until the app first
+signs in and drops any event from before that moment, so the hello's and a skipped sign-in's `onboarding_step` events
+never leave the computer; the phone sends nothing unless its switch was turned on.
 
 A first run saved on a screen that is gone (place, bring, phone, permissions) resumes on the AI choice
 (`knownBeat`, `resumeBeat`); `WELCOME_VERSION` is unchanged, so nobody who finished is asked again.

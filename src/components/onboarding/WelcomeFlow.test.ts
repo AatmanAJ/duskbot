@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
-// The first run as a funnel: the hello, then one AI choice (the AI already signed in here, free models, or a plan), then
-// Dusk's chat; an account only where the install requires one; a run on its way to dusk cloud keeps its checkout and the
-// Cloud being made. What each step shows, where it goes, and what it saves.
+// The first run as a funnel: the hello, then signing in (skipped when already signed in; Continue without an account
+// where the install works without one), then one AI choice (the AI already signed in here, free models, or a plan), then
+// Dusk's chat; a run on its way to dusk cloud keeps its checkout and the Cloud being made. What each step shows, where it goes, and what it saves.
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,7 +13,7 @@ import { stopWaiting } from "@/lib/assistant-notes";
 
 const f = vi.hoisted(() => ({ state: {} as Record<string, unknown>, dispatch: vi.fn(), api: vi.fn(), onDone: vi.fn(),
   improve: [] as unknown[] }));
-vi.mock("@/state/store", () => ({ useStore: () => ({ state: f.state, dispatch: f.dispatch, refreshInstances: vi.fn(), refreshModels: vi.fn() }), api: f.api }));
+vi.mock("@/state/store", () => ({ useStore: () => ({ state: f.state, dispatch: f.dispatch, refreshInstances: vi.fn(async () => {}), refreshModels: vi.fn() }), api: f.api }));
 vi.mock("@/state/api", () => ({ api: f.api }));
 // the directory has its own tests; here only that More providers opens it
 vi.mock("@/components/models/ModelDirectory", () => ({ ModelDirectory: () => null }));
@@ -496,11 +496,12 @@ describe("on the desktop app", () => {
     expect(step(), "the hello comes first").toBe("welcome");
     await press("Get started");
     expect(step()).toBe("account");
-    expect(title()).toBe("Create your dusk bot account");
-    expect(text(), "no phone in the pitch while its app is hidden").toContain("Already have one? Sign in the same way.");
+    expect(title()).toBe("Sign in to dusk bot");
+    expect(text(), "no phone in the pitch while its app is hidden").toContain("One account for your bots and dusk cloud.");
+    expect(document.body.querySelector("[data-sign-in-legal]"), "signing in is where the terms line lives").not.toBeNull();
     expect(text(), "no price claim in the pitch").not.toContain("Free.");
     expect(button("Continue with Google")).toBeDefined();
-    expect(button("Skip for now"), "required here").toBeUndefined();
+    expect(button("Continue without an account"), "required here").toBeUndefined();
     await type(document.body.querySelector<HTMLInputElement>("input[type=email]")!, "person@example.com");
     await press("Email me a code");
     expect(gate.signInStart).toHaveBeenCalledWith("person@example.com");
@@ -511,12 +512,100 @@ describe("on the desktop app", () => {
     expect(step()).toBe("ai");
   });
 
+  /** the packaged app's account bridge, where an account is optional: signed out unless told otherwise */
+  const optionalGate = (start: { status: string } = { status: "signed-out" }) => {
+    const listeners = new Set<() => void>();
+    const gate = {
+      now: start,
+      state: vi.fn(async () => ({ required: false, blocked: false, ...gate.now })),
+      options: vi.fn(async () => ({ providers: ["google", "apple"], recovery: true })),
+      signInStart: vi.fn(async (email: string) => ({ outcome: "sent", email, expiresAt: Date.now() + 600_000, resendAt: Date.now() + 30_000, signupOpen: true })),
+      signInVerify: vi.fn(async () => { gate.now = { status: "connected" }; return { outcome: "signed-in" }; }),
+      signInCancel: vi.fn(async () => {}), browser: vi.fn(async () => ({})), cancel: vi.fn(async () => ({})), reopen: vi.fn(),
+      onChange: (cb: () => void) => { listeners.add(cb); return () => { listeners.delete(cb); }; },
+      tell: async (next: { status: string }) => { gate.now = next; await act(async () => { for (const listener of listeners) listener(); }); await settle(); },
+    };
+    return gate;
+  };
+
+  it("signing in comes right after Get started and before the AI choice, with a quiet way on without an account", async () => {
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
+    desktop({ accountGate: optionalGate() });
+    await show();
+    expect(step(), "the hello comes first").toBe("welcome");
+    await press("Get started");
+    expect(step()).toBe("account");
+    expect(title()).toBe("Sign in to dusk bot");
+    expect(document.body.querySelector("[data-funnel-progress]")?.getAttribute("data-funnel-progress")).toBe("2/3");
+    expect(button("Continue with Google")).toBeDefined();
+    expect(document.body.querySelector("[data-sign-in-legal]"), "signing in is where the terms line lives").not.toBeNull();
+    expect(text(), "no dash anywhere").not.toMatch(/\u2014/);
+    await press("Continue without an account");
+    expect(step()).toBe("ai");
+    expect(document.body.querySelector("[data-funnel-progress]")?.getAttribute("data-funnel-progress")).toBe("3/3");
+    await press("Back");
+    expect(step(), "back goes to the sign-in").toBe("account");
+  });
+
+  it("signing in with an emailed code goes on to the AI choice by itself", async () => {
+    const gate = optionalGate();
+    desktop({ accountGate: gate });
+    await show();
+    await press("Get started");
+    expect(step()).toBe("account");
+    await type(document.body.querySelector<HTMLInputElement>("input[type=email]")!, "person@example.com");
+    await press("Email me a code");
+    const digits = [...document.body.querySelectorAll<HTMLInputElement>("input")];
+    for (const [index, digit] of digits.entries()) await type(digit, String(index + 1));
+    await press("Sign in");
+    expect(gate.signInVerify).toHaveBeenCalledWith("12345678");
+    expect(step()).toBe("ai");
+  });
+
+  it("someone already signed in (handed over from the website, or from before) goes from the hello straight to the AI choice", async () => {
+    desktop({ accountGate: optionalGate({ status: "connected" }) });
+    await show();
+    await press("Get started");
+    expect(step()).toBe("ai");
+    expect(document.body.querySelector("[data-funnel-progress]")?.getAttribute("data-funnel-progress")).toBe("2/2");
+  });
+
+  it("a sign-in that lands while the hello shows skips the sign-in step", async () => {
+    const gate = optionalGate();
+    desktop({ accountGate: gate });
+    await show();
+    expect(step()).toBe("welcome");
+    await gate.tell({ status: "connected" });
+    await press("Get started");
+    expect(step()).toBe("ai");
+  });
+
+  it("a run saved on the sign-in resumes there, or on the AI choice once signed in", async () => {
+    localStorage.setItem("dusk.onboarding.welcomeDraft", JSON.stringify({ version: WELCOME_VERSION, beat: "account" }));
+    desktop({ accountGate: optionalGate() });
+    await show();
+    expect(step()).toBe("account");
+    await act(async () => root.unmount());
+    root = createRoot(host);
+    localStorage.setItem("dusk.onboarding.welcomeDraft", JSON.stringify({ version: WELCOME_VERSION, beat: "account" }));
+    desktop({ accountGate: optionalGate({ status: "connected" }) });
+    await show();
+    expect(step()).toBe("ai");
+  });
+
+  it("a replay from Settings never asks to sign in", async () => {
+    desktop({ accountGate: optionalGate() });
+    await show({ replay: true });
+    await press("Get started");
+    expect(step()).toBe("ai");
+  });
+
   it("never offers to go on without an account where the app needs one", async () => {
     desktop({ accountGate: { state: async () => ({ required: true, blocked: true, status: "signed-out" }), options: async () => ({ providers: [], recovery: false }), onChange: () => () => {} } });
     await show();
     await press("Get started");
     expect(step()).toBe("account");
-    expect(button("Skip for now")).toBeUndefined();
+    expect(button("Continue without an account")).toBeUndefined();
     await key("Escape");
     expect(step()).toBe("account");
   });

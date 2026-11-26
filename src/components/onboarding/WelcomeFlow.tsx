@@ -17,7 +17,7 @@ import { AiStep } from "./AiStep";
 import { BringStatus } from "./BringStep";
 import { CheckoutStep } from "./CheckoutStep";
 import { CloudBringStep, useCloudBringOffered } from "./CloudBringStep";
-import { cloudOwned, foundPicks, freeModel, funnelSteps, nextStep, previousStep, type FunnelPath, type FunnelStep } from "./funnel";
+import { accountDue, cloudOwned, foundPicks, freeModel, funnelSteps, nextStep, previousStep, type FunnelPath, type FunnelStep } from "./funnel";
 import { useFreeWarmup } from "./free-warmup";
 import { funnelAccount, type FunnelAccountState } from "./funnel-account";
 import { FunnelBar, WelcomeStep } from "./FunnelSteps";
@@ -46,10 +46,11 @@ async function nameFromComputer(config: Config, done: (config: NonNullable<Confi
 
 export { cloudBought } from "./funnel";
 
-/** The first run, two calm screens: the hello (the free model gets ready meanwhile), then one choice, free models or a
- * plan the person already has. It ends in Dusk's chat (Dusk made the Chief of Staff where no other bot is one), where Dusk
- * speaks first with three first jobs, and raises anything else (an account, dusk cloud, the phone, the Mac's
- * permissions, apps) when a job needs it. A run already on its way to dusk cloud keeps the browser checkout, the AI while
+/** The first run, three calm screens: the hello (the free model gets ready meanwhile), signing in (gone for someone
+ * already signed in; Continue without an account where the install works without one, and the chat asks again later),
+ * then one choice, free models or a plan the person already has. It ends in Dusk's chat (Dusk made the Chief of Staff
+ * where no other bot is one), where Dusk speaks first with three first jobs, and raises anything else (dusk cloud, the
+ * phone, the Mac's permissions, apps) when a job needs it. A run already on its way to dusk cloud keeps the browser checkout, the AI while
  * the Cloud is made, then the Cloud, ending in that Cloud's chat. */
 export function WelcomeFlow({
   onDone,
@@ -78,13 +79,16 @@ export function WelcomeFlow({
   // the account: asked once where this window can sign in; a step only for someone not signed in yet
   const account = useMemo(() => (embedded ? null : funnelAccount()), [embedded]);
   const [known, setKnown] = useState<FunnelAccountState | null>(null);
+  // what decides the sign-in step: read again while the hello shows (a handoff from the website can land then), then
+  // held, so signing in on the step doesn't take it out from under the person
   const firstKnown = useRef<FunnelAccountState | null>(null);
+  const atNow = useRef<FunnelStep>("welcome");
   useEffect(() => {
     if (!account) return;
     let alive = true;
     const read = () => void account.state().then((next) => {
       if (!alive) return;
-      firstKnown.current ??= next;
+      if (!firstKnown.current || atNow.current === "welcome") firstKnown.current = next;
       setKnown(next);
     }, () => {});
     read();
@@ -106,12 +110,17 @@ export function WelcomeFlow({
   const [notesLine, setNotesLine] = useState<string | null>(null);
 
   const saved = initialBeat ?? draft?.beat;
-  // the account is a step only where the install requires one; otherwise the chat asks once something needs it
-  const accountStep = Boolean(account) && firstKnown.current?.required === true && !firstKnown.current.signedIn;
+  // signing in comes right after Get started for anyone not signed in yet; skipped, the chat asks once something needs it
+  const accountStep = accountDue({ canSignIn: Boolean(account), signedIn: firstKnown.current?.signedIn, replay });
   const steps = funnelSteps({ account: accountStep, desktop, path, paid,
     hello: window.duskDesktop?.remoteClient?.active !== true, cloudBring, aiAsked: cloudHome && !replay });
 
   const [at, setAt] = useState<FunnelStep>(() => resumeBeat(steps, saved));
+  atNow.current = at;
+  // a run resumed on the sign-in by someone signed in since goes on to what comes after it
+  useLayoutEffect(() => {
+    if (at === "account" && !steps.includes("account")) setAt(resumeBeat(steps, "account"));
+  }, [at, steps]);
   // the second click of a double click lands on the step it opened: it must not choose there
   const stepShownAt = useRef(0);
   useEffect(() => { stepShownAt.current = Date.now(); }, [at]);

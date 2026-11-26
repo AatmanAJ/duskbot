@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aiName, aiTiles, foundPicks, freeModel, funnelSteps, nextStep, previousStep } from "./funnel";
+import { accountDue, aiName, aiTiles, foundPicks, freeModel, funnelSteps, nextStep, previousStep } from "./funnel";
 
 const ai = (instanceId: string, driverKind: string, ready = false, extra: Record<string, unknown> = {}) => ({
   instanceId, driverKind, displayName: instanceId, access: "subscription", snapshot: { state: ready ? "available" : "unavailable", ...extra },
@@ -7,7 +7,7 @@ const ai = (instanceId: string, driverKind: string, ready = false, extra: Record
 const ready = (instance: { snapshot: { state: string } }) => instance.snapshot.state === "available";
 
 describe("the funnel's steps", () => {
-  it("is two screens on this Mac: the hello, then the one AI choice", () => {
+  it("is two screens on this Mac for someone signed in: the hello, then the one AI choice", () => {
     const steps = funnelSteps({ account: false, desktop: true });
     expect(steps).toEqual(["welcome", "ai"]);
     expect(nextStep(steps, "welcome")).toBe("ai");
@@ -21,8 +21,20 @@ describe("the funnel's steps", () => {
     for (const gone of ["place", "bring", "phone", "permissions", "checkout", "making"]) expect(steps).not.toContain(gone);
   });
 
-  it("asks for an account only where the install requires one", () => {
-    expect(funnelSteps({ account: true, desktop: true })).toEqual(["welcome", "account", "ai"]);
+  it("asks to sign in right after Get started, before the AI choice, for anyone not signed in yet", () => {
+    const steps = funnelSteps({ account: true, desktop: true });
+    expect(steps).toEqual(["welcome", "account", "ai"]);
+    expect(nextStep(steps, "welcome")).toBe("account");
+    expect(nextStep(steps, "account")).toBe("ai");
+    expect(funnelSteps({ account: true, desktop: true, path: "cloud" }), "dusk cloud's checkout and making come after it").toEqual(["welcome", "account", "checkout", "ai", "making"]);
+  });
+
+  it("decides the sign-in step from the account: there until it is known to be signed in, never on a replay or where this window can't sign in", () => {
+    expect(accountDue({ canSignIn: true, signedIn: undefined }), "not read yet: kept, so Get started never skips past it").toBe(true);
+    expect(accountDue({ canSignIn: true, signedIn: false })).toBe(true);
+    expect(accountDue({ canSignIn: true, signedIn: true }), "a handoff from the website or an account from before").toBe(false);
+    expect(accountDue({ canSignIn: false, signedIn: false }), "a browser, a server's own page").toBe(false);
+    expect(accountDue({ canSignIn: true, signedIn: false, replay: true }), "the welcome again from Settings").toBe(false);
   });
 
   it("skips the hello on a server opened from the desktop app, where the person already met dusk bot", () => {
