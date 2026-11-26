@@ -11,6 +11,7 @@ import { DOCUMENT_EXTENSIONS, documentText, DocumentTextError, pdfPagePictures }
 import { headOf, outlineOf } from "./document-excerpts.ts";
 import { decodeAttachmentAttribute } from "./message-file.ts";
 import { unpackAttachedZip, zipBlock, ZipUnpackError } from "./attached-zip.ts";
+import { HEIF_EXTENSIONS, heifAsJpeg, VIDEO_EXTENSIONS, videoNote } from "./attached-media.ts";
 
 /** Characters of document text one turn carries; past it the bot is told to read the rest with extract. */
 export const ATTACHED_TEXT_MAX_CHARS = 60_000;
@@ -27,7 +28,7 @@ type Read = { text: string } | { scanned: true } | { problem: string };
 
 async function ownedDocument(path: string, attachmentsDir: string): Promise<string | null> {
   const name = basename(path);
-  if (!OWNED_NAME.test(name) || !(DOCUMENT_EXTENSIONS.has(extname(name)) || extname(name) === ".zip") || resolve(path) !== resolve(attachmentsDir, name)) return null;
+  if (!OWNED_NAME.test(name) || !(DOCUMENT_EXTENSIONS.has(extname(name)) || extname(name) === ".zip" || VIDEO_EXTENSIONS.has(extname(name)) || HEIF_EXTENSIONS.has(extname(name))) || resolve(path) !== resolve(attachmentsDir, name)) return null;
   try {
     const entry = await lstat(resolve(attachmentsDir, name));
     if (!entry.isFile() || entry.isSymbolicLink()) return null;
@@ -108,6 +109,18 @@ export async function prepareAttachedDocuments(source: string, options: Attached
     const name = quoteName(decodeAttachmentAttribute(tag[2] ?? basename(path)));
     if (extname(path) === ".zip") {
       blocks.push({ tag: tag[0].trim(), block: await zipFiles(path, name, cacheDir) });
+      continue;
+    }
+    if (VIDEO_EXTENSIONS.has(extname(path))) {
+      blocks.push({ tag: tag[0].trim(), block: videoNote(name, (await lstat(path)).size) });
+      continue;
+    }
+    if (HEIF_EXTENSIONS.has(extname(path))) {
+      const jpeg = options.vision && images.length < options.imageRoom ? await heifAsJpeg(path, cacheDir) : null;
+      if (jpeg) images.push({ path: jpeg, mime: "image/jpeg", bytes: (await lstat(jpeg)).size });
+      blocks.push({ tag: tag[0].trim(), block: jpeg
+        ? `[${name} is an iPhone photo, attached as a picture.]`
+        : `[${name} is an iPhone (HEIC) photo that can't be shown as a picture here; its file is at the path above.]` });
       continue;
     }
     const read = await readOnce(path, cacheDir);

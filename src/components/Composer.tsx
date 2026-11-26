@@ -56,7 +56,7 @@ import {
   composerTakesFocusOnOpen,
   imageBytesLeft, imageSentAsFile, imageSlotsLeft,
   replyTargetTakesFocus,
-  isLongPaste,
+  isImageFile, isLongPaste,
   optimisticImageAttachment,
   attachedPaste, pasteAttachment,
   pastedTextFile,
@@ -799,7 +799,7 @@ export const Composer = memo(function Composer({
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const copiedFiles = Array.from(e.clipboardData.files ?? []);
-    if (copiedFiles.some((file) => /\.(?:json|md|txt)$/i.test(file.name))) {
+    if (copiedFiles.some((file) => !isImageFile(file))) {
       // a file copied in Finder, such as the dusk-bot-notes.md another AI made
       e.preventDefault();
       void pickFiles(copiedFiles);

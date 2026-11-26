@@ -10,6 +10,7 @@ import {
   clipboardImageFiles,
   composeMessage,
   documentMime,
+  textFileMime,
   fileAttachment,
   fileAttachmentFromFile,
   handoffAttachmentImagePreview,
@@ -570,6 +571,20 @@ describe("private document intake", () => {
     } finally {
       fetch.mockRestore();
     }
+  });
+
+  it("uploads code, config, logs, videos and iPhone photos under their own names instead of refusing them", () => {
+    const tile = (name: string, type = "") => pendingFileAttachment({ name, type, size: 2048 });
+    for (const name of ["main.py", "deploy.sh", "index.html", "feed.xml", "app.ts", "View.tsx", "main.go", "lib.rs", "App.swift", "q.sql", "ci.yaml", "server.log", "Dockerfile", "Makefile"]) {
+      expect(tile(name), name).toMatchObject({ kind: "file", name, uploading: true });
+    }
+    expect(textFileMime({ name: "notes", type: "text/plain" })).toBe("text/plain");
+    expect(textFileMime({ name: "photo", type: "" })).toBeNull();
+    expect(textFileMime({ name: "setup.exe", type: "application/x-msdownload" })).toBeNull();
+    for (const [name, type] of [["clip.mov", ""], ["clip.mp4", "video/mp4"], ["screen.webm", "video/webm"], ["IMG_0042.HEIC", ""], ["IMG_0043.heic", "image/heic"]]) {
+      expect(tile(name!, type), name).toMatchObject({ kind: "file", name });
+    }
+    expect(tile("setup.exe", "application/x-msdownload")).toBeNull();
   });
 
   it("recognises supported documents by declared mime or filename", () => {

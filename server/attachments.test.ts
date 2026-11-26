@@ -307,6 +307,14 @@ describe("aggregate attachment storage", () => {
     expect(() => saveImage(Buffer.from("b"), "image/png")).not.toThrow();
   });
 
+  it("keeps an iPhone photo as a file and refuses bytes that are not one", async () => {
+    const heic = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypheic", "latin1"), Buffer.alloc(40)]);
+    const saved = await saveFile((async function* () { yield heic; })(), "IMG_0042.HEIC", "image/heic");
+    expect(saved).toMatchObject({ name: "IMG_0042.heic", bytes: heic.byteLength });
+    expect(saved.path.endsWith(".heic")).toBe(true);
+    await expect(saveFile((async function* () { yield Buffer.from("just some text pretending"); })(), "x.heic", "image/heic")).rejects.toMatchObject({ status: 400 });
+  });
+
   it("keeps a zip as a file, whichever name Windows or macOS gives its type, and refuses bytes that are not a zip", async () => {
     const zip = Buffer.concat([Buffer.from("PK\x03\x04", "latin1"), Buffer.alloc(40)]);
     for (const mime of ["application/zip", "application/x-zip-compressed"]) {
@@ -596,7 +604,10 @@ describe("shared files", () => {
     expect(sanitizeSharedFileName("notes", "text/markdown")).toBe("notes.md");
     expect(sanitizeSharedFileName("rename.py", "text/plain")).toBe("rename.py");
     expect(sanitizeSharedFileName("rename.py", "application/pdf")).toBe("rename.pdf");
-    expect(sanitizeSharedFileName("page.html", "text/plain")).toBe("page.txt");
+    expect(sanitizeSharedFileName("page.html", "text/plain")).toBe("page.html.txt");
+    expect(sanitizeSharedFileName("Dockerfile", "text/plain")).toBe("Dockerfile");
+    expect(sanitizeSharedFileName("server.log", "text/plain")).toBe("server.log");
+    expect(sanitizeSharedFileName("notes.txt", "text/plain")).toBe("notes.txt");
     expect(() => sanitizeSharedFileName("../../secret.txt", "text/plain")).toThrow(/filename, not a path/);
     expect(() => sanitizeSharedFileName("..\\..\\secret.txt", "text/plain")).toThrow(/filename, not a path/);
     expect(() => sanitizeSharedFileName("..%2F..%2Fsecret.txt", "text/plain")).toThrow(/filename, not a path/);

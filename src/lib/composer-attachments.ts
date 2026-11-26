@@ -218,6 +218,40 @@ const ACCEPTED_AUDIO_MIMES = new Set([
   "audio/x-m4a", "audio/x-wav", "audio/wave", "audio/x-flac",
 ]);
 
+const VIDEO_MIMES_BY_EXTENSION: Readonly<Record<string, string>> = { mp4: "video/mp4", m4v: "video/mp4", mov: "video/quicktime" };
+const ACCEPTED_VIDEO_MIMES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
+/** iPhone photos; the server turns them into a JPEG for an AI that sees pictures. */
+const HEIC_MIMES_BY_EXTENSION: Readonly<Record<string, string>> = { heic: "image/heic", heif: "image/heif" };
+
+/** Code, config and logs: sent as plain text under their own name. */
+const TEXT_EXTENSIONS: ReadonlySet<string> = new Set([
+  "py", "sh", "bash", "zsh", "fish", "ps1", "js", "mjs", "cjs", "ts", "tsx", "jsx", "rb", "go", "rs", "java", "kt", "swift",
+  "c", "h", "cpp", "cc", "hpp", "cs", "php", "pl", "lua", "r", "sql", "yaml", "yml", "toml", "ini", "log", "xml", "html", "htm",
+  "css", "scss", "less", "vue", "svelte", "conf", "cfg", "properties", "gradle", "proto", "graphql", "gql", "dart", "scala",
+  "tf", "hcl", "ex", "exs", "hs", "zig", "env", "gitignore", "dockerignore", "editorconfig", "diff", "patch", "srt", "vtt",
+]);
+const TEXT_NAMES = /^(?:dockerfile|containerfile|makefile|procfile|gemfile|rakefile|vagrantfile|brewfile|justfile|license|readme|changelog|notice|authors|codeowners)$/i;
+const TEXT_DECLARED = new Set(["application/xml", "application/javascript", "application/x-javascript", "application/x-sh", "application/x-yaml", "application/yaml", "application/toml", "application/sql", "application/x-python-code"]);
+
+/** text/plain for a code, config or log file, by its declared type or its name; null for anything else. */
+export function textFileMime(file: Pick<File, "name" | "type">): string | null {
+  const declared = file.type.split(";", 1)[0]!.trim().toLowerCase();
+  const name = file.name.trim();
+  const dot = name.lastIndexOf(".");
+  const extension = dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
+  if (declared.startsWith("text/") || TEXT_DECLARED.has(declared) || TEXT_EXTENSIONS.has(extension)) return "text/plain";
+  return dot < 0 && TEXT_NAMES.test(name) ? "text/plain" : null;
+}
+
+/** A video or HEIC photo the composer uploads as a file. */
+function mediaFileMime(file: Pick<File, "name" | "type">): string | null {
+  const declared = file.type.split(";", 1)[0]!.trim().toLowerCase();
+  const extension = file.name.split(".").at(-1)?.toLowerCase() ?? "";
+  if (ACCEPTED_VIDEO_MIMES.has(declared)) return declared;
+  if (declared === "image/heic" || declared === "image/heif") return declared;
+  return VIDEO_MIMES_BY_EXTENSION[extension] ?? HEIC_MIMES_BY_EXTENSION[extension] ?? null;
+}
+
 export function documentMime(file: Pick<File, "name" | "type">): string | null {
   const declared = file.type.split(";", 1)[0]!.trim().toLowerCase();
   if (ACCEPTED_DOCUMENT_MIMES.has(declared)) return declared;
@@ -389,7 +423,7 @@ function uploadableFileMime(file: Pick<File, "name" | "type" | "size">): string 
   const extension = file.name.split(".").at(-1)?.toLowerCase() ?? "";
   const mime = documentMime(file) ??
     (ACCEPTED_AUDIO_MIMES.has(declared) ? declared : AUDIO_MIMES_BY_EXTENSION[extension]) ??
-    (imageSentAsFile(file) ? declared : undefined);
+    (imageSentAsFile(file) ? declared : undefined) ?? mediaFileMime(file) ?? textFileMime(file);
   if (!mime) return null;
   if (file.size === 0) throw new AttachmentEmptyError(file.name);
   if (file.size > FILE_MAX_BYTES) {
