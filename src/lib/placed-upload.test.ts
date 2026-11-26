@@ -81,6 +81,23 @@ describe("an upload placed in the draft", () => {
     expect((draft("bot:b:t")[0] as FileAttachment).failed).toBeUndefined();
   });
 
+  it("takes its tile off when the server turns the bytes away for good, and names the file in the notice", async () => {
+    const routes = routeUploads();
+    stop = routes.stop;
+    const { file, tile } = placeFile("bot:d:t", "scan.pdf", 64);
+    const sent = sendPlacedUpload("bot:d:t", tile, file);
+    await Promise.resolve();
+    routes.pending[0]!.resolve(new Response(JSON.stringify({ error: "file bytes are not application/pdf" }), { status: 400 }));
+    const error = await sent.catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ status: 400 });
+    expect(routes.pending).toHaveLength(1);
+    expect(draft("bot:d:t")).toEqual([]);
+    expect(uploadSource(tile.id)).toBeUndefined();
+    const { uploadFailure } = await import("./intake-files");
+    expect(uploadFailure("scan.pdf", error)).toBe("scan.pdf wasn't attached: it's damaged, or it isn't the kind of file its name says.");
+    expect(uploadFailure("notes.pdf", new TypeError("Failed to fetch"))).toBe("notes.pdf didn't upload. Check your connection, then retry it or remove it.");
+  });
+
   it("stops quietly when its tile is removed mid-upload", async () => {
     const routes = routeUploads();
     stop = routes.stop;

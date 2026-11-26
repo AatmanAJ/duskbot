@@ -47,7 +47,6 @@ import { useOnCall } from "@/lib/call";
 import { isLiveCallRunning, useLiveMedia } from "@/lib/live-call-media";
 import {
   appendPastedText,
-  refusedBeforeUpload,
   attachmentUnsent,
   clipboardHasImages,
   clipboardImageFiles,
@@ -113,7 +112,6 @@ import {
 import { useSlashSkills } from "@/lib/use-slash-skills";
 import { randomUuid } from "@/lib/random-uuid";
 import { noteSendLaunch } from "./bubble-entrance";
-import { friendlyError } from "@/lib/plain-error";
 
 const supportsAgents = (instances: InstanceInfo[], candidate?: Bot) =>
   Boolean(candidate && instances.find((instance) => instance.instanceId === candidate.modelSelection.instanceId)?.capabilities?.agentsMcp);
@@ -197,7 +195,7 @@ export const Composer = memo(function Composer({
     !group && bot ? `bot:${bot.id}` : undefined,
   );
   const attachmentPending = useDraftAttachmentPending(draftId);
-  const unsentUpload = attachments.some(attachmentUnsent);
+  const unsentUpload = attachments.some((attachment) => attachment.kind !== "paste" && attachment.uploading);
   const failedSends = useFailedComposerSends(draftId); const picks = mentionPicksFor(draftId);
   const [channelMode, setChannelMode] = useComposerChannelMode(draftId);
   const editText = useCallback(
@@ -550,7 +548,7 @@ export const Composer = memo(function Composer({
     if (!failed || failed.kind === "paste") return;
     changeDraftAttachmentPending(draftId, true);
     void retryPlacedUpload(draftId, failed)
-      .catch((error: unknown) => setAttachmentNotice(`${failed.name}: ${friendlyError(error, "upload failed")}`))
+      .catch((error: unknown) => setAttachmentNotice(uploadFailure(failed.name, error)))
       .finally(() => changeDraftAttachmentPending(draftId, false));
   }, [attachments, draftId]);
   const pickFiles = async (picked: ArrayLike<File> | null) => {
@@ -739,7 +737,7 @@ export const Composer = memo(function Composer({
       directMessageSent(state.instances, bot.modelSelection?.instanceId, busy && (followUp !== "steer" || !canSteer));
     }
     setText("");
-    setAttachments([]); picks.clear();
+    setAttachments(attachments.filter(attachmentUnsent)); picks.clear();
     onConsumeReply?.(); setSelectionQuote(draftId, null);
     setChannelMode("chat");
     // a click on the round button takes focus, and the button unmounts once the field is empty; grok hands it back
@@ -834,7 +832,7 @@ export const Composer = memo(function Composer({
             if (result.status === "rejected") {
               dispatch({
                 type: "error",
-                message: refusedBeforeUpload(result.reason) ? uploadFailure(kept[index]!.name, result.reason) : friendlyError(result.reason, "image upload failed"),
+                message: uploadFailure(kept[index]!.name, result.reason),
               });
             }
           }
@@ -882,7 +880,7 @@ export const Composer = memo(function Composer({
     }
     changeDraftAttachmentPending(draftId, true);
     void uploadFile(file)
-      .catch((error: unknown) => setAttachmentNotice(friendlyError(error, "upload failed")))
+      .catch((error: unknown) => setAttachmentNotice(uploadFailure(t("composer.pastedText"), error)))
       .finally(() => changeDraftAttachmentPending(draftId, false));
   };
 

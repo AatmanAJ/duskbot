@@ -121,6 +121,15 @@ export class AttachmentEmptyError extends Error {
 }
 
 /** A file turned away before it was sent (too large or empty): its own plain sentence says why. */
+/** Statuses the server answers when it refuses these bytes for good (damaged, the wrong type, too large). */
+const TURNED_AWAY = new Set([400, 413, 415, 422]);
+
+/** The upload can never succeed as it is, so its tile goes and the notice says why, rather than a Retry that cannot work. */
+export function uploadTurnedAway(error: unknown): boolean {
+  const status = typeof error === "object" && error !== null && "status" in error ? error.status : undefined;
+  return typeof status === "number" && TURNED_AWAY.has(status);
+}
+
 export function refusedBeforeUpload(error: unknown): error is AttachmentTooLargeError | AttachmentEmptyError {
   return error instanceof AttachmentTooLargeError || error instanceof AttachmentEmptyError;
 }
@@ -497,6 +506,7 @@ export function formatSize(bytes: number): string {
 export function composeMessage(text: string, attachments: Attachment[]): string {
   const parts = [text.trim()];
   attachments.forEach((a, i) => {
+    if (attachmentUnsent(a)) return;
     if (a.kind === "paste") {
       parts.push(`<pasted-text index="${i + 1}">\n${a.text}\n</pasted-text>`);
     } else if (a.kind === "image") {

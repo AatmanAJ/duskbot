@@ -118,3 +118,23 @@ describe("a long paste into a message that already has attachments", () => {
     expect(tiles().filter((tile) => tile.dataset.attachmentKind === "paste")).toHaveLength(2);
   });
 });
+
+describe("an attachment whose upload failed", () => {
+  it("never holds Send: the message goes without it and the tile stays to retry or remove", async () => {
+    const failed: Attachment = { kind: "file", id: "bad", path: "", name: "photo.png", size: 10, failed: true, uploading: false };
+    restoreComposerDraft(`bot:${bot.id}:${bot.threadId}`, { text: "", attachments: [files[0]!, failed] });
+    flushSync(() => root.render(createElement(Composer, { bot })));
+    const box = container.querySelector("textarea")!;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+    flushSync(() => { setValue.call(box, "here you go"); box.dispatchEvent(new Event("input", { bubbles: true })); });
+    const send = container.querySelector<HTMLButtonElement>("[data-composer-send]")!;
+    expect(send.disabled).toBe(false);
+    flushSync(() => send.click());
+    await settle();
+    const sent = fixture.dispatch.mock.calls.map(([action]) => action).find((action) => action.type === "send");
+    expect(sent?.text).toContain("here you go");
+    expect(sent?.text).toContain('name="one.pdf"');
+    expect(sent?.text).not.toContain("photo.png");
+    expect(tiles().map((tile) => tile.dataset.attachmentId)).toEqual(["bad"]);
+  });
+});

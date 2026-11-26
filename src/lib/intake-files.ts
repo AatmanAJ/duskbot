@@ -2,6 +2,8 @@ import { t } from "./i18n";
 import {
   AttachmentEmptyError,
   AttachmentTooLargeError,
+  FILE_MAX_BYTES,
+  uploadTurnedAway,
   attachmentsFromDroppedFiles,
   fileAttachmentFromFile,
   fitImagesToSlots,
@@ -40,9 +42,10 @@ export function imagesThatFit<T extends { name: string; size: number }>(images: 
 export function uploadFailure(name: string, err: unknown): string {
   if (err instanceof AttachmentTooLargeError) return t("composer.attach.tooLarge", { name: err.fileName, mb: err.maxBytes / MB });
   if (err instanceof AttachmentEmptyError) return t("composer.attach.empty", { name: err.fileName });
-  const message = err instanceof Error ? err.message : "upload failed";
-  const said = message.includes(name) ? message : `${name}: ${message}`;
-  return /[.!?]$/.test(said) ? said : `${said}.`;
+  const status = typeof err === "object" && err !== null && "status" in err ? err.status : undefined;
+  if (status === 413) return t("composer.attach.tooLarge", { name, mb: FILE_MAX_BYTES / MB });
+  if (status === 507) return t("composer.attach.storageFull", { name });
+  return t(uploadTurnedAway(err) ? "composer.attach.damaged" : "composer.attach.uploadFailed", { name });
 }
 
 export async function intakeFiles<T extends DroppedFile & { type: string }>(

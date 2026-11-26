@@ -91,11 +91,11 @@ describe("intakeFiles", () => {
       allowImages: true,
       getPath: onDisk,
       uploadImage: upload,
-      uploadFile: async () => { throw new Error("private store is full"); },
+      uploadFile: async () => { throw Object.assign(new Error("attachments storage is full (2 GB limit)"), { status: 507 }); },
     });
 
     expect(out.attachments).toEqual([]);
-    expect(out.notice).toContain("notes.pdf: private store is full");
+    expect(out.notice).toBe("notes.pdf wasn't attached: there's no room left for attachments. Clear old ones in Settings.");
   });
 
   it("treats an image as an ordinary file when the engine cannot read one", async () => {
@@ -131,7 +131,7 @@ describe("intakeFiles", () => {
       },
     });
     expect(out.attachments).toHaveLength(1);
-    expect(out.notice).toMatch(/bad\.png: too large/);
+    expect(out.notice).toBe("bad.png didn't upload. Check your connection, then retry it or remove it.");
   });
 
   it("stops at the images a message can still take and names the rest", async () => {
