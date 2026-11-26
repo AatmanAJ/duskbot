@@ -11257,6 +11257,7 @@ async function runClaimedGroupMemberTurn(
   const liveRosterBlock = !orchestration?.liveRoster || orchestration.resumed ? "" : `\n\n${orchestration.liveRoster}`;
   const heldReplay = heldReplayFor(group.id, conversationOfRun(threadId), bot.id, userName, roomContext);
   const alsoAnswering = parseMemberRun(threadId) && operation ? [...operation.botIds].filter((id) => id !== bot.id).map((id) => store.bot(id)?.name ?? "") : [];
+  mentionChainFor(spoken).begin(bot.id);
   const cue = orchestration ? undefined : mentionChainFor(spoken).takeCue(bot.id);
   const teamNotes = [
     cue ? mentionCueNote(cue, personNameIn(threadId)) : !orchestration && !cardContinuation && !alsoAnswering.length ? answeredAboveNote(answeredSince(threadId, latestUser, bot.id)) : "",
