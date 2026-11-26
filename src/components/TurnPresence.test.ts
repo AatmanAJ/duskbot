@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@/testing/quiet-canceled-animations";
 
 import { phraseAt, phraseHoldMs, rotationHoldMs } from "@/lib/live-activity";
-import { LONG_TURN_MS, STATUS_HOLD_MS, STATUS_QUIET_MS, TurnPresence, WORD_DWELL_MS, WORD_SWAP } from "./TurnPresence";
+import { LONG_TURN_MS, STATUS_EXIT_MS, STATUS_HOLD_MS, STATUS_QUIET_MS, TurnPresence, WORD_DWELL_MS, WORD_SWAP } from "./TurnPresence";
+import { LINE_SPECS, WORKING_LINE } from "@/lib/working-line";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -430,5 +431,26 @@ describe("thinking shimmer box", () => {
     const phrase = host.querySelector(".thinking-shimmer")!;
     expect(phrase.textContent).toBe("Running a command");
     expect(phrase.querySelector(".thinking-sheen")?.getAttribute("aria-hidden")).toBe("true");
+  });
+});
+
+describe("the picked working line", () => {
+  const chat = readFileSync("src/components/chat.css", "utf8");
+
+  it("is glance: the mascot rises in as the words come, and the line leaves as the rock pick did", () => {
+    expect(WORKING_LINE).toBe("glance");
+    expect(STATUS_EXIT_MS).toBe(LINE_SPECS.rock.exitMs);
+    render({ label: "Searching", simple: true, avatar: createElement("span", { "data-mark": "" }) });
+    expect(host.querySelector("[data-working-line]")?.getAttribute("data-working-line")).toBe("glance");
+    expect(chat).toMatch(/\[data-working-line="glance"\]\.turn-status-in \.turn-status-mark \{ animation: working-line-glance-in/);
+    expect(chat).toMatch(/\[data-working-line="glance"\]\.turn-status-out \{[^}]*working-line-fade-out/);
+  });
+
+  it("keeps the approved sheen: the same slow sweep over 4.34 s as the rock pick", () => {
+    expect(chat).toContain('[data-working-line="glance"] { --sheen-ms: 4.34s; }');
+    expect(chat).toContain('[data-working-line="rock"] { --sheen-ms: 4.34s; }');
+    const frames = chat.match(/@keyframes working-line-sheen \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    expect(frames).toContain("19.3% { background-position: 155.5% 0; }");
+    expect(frames).toContain("80% { background-position: -160.4% 0; }");
   });
 });
