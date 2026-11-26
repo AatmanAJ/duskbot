@@ -447,3 +447,11 @@ export async function runUpdate(args: UpdateArgs, probes: UpdateProbes): Promise
     return fail(error);
   }
 }
+
+/** `duskbot update|version|--version`, from cli.ts */
+export async function runUpdateCli(argv: string[], current: string, serverRoot: string, usage: string): Promise<number> {
+  if (argv[0] === "--version" || argv[0] === "-v") { console.log(current); return 0; }
+  const args = parseUpdateArgs(argv);
+  if ("error" in args) { console.error(`${args.error}\n\n${usage}`); return 2; }
+  return runUpdate(args, defaultUpdateProbes(current, serverRoot));
+}

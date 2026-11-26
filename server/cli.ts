@@ -958,13 +958,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     if ("error" in options) { console.error(options.error); return 2; }
     return runVpsOps(options, { log: (line) => console.log(line), error: (line) => console.error(line) });
   }
-  if (argv[0] === "--version" || argv[0] === "-v") { console.log(serverVersion()); return 0; }
-  if (argv[0] === "update" || argv[0] === "version") {
-    const { defaultUpdateProbes, parseUpdateArgs, runUpdate } = await import("./cli-update.ts");
-    const args = parseUpdateArgs(argv);
-    if ("error" in args) { console.error(`${args.error}\n\n${USAGE}`); return 2; }
-    return runUpdate(args, defaultUpdateProbes(serverVersion(), HERE));
-  }
+  if (["update", "version", "--version", "-v"].includes(argv[0] ?? "")) return (await import("./cli-update.ts")).runUpdateCli(argv, serverVersion(), HERE, USAGE);
   if (argv[0] === "sentinel") return runSentinelCli(argv.slice(1));
   if (argv[0] === "free-backup") return runFreeBackup(argv.slice(1));
   if (HEADLESS_VERB_NAMES.has(argv[0] ?? "") || (argv[0] === "help" && HEADLESS_VERB_NAMES.has(argv[1] ?? ""))) return (await import("./headless/main.ts")).runHeadless(argv);
