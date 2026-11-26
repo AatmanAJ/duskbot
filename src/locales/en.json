@@ -2795,6 +2795,7 @@
   "composer.attach.imageAsFile.one": "{names} is over {mb} MB, so it was attached as a file.",
   "composer.attach.imageAsFile.many": "{names} are over {mb} MB, so they were attached as files.",
   "composer.attach.tooLarge": "{name} is over {mb} MB.",
+  "composer.attach.empty": "{name} is empty, so it wasn't attached.",
   "composer.attach.pickFailedTitle": "Couldn't add everything you picked",
   "composer.attach.pickFailedBody": "Some photos or videos didn't load from your library. Check your connection and try again.",
   "composer.attach.pickTooLargeTitle": "Too large to attach",

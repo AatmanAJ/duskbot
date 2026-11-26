@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  AttachmentEmptyError,
   appendPastedText,
   attachmentAudioUrl,
   attachmentBasename,
@@ -18,6 +19,7 @@ import {
   PASTE_INLINE_MAX_BYTES,
   pastedTextFile,
   pendingFileAttachment,
+  refusedBeforeUpload,
   releaseAttachmentImagePreview,
   splitTranscriptAttachments,
   type ImageAttachment,
@@ -521,6 +523,14 @@ describe("pastedTextFile", () => {
     expect(pendingFileAttachment(sized(1024))).toBeNull();
     expect(pendingFileAttachment(sized(10 * 1024 * 1024 + 1))).toMatchObject({ kind: "file", name: "huge-photo.png", uploading: true });
     expect(() => pendingFileAttachment(sized(25 * 1024 * 1024 + 1))).toThrow(expect.objectContaining({ status: 413 }));
+  });
+
+  it("refuses an empty file or image before uploading, so it never leaves a failed tile that holds Send", () => {
+    expect(() => pendingFileAttachment({ name: "empty.txt", type: "text/plain", size: 0 })).toThrow(AttachmentEmptyError);
+    expect(() => pendingFileAttachment({ name: "notes.pdf", type: "application/pdf", size: 0 })).toThrow(AttachmentEmptyError);
+    expect(() => optimisticImageAttachment(new File([], "blank.png", { type: "image/png" }))).toThrow(AttachmentEmptyError);
+    expect(refusedBeforeUpload(new AttachmentEmptyError("a.txt"))).toBe(true);
+    expect(refusedBeforeUpload(new Error("network"))).toBe(false);
   });
 
   it("refuses a paste over the file limit before uploading", () => {

@@ -1,5 +1,6 @@
 import { t } from "./i18n";
 import {
+  AttachmentEmptyError,
   AttachmentTooLargeError,
   attachmentsFromDroppedFiles,
   fileAttachmentFromFile,
@@ -38,6 +39,7 @@ export function imagesThatFit<T extends { name: string; size: number }>(images: 
 
 export function uploadFailure(name: string, err: unknown): string {
   if (err instanceof AttachmentTooLargeError) return t("composer.attach.tooLarge", { name: err.fileName, mb: err.maxBytes / MB });
+  if (err instanceof AttachmentEmptyError) return t("composer.attach.empty", { name: err.fileName });
   const message = err instanceof Error ? err.message : "upload failed";
   const said = message.includes(name) ? message : `${name}: ${message}`;
   return /[.!?]$/.test(said) ? said : `${said}.`;

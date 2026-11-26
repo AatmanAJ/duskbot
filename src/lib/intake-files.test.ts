@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { TURN_IMAGE_MAX_BYTES as SERVER_TURN_IMAGE_MAX_BYTES, TURN_IMAGE_MAX_COUNT as SERVER_TURN_IMAGE_MAX_COUNT } from "../../server/turn-images";
-import { AttachmentTooLargeError, fitImagesToSlots, IMAGE_MAX_BYTES, imageBytesLeft, imageSlotsLeft, TURN_IMAGE_MAX_BYTES, TURN_IMAGE_MAX_COUNT, type Attachment } from "./composer-attachments";
+import { AttachmentEmptyError, AttachmentTooLargeError, fitImagesToSlots, IMAGE_MAX_BYTES, imageBytesLeft, imageSlotsLeft, TURN_IMAGE_MAX_BYTES, TURN_IMAGE_MAX_COUNT, type Attachment } from "./composer-attachments";
 import { imagesThatFit, intakeFiles } from "./intake-files";
 import { FILE_MAX_BYTES } from "../../shared/upload-limits";
 
@@ -163,6 +163,18 @@ describe("intakeFiles", () => {
     });
     expect(out.attachments).toEqual([]);
     expect(out.notice).toBe("huge.png is over 25 MB.");
+  });
+
+  it("names an empty file in one plain sentence and keeps the rest", async () => {
+    const out = await intakeFiles([file("empty.txt", "text/plain", 0), file("notes.pdf", "application/pdf")], {
+      allowImages: true, getPath: onDisk, uploadImage: upload,
+      uploadFile: async (f) => {
+        if (f.size === 0) throw new AttachmentEmptyError(f.name);
+        return { kind: "file" as const, id: `id-${f.name}`, name: f.name, path: `/files/${f.name}`, size: f.size };
+      },
+    });
+    expect(out.attachments.map((a) => "name" in a ? a.name : "")).toEqual(["notes.pdf"]);
+    expect(out.notice).toBe("empty.txt is empty, so it wasn't attached.");
   });
 
   it("splits pasted images by the slots left, passing oversized ones through", () => {

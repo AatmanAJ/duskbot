@@ -47,7 +47,7 @@ import { useOnCall } from "@/lib/call";
 import { isLiveCallRunning, useLiveMedia } from "@/lib/live-call-media";
 import {
   appendPastedText,
-  AttachmentTooLargeError,
+  refusedBeforeUpload,
   attachmentUnsent,
   clipboardHasImages,
   clipboardImageFiles,
@@ -834,7 +834,7 @@ export const Composer = memo(function Composer({
             if (result.status === "rejected") {
               dispatch({
                 type: "error",
-                message: result.reason instanceof AttachmentTooLargeError ? uploadFailure(kept[index]!.name, result.reason) : friendlyError(result.reason, "image upload failed"),
+                message: refusedBeforeUpload(result.reason) ? uploadFailure(kept[index]!.name, result.reason) : friendlyError(result.reason, "image upload failed"),
               });
             }
           }

@@ -110,6 +110,21 @@ export class AttachmentTooLargeError extends Error {
   }
 }
 
+/** An upload refused before it is sent: the file has no bytes, which the server would refuse on every retry. */
+export class AttachmentEmptyError extends Error {
+  readonly status = 400;
+  readonly fileName: string;
+  constructor(fileName: string) {
+    super(`${fileName} is empty.`);
+    this.fileName = fileName;
+  }
+}
+
+/** A file turned away before it was sent (too large or empty): its own plain sentence says why. */
+export function refusedBeforeUpload(error: unknown): error is AttachmentTooLargeError | AttachmentEmptyError {
+  return error instanceof AttachmentTooLargeError || error instanceof AttachmentEmptyError;
+}
+
 export function fileAttachment(name: string, path: string, size: number): FileAttachment {
   return { kind: "file", id: newId(), path, name, size };
 }
@@ -314,6 +329,7 @@ function canonicalImageName(originalName: string, path: string, mime: string): s
 
 export function optimisticImageAttachment(file: File): ImageAttachment | null {
   if (!isImageFile(file)) return null;
+  if (file.size === 0) throw new AttachmentEmptyError(file.name);
   if (file.size > IMAGE_MAX_BYTES) throw new AttachmentTooLargeError(file.name, IMAGE_MAX_BYTES);
   const mime = file.type.split(";", 1)[0]!.trim().toLowerCase();
   const previewUrl = typeof URL.createObjectURL === "function" ? URL.createObjectURL(file) : undefined;
@@ -366,6 +382,7 @@ function uploadableFileMime(file: Pick<File, "name" | "type" | "size">): string 
     (ACCEPTED_AUDIO_MIMES.has(declared) ? declared : AUDIO_MIMES_BY_EXTENSION[extension]) ??
     (imageSentAsFile(file) ? declared : undefined);
   if (!mime) return null;
+  if (file.size === 0) throw new AttachmentEmptyError(file.name);
   if (file.size > FILE_MAX_BYTES) {
     throw new AttachmentTooLargeError(file.name, FILE_MAX_BYTES);
   }
