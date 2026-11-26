@@ -7,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { applyStartupPreferences, formatSessions, parseArgs, runAccess, runLogin, runOnboardingCommand, serverEntry, type CliOptions, verifyPhoneEndpoint } from "./cli.ts";
+import { applyStartupPreferences, formatSessions, parseArgs, runAccess, runLogin, runOnboardingCommand, serverEntry, type CliOptions } from "./cli.ts";
 import { browserSignInLines, pairingBlock, qrToString } from "./cli-pairing.ts";
 import { readAdminActivityRange } from "./admin-activity.ts";
 import { SetupCancelled } from "./cli-prompts.ts";
@@ -340,26 +340,6 @@ describe("saved startup access", () => {
   it("refuses a saved URL that embeds a credential or points to localhost", () => {
     for (const publicUrl of ["https://localhost", "https://user:secret@example.com", "https://example.com/pair#code=secret"])
       expect(() => applyStartupPreferences(options(), { access: "public-url", publicUrl })).toThrow("not a valid HTTPS origin");
-  });
-});
-
-describe("phone endpoint identity", () => {
-  afterEach(() => vi.unstubAllGlobals());
-  it("checks the public endpoint matches this server without sending credentials", async () => {
-    const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ environmentId: "fixture" }))
-      .mockResolvedValueOnce(Response.json({ environmentId: "fixture" }));
-    vi.stubGlobal("fetch", fetcher);
-    expect(await verifyPhoneEndpoint(18451, "https://maus.example.com")).toBe(true);
-    expect(fetcher.mock.calls[1]![1]).toMatchObject({ redirect: "error" });
-    expect(fetcher.mock.calls[1]![1]).not.toHaveProperty("headers");
-  });
-  it("refuses another server or unreachable origin", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(Response.json({ environmentId: "ours" }))
-      .mockResolvedValueOnce(Response.json({ environmentId: "other" })));
-    expect(await verifyPhoneEndpoint(18451, "https://maus.example.com")).toBe(false);
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
-    expect(await verifyPhoneEndpoint(18451, "https://maus.example.com")).toBe(false);
-    expect(await verifyPhoneEndpoint(18451, "https://localhost")).toBe(false);
   });
 });
 

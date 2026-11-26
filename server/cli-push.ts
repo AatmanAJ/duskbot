@@ -15,7 +15,8 @@ const OUTCOME: Record<PushTestResponse["results"][number]["outcome"], string> = 
 
 export async function runPush(action: "status" | "test", call: Loopback, io: Io): Promise<number> {
   const devices = await call("/api/mobile/devices").catch(() => null);
-  if (!devices || devices.status === 403) { io.error("This server did not let this computer list its phones. Run duskbot push on the server itself."); return 1; }
+  if (!devices) { io.error("No dusk bot server answered on this computer: start one with duskbot serve, or pass its --port."); return 1; }
+  if (devices.status === 403) { io.error("This server did not let this computer list its phones. Run duskbot push on the server itself."); return 1; }
   if (devices.status !== 200) { io.error(`The server did not list its phones (${devices.status}).`); return 1; }
   const phones = (devices.body?.devices ?? []) as MobileDevice[];
   if (!phones.length) {

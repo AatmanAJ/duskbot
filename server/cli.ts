@@ -237,19 +237,6 @@ export async function openDashboard(port: number, env = process.env): Promise<bo
   });
 }
 
-/** Its public descriptor must identify this exact server; never sends a pairing code or credential. */
-export async function verifyPhoneEndpoint(port: number, origin: string): Promise<boolean> {
-  if (!normalizePhoneOrigin(origin)) return false;
-  try {
-    const local = await api(port, "/.well-known/duskbot/environment");
-    const remote = await fetch(`${origin}/.well-known/duskbot/environment`, { signal: AbortSignal.timeout(5000), redirect: "error" });
-    if (local.status !== 200 || !remote.ok) return false;
-    const descriptor = await remote.json() as { environmentId?: unknown };
-    return typeof local.body?.environmentId === "string" && local.body.environmentId.length > 0
-      && descriptor.environmentId === local.body.environmentId;
-  } catch { return false; }
-}
-
 export function applyStartupPreferences(options: CliOptions, saved: AppConfig["cliStartup"]): CliOptions {
   if (options.local) return { ...options, tunnel: false, tailscale: false, publicUrl: undefined, phone: undefined };
   if (!saved || options.tunnel || options.tailscale || options.publicUrl) return options;
@@ -315,9 +302,8 @@ export async function runPair(options: CliOptions): Promise<number> {
     console.error(`no dusk bot server on http://127.0.0.1:${options.port}; start one with \`duskbot serve\` or set DUSK_PORT`);
     return 1;
   }
-  const log = (line: string) => console.log(line);
   // `--phone`: the phone app, as a paired phone that gets notifications, or a plain no
-  if (options.phone) return await showPhonePairing(options, options.publicUrl, log, { client: options.client }) ? 0 : 1;
+  if (options.phone) return await showPhonePairing(options, options.publicUrl, (line) => console.log(line), { client: options.client }) ? 0 : 1;
   if (process.stdin.isTTY && process.stdout.isTTY && !options.label && !options.client) {
     const advertised = await api(options.port, "/api/auth/pairing");
     let launch = options;
@@ -987,11 +973,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       return serveUntilStopped(options);
     case "pair":
       return runPair(options);
-    case "push": {
-      if (!(await serverUp(options.port))) { console.error(`no dusk bot server on http://127.0.0.1:${options.port}; start one with \`duskbot serve\` or set DUSK_PORT`); return 1; }
-      const { runPush } = await import("./cli-push.ts");
-      return runPush(options.pushAction ?? "status", (path, init) => api(options.port, path, init), { log: (line) => console.log(line), error: (line) => console.error(line) });
-    }
+    case "push":
+      return (await import("./cli-push.ts")).runPush(options.pushAction ?? "status", (path, init) => api(options.port, path, init), { log: (line) => console.log(line), error: (line) => console.error(line) });
     case "sessions":
       return runSessions(options);
     case "status":
