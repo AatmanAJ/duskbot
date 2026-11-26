@@ -472,7 +472,7 @@ import { boxBrowserRoute, browserCallComputerResource, ownBoxBrowser } from "./b
 import { BotLogins, cardLoginPlace, cardSignInElsewhere, observeSignInPage, type ObservedPage } from "./bot-logins.ts";
 import { relayFrame } from "./browser-relay.ts";
 import { recentTabs } from "./browser-recent-tabs.ts";
-import { browserEvidence, stepContext } from "./browser-steps.ts"; import { WakeGate } from "./wake-gate.ts"; import { startRunHealth } from "./run-health.ts";
+import { browserEvidence, stepContext } from "./browser-steps.ts"; import { WakeGate } from "./wake-gate.ts"; import { startRunHealth } from "./run-health.ts"; import { codexAutoUpdateEnabled, codexUpkeepFor, startCodexUpkeep } from "./codex-upkeep.ts";
 import { parseLoginFields, parseTotpField, createLoginRoutes } from "./routes/logins.ts";
 import { loginSite } from "../shared/logins.ts";
 import { BROWSER_SETTING_UP_PROMPT, browserEngineStatus } from "./browser-engine.ts";
@@ -9871,7 +9871,7 @@ const limitFailovers = new LimitFailovers({ file: join(DATA_DIR, "limit-failover
 threadBackup = (task, model) => limitFailovers.backupOf(task.threadId, model);
 const automationDestinations = createAutomationDestinations({ store, mainThread: botMainThread, runs: () => routines?.listRuns() ?? [],
   cloud: CLOUD_HOME ? { owner: CLOUD_OWNER_KEY!, opener: routineOpener, reportFromOthers: cloudReportFromOthers, opened: (threadId, person) => threadStarters.set(threadId, person), outside: (threadId) => outsideLineage.mark(threadId) } : null });
-const runHealth = startRunHealth({ dataDir: DATA_DIR, turns: () => liveTurnByThread.size, log: (line) => console.log(line) }); const wakeGate = new WakeGate({ onRelease: () => routines?.lookAgain(), log: (line) => console.log(line) }); routines = new RoutineManager({ heldAfterWake: () => wakeGate.held(), chainHost: routineChainHost({ store, mainThread: botMainThread, cloudHome: Boolean(CLOUD_HOME) }),
+const runHealth = startRunHealth({ dataDir: DATA_DIR, turns: () => liveTurnByThread.size, log: (line) => console.log(line) }); if (codexAutoUpdateEnabled(Boolean(CLOUD_HOME))) startCodexUpkeep(codexUpkeepFor(registry, () => liveTurnByThread.size, (line) => console.log(line))); const wakeGate = new WakeGate({ onRelease: () => routines?.lookAgain(), log: (line) => console.log(line) }); routines = new RoutineManager({ heldAfterWake: () => wakeGate.held(), chainHost: routineChainHost({ store, mainThread: botMainThread, cloudHome: Boolean(CLOUD_HOME) }),
   emit: (event) => { broadcast(event); if (event.kind === "routine.deleted" && typeof event.routineId === "string") routineGone(event.routineId); }, limitResetAt: (engine) => limitClock.resetAt(engine), checks: routineHost.checks(proactive.checks), earlyMs: routineHost.earlyMs, held: (run) => routineGuard.held(run), decorate: (routine) => routineGuard.pausedFor(routine),
   limitBackup: (botId, scope) => { const bot = store.bot(botId); return quotaSwitchEnabled() ? Boolean(bot && limitTakeover.backups(botId, bot.modelSelection, scope, approvalModeFor(bot)).length) : Boolean(bot && startupBackups(bot, cfg.automaticRecovery).length); },
   launchId: DESKTOP_MANAGED && /^[\w-]{1,100}$/.test(process.env.DUSK_DESKTOP_LAUNCH_ID ?? "")

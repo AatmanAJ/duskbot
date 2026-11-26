@@ -357,7 +357,6 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       if (plan) env.CODEX_HOME = join(planDirectory, "codex");
       return env;
     };
-    const catalogEnv = childEnv();
     const planAuth = plan ? new ChatGptPlanAuthController({ directory: planDirectory }) : null;
     let planGeneration = 0;
     let planSigningOut = false;
@@ -394,7 +393,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         }
       } else {
         try {
-          const resolved = await readCodexModelCatalog(catalogEnv, fetch, config.cli);
+          const resolved = await readCodexModelCatalog(childEnv(), fetch, config.cli);
           if (resolved.options.length) models = withoutOwnRefused(resolved); else unconfirmedModelCatalog(models);
         } catch { unconfirmedModelCatalog(models); }
       }
@@ -1654,7 +1653,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     if (config.managed) return { state: "available", version, authenticated: Boolean(input.environment.DUSK_COMPANY_API_KEY && input.environment.CODEX_HOME), billing: "metered" };
     const previousCliVersion = modelsCliVersion;
     modelsCliVersion = version;
-    if (previousCliVersion !== null && previousCliVersion !== version) await refreshModels();
+    if (previousCliVersion !== null && previousCliVersion !== version) { await appServers.closeIdle(); await refreshModels(); }
     const authenticated = await codexLoginStatus(config.cli, env) === "signed-in";
     currentOwnRefused();
     if (authenticated && loginRejected()) {

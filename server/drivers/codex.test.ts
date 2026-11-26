@@ -7,7 +7,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { ownMcpHttpRoutes } from "../routes/own-mcp-http.ts";
 import { SPAWNED_PROXIES } from "../proxy-paths.ts";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join, sep } from "node:path";
+import { delimiter, dirname, join, sep } from "node:path";
+import { registerPathDir, resetPathCacheForTests } from "../env-path.ts";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -3308,6 +3309,28 @@ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`)
     expect(instance.models.options.map((model) => model.id)).toContain("gpt-6.1-sol");
   });
 
+  it.skipIf(process.platform === "win32")("reads the model list from the copy an update put first on PATH, with no restart", async () => {
+    const wrapper = (dir: string, updated: boolean) => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "codex"), `#!/bin/sh\n${updated ? "FAKE_CODEX_UPDATED_FILE=/ " : "unset FAKE_CODEX_UPDATED_FILE; "}exec '${process.execPath}' --experimental-strip-types '${FAKE_CLI}' "$@"\n`, { mode: 0o755 });
+    };
+    wrapper(join(scratch, "image"), false);
+    wrapper(join(scratch, "app"), true);
+    vi.stubEnv("PATH", `${join(scratch, "image")}${delimiter}${process.env.PATH ?? ""}`);
+    resetPathCacheForTests();
+    try {
+      await create({ cli: "codex", environment: { FAKE_CODEX_VERSION: "codex-cli 0.155.1" } });
+      expect((await instance.snapshot()).version).toBe("codex-cli 0.155.1");
+      expect(instance.models.options.map((model) => model.id)).not.toContain("gpt-6.1-sol");
+      registerPathDir(join(scratch, "app"));
+      expect((await instance.snapshot()).version).toBe("codex-cli 0.162.1");
+      expect(instance.models.options.map((model) => model.id)).toContain("gpt-6.1-sol");
+    } finally {
+      vi.unstubAllEnvs();
+      resetPathCacheForTests();
+    }
+  });
+
   it("passes -c overrides from the CLI setting after app-server, before its own", async () => {
     const dump = join(scratch, "cli-overrides.json"); process.env.FAKE_CODEX_DUMP = dump;
     await create({
@@ -4030,6 +4053,21 @@ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`)
       // The thread's running total grew to 14/6/8: the turn reports only its own share.
       expect(second.completed).toMatchObject({ ok: true, usage: { input: 7, output: 3, cachedInput: 4 } });
       expect(recorder.events.filter((event) => event.type === "session.started")).toHaveLength(2);
+    });
+
+    it("retires an idle app-server once the Codex CLI reports a new version", async () => {
+      const updatedFile = join(scratch, "updated-warm");
+      await create({ mode: "resume", environment: { FAKE_CODEX_VERSION: "codex-cli 0.160.0", FAKE_CODEX_UPDATED_FILE: updatedFile } });
+      expect((await instance.snapshot()).version).toBe("codex-cli 0.160.0");
+      process.env.FAKE_CODEX_DUMP = join(scratch, "warm-updated.json");
+      const first = await turn("t-warm-updated");
+      expect(processIsAlive(first.seen.pid)).toBe(true);
+      writeFileSync(updatedFile, "");
+      expect((await instance.snapshot()).version).toBe("codex-cli 0.162.1");
+      await expect.poll(() => processIsAlive(first.seen.pid), { timeout: 5_000 }).toBe(false);
+      const second = await turn("t-warm-updated", { resumeCursor: "codex-thread-1" });
+      expect(second.completed).toMatchObject({ ok: true });
+      expect(second.seen.pid).not.toBe(first.seen.pid);
     });
 
     it("starts a new app-server and resumes the thread when the warm one died while idle", async () => {
