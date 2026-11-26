@@ -257,6 +257,11 @@
   inherits: true;
   initial-value: 0;
 }
+/* the timestamp waits past the row's edge; the row clips it there, so it never widens the conversation and a scroll into
+   view never slides the chat sideways */
+[data-message-row]:has(> .chat-row-ts) {
+  overflow-x: clip;
+}
 .chat-row-ts {
   position: absolute;
   inset-block: 0;
