@@ -32,7 +32,7 @@ const SHOTS: Shot[] = [
   { name: "10-phone-updates-iphone", phone: true, query: "os=ios&v=1.2.12&feed=current&server=managed", steps: [openYou, scrollEnd, clickText("Check for updates")], wait: 2500 },
   { name: "11-phone-whats-new", phone: true, query: "os=android&v=1.2.12&feed=current&server=current", steps: [openYou, scrollEnd, clickText("What's new")], wait: 2000 },
   { name: "12-phone-whats-new-no-changelog", phone: true, query: "os=android&v=1.2.12&feed=current&server=current&changelog=0", steps: [openYou, scrollEnd, clickText("What's new")], wait: 2000 },
-  { name: "13-phone-home-apk-behind", phone: true, query: "os=android&v=1.2.9&feed=behind&server=current", wait: 3000 },
+  { name: "13-phone-home-apk-behind", phone: true, query: "os=android&v=1.2.9&feed=behind&server=current", wait: 7000 },
   { name: "14-phone-home-apk-current", phone: true, query: "os=android&v=1.2.12&feed=current&server=current", wait: 3000 },
   { name: "15-phone-home-feed-missing", phone: true, query: "os=android&v=1.2.9&feed=missing&server=current", wait: 3000 },
   { name: "16-phone-after-update-line", phone: true, query: "os=android&v=1.2.12&last=1.2.9&feed=current&server=current", wait: 3000 },

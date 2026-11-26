@@ -37,7 +37,7 @@ export function ApkUpdateLine({ hidden = false }: { hidden?: boolean }) {
     setClosed(true);
   };
   return (
-    <div role="status" data-apk-update="" className="fixed inset-x-3 top-[calc(env(safe-area-inset-top)+8px)] z-40 flex items-center gap-2 rounded-[16px] bg-raised py-1.5 pe-1.5 ps-4 shadow-[0_2px_12px_rgb(28_28_28/0.12)]">
+    <div role="status" data-apk-update="" className="fixed inset-x-3 top-[calc(env(safe-area-inset-top)+8px)] z-30 flex items-center gap-2 rounded-[16px] bg-raised py-1.5 pe-1.5 ps-4 shadow-[0_2px_12px_rgb(28_28_28/0.12)]">
       <p className="min-w-0 flex-1 text-[15px] text-ink">{t("mobile.updates.apkLine", { app: productName(), version: newer.version })}</p>
       <button type="button" className="mobile-press min-h-9 shrink-0 rounded-full bg-ink px-3.5 text-[15px] font-semibold text-app" onClick={() => { haptic("tap"); close(); void platform.openExternal(newer.url); }}>
         {t("mobile.updates.download")}
