@@ -14337,7 +14337,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         const result = botMemoryUpdate(layer, body, { source: memorySource(), aboutMe: ownersAsk ? aboutMeFacts : null,
           prefer: body?.action === "prefer" || body?.action === "notify" || body?.action === "commit" ? personPreference.target(internalCapability, internalSender) : null, notify: CLOUD_TEAM ? null : (rule, text) => proactive.prefs.rule(rule, text), commit: CLOUD_TEAM ? null : (item) => proactive.commitments.commit(item),
           trust: memoryWriteTrust(internalSender.id, internalCapability.threadId),
-          about: { owner: aboutOwnerFor(internalSender.id, internalCapability.threadId), text: teamHost.profileFor(internalCapability.threadId, cfg.profile)?.aboutMe ?? "" } });
+          about: { owner: aboutOwnerFor(internalSender.id, internalCapability.threadId), text: teamHost.profileFor(internalCapability.threadId, cfg.profile)?.aboutMe ?? "" }, elsewhere: body?.action === "forget" && ownersAsk ? teamHost.sameOwnerLayers(internalSender.id, internalCapability.threadId, store.bots.map((bot) => bot.id)).map((id) => ({ layer: id, name: store.bot(teamHost.baseBotId(id))?.name ?? "another bot" })) : [] });
         return json(res, result.ok ? 200 : result.code === "conflict" || result.code === "ambiguous" ? 409 : 400, result);
       }
       if (method === "POST" && path === "/api/internal/memory/log") {
