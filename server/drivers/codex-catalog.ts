@@ -58,6 +58,18 @@ export function codexUsableModel(catalog: ModelCatalog, refused: ReadonlySet<str
     .find((id) => id && !refused.has(id) && decodeCodexSelection(id).modelProvider === OFFICIAL_CODEX_PROVIDER);
 }
 
+/** The id a saved model on this catalog now goes by, or undefined while it is listed as it is. Codex's config can send its
+ * models through a provider of its own (CLIProxyAPI), and then the ChatGPT row of a model the provider serves is no longer
+ * listed: a bot saved on that row moves to the provider's row of the same model, else to the default, which is the
+ * provider's own pick. */
+export function codexListedModel(catalog: ModelCatalog, model: string): string | undefined {
+  if (!model || model.includes(SEP) || catalog.options.some((option) => option.id === model)) return undefined;
+  const routedThrough = decodeCodexSelection(catalog.default).modelProvider;
+  if (!routedThrough || routedThrough === OFFICIAL_CODEX_PROVIDER) return undefined;
+  const sameModel = catalog.options.find((option) => option.custom && option.id === encodeCodexSelection(routedThrough, model));
+  return sameModel?.id ?? catalog.default;
+}
+
 interface CodexAppServerModel {
   id?: unknown;
   displayName?: unknown;
