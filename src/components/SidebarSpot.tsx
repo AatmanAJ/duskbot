@@ -18,6 +18,7 @@ import { Icon } from "./Icon";
 import { useHeldMenuMotion } from "./MenuMotion";
 import { GROK_LABEL, GROK_MENU_ITEM, GROK_ROW_FILL, MENU_SHEET } from "./menu-recipe";
 import { mdPrimaryCls } from "./ui/GrokDialog";
+import { UpdatedLine } from "./UpdatedLine";
 
 const DOWNLOAD_PAGE = "https://dusk.bot/download";
 
@@ -167,12 +168,12 @@ export function SpotView({ className, state, cta = null }: { className?: string;
   const { spot, act, updated, seen } = state;
   const feedbackHidden = useSidebarFeedbackHidden();
   const showFeedback = spot.kind === "feedback" && !cta && !feedbackHidden;
-  // an update shows no line; it is marked seen quietly
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (updated) seen(); }, [updated]);
-  if (spot.kind === "feedback" && !cta && feedbackHidden) return null;
+  // an update is marked seen; it says "Updated to" with What's new only when the changelog has notes for it
+  const line = state.bridge ? <UpdatedLine updated={updated} seen={seen} /> : null;
+  if (spot.kind === "feedback" && !cta && feedbackHidden) return line;
   return (
     <div className={className}>
+      {line}
       {spot.kind !== "feedback" ? <UpdateCard spot={spot} act={act} className={CARD} />
         : cta ? (cta.card ? <SpotCloudCard cta={cta} card={cta.card} /> : <SpotCtaCard cta={cta} />)
         : showFeedback ? <FeedbackCard onOpen={act} /> : null}
