@@ -72,6 +72,10 @@
 //   FAKE_ACP_CANCEL_STOP_REASON  the stopReason a cancelled hanging prompt answers (default cancelled; OpenCode answers end_turn)
 //   FAKE_ACP_HANG_ONCE_FILE  with FAKE_ACP_HANG_ON, only the first matching prompt hangs; it writes this file
 //   FAKE_ACP_HOLD_FILE  while this file exists, a session/prompt waits before it is answered
+//   FAKE_ACP_REPLAY  a recorded exchange ({t, dir, msg} lines from the recorded session/prompt on): a prompt plays the agent's
+//     frames at their recorded times divided by FAKE_ACP_REPLAY_SPEED (default 1), including any after the prompt result;
+//     frames recorded after a session/cancel play only once the client cancels; with FAKE_ACP_REPLAY_REST, every later
+//     prompt answers only that text
 import { AsyncLocalStorage } from "node:async_hooks";
 import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
@@ -456,6 +460,23 @@ let pendingAskQuestionId: number | null = null;
 let onAskQuestionAnswered: (() => void) | null = null;
 
 let hangingPromptId: unknown = null;
+let replayTimers: ReturnType<typeof setTimeout>[] = [];
+let replayAfterCancel: any[] = [];
+let replayed = false;
+const replayFrame = (msg: any, promptId: unknown, recordedPromptId: unknown, sessionId: unknown) => {
+  const frame = JSON.parse(JSON.stringify(msg).replaceAll("<session>", String(sessionId)));
+  out(frame.method === undefined && frame.id === recordedPromptId ? { ...frame, id: promptId } : frame);
+};
+const playReplay = (msg: any) => {
+  const frames = readFileSync(process.env.FAKE_ACP_REPLAY!, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+  const recordedPromptId = frames.find((frame) => frame.dir === ">>" && frame.msg?.method === "session/prompt")?.msg.id;
+  const cancelAt = frames.find((frame) => frame.dir === ">>" && frame.msg?.method === "session/cancel")?.t ?? Infinity;
+  const speed = Number(process.env.FAKE_ACP_REPLAY_SPEED ?? 1) || 1;
+  const agent = frames.filter((frame) => frame.dir === "<<");
+  replayAfterCancel = agent.filter((frame) => frame.t > cancelAt).map((frame) => () => replayFrame(frame.msg, msg.id, recordedPromptId, msg.params?.sessionId));
+  replayTimers = agent.filter((frame) => frame.t <= cancelAt)
+    .map((frame) => setTimeout(() => replayFrame(frame.msg, msg.id, recordedPromptId, msg.params?.sessionId), frame.t / speed));
+};
 let hangKeepAlive: ReturnType<typeof setInterval> | null = null;
 
 type McpEntry = { command: string; args?: string[]; env?: Array<{ name: string; value: string }> };
@@ -1033,6 +1054,16 @@ function handle(msg: any) {
         result(msg.id, { stopReason: "end_turn", _meta: { inputTokens: 12, outputTokens: 4 } });
         return;
       }
+      if (process.env.FAKE_ACP_REPLAY && !(replayed && process.env.FAKE_ACP_REPLAY_REST !== undefined)) {
+        replayed = true;
+        playReplay(msg);
+        return;
+      }
+      if (process.env.FAKE_ACP_REPLAY) {
+        out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: msg.params?.sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: process.env.FAKE_ACP_REPLAY_REST } } } });
+        result(msg.id, { stopReason: "end_turn", _meta: { inputTokens: 12, outputTokens: 4 } });
+        return;
+      }
       const fullPrompt = (Array.isArray(msg.params?.prompt) ? msg.params.prompt : []).map((block: any) => block?.text ?? "").join("");
       const hangOn = process.env.FAKE_ACP_HANG_ON, hangOnce = process.env.FAKE_ACP_HANG_ONCE_FILE;
       const held = Boolean(hangOn) && fullPrompt.includes(hangOn!) && !(hangOnce && existsSync(hangOnce));
@@ -1516,6 +1547,12 @@ function handle(msg: any) {
       break;
     }
     case "session/cancel":
+      if (replayTimers.length || replayAfterCancel.length) {
+        for (const timer of replayTimers) clearTimeout(timer);
+        for (const play of replayAfterCancel) play();
+        replayTimers = [];
+        replayAfterCancel = [];
+      }
       if (hangingPromptId !== null && process.env.FAKE_ACP_IGNORE_CANCEL !== "1") {
         result(hangingPromptId, { stopReason: process.env.FAKE_ACP_CANCEL_STOP_REASON ?? "cancelled", _meta: {} });
         if (hangKeepAlive) clearInterval(hangKeepAlive);

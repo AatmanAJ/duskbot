@@ -18,6 +18,7 @@ import { deletePromptSplitReceipt, promptHalves, readPromptSplitReceipt, splitSe
 import type { PromptSplitReceipt } from "../prompt-split.ts";
 import { closedOrKilled, describeSpawnFailure, execCli, killCliTree, readOnlyBotFolders, spawnCli } from "../../procs.ts";
 import { runAcpOneShot } from "./background-text.ts";
+import { observeBackground, waitForWake } from "./background-wait.ts";
 import { sanitizeAcpToolMessage } from "./tool-log.ts";
 import { createSystemHarnessStreamFilter, stripLeakedSystemHarnessMessages } from "../../../shared/system-message-guard.ts";
 import {
@@ -46,7 +47,6 @@ import type {
   ProviderErrorCode,
   RequestOutcome,
   TextGenerationOptions,
-  TurnImageInput,
 } from "../../contracts.ts";
 import { newEventId, newId, TurnNotStartedError } from "../../contracts.ts";
 import { conversationLanguage, serverLine } from "../../server-lines.ts";
@@ -61,7 +61,7 @@ import { commandSummary, toolDetailPreview } from "../../tool-summary.ts";
 import { acpToolEndEvents } from "./tool-items.ts";
 import { AcpHost } from "./host.ts";
 import { exitDetail } from "./exit-report.ts";
-import { availableCommandNames, endTurn, isAccountError, lookupResultArrived, skipSubscriptionAuthForLocalInject, trackRunningTool, type AccountErrorCode, type AcpAskFinish, type AcpConfig, type AcpSession, type AcpTurn } from "./turn-state.ts";
+import { availableCommandNames, endTurn, isAccountError, isHermesReasoningReplay, readAcpImageBlocks, lookupResultArrived, skipSubscriptionAuthForLocalInject, trackRunningTool, type AccountErrorCode, type AcpAskFinish, type AcpConfig, type AcpSession, type AcpTurn } from "./turn-state.ts";
 export { skipSubscriptionAuthForLocalInject, type AccountErrorCode, type AcpConfig };
 import { recoveryPromptFor } from "../../resume-recovery.ts";
 import { engineIdleMs, keepWarm, sessionIdlePolicy, stopIdleClose } from "../session-idle.ts";
@@ -139,6 +139,8 @@ export interface AcpSupport {
   /** The approval mode is applied per turn by configureSession, which must throw unless the runtime
    * confirms it; an approval change never respawns the process. */
   sessionScopedApproval?: boolean;
+  /** The prompt can end while work the agent waits on runs, the agent then waking itself (Antigravity 1.5): the turn waits. */
+  backgroundWakes?: boolean;
   /** False when this engine cannot run memory upkeep's one-shot text call cleanly; oneShotFolder holds a one-shot's folder. */
   backgroundText?: false; oneShotFolder?(): Promise<string>;
   /** Mutate the child env in place. `instanceEnvironment` tells a key put there on purpose from one
@@ -264,12 +266,6 @@ const SHARED_SESSIONS_MAX = 6, SHARED_SESSIONS_LIFETIME = 12;
 const HEALTHY_CLOSE = new Set(["idle", "reset", "contract", "remount", "stop", "stopAll", "dispose", "approval-unconfirmed"]);
 /** ACP agents may compact their history silently; re-send the full prompt after this many bare turns. */
 const ACP_PROMPT_RE_ANCHOR_TURNS = 8;
-function isHermesReasoningReplay(chunk: string, streamed: string): boolean {
-  const reply = streamed.trim();
-  const replay = chunk.trim();
-  return reply !== "" && /^(?:> |-# )?💭/.test(replay) && replay.endsWith(reply)
-    && /\n\n[ \t]*$/.test(replay.slice(0, -reply.length));
-}
 
 let unkeyedToolSeq = 0;
 /** A synthetic id for a `tool_call` without `toolCallId`, paired FIFO with the first terminal update. */
@@ -279,14 +275,6 @@ function nextUnkeyedToolId(current: AcpTurn): string {
   return id;
 }
 const CLIENT_FILE_MAX_BYTES = 8 * 1024 * 1024;
-
-async function readAcpImageBlocks(images: readonly TurnImageInput[]) {
-  return Promise.all(images.map(async (image) => ({
-    type: "image" as const,
-    data: (await readFile(image.path)).toString("base64"),
-    mimeType: image.mime,
-  })));
-}
 
 function decodeAcpConfig(defaultCli: string) {
   return (raw: unknown): AcpConfig => {
@@ -600,6 +588,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         current.state.settled = true;
         current.acknowledge();
         current.stopQuietWatch?.();
+        current.backgroundWait?.stop();
         if (current.interruptTimer) clearTimeout(current.interruptTimer);
         for (const finish of current.asks.values()) finish("cancel", "system");
         session.acp.failAll(new Error("turn settled"));
@@ -963,7 +952,9 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             }
           }
           // A call still running (its kind, file and diff so far) feeds the chat's status line.
-          for (const live of [acpToolProgress(u), acpToolOutput(u)]) if (live) emit({ ...base(threadId, current.turnId), ...live });
+          const progress = acpToolProgress(u);
+          for (const live of [progress, acpToolOutput(u)]) if (live) emit({ ...base(threadId, current.turnId), ...live });
+          if (support.backgroundWakes) observeBackground(current, u, progress);
         };
 
         const session: AcpSession = {
@@ -1217,6 +1208,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           lookupTools: new Set(),
           interruptTimer: null,
           stopQuietWatch: null,
+          backgroundCalls: new Map(), backgroundProgress: new Map(), backgroundWait: null,
           pushAssistantDelta: (delta) => harnessFilter.push(delta),
           flushAssistantText,
           receiveModelVariants,
@@ -1226,6 +1218,8 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           state.stopped = true;
           if (session.sessionId) {
             session.acp.send({ jsonrpc: "2.0", method: "session/cancel", params: { sessionId: session.sessionId } });
+            // with no prompt open, Antigravity 1.5.13 still stops the timer or task the turn waits on
+            if (current.backgroundWait) return void settle(threadId, session, true, "cancelled");
             if (current.interruptTimer) clearTimeout(current.interruptTimer);
             current.interruptTimer = setTimeout(() => {
               state.cancelling = true;
@@ -1236,7 +1230,10 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             closeSession(threadId, "stop");
           }
         };
-        active.set(threadId, { stop: () => { state.stopped = true; closeSession(threadId, "stop"); }, interrupt, turnId, asks });
+        active.set(threadId, { stop: () => {
+          const waiting = current.backgroundWait;
+          state.stopped = true; closeSession(threadId, "stop"); if (waiting) settle(threadId, session, true, "cancelled");
+        }, interrupt, turnId, asks });
         if (retryOf === undefined) emit({ ...base(threadId, turnId), type: "turn.started" });
         session.current = current;
 
@@ -1601,7 +1598,8 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
               const said = typeof result?.error === "string" ? result.error : typeof result?.message === "string" ? result.message : String(reason ?? "");
               throw Object.assign(new Error(`${support.displayName}'s free model ${freeModel} stopped: ${said}`), { acpFirstReplyStall: true, acpFreeFailure: freeFailure(said) });
             }
-            if (reason === "end_turn") settle(threadId, session, true, null);
+            const settleEnded = () => settle(threadId, session, true, null);
+            if (reason === "end_turn") { if (!support.backgroundWakes || state.stopped || !waitForWake(current, (live) => emit({ ...base(threadId, turnId), ...live }), settleEnded)) settleEnded(); }
             else if (reason === "cancelled" || state.stopped) settle(threadId, session, true, "cancelled");
             else {
               const errorMessage = typeof result?.error === "string" && result.error
