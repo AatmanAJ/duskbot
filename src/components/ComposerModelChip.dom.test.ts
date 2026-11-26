@@ -39,6 +39,7 @@ const claude: InstanceInfo = {
     { id: "claude-opus-5-5", label: "Claude Opus 5.5" },
     { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5" },
   ] },
+  capabilities: { effortLevels: ["low", "medium", "high"] },
 };
 const scout: Bot = {
   id: "scout", threadId: "thread-scout", name: "Scout", title: "", description: "", notifications: true,
@@ -87,18 +88,30 @@ describe("the model chip beside the message box", () => {
       selection: expect.objectContaining({ instanceId: "claude", model: "claude-sonnet-5-5" }) })]);
   });
 
-  it("on a phone shows the menu in a bottom sheet, and keeps only the engine's mark while there is text to send", async () => {
+  it("in the phone app shows the menu in a bottom sheet, and keeps only the engine's mark while there is text to send", async () => {
+    document.documentElement.dataset.mobileApp = "ios";
     render(true);
     expect(chip().querySelector("[data-composer-model-name]")?.textContent).toBe("Opus 5.5");
     flushSync(() => chip().click());
     await settle();
     expect(document.querySelector('[data-test-sheet="Choose model"] [data-model-picker-content]')).not.toBeNull();
     flushSync(() => row("Sonnet 5.5")!.click());
+    await settle();
     expect(picks()).toHaveLength(1);
+    expect(document.querySelector("[data-test-sheet]")).toBeNull();
 
     render(true, true);
     expect(chip().querySelector("[data-composer-model-name]")).toBeNull();
     expect(chip().getAttribute("aria-label")).toBe("Model, Claude Opus 5.5");
+    delete document.documentElement.dataset.mobileApp;
+  });
+
+  it("in a narrow window keeps the popover, since the phone app's sheet lives in the phone app's shell", async () => {
+    render(true);
+    flushSync(() => chip().click());
+    await settle();
+    expect(document.querySelector("[data-test-sheet]")).toBeNull();
+    expect(document.querySelector("[data-model-picker-content]")?.getAttribute("role")).toBe("dialog");
   });
 });
 

@@ -502,7 +502,8 @@ export function ModelPicker({
     const nextSelection = modelSelectionForPick(selection, instance, model);
     // A model with reasoning levels keeps the menu open, so its level can be set next without opening it again;
     // picking a variant row already sets that level.
-    if (to === "all" || variant !== undefined || !ownThinking || !offersReasoning(state, instance, nextSelection, threadId ?? bot.threadId)) close(true);
+    // a sheet that covers the chat closes on the pick: its level stays one tap away on the current row
+    if (to === "all" || variant !== undefined || !ownThinking || composer?.present || !offersReasoning(state, instance, nextSelection, threadId ?? bot.threadId)) close(true);
     else refocusAfterPick();
   };
 
